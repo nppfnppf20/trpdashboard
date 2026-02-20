@@ -1,0 +1,166 @@
+/* Reusable Button Styles
+ * Used across admin console for action buttons
+ */
+
+/* Base button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary button - blue */
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+/* Secondary button - white with border */
+.btn-secondary {
+  background: white;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+/* Danger button - red */
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+/* Success button - green */
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #059669;
+}
+
+/* Ghost button - transparent with hover */
+.btn-ghost {
+  background: transparent;
+  color: #64748b;
+  border: none;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* Danger ghost button - for delete actions */
+.btn-danger-ghost {
+  background: transparent;
+  color: #64748b;
+}
+
+.btn-danger-ghost:hover:not(:disabled) {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* Icon-only button */
+.btn-icon {
+  padding: 0.5rem;
+  min-width: 2.25rem;
+  justify-content: center;
+}
+
+/* Small button variant */
+.btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  gap: 0.375rem;
+}
+
+/* Large button variant */
+.btn-lg {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  gap: 0.625rem;
+}
+
+/* Button group */
+.btn-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Panel actions container */
+.panel-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Table row action buttons container */
+td.actions-cell {
+  white-space: nowrap;
+}
+
+td.actions-cell .action-btn {
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+td.actions-cell .action-btn:last-child {
+  margin-right: 0;
+}
+
+/* Action button - bordered style for table rows */
+.action-btn {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 1rem;
+  color: #64748b;
+}
+
+.action-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.view-btn:hover {
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.edit-btn:hover {
+  color: #9333ea;
+  border-color: #9333ea;
+}
+
+.delete-btn:hover {
+  color: #ef4444;
+  border-color: #ef4444;
+}

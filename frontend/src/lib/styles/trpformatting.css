@@ -1,0 +1,109 @@
+/* TRP Document Formatting Styles */
+/* Professional document formatting for planning deliverables and other text content */
+/* Based on standard corporate document styling with Calibri font */
+
+/* Base document styling */
+.trp-document-content {
+  font-family: 'Calibri', 'Arial', sans-serif;
+  font-size: 0.9375rem; /* 11pt equivalent */
+  line-height: 1.6;
+  color: #000000;
+}
+
+/* Heading 1: 24pt, Bold, Dark Blue */
+.trp-document-content h1 {
+  font-family: 'Calibri', 'Arial', sans-serif;
+  font-size: 2rem; /* 24pt */
+  font-weight: 700;
+  margin: 1.5rem 0 1rem;
+  color: #1F4E78;
+}
+
+/* Heading 2: 16pt, Light, Dark Blue, with Page Break indicator */
+.trp-document-content h2 {
+  font-family: 'Calibri Light', 'Calibri', 'Arial', sans-serif;
+  font-size: 1.333rem; /* 16pt */
+  font-weight: 300;
+  margin: 1.25rem 0 0.75rem;
+  color: #1F4E78;
+  padding-top: 2rem;
+  position: relative;
+}
+
+/* Page Break visual indicator before H2 */
+.trp-document-content h2::before {
+  content: '— Page Break —';
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+/* First H2 in document shouldn't show page break */
+.trp-document-content h2:first-child::before {
+  display: none;
+}
+
+/* Heading 3: 13pt, Light, Dark Blue */
+.trp-document-content h3 {
+  font-family: 'Calibri Light', 'Calibri', 'Arial', sans-serif;
+  font-size: 1.083rem; /* 13pt */
+  font-weight: 300;
+  margin: 1rem 0 0.5rem;
+  color: #1F4E78;
+}
+
+/* Subtitle (H4): 16pt, Light, Dark Blue - for address/document title on first page */
+.trp-document-content h4 {
+  font-family: 'Calibri Light', 'Calibri', 'Arial', sans-serif;
+  font-size: 1.333rem; /* 16pt */
+  font-weight: 300;
+  margin: 0.75rem 0 0.5rem;
+  color: #1F4E78;
+}
+
+/* Body Text: 11pt Calibri, Black */
+.trp-document-content p {
+  font-family: 'Calibri', 'Arial', sans-serif;
+  font-size: 0.9375rem; /* 11pt */
+  color: #000000;
+  line-height: 1.6;
+  margin: 0.5rem 0;
+}
+
+/* Lists */
+.trp-document-content ul,
+.trp-document-content ol {
+  font-family: 'Calibri', 'Arial', sans-serif;
+  font-size: 0.9375rem;
+  color: #000000;
+  margin: 0.5rem 0;
+  padding-left: 2rem;
+}
+
+.trp-document-content li {
+  margin: 0.25rem 0;
+  line-height: 1.6;
+}
+
+/* Inline formatting */
+.trp-document-content strong {
+  font-weight: 700;
+}
+
+.trp-document-content em {
+  font-style: italic;
+}
+
+.trp-document-content u {
+  text-decoration: underline;
+}
