@@ -560,6 +560,13 @@
     recommendationTogglesOpen = { ...recommendationTogglesOpen, [disciplineName]: !recommendationTogglesOpen[disciplineName] };
   }
 
+  // Toggle state for triggered rules sections (keyed by discipline name)
+  let triggerTogglesOpen: Record<string, boolean> = {};
+
+  function toggleTriggers(disciplineName: string) {
+    triggerTogglesOpen = { ...triggerTogglesOpen, [disciplineName]: !triggerTogglesOpen[disciplineName] };
+  }
+
   function formatFindings(findings: string): string {
     if (!findings) return findings;
 
@@ -697,57 +704,62 @@
             </h3>
             
             <!-- 2b. Triggered Rules -->
-            {#if discipline.triggeredRules && discipline.triggeredRules.length > 0}
-              <div class="subsection">
-                <h4>{discipline.name} Assessment Rules Triggered</h4>
-                <div class="rules-container">
-                  {#if discipline.name === 'Agricultural Land'}
-                    <!-- Agricultural Land: Show individual rules (no grouping) -->
-                    {#each discipline.triggeredRules as rule}
-                      <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
-                        <div class="rule-header">
-                          <h4 class="rule-title">{rule.rule}</h4>
-                          <span class="rule-level" style="background-color: {getRiskLevelColors(rule.level).bgColor}; color: {getRiskLevelColors(rule.level).color};">
-                            {formatRiskLevel(rule.level)}
-                          </span>
-                        </div>
-                        
-                        <div class="rule-content">
-                          <p class="rule-findings"><strong>Findings:</strong> {formatFindings(rule.findings)}</p>
-                        </div>
-                      </div>
-                    {/each}
-                  {:else}
-                    <!-- Other disciplines: Use grouped rules display -->
-                    {#each Object.entries(groupRulesByType(discipline.triggeredRules)) as [baseType, rules]}
-                      {@const groupedRule = createGroupedRuleDisplay(baseType, rules)}
-                      <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
-                        <div class="rule-header">
-                          <h4 class="rule-title">{groupedRule.title}</h4>
-                          <span class="rule-level" style="background-color: {getRiskLevelColors(groupedRule.highestRisk).bgColor}; color: {getRiskLevelColors(groupedRule.highestRisk).color};">
-                            {formatRiskLevel(groupedRule.highestRisk)}
-                          </span>
-                        </div>
-                        
-                        <div class="rule-content">
-                          <div class="rule-findings">
-                            <strong>Findings:</strong>
-                            <div style="white-space: pre-line; margin-top: 0.5rem;">
-                              {formatFindings(groupedRule.findings)}
+            <div class="subsection">
+              <button
+                class="rec-toggle-header"
+                on:click={() => toggleTriggers(discipline.name)}
+              >
+                <span>Rules Triggered ({discipline.name})</span>
+                <span class="rec-toggle-arrow">{triggerTogglesOpen[discipline.name] ? '▲' : '▼'}</span>
+              </button>
+              {#if triggerTogglesOpen[discipline.name]}
+                <div style="margin-top: 0.75rem;">
+                  {#if discipline.triggeredRules && discipline.triggeredRules.length > 0}
+                    <div class="rules-container">
+                      {#if discipline.name === 'Agricultural Land'}
+                        <!-- Agricultural Land: Show individual rules (no grouping) -->
+                        {#each discipline.triggeredRules as rule}
+                          <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
+                            <div class="rule-header">
+                              <h4 class="rule-title">{rule.rule}</h4>
+                              <span class="rule-level" style="background-color: {getRiskLevelColors(rule.level).bgColor}; color: {getRiskLevelColors(rule.level).color};">
+                                {formatRiskLevel(rule.level)}
+                              </span>
+                            </div>
+                            <div class="rule-content">
+                              <p class="rule-findings"><strong>Findings:</strong> {formatFindings(rule.findings)}</p>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    {/each}
+                        {/each}
+                      {:else}
+                        <!-- Other disciplines: Use grouped rules display -->
+                        {#each Object.entries(groupRulesByType(discipline.triggeredRules)) as [baseType, rules]}
+                          {@const groupedRule = createGroupedRuleDisplay(baseType, rules)}
+                          <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
+                            <div class="rule-header">
+                              <h4 class="rule-title">{groupedRule.title}</h4>
+                              <span class="rule-level" style="background-color: {getRiskLevelColors(groupedRule.highestRisk).bgColor}; color: {getRiskLevelColors(groupedRule.highestRisk).color};">
+                                {formatRiskLevel(groupedRule.highestRisk)}
+                              </span>
+                            </div>
+                            <div class="rule-content">
+                              <div class="rule-findings">
+                                <strong>Findings:</strong>
+                                <div style="white-space: pre-line; margin-top: 0.5rem;">
+                                  {formatFindings(groupedRule.findings)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        {/each}
+                      {/if}
+                    </div>
+                  {:else}
+                    <p class="no-rules">No {discipline.name.toLowerCase()} risk rules were triggered. Standard development considerations apply.</p>
                   {/if}
                 </div>
-              </div>
-            {:else}
-              <div class="subsection">
-                <h4>{discipline.name} Assessment Rules</h4>
-                <p class="no-rules">No {discipline.name.toLowerCase()} risk rules were triggered. Standard development considerations apply.</p>
-              </div>
-            {/if}
+              {/if}
+            </div>
             
             <!-- 2c. Recommendations (collapsible) -->
             <div class="subsection">
