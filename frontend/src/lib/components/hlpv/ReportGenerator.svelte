@@ -688,46 +688,13 @@
                   sections={DISCIPLINE_GUIDANCE[discipline.name].sections}
                 />
               {/if}
+              <span class="predicted-risk-inline">
+                <span class="predicted-risk-label">Predicted Risk</span>
+                <span class="risk-badge-inline" style="background-color: {discipline.riskSummary?.bgColor}; color: {discipline.riskSummary?.color};">
+                  {discipline.riskSummary?.label}
+                </span>
+              </span>
             </h3>
-            
-            <!-- 2a. Overall Risk for this discipline -->
-            <div class="subsection">
-              <h4>Predicted {discipline.name} Risk</h4>
-              {#if discipline.name === 'Landscape'}
-                <div class="flood-form disabled-form" style="margin-bottom: 1rem;">
-                  <div class="flood-field">
-                    <label class="flood-label disabled-label" for="landscape-risk-level">Overall Landscape Risk Level</label>
-                    <select
-                      id="landscape-risk-level"
-                      class="flood-select disabled-input"
-                      value={landscapeRiskLevel}
-                      disabled
-                    >
-                      <option value="">-- Not Set --</option>
-                      <option value="low_risk">Low Risk</option>
-                      <option value="medium_low_risk">Medium-Low Risk</option>
-                      <option value="medium_risk">Medium Risk</option>
-                      <option value="medium_high_risk">Medium-High Risk</option>
-                      <option value="high_risk">High Risk</option>
-                      <option value="extremely_high_risk">Extremely High Risk</option>
-                      <option value="showstopper">Showstopper</option>
-                    </select>
-                    <span class="edit-hint">Edit in Report Editor tab</span>
-                  </div>
-                </div>
-                {#if landscapeRiskLevel}
-                  <div class="risk-badge" style="background-color: {resolveRiskSummary(landscapeRiskLevel).bgColor}; color: {resolveRiskSummary(landscapeRiskLevel).color};">
-                    <span class="risk-level">{resolveRiskSummary(landscapeRiskLevel).label}</span>
-                    <span class="risk-description">{resolveRiskSummary(landscapeRiskLevel).description}</span>
-                  </div>
-                {/if}
-              {:else}
-                <div class="risk-badge" style="background-color: {discipline.riskSummary?.bgColor}; color: {discipline.riskSummary?.color};">
-                  <span class="risk-level">{discipline.riskSummary?.label}</span>
-                  <span class="risk-description">{discipline.riskSummary?.description}</span>
-                </div>
-              {/if}
-            </div>
             
             <!-- 2b. Triggered Rules -->
             {#if discipline.triggeredRules && discipline.triggeredRules.length > 0}
@@ -1230,6 +1197,37 @@
     padding-top: 1.5rem;
   }
 
+  .discipline-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .predicted-risk-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .predicted-risk-label {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #9ca3af;
+    white-space: nowrap;
+  }
+
+  .risk-badge-inline {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.65rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+  }
 
   .placeholder {
     font-style: italic;

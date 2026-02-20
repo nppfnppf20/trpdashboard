@@ -335,7 +335,7 @@
 
     // Reset any lingering hover effects on the badge element
     setTimeout(() => {
-      const badgeElement = document.querySelector(`[data-discipline-index="${disciplineIndex}"] .risk-badge-dropdown`);
+      const badgeElement = document.querySelector(`[data-discipline-index="${disciplineIndex}"] .risk-badge-inline-dropdown`);
       if (badgeElement) {
         badgeElement.style.border = '2px solid transparent';
         badgeElement.style.transform = 'none';
@@ -836,31 +836,26 @@
                 sections={DISCIPLINE_GUIDANCE[discipline.name].sections}
               />
             {/if}
-          </h3>
-
-          <!-- 2a. Overall Risk for this discipline (Editable Dropdown) -->
-          <div class="subsection">
-            <h4>Predicted {discipline.name} Risk</h4>
-            <div
-              class="risk-badge risk-badge-dropdown"
-              style="background-color: {discipline.riskSummary?.bgColor || '#059669'}; color: {discipline.riskSummary?.color || 'white'};"
-              data-bg-color={discipline.riskSummary?.bgColor}
-              data-text-color={discipline.riskSummary?.color}
-            >
-              <select
-                class="hidden-dropdown"
-                bind:value={discipline.riskSummary.level}
-                on:change={(e) => handleRiskLevelChange(disciplineIndex, e.target.value)}
+            <span class="predicted-risk-inline">
+              <span class="predicted-risk-label">Predicted Risk</span>
+              <div
+                class="risk-badge-inline risk-badge-inline-dropdown"
+                style="background-color: {discipline.riskSummary?.bgColor || '#f3f4f6'}; color: {discipline.riskSummary?.color || '#6b7280'};"
+                title="Click to change risk level"
               >
-                {#each riskLevels as riskLevel}
-                  <option value={riskLevel.value}>{riskLevel.label}</option>
-                {/each}
-              </select>
-              <span class="risk-level">{discipline.riskSummary?.label}</span>
-              <span class="risk-description">{discipline.riskSummary?.description}</span>
-              <div class="dropdown-arrow">▼</div>
-            </div>
-          </div>
+                <select
+                  class="hidden-dropdown-inline"
+                  bind:value={discipline.riskSummary.level}
+                  on:change={(e) => handleRiskLevelChange(disciplineIndex, e.target.value)}
+                >
+                  {#each riskLevels as riskLevel}
+                    <option value={riskLevel.value}>{riskLevel.label}</option>
+                  {/each}
+                </select>
+                {discipline.riskSummary?.label} ▾
+              </div>
+            </span>
+          </h3>
 
           <!-- 2b. Triggered Rules (Read-only) -->
           {#if discipline.triggeredRules && discipline.triggeredRules.length > 0}
@@ -1599,6 +1594,60 @@
   .discipline-section {
     border-top: 2px solid #e5e7eb;
     padding-top: 1.5rem;
+  }
+
+  .discipline-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .predicted-risk-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .predicted-risk-label {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #9ca3af;
+    white-space: nowrap;
+  }
+
+  .risk-badge-inline {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.65rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+  }
+
+  .risk-badge-inline-dropdown {
+    position: relative;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+
+  .risk-badge-inline-dropdown:hover {
+    opacity: 0.8;
+  }
+
+  .hidden-dropdown-inline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 10;
+    border: none;
   }
 
   .rules-container {

@@ -275,16 +275,15 @@
         <!-- 2. DISCIPLINE SECTIONS (Heritage, Landscape, etc.) -->
         {#each disciplines as discipline}
           <div class="report-section discipline-section">
-            <h3>{discipline.name}</h3>
-
-            <!-- 2a. Overall Risk for this discipline -->
-            <div class="subsection">
-              <h4>Predicted {discipline.name} Risk</h4>
-              <div class="risk-badge" style="background-color: {discipline.riskSummary?.bgColor}; color: {discipline.riskSummary?.color};">
-                <span class="risk-level">{discipline.riskSummary?.label}</span>
-                <span class="risk-description">{discipline.riskSummary?.description}</span>
-              </div>
-            </div>
+            <h3>
+              {discipline.name}
+              <span class="predicted-risk-inline">
+                <span class="predicted-risk-label">Predicted Risk</span>
+                <span class="risk-badge-inline" style="background-color: {discipline.riskSummary?.bgColor}; color: {discipline.riskSummary?.color};">
+                  {discipline.riskSummary?.label}
+                </span>
+              </span>
+            </h3>
 
             <!-- 2b. Triggered Rules -->
             {#if discipline.triggeredRules && discipline.triggeredRules.length > 0}
@@ -511,6 +510,37 @@
     padding-top: 1.5rem;
   }
 
+  .discipline-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .predicted-risk-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .predicted-risk-label {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #9ca3af;
+    white-space: nowrap;
+  }
+
+  .risk-badge-inline {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.65rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+  }
 
   .placeholder {
     font-style: italic;
