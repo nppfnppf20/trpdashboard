@@ -149,20 +149,21 @@
     originalRiskLevels = {}; // Reset original values
     originalRecommendationCounts = {}; // Reset original recommendation counts
 
-    // Fix any inconsistent risk level data during initialization
+    // Ensure every discipline has riskSummary.level set (resolveRiskSummary omits it)
     if (editableReport.structuredReport?.disciplines) {
       editableReport.structuredReport.disciplines.forEach((discipline, index) => {
-        if (discipline.riskSummary && discipline.riskSummary.level) {
-          const correctRiskData = getRiskLevelData(discipline.riskSummary.level);
+        const riskKey = discipline.riskSummary?.level || discipline.overallRisk;
+        if (riskKey) {
+          const correctRiskData = getRiskLevelData(riskKey);
           discipline.riskSummary = {
-            level: discipline.riskSummary.level,
+            level: riskKey,
             label: correctRiskData.label,
             description: correctRiskData.description,
             bgColor: correctRiskData.bgColor,
             color: correctRiskData.color
           };
           // Store original risk level for change tracking
-          originalRiskLevels[discipline.name] = discipline.riskSummary.level;
+          originalRiskLevels[discipline.name] = riskKey;
           // Store original recommendation count for this discipline
           const origRecs = getAggregatedRecommendations(discipline);
           originalRecommendationCounts[index] = origRecs.length;
@@ -173,10 +174,11 @@
       // Also fix summary data
       if (editableReport.structuredReport.summary?.riskByDiscipline) {
         editableReport.structuredReport.summary.riskByDiscipline.forEach((summaryDiscipline) => {
-          if (summaryDiscipline.riskSummary && summaryDiscipline.riskSummary.level) {
-            const correctRiskData = getRiskLevelData(summaryDiscipline.riskSummary.level);
+          const riskKey = summaryDiscipline.riskSummary?.level || summaryDiscipline.risk;
+          if (riskKey) {
+            const correctRiskData = getRiskLevelData(riskKey);
             summaryDiscipline.riskSummary = {
-              level: summaryDiscipline.riskSummary.level,
+              level: riskKey,
               label: correctRiskData.label,
               description: correctRiskData.description,
               bgColor: correctRiskData.bgColor,
@@ -237,7 +239,7 @@
   function handleRiskLevelChange(disciplineIndex, newRiskValue) {
     const discipline = editableReport.structuredReport.disciplines[disciplineIndex];
     const disciplineName = discipline.name;
-    const oldRiskLevel = discipline.riskSummary?.level;
+    const oldRiskLevel = discipline.riskSummary?.level || discipline.overallRisk;
 
     // If no actual change, do nothing
     if (oldRiskLevel === newRiskValue) {
@@ -822,7 +824,7 @@
         </div>
 
         <!-- General Images -->
-        <ImageUploadArea sectionName="General Site" />
+        <!-- <ImageUploadArea sectionName="General Site" /> -->
       </div>
 
       <!-- 2. DISCIPLINE SECTIONS (Heritage, Landscape, etc.) -->
@@ -845,7 +847,7 @@
               >
                 <select
                   class="hidden-dropdown-inline"
-                  bind:value={discipline.riskSummary.level}
+                  value={discipline.riskSummary.level}
                   on:change={(e) => handleRiskLevelChange(disciplineIndex, e.target.value)}
                 >
                   {#each riskLevels as riskLevel}
@@ -949,7 +951,7 @@
           </div>
 
           <!-- Image Upload Area for this discipline -->
-          <ImageUploadArea sectionName={discipline.name} />
+          <!-- <ImageUploadArea sectionName={discipline.name} /> -->
         </div>
       {/each}
 
@@ -1083,7 +1085,7 @@
           <p class="flood-hint">Complete the form above to record flood risk information for this site.</p>
         {/if}
 
-        <ImageUploadArea sectionName="Flood" />
+        <!-- <ImageUploadArea sectionName="Flood" /> -->
       </div>
 
       <!-- AVIATION SECTION (editable form) -->
@@ -1144,7 +1146,7 @@
           <p class="flood-hint">Enter aerodrome counts above to generate aviation findings.</p>
         {/if}
 
-        <ImageUploadArea sectionName="Aviation" />
+        <!-- <ImageUploadArea sectionName="Aviation" /> -->
       </div>
 
       <!-- HIGHWAYS SECTION (editable form) -->
@@ -1190,7 +1192,7 @@
           </div>
         {/if}
 
-        <ImageUploadArea sectionName="Highways" />
+        <!-- <ImageUploadArea sectionName="Highways" /> -->
       </div>
 
       <!-- AMENITY SECTION (editable form) -->
@@ -1236,7 +1238,7 @@
           </div>
         {/if}
 
-        <ImageUploadArea sectionName="Amenity" />
+        <!-- <ImageUploadArea sectionName="Amenity" /> -->
       </div>
 
       <!-- Report Metadata -->
