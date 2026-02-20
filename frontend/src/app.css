@@ -1,5 +1,6 @@
 @import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
 @import url('https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css');
+@import 'leaflet-ruler/src/leaflet-ruler.css';
 
 /* Global styles */
 :root {

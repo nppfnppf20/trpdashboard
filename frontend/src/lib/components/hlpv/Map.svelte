@@ -379,6 +379,8 @@
     L = (await import('leaflet')).default;
     // Bring in leaflet-draw for side effects (no typings)
     await import('leaflet-draw');
+    // Bring in leaflet-ruler for side effects
+    await import('leaflet-ruler');
 
     // Initialize map
     map = L.map(mapContainer).setView([51.505, -0.09], 13);
@@ -390,6 +392,17 @@
 
     drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
+
+    // Add ruler control (single-segment mode: auto-closes after second point)
+    const rulerControl = L.control.ruler({ position: 'topright' });
+    rulerControl.addTo(map);
+    const _origClicked = rulerControl._clicked.bind(rulerControl);
+    rulerControl._clicked = function(e) {
+      _origClicked(e);
+      if (this._clickCount === 2) {
+        setTimeout(() => this._closePath(), 10);
+      }
+    };
 
     // Create all layers using factory functions
     conservationAreasLayer = createConservationAreasLayer(L);
