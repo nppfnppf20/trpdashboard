@@ -638,18 +638,6 @@
   
   <div class="report-content">
       {#if structuredReport}
-        <!-- Action Buttons (above summary) -->
-        <div class="action-buttons">
-          <button class="btn-secondary" on:click={handleExportToWord} disabled={exporting}>
-            {#if exporting}
-              <i class="las la-spinner la-spin"></i>
-              Exporting...
-            {:else}
-              <i class="las la-file-word"></i>
-              Export to Word
-            {/if}
-          </button>
-        </div>
 
         <!-- 1. SUMMARY SECTION -->
         <div class="report-section">
@@ -686,6 +674,9 @@
 
         <!-- 2. DISCIPLINE SECTIONS (Heritage, Landscape, etc.) -->
         {#each disciplines as discipline}
+          {@const effectiveRiskSummary = discipline.name === 'Landscape'
+            ? (landscapeRiskLevel ? resolveRiskSummary(landscapeRiskLevel) : NOT_ASSESSED)
+            : discipline.riskSummary}
           <div class="report-section discipline-section">
             <h3>
               {discipline.name}
@@ -697,8 +688,8 @@
               {/if}
               <span class="predicted-risk-inline">
                 <span class="predicted-risk-label">Predicted Risk</span>
-                <span class="risk-badge-inline" style="background-color: {discipline.riskSummary?.bgColor}; color: {discipline.riskSummary?.color};">
-                  {discipline.riskSummary?.label}
+                <span class="risk-badge-inline" style="background-color: {effectiveRiskSummary?.bgColor}; color: {effectiveRiskSummary?.color};">
+                  {effectiveRiskSummary?.label}
                 </span>
               </span>
             </h3>

@@ -152,6 +152,15 @@
     // Ensure every discipline has riskSummary.level set (resolveRiskSummary omits it)
     if (editableReport.structuredReport?.disciplines) {
       editableReport.structuredReport.disciplines.forEach((discipline, index) => {
+        // Landscape risk must be explicitly set by the user
+        if (discipline.name === 'Landscape') {
+          discipline.riskSummary = { level: null, label: '-', description: '', bgColor: '#f3f4f6', color: '#6b7280' };
+          originalRiskLevels[discipline.name] = null;
+          const origRecs = getAggregatedRecommendations(discipline);
+          originalRecommendationCounts[index] = origRecs.length;
+          return;
+        }
+
         const riskKey = discipline.riskSummary?.level || discipline.overallRisk;
         if (riskKey) {
           const correctRiskData = getRiskLevelData(riskKey);
@@ -763,20 +772,6 @@
           {:else}
             <i class="las la-file-word"></i>
             Export to Word
-          {/if}
-        </button>
-        <button
-          class="btn-secondary"
-          on:click={exportToPDF}
-          disabled={exportingPDF}
-          title="Download report as PDF document"
-        >
-          {#if exportingPDF}
-            <i class="las la-spinner la-spin"></i>
-            Exporting...
-          {:else}
-            <i class="las la-file-pdf"></i>
-            Export to PDF
           {/if}
         </button>
       </div>
