@@ -73,7 +73,7 @@
 
   {#if riskLevel}
     <div class="subsection" style="margin-top: 1rem;">
-      <h4>Overall {name} Risk</h4>
+      <h4>Predicted {name} Risk</h4>
       <div class="risk-badge" style="background-color: {resolveRiskSummary(riskLevel).bgColor}; color: {resolveRiskSummary(riskLevel).color};">
         <span class="risk-level">{resolveRiskSummary(riskLevel).label}</span>
         <span class="risk-description">{resolveRiskSummary(riskLevel).description}</span>

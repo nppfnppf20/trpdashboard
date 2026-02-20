@@ -424,6 +424,15 @@
   }
 
   // Svelte action to auto-resize textarea on mount
+  // Toggle state for recommendation sections (keyed by discipline name)
+  /** @type {Record<string, boolean>} */
+  let recommendationTogglesOpen = {};
+
+  /** @param {string} disciplineName */
+  function toggleRecommendations(disciplineName) {
+    recommendationTogglesOpen = { ...recommendationTogglesOpen, [disciplineName]: !recommendationTogglesOpen[disciplineName] };
+  }
+
   function autoResizeOnMount(node) {
     // Initial resize
     setTimeout(() => autoResizeTextarea(node), 0);
@@ -831,7 +840,7 @@
 
           <!-- 2a. Overall Risk for this discipline (Editable Dropdown) -->
           <div class="subsection">
-            <h4>Overall {discipline.name} Risk</h4>
+            <h4>Predicted {discipline.name} Risk</h4>
             <div
               class="risk-badge risk-badge-dropdown"
               style="background-color: {discipline.riskSummary?.bgColor || '#059669'}; color: {discipline.riskSummary?.color || 'white'};"
@@ -902,38 +911,46 @@
             </div>
           {/if}
 
-          <!-- 2c. Recommendations (Editable) -->
+          <!-- 2c. Recommendations (Editable, collapsible) -->
           <div class="subsection">
-            <h4>{discipline.name} Recommendations</h4>
-            <div class="recommendations-editor">
-              {#each getAggregatedRecommendations(discipline) as recommendation, recIndex}
-                <div class="recommendation-item">
-                  <textarea
-                    class="recommendation-input"
-                    class:user-added={recIndex >= (originalRecommendationCounts[disciplineIndex] ?? Infinity)}
-                    value={recommendation}
-                    on:input={(e) => handleTextareaInput(e, disciplineIndex, recIndex)}
-                    placeholder="Enter recommendation..."
-                    rows="1"
-                    use:autoResizeOnMount
-                  ></textarea>
-                  <button
-                    class="remove-recommendation-btn"
-                    on:click={() => removeRecommendation(disciplineIndex, recIndex)}
-                    title="Remove recommendation"
-                  >
-                    ×
-                  </button>
-                </div>
-              {/each}
+            <button
+              class="rec-toggle-header"
+              on:click={() => toggleRecommendations(discipline.name)}
+            >
+              <span>Possible Recommendation Text ({discipline.name})</span>
+              <span class="rec-toggle-arrow">{recommendationTogglesOpen[discipline.name] ? '▲' : '▼'}</span>
+            </button>
+            {#if recommendationTogglesOpen[discipline.name]}
+              <div class="recommendations-editor" style="margin-top: 0.75rem;">
+                {#each getAggregatedRecommendations(discipline) as recommendation, recIndex}
+                  <div class="recommendation-item">
+                    <textarea
+                      class="recommendation-input"
+                      class:user-added={recIndex >= (originalRecommendationCounts[disciplineIndex] ?? Infinity)}
+                      value={recommendation}
+                      on:input={(e) => handleTextareaInput(e, disciplineIndex, recIndex)}
+                      placeholder="Enter recommendation..."
+                      rows="1"
+                      use:autoResizeOnMount
+                    ></textarea>
+                    <button
+                      class="remove-recommendation-btn"
+                      on:click={() => removeRecommendation(disciplineIndex, recIndex)}
+                      title="Remove recommendation"
+                    >
+                      ×
+                    </button>
+                  </div>
+                {/each}
 
-              <button
-                class="add-recommendation-btn"
-                on:click={() => addRecommendation(disciplineIndex)}
-              >
-                + Add Recommendation
-              </button>
-            </div>
+                <button
+                  class="add-recommendation-btn"
+                  on:click={() => addRecommendation(disciplineIndex)}
+                >
+                  + Add Recommendation
+                </button>
+              </div>
+            {/if}
           </div>
 
           <!-- Image Upload Area for this discipline -->
@@ -1047,7 +1064,7 @@
         <!-- Show summary of entered flood data -->
         {#if floodRiskLevel}
           <div class="subsection" style="margin-top: 1rem;">
-            <h4>Overall Flood Risk</h4>
+            <h4>Predicted Flood Risk</h4>
             <div class="risk-badge" style="background-color: {resolveRiskSummary(floodRiskLevel).bgColor}; color: {resolveRiskSummary(floodRiskLevel).color};">
               <span class="risk-level">{resolveRiskSummary(floodRiskLevel).label}</span>
               <span class="risk-description">{resolveRiskSummary(floodRiskLevel).description}</span>
@@ -1108,7 +1125,7 @@
         <!-- Calculated aviation risk -->
         {#if aviationRiskLevel}
           <div class="subsection" style="margin-top: 1rem;">
-            <h4>Overall Aviation Risk</h4>
+            <h4>Predicted Aviation Risk</h4>
             <div class="risk-badge" style="background-color: {resolveRiskSummary(aviationRiskLevel).bgColor}; color: {resolveRiskSummary(aviationRiskLevel).color};">
               <span class="risk-level">{resolveRiskSummary(aviationRiskLevel).label}</span>
               <span class="risk-description">{resolveRiskSummary(aviationRiskLevel).description}</span>
@@ -1170,7 +1187,7 @@
 
         {#if highwaysRiskLevel}
           <div class="subsection" style="margin-top: 1rem;">
-            <h4>Overall Highways Risk</h4>
+            <h4>Predicted Highways Risk</h4>
             <div class="risk-badge" style="background-color: {resolveRiskSummary(highwaysRiskLevel).bgColor}; color: {resolveRiskSummary(highwaysRiskLevel).color};">
               <span class="risk-level">{resolveRiskSummary(highwaysRiskLevel).label}</span>
               <span class="risk-description">{resolveRiskSummary(highwaysRiskLevel).description}</span>
@@ -1216,7 +1233,7 @@
 
         {#if amenityRiskLevel}
           <div class="subsection" style="margin-top: 1rem;">
-            <h4>Overall Amenity Risk</h4>
+            <h4>Predicted Amenity Risk</h4>
             <div class="risk-badge" style="background-color: {resolveRiskSummary(amenityRiskLevel).bgColor}; color: {resolveRiskSummary(amenityRiskLevel).color};">
               <span class="risk-level">{resolveRiskSummary(amenityRiskLevel).label}</span>
               <span class="risk-description">{resolveRiskSummary(amenityRiskLevel).description}</span>
@@ -1859,5 +1876,33 @@
 
   .aviation-count-input {
     max-width: 120px;
+  }
+
+  .rec-toggle-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #4b5563;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background 0.15s ease;
+  }
+
+  .rec-toggle-header:hover {
+    background: #e5e7eb;
+  }
+
+  .rec-toggle-arrow {
+    font-size: 0.7rem;
+    color: #9ca3af;
+    flex-shrink: 0;
   }
 </style>

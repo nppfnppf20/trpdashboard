@@ -640,7 +640,7 @@
         on:click={() => setActiveTab('report')}
         disabled={!hasResults}
       >
-        Report
+        Initial Report
       </button>
       {#if trpReportVisible || loadedFromSaved}
         <button

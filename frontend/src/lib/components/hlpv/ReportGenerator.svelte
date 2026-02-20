@@ -553,6 +553,13 @@
     return colorMap[riskLevel] || colorMap.low_risk;
   }
 
+  // Toggle state for recommendation sections (keyed by discipline name)
+  let recommendationTogglesOpen: Record<string, boolean> = {};
+
+  function toggleRecommendations(disciplineName: string) {
+    recommendationTogglesOpen = { ...recommendationTogglesOpen, [disciplineName]: !recommendationTogglesOpen[disciplineName] };
+  }
+
   function formatFindings(findings: string): string {
     if (!findings) return findings;
 
@@ -649,7 +656,7 @@
 
           <!-- Explanatory text -->
           <div class="summary-disclaimer">
-            <p>Below is an initial high-level appraisal.</p>
+            <p>Below is an initial high-level appraisal, please go to the 'Edit Report' tab to make changes.</p>
           </div>
 
           <!-- Risk by Discipline -->
@@ -685,7 +692,7 @@
             
             <!-- 2a. Overall Risk for this discipline -->
             <div class="subsection">
-              <h4>Overall {discipline.name} Risk</h4>
+              <h4>Predicted {discipline.name} Risk</h4>
               {#if discipline.name === 'Landscape'}
                 <div class="flood-form disabled-form" style="margin-bottom: 1rem;">
                   <div class="flood-field">
@@ -775,17 +782,27 @@
               </div>
             {/if}
             
-            <!-- 2c. Recommendations -->
+            <!-- 2c. Recommendations (collapsible) -->
             <div class="subsection">
-              <h4>{discipline.name} Recommendations</h4>
-              {#if getAggregatedRecommendations(discipline).length > 0}
-                <ul class="recommendations-list">
-                  {#each getAggregatedRecommendations(discipline) as recommendation}
-                    <li>{recommendation}</li>
-                  {/each}
-                </ul>
-              {:else}
-                <p class="no-recommendations">No specific recommendations for this discipline.</p>
+              <button
+                class="rec-toggle-header"
+                on:click={() => toggleRecommendations(discipline.name)}
+              >
+                <span>Possible Recommendation Text ({discipline.name})</span>
+                <span class="rec-toggle-arrow">{recommendationTogglesOpen[discipline.name] ? '▲' : '▼'}</span>
+              </button>
+              {#if recommendationTogglesOpen[discipline.name]}
+                <div style="margin-top: 0.75rem;">
+                  {#if getAggregatedRecommendations(discipline).length > 0}
+                    <ul class="recommendations-list">
+                      {#each getAggregatedRecommendations(discipline) as recommendation}
+                        <li>{recommendation}</li>
+                      {/each}
+                    </ul>
+                  {:else}
+                    <p class="no-recommendations">No specific recommendations for this discipline.</p>
+                  {/if}
+                </div>
               {/if}
             </div>
           </div>
@@ -898,7 +915,7 @@
           <!-- Show summary of entered flood data -->
           {#if floodRiskLevel}
             <div class="subsection" style="margin-top: 1rem;">
-              <h4>Overall Flood Risk</h4>
+              <h4>Predicted Flood Risk</h4>
               <div class="risk-badge" style="background-color: {resolveRiskSummary(floodRiskLevel).bgColor}; color: {resolveRiskSummary(floodRiskLevel).color};">
                 <span class="risk-level">{resolveRiskSummary(floodRiskLevel).label}</span>
                 <span class="risk-description">{resolveRiskSummary(floodRiskLevel).description}</span>
@@ -958,7 +975,7 @@
           <!-- Calculated aviation risk -->
           {#if aviationRiskLevel}
             <div class="subsection" style="margin-top: 1rem;">
-              <h4>Overall Aviation Risk</h4>
+              <h4>Predicted Aviation Risk</h4>
               <div class="risk-badge" style="background-color: {resolveRiskSummary(aviationRiskLevel).bgColor}; color: {resolveRiskSummary(aviationRiskLevel).color};">
                 <span class="risk-level">{resolveRiskSummary(aviationRiskLevel).label}</span>
                 <span class="risk-description">{resolveRiskSummary(aviationRiskLevel).description}</span>
@@ -1019,7 +1036,7 @@
 
           {#if highwaysRiskLevel}
             <div class="subsection" style="margin-top: 1rem;">
-              <h4>Overall Highways Risk</h4>
+              <h4>Predicted Highways Risk</h4>
               <div class="risk-badge" style="background-color: {resolveRiskSummary(highwaysRiskLevel).bgColor}; color: {resolveRiskSummary(highwaysRiskLevel).color};">
                 <span class="risk-level">{resolveRiskSummary(highwaysRiskLevel).label}</span>
                 <span class="risk-description">{resolveRiskSummary(highwaysRiskLevel).description}</span>
@@ -1298,6 +1315,34 @@
     padding: 1rem;
     background: #f9fafb;
     border-radius: 8px;
+  }
+
+  .rec-toggle-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #4b5563;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background 0.15s ease;
+  }
+
+  .rec-toggle-header:hover {
+    background: #e5e7eb;
+  }
+
+  .rec-toggle-arrow {
+    font-size: 0.7rem;
+    color: #9ca3af;
+    flex-shrink: 0;
   }
 
   .metadata {
