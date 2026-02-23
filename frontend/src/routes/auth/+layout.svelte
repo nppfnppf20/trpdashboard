@@ -7,25 +7,21 @@
   let { children } = $props();
 
   onMount(() => {
-    // Supabase sends recovery tokens as hash fragments (#access_token=...&type=recovery).
-    // The PASSWORD_RECOVERY event can fire before onMount, so we handle both cases:
-    // 1. Event fires after mount  → caught by the listener below
-    // 2. Event already fired      → detected by inspecting the hash + checking the session
+    // Supabase sends recovery/invite tokens as a hash fragment:
+    // #access_token=...&refresh_token=...&type=recovery
+    // Hash fragments are never sent to the server, so we handle them here
+    // by parsing the hash and calling setSession() explicitly.
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const type = params.get('type');
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        goto('/auth/reset-password');
-      }
-    });
-
-    // Fallback: if the event already fired before this listener was registered
-    if (window.location.hash.includes('type=recovery')) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) goto('/auth/reset-password');
-      });
+    if ((type === 'recovery' || type === 'invite') && accessToken && refreshToken) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ error }) => {
+          if (!error) goto('/auth/reset-password');
+        });
     }
-
-    return () => subscription.unsubscribe();
   });
 </script>
 
