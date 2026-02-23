@@ -329,17 +329,11 @@
   export function createRiskFilterControl(L) {
     if (!map) return;
 
-    riskFilterControl = L.control({ position: 'topright' });
+    riskFilterControl = L.control({ position: 'bottomright' });
     riskFilterControl.onAdd = function() {
       const div = L.DomUtil.create('div', 'risk-filter-control');
       div.innerHTML = `
         <div class="risk-filter-content">
-          <div class="risk-filter-header">
-            <button class="risk-filter-toggle">
-              <span class="toggle-icon">▶</span>
-              <span class="filter-title">Risk Level Filter</span>
-            </button>
-          </div>
           <div class="risk-filter-options" style="display: none;">
             <label class="risk-filter-item">
               <input type="checkbox" id="risk-${RISK_LEVELS.SHOWSTOPPER}" checked>
@@ -370,6 +364,12 @@
               <span class="risk-label low">Low Risk</span>
             </label>
           </div>
+          <div class="risk-filter-header">
+            <button class="risk-filter-toggle">
+              <span class="toggle-icon">▲</span>
+              <span class="filter-title">Risk Level Filter</span>
+            </button>
+          </div>
         </div>
       `;
 
@@ -385,7 +385,7 @@
           toggleIcon.textContent = '▼';
         } else {
           optionsDiv.style.display = 'none';
-          toggleIcon.textContent = '▶';
+          toggleIcon.textContent = '▲';
         }
       });
 
@@ -480,11 +480,11 @@
     line-height: 1.4;
     min-width: 200px;
     max-width: 250px;
-    margin-top: 10px;
+    margin-bottom: 10px;
   }
 
   :global(.risk-filter-control .risk-filter-header) {
-    margin-bottom: 4px;
+    margin-top: 4px;
   }
 
   :global(.risk-filter-control .risk-filter-toggle) {
@@ -499,9 +499,9 @@
     font-weight: 600;
     color: #374151;
     width: 100%;
-    border-bottom: 1px solid #e5e7eb;
-    padding-bottom: 6px;
-    margin-bottom: 8px;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 6px;
+    margin-top: 4px;
   }
 
   :global(.risk-filter-control .risk-filter-toggle:hover) {
@@ -523,6 +523,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    margin-bottom: 4px;
   }
 
   :global(.risk-filter-control .risk-filter-item) {

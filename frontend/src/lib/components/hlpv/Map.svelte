@@ -393,9 +393,37 @@
     drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
 
-    // Add ruler control (single-segment mode: auto-closes after second point)
+    // Patch ruler control before addTo so onAdd registers the patched versions
     const rulerControl = L.control.ruler({ position: 'topright' });
-    rulerControl.addTo(map);
+
+    // Patch _toggleMeasure: clear old measurement layers when re-enabling
+    const _origToggleMeasure = rulerControl._toggleMeasure.bind(rulerControl);
+    rulerControl._toggleMeasure = function() {
+      if (!this._choice && this._map) {
+        this._map.removeLayer(this._allLayers);
+        this._allLayers = L.layerGroup();
+      }
+      _origToggleMeasure();
+    };
+
+    // Patch _closePath: clean up without calling _toggleMeasure so the result
+    // stays visible; clicking the ruler button again clears it
+    rulerControl._closePath = function() {
+      this._map.removeLayer(this._tempLine);
+      this._map.removeLayer(this._tempPoint);
+      if (this._clickCount <= 1) this._map.removeLayer(this._pointLayer);
+      this._choice = false;
+      this._container.classList.remove('leaflet-ruler-clicked');
+      this._map.doubleClickZoom.enable();
+      L.DomEvent.off(this._map._container, 'keydown', this._escape, this);
+      L.DomEvent.off(this._map._container, 'dblclick', this._closePath, this);
+      this._map._container.style.cursor = this._defaultCursor;
+      this._map.off('click', this._clicked, this);
+      this._map.off('mousemove', this._moving, this);
+      L.DomEvent.on(this._container, 'click', this._toggleMeasure, this);
+    };
+
+    // Patch _clicked: auto-close after second point
     const _origClicked = rulerControl._clicked.bind(rulerControl);
     rulerControl._clicked = function(e) {
       _origClicked(e);
@@ -403,6 +431,7 @@
         setTimeout(() => this._closePath(), 10);
       }
     };
+
 
     // Create all layers using factory functions
     conservationAreasLayer = createConservationAreasLayer(L);
@@ -465,6 +494,13 @@
     // Create controls using the MapControls component
     if (mapControls) {
       mapControls.createLayerControl(L, base);
+      rulerControl.addTo(map);
+      // Ensure ruler starts inactive after DOM insertion
+      rulerControl._choice = false;
+      rulerControl._container?.classList.remove('leaflet-ruler-clicked');
+      map._container.style.cursor = rulerControl._defaultCursor || '';
+      map.off('click', rulerControl._clicked, rulerControl);
+      map.off('mousemove', rulerControl._moving, rulerControl);
       mapControls.createRiskFilterControl(L);
       // Draw control will be created reactively based on drawingEnabled
     }
