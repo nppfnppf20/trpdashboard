@@ -1,6 +1,32 @@
 <script>
   import '../../app.css';
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { supabase } from '$lib/supabase.js';
+
   let { children } = $props();
+
+  onMount(() => {
+    // Supabase sends recovery tokens as hash fragments (#access_token=...&type=recovery).
+    // The PASSWORD_RECOVERY event can fire before onMount, so we handle both cases:
+    // 1. Event fires after mount  → caught by the listener below
+    // 2. Event already fired      → detected by inspecting the hash + checking the session
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        goto('/auth/reset-password');
+      }
+    });
+
+    // Fallback: if the event already fired before this listener was registered
+    if (window.location.hash.includes('type=recovery')) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) goto('/auth/reset-password');
+      });
+    }
+
+    return () => subscription.unsubscribe();
+  });
 </script>
 
 <div style="min-height: 100vh; background: #f3f4f6; display: flex; flex-direction: column; justify-content: center; padding: 3rem 1.5rem;">

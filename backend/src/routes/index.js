@@ -18,7 +18,7 @@ import clientOrganisationsRoutes from './clientOrganisations.routes.js';
 import quotesRoutes from './quotes.routes.js';
 import quoteRequestsRoutes from './quoteRequests.routes.js';
 import lookupsRoutes from './lookups.routes.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
@@ -55,6 +55,9 @@ router.use('/api/conflict-check', conflictCheckRoutes);
 router.use('/save-site', authenticate);
 router.use('/save-trp-edits', authenticate);
 router.use('/', sitesRoutes);
+
+// Admin Console — restricted to admin role
+router.use('/api/admin-console', requireAdmin);
 
 // Admin Console - Surveyor Management (GET /api/admin-console/*)
 router.use('/api/admin-console/surveyor-organisations', surveyorOrganisationsRoutes);

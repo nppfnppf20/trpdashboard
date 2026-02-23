@@ -39,16 +39,30 @@ export async function handle({ event, resolve }) {
 
   // Allow auth routes without session
   if (pathname.startsWith('/auth')) {
-    // If already logged in, redirect to home
-    if (session && pathname !== '/auth/callback') {
+    // Logged-in users are redirected to home, except for callback and unauthorized pages
+    if (session && pathname !== '/auth/callback' && pathname !== '/auth/unauthorized' && pathname !== '/auth/reset-password') {
       throw redirect(303, '/');
     }
     return resolve(event);
   }
 
-  // Protect all other routes
+  // Protect all other routes — must be authenticated
   if (!session) {
     throw redirect(303, '/auth/login');
+  }
+
+  // Check the user has the admin role
+  const { data: roleData } = await event.locals.supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', session.user.id)
+    .single();
+
+  const role = roleData?.role || 'viewer';
+  event.locals.userRole = role;
+
+  if (role !== 'admin') {
+    throw redirect(303, '/auth/unauthorized');
   }
 
   return resolve(event);
