@@ -75,7 +75,8 @@
     'LAD25NMW',
     'RGN24CD',
     'RGN24NM',
-    'geom' // Hide geometry data if present
+    'geom', // Hide geometry data if present
+    'layer_name' // Duplicate of layer_type (lowercase version added by spreadsheet)
   ];
 
   $: {
@@ -327,8 +328,21 @@
       'Jul24-Jun25UEP': 'Jul24-Jun25 Unemployment %'
     };
 
+    // Mappings for renamed blocked columns (special chars → underscores during DB rename)
+    const renamedColumnMapping = {
+      'abc_Total_All_usual_residents_2021_census': 'abc Total: All usual residents 2021 census',
+      'Total_All_usual_residents_aged_16_and_over': 'Total: All usual residents aged 16 years and over',
+      'Local_Authority_Code': 'Local Authority Code',
+      'Estimated_number_of_households': 'Estimated number of households',
+    };
+
     // Remove "Master sheet2_" prefix (case insensitive)
     let cleaned = columnName.replace(/^Master\s*sheet2?_/i, '');
+
+    // Check if this is a renamed blocked column
+    if (renamedColumnMapping[cleaned]) {
+      return renamedColumnMapping[cleaned];
+    }
 
     // Check if this is a BRES column that needs mapping
     if (bresMapping[cleaned]) {
