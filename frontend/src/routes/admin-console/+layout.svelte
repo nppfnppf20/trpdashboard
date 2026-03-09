@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
 
   const navItems = [
+    { path: '/admin-console/workflow', label: 'Workflow', icon: 'la-stream' },
     { path: '/admin-console/surveyors', label: 'Surveyors', icon: 'la-users' },
     { path: '/admin-console/clients', label: 'Clients', icon: 'la-building' }
   ];
