@@ -3,8 +3,11 @@
   import ProjectSelector from '$lib/components/shared/ProjectSelector.svelte';
   import GanttChart from '$lib/components/admin-console/GanttChart.svelte';
   import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
+  import WorkflowNotificationCentre from '$lib/components/workflow/WorkflowNotificationCentre.svelte';
+  import { user } from '$lib/stores/auth.js';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import '../../../lib/styles/tables.css';
+  import '../../../lib/styles/buttons.css';
   
   let selectedProjectId = '';
   let selectedProject = null;
@@ -23,7 +26,8 @@
     { id: 'quotes', label: 'Quotes', icon: 'la-file-invoice-dollar' },
     { id: 'instructed', label: 'Instructed', icon: 'la-tasks' },
     { id: 'programme', label: 'Programme', icon: 'la-calendar-alt' },
-    { id: 'reviews', label: 'Reviews', icon: 'la-star' }
+    { id: 'reviews', label: 'Reviews', icon: 'la-star' },
+    { id: 'notifications', label: 'Notifications', icon: 'la-bell' }
   ];
   
   async function handleProjectSelected(event) {
@@ -125,21 +129,32 @@
     {/if}
   </div>
 
-  {#if selectedProject}
-    <!-- Tabs navigation -->
-    <div class="tabs-bar">
-      {#each tabs as tab}
-        <button
-          class="tab-btn"
-          class:active={activeTab === tab.id}
-          on:click={() => activeTab = tab.id}
-        >
-          <i class="las {tab.icon}"></i>
-          <span>{tab.label}</span>
-        </button>
-      {/each}
-    </div>
+  <!-- Always show tabs -->
+  <div class="tabs-bar">
+    {#each tabs as tab}
+      <button
+        class="tab-btn"
+        class:active={activeTab === tab.id}
+        on:click={() => activeTab = tab.id}
+      >
+        <i class="las {tab.icon}"></i>
+        <span>{tab.label}</span>
+      </button>
+    {/each}
+  </div>
 
+  {#if activeTab === 'notifications'}
+    <div class="content-area">
+      <div class="content-panel">
+        <div class="panel-header">
+          <h2>Notification Centre</h2>
+        </div>
+        <div style="padding: 1.5rem;">
+          <WorkflowNotificationCentre currentUserName={$user?.user_metadata?.full_name || $user?.email || null} />
+        </div>
+      </div>
+    </div>
+  {:else if selectedProject}
     <!-- Content area -->
     <div class="content-area">
       {#if activeTab === 'general'}

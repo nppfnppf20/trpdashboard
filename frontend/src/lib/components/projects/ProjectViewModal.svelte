@@ -3,6 +3,7 @@
   import { browser } from '$app/environment';
   import ConflictDetailPopup from './ConflictDetailPopup.svelte';
   import { authFetch } from '$lib/api/client.js';
+  import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
 
@@ -501,6 +502,12 @@
           on:click={() => activeTab = 'surveyor'}
         >
           Surveyor Management
+        </button>
+        <button
+          class="tab-button {activeTab === 'stages' ? 'active' : ''}"
+          on:click={() => activeTab = 'stages'}
+        >
+          Project Stages
         </button>
       </div>
 
@@ -1313,6 +1320,8 @@
                 </div>
               {/if}
             </div>
+          {:else if activeTab === 'stages'}
+            <ProjectStagesBoard project={projectData} />
           {/if}
         {/if}
       </div>

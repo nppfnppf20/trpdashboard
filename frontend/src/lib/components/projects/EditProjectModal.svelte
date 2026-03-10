@@ -4,6 +4,7 @@
   import { authFetch } from '$lib/api/client.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
+  import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
 
   export let isOpen = false;
   export let onClose = () => {};
@@ -12,6 +13,7 @@
 
   // Tab state
   let activeTab = 'site_boundary';
+  let projectIntId = null;
 
   // Lookup options
   let clientOptions = [];
@@ -190,6 +192,7 @@
         six_months_appeal_window_date: formatDateForInput(project.six_months_appeal_window_date),
         comments: project.comments || ''
       };
+      projectIntId = project.id;
     } catch (error) {
       console.error('Error loading project:', error);
       errors.submit = 'Failed to load project data';
@@ -375,6 +378,12 @@
           >
             Project Details
           </button>
+          <button
+            class="tab-button {activeTab === 'stages' ? 'active' : ''}"
+            on:click={() => activeTab = 'stages'}
+          >
+            Project Stages
+          </button>
         </div>
 
         <div class="modal-body">
@@ -387,7 +396,7 @@
                 <span class="error-text">{errors.geometry}</span>
               {/if}
             </div>
-          {:else}
+          {:else if activeTab === 'details'}
             <!-- Project Details Tab -->
             <div class="form-section">
               <div class="form-scroll">
@@ -593,6 +602,10 @@
                 </div>
 
               </div>
+            </div>
+          {:else if activeTab === 'stages'}
+            <div style="padding: 1.5rem;">
+              <ProjectStagesBoard project={{ id: projectIntId, project_name: formData.project_name }} />
             </div>
           {/if}
         </div>

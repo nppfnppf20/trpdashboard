@@ -1,8 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-
   export let filters = { projectId: null, sourceType: null, dateFrom: null, dateTo: null };
-
   const dispatch = createEventDispatcher();
 
   const sourceTypes = [
@@ -21,112 +19,40 @@
   let dateTo = filters.dateTo || '';
 
   function emit() {
-    dispatch('change', {
-      sourceType: sourceType || null,
-      dateFrom: dateFrom || null,
-      dateTo: dateTo || null,
-      projectId: filters.projectId
-    });
+    dispatch('change', { sourceType: sourceType || null, dateFrom: dateFrom || null, dateTo: dateTo || null, projectId: filters.projectId });
   }
 
-  function clearFilters() {
-    sourceType = '';
-    dateFrom = '';
-    dateTo = '';
-    emit();
-  }
-
-  $: hasActiveFilters = sourceType || dateFrom || dateTo;
+  function clear() { sourceType = ''; dateFrom = ''; dateTo = ''; emit(); }
+  $: hasActive = sourceType || dateFrom || dateTo;
 </script>
 
-<div class="filters-bar">
-  <select bind:value={sourceType} on:change={emit} class="filter-select">
-    {#each sourceTypes as st}
-      <option value={st.value}>{st.label}</option>
-    {/each}
+<div class="filter-bar">
+  <select bind:value={sourceType} on:change={emit}>
+    {#each sourceTypes as s}<option value={s.value}>{s.label}</option>{/each}
   </select>
-
-  <div class="date-range">
-    <input
-      type="date"
-      bind:value={dateFrom}
-      on:change={emit}
-      class="date-input"
-      placeholder="From"
-      title="From date"
-    />
-    <span class="date-sep">—</span>
-    <input
-      type="date"
-      bind:value={dateTo}
-      on:change={emit}
-      class="date-input"
-      placeholder="To"
-      title="To date"
-    />
-  </div>
-
-  {#if hasActiveFilters}
-    <button class="clear-btn" on:click={clearFilters} title="Clear filters">
-      <i class="las la-times"></i>
-      Clear
-    </button>
+  <input type="date" bind:value={dateFrom} on:change={emit} title="From" />
+  <span>—</span>
+  <input type="date" bind:value={dateTo} on:change={emit} title="To" />
+  {#if hasActive}
+    <button class="btn btn-secondary btn-sm" on:click={clear}><i class="las la-times"></i> Clear</button>
   {/if}
 </div>
 
 <style>
-  .filters-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .filter-select,
-  .date-input {
-    padding: 0.4375rem 0.75rem;
-    border: 1px solid #e2e8f0;
+  .filter-bar { display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap; }
+  select, input[type="date"] {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e1;
     border-radius: 6px;
     font-size: 0.875rem;
     color: #1e293b;
     background: white;
-    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
-
-  .filter-select:focus,
-  .date-input:focus {
+  select:focus, input[type="date"]:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
-
-  .date-range {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .date-sep {
-    color: #94a3b8;
-    font-size: 0.875rem;
-  }
-
-  .clear-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.4375rem 0.875rem;
-    background: none;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    color: #64748b;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .clear-btn:hover {
-    border-color: #ef4444;
-    color: #ef4444;
-  }
+  span { color: #94a3b8; font-size: 0.875rem; }
 </style>

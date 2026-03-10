@@ -9,6 +9,13 @@
   </div>
 
   <div class="tools-grid">
+    <button class="tool-card" on:click={() => goto('/admin-console/projects')}>
+      <div class="card-icon">
+        <i class="las la-project-diagram"></i>
+      </div>
+      <h2>Projects</h2>
+      <p>Manage project stages, notifications, programme, quotes and surveyor management</p>
+    </button>
     <button class="tool-card" on:click={() => goto('/admin-console/surveyors')}>
       <div class="card-icon">
         <i class="las la-users"></i>

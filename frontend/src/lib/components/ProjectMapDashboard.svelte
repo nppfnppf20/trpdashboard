@@ -3,6 +3,10 @@
   import ProjectMapPanel from './projectmap/ProjectMapPanel.svelte';
   import ProjectsTable from './projects/ProjectsTable.svelte';
   import AddProjectModal from './projects/AddProjectModal.svelte';
+  import WorkflowNotificationCentre from '$lib/components/workflow/WorkflowNotificationCentre.svelte';
+  import { user } from '$lib/stores/auth.js';
+  import '../styles/tables.css';
+  import '../styles/buttons.css';
 
   let activeTab = 'table'; // 'table' | 'map'
   let showAddProjectModal = false;
@@ -68,6 +72,14 @@
       <i class="las la-map"></i>
       Map
     </button>
+    <button
+      class="tab-button"
+      class:active={activeTab === 'notifications'}
+      on:click={() => activeTab = 'notifications'}
+    >
+      <i class="las la-bell"></i>
+      Notifications
+    </button>
   </div>
 
   <!-- Tab Content -->
@@ -79,6 +91,10 @@
     {:else if activeTab === 'map'}
       <div class="map-panel">
         <ProjectMapPanel />
+      </div>
+    {:else if activeTab === 'notifications'}
+      <div class="notifications-panel">
+        <WorkflowNotificationCentre currentUserName={$user?.user_metadata?.full_name || $user?.email || null} />
       </div>
     {/if}
   </div>
@@ -242,5 +258,11 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
+  }
+
+  .notifications-panel {
+    padding: 1.5rem;
+    overflow-y: auto;
+    height: 100%;
   }
 </style>
