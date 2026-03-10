@@ -11,6 +11,8 @@ import {
   updateProjectStage,
   toggleProjectStageApplicability,
   getPriorStageEntries,
+  reorderStageDefinitions,
+  reorderIssueTracks,
   createProjectIssueTrack,
   updateProjectIssueTrack
 } from '../services/workflow.service.js';
@@ -140,9 +142,39 @@ export async function getPriorStageEntriesHandler(req, res) {
   }
 }
 
+export async function reorderStageDefinitionsHandler(req, res) {
+  try {
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds) || orderedIds.some(id => typeof id !== 'number')) {
+      return res.status(400).json({ error: 'orderedIds must be an array of numbers' });
+    }
+    await reorderStageDefinitions(orderedIds);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error reordering stage definitions:', error);
+    res.status(500).json({ error: 'Failed to reorder stages' });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue Tracks
 // ─────────────────────────────────────────────────────────────────────────────
+
+export async function reorderIssueTracksHandler(req, res) {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds) || orderedIds.some(id => typeof id !== 'number')) {
+      return res.status(400).json({ error: 'orderedIds must be an array of numbers' });
+    }
+    await reorderIssueTracks(projectId, orderedIds);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error reordering issue tracks:', error);
+    res.status(500).json({ error: 'Failed to reorder issue tracks' });
+  }
+}
 
 export async function createProjectIssueTrackHandler(req, res) {
   try {

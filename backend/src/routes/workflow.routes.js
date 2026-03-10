@@ -12,6 +12,8 @@ import {
   updateProjectStageHandler,
   toggleProjectStageApplicabilityHandler,
   getPriorStageEntriesHandler,
+  reorderStageDefinitionsHandler,
+  reorderIssueTracksHandler,
   createProjectIssueTrackHandler,
   updateProjectIssueTrackHandler
 } from '../controllers/workflow.controller.js';
@@ -29,7 +31,11 @@ router.put('/projects/:projectId/stages/:stageId', updateProjectStageHandler);
 router.put('/projects/:projectId/stages/:stageId/applicability', toggleProjectStageApplicabilityHandler);
 router.get('/projects/:projectId/stages/:stageId/prior-entries', getPriorStageEntriesHandler);
 
+// Stage reorder
+router.put('/stages/reorder', reorderStageDefinitionsHandler);
+
 // Issue tracks
+router.put('/projects/:projectId/issues/reorder', reorderIssueTracksHandler);
 router.post('/projects/:projectId/issues', createProjectIssueTrackHandler);
 router.put('/issues/:issueId', updateProjectIssueTrackHandler);
 

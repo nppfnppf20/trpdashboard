@@ -327,9 +327,65 @@ export async function getPriorStageEntries(projectId, stageInstanceId) {
   return prefill;
 }
 
+/**
+ * Reorder stage definitions by updating their display_order.
+ * Accepts an array of stage_definition_ids in the desired order.
+ */
+export async function reorderStageDefinitions(orderedDefinitionIds) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Shift all affected rows to high temp values to avoid unique constraint clashes
+    for (let i = 0; i < orderedDefinitionIds.length; i++) {
+      await client.query(
+        `UPDATE admin_console.project_stage_definitions SET display_order = $1 WHERE id = $2`,
+        [1000 + i, orderedDefinitionIds[i]]
+      );
+    }
+    // Now assign the real display_order values
+    for (let i = 0; i < orderedDefinitionIds.length; i++) {
+      await client.query(
+        `UPDATE admin_console.project_stage_definitions SET display_order = $1 WHERE id = $2`,
+        [i + 1, orderedDefinitionIds[i]]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue Tracks
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reorder issue tracks by updating their sort_order.
+ * Accepts an array of issue track IDs in the desired order.
+ */
+export async function reorderIssueTracks(projectId, orderedIds) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (let i = 0; i < orderedIds.length; i++) {
+      await client.query(
+        `UPDATE admin_console.project_issue_tracks
+         SET sort_order = $1, updated_at = NOW()
+         WHERE id = $2 AND project_id = $3`,
+        [i, orderedIds[i], projectId]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
 /**
  * Create a custom issue track for a project.

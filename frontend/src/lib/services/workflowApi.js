@@ -72,6 +72,16 @@ export async function updateStage(projectId, stageInstanceId, updates) {
   return res.json();
 }
 
+export async function reorderStages(orderedIds) {
+  const res = await authFetch(`${BASE}/stages/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedIds })
+  });
+  if (!res.ok) throw new Error('Failed to reorder stages');
+  return res.json();
+}
+
 export async function toggleStageApplicability(projectId, stageInstanceId) {
   const res = await authFetch(
     `${BASE}/projects/${projectId}/stages/${stageInstanceId}/applicability`,
@@ -92,6 +102,16 @@ export async function getPriorStageEntries(projectId, stageInstanceId) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue Tracks
 // ─────────────────────────────────────────────────────────────────────────────
+
+export async function reorderIssueTracks(projectId, orderedIds) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/issues/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedIds })
+  });
+  if (!res.ok) throw new Error('Failed to reorder issue tracks');
+  return res.json();
+}
 
 export async function createIssueTrack(projectId, { label, sortOrder }) {
   const res = await authFetch(`${BASE}/projects/${projectId}/issues`, {
