@@ -22,6 +22,11 @@
   let completionStage = null;
   let showAddIssueModal = false;
 
+  const RISK_ORDER = ['showstopper','extremely_high_risk','high_risk','medium_high_risk','medium_risk','medium_low_risk','low_risk'];
+  function riskSortValue(level) { const i = RISK_ORDER.indexOf(level); return i === -1 ? 999 : i; }
+
+  $: sortedTracks = [...tracks].sort((a, b) => riskSortValue(a.last_known_risk_level) - riskSortValue(b.last_known_risk_level));
+
   const RISK_COLORS = {
     showstopper:         { bg: '#fef2f2', text: '#991b1b', border: '#fca5a5', label: 'Showstopper' },
     extremely_high_risk: { bg: '#fff7ed', text: '#9a3412', border: '#fb923c', label: 'Extremely High' },
@@ -63,19 +68,35 @@
   }
 
   async function handleToggleApplicability(stage) {
-    try { await toggleStageApplicability(project.id, stage.instance_id); await loadBoard(); } catch {}
+    try {
+      const res = await toggleStageApplicability(project.id, stage.instance_id);
+      stages = stages.map(s => s.instance_id === stage.instance_id ? { ...s, is_applicable: res.is_applicable } : s);
+    } catch {}
   }
 
   function openCompletionModal(stage) { completionStage = stage; showCompletionModal = true; }
 
-  async function handleStageSaved() { showCompletionModal = false; completionStage = null; await loadBoard(); }
+  async function handleStageSaved() {
+    showCompletionModal = false;
+    completionStage = null;
+    // Reload silently without triggering the loading state
+    try {
+      const board = await getStageBoard(project.id);
+      stages = board.stages;
+      tracks = board.tracks;
+      entries = board.entries;
+    } catch {}
+  }
 
   async function handleAddIssue(event) {
     try { await createIssueTrack(project.id, { label: event.detail.label }); showAddIssueModal = false; await loadBoard(); } catch {}
   }
 
   async function handleToggleKeyIssue(track) {
-    try { await updateIssueTrack(track.id, { isKeyIssue: !track.is_key_issue }); await loadBoard(); } catch {}
+    try {
+      const res = await updateIssueTrack(track.id, { isKeyIssue: !track.is_key_issue });
+      tracks = tracks.map(t => t.id === track.id ? { ...t, is_key_issue: res.is_key_issue } : t);
+    } catch {}
   }
 
   $: if (project?.id) loadBoard();
@@ -98,7 +119,13 @@
     <table class="data-table board-table">
       <thead>
         <tr>
-          <th class="no-sort track-col">Issue</th>
+          <th class="no-sort track-col">
+            <div class="track-th-inner">
+              <span class="row-label">Hide / Show</span>
+              <span class="track-th-title">Issue</span>
+              <span class="row-label">Complete</span>
+            </div>
+          </th>
           {#each stages as stage}
             <th class="no-sort stage-col" class:stage-complete={stage.is_complete} class:stage-na={!stage.is_applicable}>
               <div class="stage-th-inner">
@@ -121,7 +148,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each tracks as track}
+        {#each sortedTracks as track}
           <tr>
             <td class="track-cell">
               <div class="track-inner">
@@ -153,7 +180,7 @@
             {/each}
           </tr>
         {/each}
-        {#if tracks.length === 0}
+        {#if sortedTracks.length === 0}
           <tr><td class="text-muted" colspan={stages.length + 1} style="text-align:center;padding:2rem">No issue rows yet. Add one above, or run an HLPV analysis to auto-seed rows.</td></tr>
         {/if}
       </tbody>
@@ -184,6 +211,9 @@
   .stage-th-inner { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; padding: 0.25rem; }
   .na-text { text-decoration: line-through; color: #94a3b8; }
   .eye-toggle i { font-size: 1.25rem; }
+  .track-th-inner { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+  .track-th-title { font-weight: 600; align-self: flex-start; }
+  .row-label { font-size: 0.6875rem; font-weight: 500; color: #94a3b8; letter-spacing: 0.01em; display: flex; align-items: center; min-height: 1.75rem; }
   .complete-toggle { color: #cbd5e1; transition: color 0.2s; }
   .complete-toggle i { font-size: 1.35rem; }
   .complete-toggle:hover:not(:disabled) { color: #10b981; }
