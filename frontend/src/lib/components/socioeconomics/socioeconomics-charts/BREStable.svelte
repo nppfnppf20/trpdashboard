@@ -22,6 +22,11 @@
 
     console.log('=== BRES Table Data ===');
     console.log('Total flattened rows:', flattenedData.length);
+    if (flattenedData.length > 0) {
+      const sample = flattenedData[0];
+      const bresCols = Object.keys(sample).filter(k => k.match(/^[a-s]_(number|pct)$/) || k === 'bres_total');
+      console.log('BRES columns present:', bresCols.length > 0 ? bresCols : 'NONE - JOIN likely failed');
+    }
 
     // Define industry sectors with their full names
     const industries = [
@@ -88,8 +93,8 @@
       };
 
       geographies.forEach(geo => {
-        const numberCol = `Master sheet2_${industry.code} number`;
-        const percentCol = `Master sheet2_${industry.code} percent`;
+        const numberCol = `${industry.code.toLowerCase()}_number`;
+        const percentCol = `${industry.code.toLowerCase()}_pct`;
 
         row[`${geo.name}_number`] = geo.data[numberCol] ?? '';
         row[`${geo.name}_percent`] = geo.data[percentCol] ?? '';
@@ -103,7 +108,7 @@
       industry: 'BRES Total'
     };
     geographies.forEach(geo => {
-      totalRow[`${geo.name}_number`] = geo.data['Master sheet2_BRES Total'] ?? '';
+      totalRow[`${geo.name}_number`] = geo.data['bres_total'] ?? '';
       totalRow[`${geo.name}_percent`] = ''; // No percentage for total
     });
     tableData.push(totalRow);

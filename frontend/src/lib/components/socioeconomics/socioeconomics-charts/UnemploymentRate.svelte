@@ -13,12 +13,17 @@
   let chartCanvas;
   let chartInstance;
   let warnings = [];
+  let mounted = false;
+
+  $: if (socioeconomicsResult && mounted) {
+    prepareChartData();
+  }
 
   onMount(() => {
+    mounted = true;
     if (socioeconomicsResult) {
       prepareChartData();
     }
-
     return () => {
       if (chartInstance) {
         chartInstance.destroy();
@@ -42,15 +47,20 @@
 
     console.log('=== Unemployment Rate Chart Data ===');
     console.log('Total flattened rows:', flattenedData.length);
+    if (flattenedData.length > 0) {
+      const sample = flattenedData[0];
+      const utCols = Object.keys(sample).filter(k => k.includes('jul') || k.includes('conf_'));
+      console.log('Unemployment timeseries columns present:', utCols.length > 0 ? utCols : 'NONE - JOIN likely failed');
+    }
 
-    // Define years and corresponding column names
+    // Define years and corresponding column names (subject table columns)
     const years = [
-      { label: 'Jul 2019 - Jun 2020', column: 'Master sheet2_Jul19-20UEP' },
-      { label: 'Jul 2020 - Jun 2021', column: 'Master sheet2_Jul20-21UEP' },
-      { label: 'Jul 2021 - Jun 2022', column: 'Master sheet2_Jul21-Jun22UEP' },
-      { label: 'Jul 2022 - Jun 2023', column: 'Master sheet2_Jul22-Jun23UEP' },
-      { label: 'Jul 2023 - Jun 2024', column: 'Master sheet2_Jul23-Jun24UEP' },
-      { label: 'Jul 2024 - Jun 2025', column: 'Master sheet2_Jul24-Jun25UEP' }
+      { label: 'Jul 2019 - Jun 2020', column: 'jul19_20_uep' },
+      { label: 'Jul 2020 - Jun 2021', column: 'jul20_21_uep' },
+      { label: 'Jul 2021 - Jun 2022', column: 'jul21_jun22_uep' },
+      { label: 'Jul 2022 - Jun 2023', column: 'jul22_jun23_uep' },
+      { label: 'Jul 2023 - Jun 2024', column: 'jul23_jun24_uep' },
+      { label: 'Jul 2024 - Jun 2025', column: 'jul24_jun25_uep' }
     ];
 
     const yearLabels = years.map(y => y.label);
@@ -92,8 +102,8 @@
       const values = years.map(year => parsePercentage(region[year.column]));
       console.log(`Region ${region.geo_name}:`, values);
       console.log('Region raw data sample:', {
-        'Jul19-20UEP': region['Master sheet2_Jul19-20UEP'],
-        'Jul20-21UEP': region['Master sheet2_Jul20-21UEP']
+        'jul19_20_uep': region['jul19_20_uep'],
+        'jul20_21_uep': region['jul20_21_uep']
       });
 
       // Only add to chart if there's at least one non-null value

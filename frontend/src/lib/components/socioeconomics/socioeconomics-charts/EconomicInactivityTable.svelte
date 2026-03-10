@@ -23,6 +23,11 @@
 
     console.log('=== Economic Inactivity Table Data ===');
     console.log('Total flattened rows:', flattenedData.length);
+    if (flattenedData.length > 0) {
+      const sample = flattenedData[0];
+      const eiCols = Object.keys(sample).filter(k => k.startsWith('apeir'));
+      console.log('Economic inactivity columns present:', eiCols.length > 0 ? eiCols : 'NONE - JOIN likely failed');
+    }
 
     // Collect only Region geographies (this is the only data we have for economic inactivity)
     const regions = flattenedData.filter(row => row.layer_name === 'regions');
@@ -36,15 +41,15 @@
 
     console.log('Geographies found:', geographies);
 
-    // Define economic inactivity categories
+    // Define economic inactivity categories (using subject table column names)
     const categories = [
-      { name: 'Student', numberCol: 'APEIRSno', percentCol: 'APEIRSp' },
-      { name: 'Looking after family or home', numberCol: 'APEIRFno', percentCol: 'APEIRFp' },
-      { name: 'Temporary sick', numberCol: 'APEIRTSno', percentCol: 'APEIRTSp' },
-      { name: 'Long-term sick', numberCol: 'APEIRLTno', percentCol: 'APEIRLTp' },
-      { name: 'Discouraged', numberCol: 'APEIRDno', percentCol: 'APEIRDp' },
-      { name: 'Retired', numberCol: 'APEIRTno_1', percentCol: 'APEIRTp_1' },
-      { name: 'Other', numberCol: 'APEIRTno_2', percentCol: 'APEIRTp_2' }
+      { name: 'Student', numberCol: 'apeirs_no', percentCol: 'apeirs_p' },
+      { name: 'Looking after family or home', numberCol: 'apeirf_no', percentCol: 'apeirf_p' },
+      { name: 'Temporary sick', numberCol: 'apeirts_no', percentCol: 'apeirts_p' },
+      { name: 'Long-term sick', numberCol: 'apeirlt_no', percentCol: 'apeirlt_p' },
+      { name: 'Discouraged', numberCol: 'apeird_no', percentCol: 'apeird_p' },
+      { name: 'Retired', numberCol: 'apeirt_no_2', percentCol: 'apeirt_p_2' },
+      { name: 'Other', numberCol: 'apeirt_no_3', percentCol: 'apeirt_p_3' }
     ];
 
     // Build table data - one row per category
@@ -54,11 +59,8 @@
       };
 
       geographies.forEach(geo => {
-        const numberCol = `Master sheet2_${category.numberCol}`;
-        const percentCol = `Master sheet2_${category.percentCol}`;
-
-        row[`${geo.name}_number`] = geo.data[numberCol] ?? '';
-        row[`${geo.name}_percent`] = geo.data[percentCol] ?? '';
+        row[`${geo.name}_number`] = geo.data[category.numberCol] ?? '';
+        row[`${geo.name}_percent`] = geo.data[category.percentCol] ?? '';
       });
 
       tableData.push(row);
@@ -69,8 +71,8 @@
       category: 'Total'
     };
     geographies.forEach(geo => {
-      totalRow[`${geo.name}_number`] = geo.data['Master sheet2_APEIRTno'] ?? '';
-      totalRow[`${geo.name}_percent`] = geo.data['Master sheet2_APEIRTp'] ?? '';
+      totalRow[`${geo.name}_number`] = geo.data['apeirt_no'] ?? '';
+      totalRow[`${geo.name}_percent`] = geo.data['apeirt_p'] ?? '';
     });
     tableData.push(totalRow);
 
