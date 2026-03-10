@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import ProjectStageCompletionModal from './ProjectStageCompletionModal.svelte';
   import ProjectStageAddIssueModal from './ProjectStageAddIssueModal.svelte';
+  import ProjectStageEntryModal from './ProjectStageEntryModal.svelte';
   import {
     getStageBoard,
     initializeStageBoard,
@@ -25,6 +26,10 @@
   let showCompletionModal = false;
   let completionStage = null;
   let showAddIssueModal = false;
+  let showEntryModal = false;
+  let entryModalStage = null;
+  let entryModalTrack = null;
+  let entryModalExisting = null;
   let editingTrackId = null;
   let editingLabel = '';
 
@@ -100,7 +105,13 @@
   }
 
   async function handleAddIssue(event) {
-    try { await createIssueTrack(project.id, { label: event.detail.label }); showAddIssueModal = false; await loadBoard(); } catch {}
+    try {
+      await createIssueTrack(project.id, { label: event.detail.label, discipline: event.detail.discipline });
+      showAddIssueModal = false;
+      const board = await getStageBoard(project.id);
+      stages = board.stages; tracks = board.tracks; entries = board.entries;
+      sortedTracks = applyRiskSort(tracks);
+    } catch {}
   }
 
   function startRename(track) {
@@ -135,7 +146,35 @@
     try {
       const res = await updateIssueTrack(track.id, { isKeyIssue: !track.is_key_issue });
       tracks = tracks.map(t => t.id === track.id ? { ...t, is_key_issue: res.is_key_issue } : t);
+      sortedTracks = sortedTracks.map(t => t.id === track.id ? { ...t, is_key_issue: res.is_key_issue } : t);
     } catch {}
+  }
+
+  function openEntryModal(stage, track) {
+    if (!stage.is_applicable) return;
+    entryModalStage = stage;
+    entryModalTrack = track;
+    entryModalExisting = getEntry(stage.instance_id, track.id);
+    showEntryModal = true;
+  }
+
+  function handleEntrySaved(event) {
+    const saved = event.detail;
+    // Update entries array locally
+    const idx = entries.findIndex(e =>
+      e.project_stage_instance_id === saved.project_stage_instance_id &&
+      e.issue_track_id === saved.issue_track_id
+    );
+    if (idx >= 0) {
+      entries[idx] = saved;
+    } else {
+      entries = [...entries, saved];
+    }
+    if (saved.risk_level) {
+      tracks = tracks.map(t => t.id === saved.issue_track_id ? { ...t, last_known_risk_level: saved.risk_level } : t);
+      sortedTracks = applyRiskSort(tracks);
+    }
+    showEntryModal = false;
   }
 
   $: if (project?.id) loadBoard();
@@ -227,7 +266,9 @@
     <table class="data-table board-table">
       <thead>
         <tr>
-          <th class="no-sort track-col">Issue</th>
+          <th class="no-sort discipline-col">Discipline</th>
+          <th class="no-sort track-col">Specific Issue</th>
+          <th class="no-sort risk-col">Risk</th>
           <th class="no-sort key-issue-col">Key Issue?</th>
           {#each stages as stage, i}
             <th
@@ -275,6 +316,15 @@
             on:drop={e => onRowDrop(e, ri)}
             on:dragend={onRowDragEnd}
           >
+            <td class="discipline-cell">
+              <div class="discipline-inner">
+                <div class="track-actions">
+                  <button class="action-btn edit-btn" title="Rename" on:click={() => startRename(track)}><i class="las la-pen"></i></button>
+                  <button class="action-btn delete-btn" title="Delete row" on:click={() => handleDeleteTrack(track)}><i class="las la-trash"></i></button>
+                </div>
+                <span>{track.discipline || '—'}</span>
+              </div>
+            </td>
             <td class="track-cell">
               <div class="track-inner">
                 {#if editingTrackId === track.id}
@@ -286,16 +336,16 @@
                     use:focusOnMount
                   />
                 {:else}
-                  <div class="track-actions">
-                    <button class="action-btn edit-btn" title="Rename" on:click={() => startRename(track)}><i class="las la-pen"></i></button>
-                    <button class="action-btn delete-btn" title="Delete row" on:click={() => handleDeleteTrack(track)}><i class="las la-trash"></i></button>
-                  </div>
-                  <span class:text-bold={track.is_key_issue}>{track.label}</span>
-                  {#if track.last_known_risk_level}
-                    <span class="risk-chip" style={riskStyle(track.last_known_risk_level)}>{riskLabel(track.last_known_risk_level)}</span>
-                  {/if}
+                  <span class:text-bold={track.is_key_issue}>{track.label || '—'}</span>
                 {/if}
               </div>
+            </td>
+            <td class="risk-cell">
+              {#if track.last_known_risk_level}
+                <span class="risk-chip" style={riskStyle(track.last_known_risk_level)}>{riskLabel(track.last_known_risk_level)}</span>
+              {:else}
+                <span class="text-muted">—</span>
+              {/if}
             </td>
             <td class="key-issue-cell">
               <button class="btn btn-ghost btn-sm btn-icon key-flag" class:flagged={track.is_key_issue} on:click={() => handleToggleKeyIssue(track)} title={track.is_key_issue ? 'Remove key issue' : 'Mark as key issue'}>
@@ -304,7 +354,12 @@
             </td>
             {#each stages as stage}
               {@const entry = getEntry(stage.instance_id, track.id)}
-              <td class="entry-cell" class:na-cell={!stage.is_applicable}>
+              <td
+                class="entry-cell"
+                class:na-cell={!stage.is_applicable}
+                class:entry-clickable={stage.is_applicable}
+                on:click={() => openEntryModal(stage, track)}
+              >
                 {#if !stage.is_applicable}
                   <span class="text-muted">N/A</span>
                 {:else if entry}
@@ -322,7 +377,7 @@
           </tr>
         {/each}
         {#if sortedTracks.length === 0}
-          <tr><td class="text-muted" colspan={stages.length + 2} style="text-align:center;padding:2rem">No issue rows yet. Add one above, or run an HLPV analysis to auto-seed rows.</td></tr>
+          <tr><td class="text-muted" colspan={stages.length + 4} style="text-align:center;padding:2rem">No issue rows yet. Add one above, or run an HLPV analysis to auto-seed rows.</td></tr>
         {/if}
       </tbody>
     </table>
@@ -341,11 +396,25 @@
   <ProjectStageAddIssueModal on:add={handleAddIssue} on:close={() => (showAddIssueModal = false)} />
 {/if}
 
+{#if showEntryModal && entryModalStage && entryModalTrack}
+  <ProjectStageEntryModal
+    {project}
+    stage={entryModalStage}
+    track={entryModalTrack}
+    existingEntry={entryModalExisting}
+    on:saved={handleEntrySaved}
+    on:close={() => (showEntryModal = false)}
+  />
+{/if}
+
 <style>
   .board-header { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
   .board-scroll { overflow-x: auto; }
   .board-table { min-width: max-content; }
-  .track-col { min-width: 220px; position: sticky; left: 0; background: #f8fafc; z-index: 2; }
+  .discipline-col { min-width: 140px; position: sticky; left: 0; background: #f8fafc; z-index: 2; }
+  .discipline-cell { min-width: 140px; position: sticky; left: 0; background: white; z-index: 1; padding: 0.75rem 1rem; font-size: 0.875rem; color: #64748b; }
+  .discipline-inner { display: flex; align-items: center; gap: 0.4rem; }
+  .track-col { min-width: 160px; position: sticky; left: 140px; background: #f8fafc; z-index: 2; }
   .stage-col { min-width: 150px; text-align: center; cursor: grab; transition: background 0.15s; }
   .stage-col:not(.stage-complete):not(.stage-na):hover { background: #faf5ff; }
   .stage-col:active { cursor: grabbing; }
@@ -363,11 +432,11 @@
   .complete-toggle i { font-size: 1.35rem; }
   .complete-toggle:hover:not(:disabled) { color: #10b981; }
   .complete-toggle.is-done { color: #10b981; }
-  .track-cell { position: sticky; left: 0; background: white; z-index: 1; }
+  .track-cell { position: sticky; left: 140px; background: white; z-index: 1; min-width: 160px; }
   .track-inner { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
   .track-inner > span:not(.risk-chip) { flex: 1; min-width: 0; }
   .track-actions { display: none; align-items: center; gap: 0.15rem; flex-shrink: 0; }
-  .track-inner:hover .track-actions { display: flex; }
+  .discipline-inner:hover .track-actions { display: flex; }
   .rename-input {
     flex: 1;
     min-width: 0;
@@ -379,9 +448,11 @@
     outline: none;
     box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
   }
+  .risk-col { min-width: 110px; text-align: center; }
+  .risk-cell { text-align: center; vertical-align: middle; }
   .key-issue-col {
     position: sticky;
-    left: 220px;
+    left: 300px;
     background: #f8fafc;
     z-index: 2;
     min-width: 80px;
@@ -390,7 +461,7 @@
   }
   .key-issue-cell {
     position: sticky;
-    left: 220px;
+    left: 300px;
     background: white;
     z-index: 1;
     text-align: center;
@@ -398,7 +469,9 @@
   .key-flag { color: #cbd5e1; }
   .key-flag i { font-size: 1.25rem; }
   .key-flag.flagged { color: #f59e0b; }
+  .key-issue-row .discipline-cell,
   .key-issue-row .track-cell,
+  .key-issue-row .risk-cell,
   .key-issue-row .key-issue-cell { background: #fffbeb; }
   .board-table tbody tr { cursor: grab; }
   .board-table tbody tr:active { cursor: grabbing; }
@@ -411,4 +484,6 @@
   .na-cell { background: #f8fafc; }
   .entry-inner { display: flex; flex-direction: column; gap: 0.3rem; }
   .entry-summary { margin: 0; font-size: 0.8125rem; color: #475569; line-height: 1.4; }
+  .entry-clickable { cursor: pointer; }
+  .entry-clickable:hover { background: #f5f3ff; }
 </style>

@@ -64,7 +64,7 @@
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
-    max-width: 1400px;
+    width: 100%;
   }
 
   .centre-controls {

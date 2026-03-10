@@ -11,6 +11,8 @@ import {
   updateProjectStage,
   toggleProjectStageApplicability,
   getPriorStageEntries,
+  saveStageEntry,
+  getCurrentStageEntries,
   reorderStageDefinitions,
   reorderIssueTracks,
   createProjectIssueTrack,
@@ -156,6 +158,38 @@ export async function reorderStageDefinitionsHandler(req, res) {
   }
 }
 
+export async function saveStageEntryHandler(req, res) {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    const stageInstanceId = parseInt(req.params.stageId);
+    if (isNaN(projectId) || isNaN(stageInstanceId)) {
+      return res.status(400).json({ error: 'Invalid project or stage ID' });
+    }
+    const { issueTrackId, riskLevel, notes } = req.body;
+    if (!issueTrackId) return res.status(400).json({ error: 'issueTrackId is required' });
+    const entry = await saveStageEntry(projectId, stageInstanceId, { issueTrackId, riskLevel, notes });
+    res.json(entry);
+  } catch (error) {
+    console.error('Error saving stage entry:', error);
+    res.status(500).json({ error: 'Failed to save stage entry' });
+  }
+}
+
+export async function getCurrentStageEntriesHandler(req, res) {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    const stageInstanceId = parseInt(req.params.stageId);
+    if (isNaN(projectId) || isNaN(stageInstanceId)) {
+      return res.status(400).json({ error: 'Invalid project or stage ID' });
+    }
+    const entries = await getCurrentStageEntries(projectId, stageInstanceId);
+    res.json({ entries });
+  } catch (error) {
+    console.error('Error fetching current stage entries:', error);
+    res.status(500).json({ error: 'Failed to fetch current stage entries' });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue Tracks
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,12 +215,16 @@ export async function createProjectIssueTrackHandler(req, res) {
     const projectId = parseInt(req.params.projectId);
     if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
 
-    const { label, sortOrder } = req.body;
-    if (!label || typeof label !== 'string' || !label.trim()) {
-      return res.status(400).json({ error: 'label is required' });
+    const { label, discipline, sortOrder } = req.body;
+    if (!label && !discipline) {
+      return res.status(400).json({ error: 'At least one of label or discipline is required' });
     }
 
-    const track = await createProjectIssueTrack(projectId, { label: label.trim(), sortOrder });
+    const track = await createProjectIssueTrack(projectId, {
+      label: label?.trim() || null,
+      discipline: discipline?.trim() || null,
+      sortOrder
+    });
     res.status(201).json(track);
   } catch (error) {
     console.error('Error creating issue track:', error);

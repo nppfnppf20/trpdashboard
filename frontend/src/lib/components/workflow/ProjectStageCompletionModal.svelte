@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
-  import { completeStage, getPriorStageEntries } from '$lib/services/workflowApi.js';
+  import { completeStage, getPriorStageEntries, getCurrentStageEntries } from '$lib/services/workflowApi.js';
 
   export let project;
   export let stage;
@@ -27,19 +27,27 @@
 
   onMount(async () => {
     rowState = Object.fromEntries(
-      tracks.map(t => [t.id, { riskLevel: t.last_known_risk_level || '', summary: '', notes: '', isKeyIssue: t.is_key_issue }])
+      tracks.map(t => [t.id, { riskLevel: t.last_known_risk_level || '', notes: '', isKeyIssue: t.is_key_issue }])
     );
     try {
-      const res = await getPriorStageEntries(project.id, stage.instance_id);
-      for (const e of res.entries) {
+      // Load prior stage entries as a baseline
+      const prior = await getPriorStageEntries(project.id, stage.instance_id);
+      for (const e of prior.entries) {
         if (rowState[e.issue_track_id]) {
           rowState[e.issue_track_id].riskLevel = e.risk_level || rowState[e.issue_track_id].riskLevel;
-          rowState[e.issue_track_id].summary = e.summary || '';
           rowState[e.issue_track_id].notes = e.notes || '';
         }
       }
+      // Override with any individually saved entries for THIS stage (highest priority)
+      const current = await getCurrentStageEntries(project.id, stage.instance_id);
+      for (const e of current.entries) {
+        if (rowState[e.issue_track_id]) {
+          if (e.risk_level) rowState[e.issue_track_id].riskLevel = e.risk_level;
+          if (e.notes) rowState[e.issue_track_id].notes = e.notes;
+        }
+      }
       rowState = { ...rowState };
-    } catch { /* prefill failed - not critical */ }
+    } catch { /* prefill failed */ }
     finally { loadingPrefill = false; }
   });
 
@@ -49,7 +57,6 @@
       const entries = tracks.map(t => ({
         issueTrackId: t.id,
         riskLevel: rowState[t.id]?.riskLevel || null,
-        summary: rowState[t.id]?.summary || null,
         notes: rowState[t.id]?.notes || null,
         isKeyIssue: rowState[t.id]?.isKeyIssue ?? t.is_key_issue
       }));
@@ -96,8 +103,7 @@
                 {#each RISK_OPTIONS as opt}<option value={opt.value}>{opt.label}</option>{/each}
               </select>
             </div>
-            <input type="text" placeholder="Summary…" bind:value={rowState[track.id].summary} />
-            <textarea rows="2" placeholder="Notes (optional)…" bind:value={rowState[track.id].notes}></textarea>
+            <textarea rows="2" placeholder="Notes…" bind:value={rowState[track.id].notes}></textarea>
           </div>
         {/each}
 

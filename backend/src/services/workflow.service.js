@@ -61,6 +61,7 @@ export async function getProjectStageBoard(projectId) {
         project_id,
         track_type,
         source_key,
+        discipline,
         label,
         sort_order,
         is_key_issue,
@@ -363,6 +364,47 @@ export async function reorderStageDefinitions(orderedDefinitionIds) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Save a single stage entry without marking the stage complete.
+ * Used for individual cell edits on the board.
+ */
+export async function saveStageEntry(projectId, stageInstanceId, { issueTrackId, riskLevel, notes }) {
+  // Verify stage belongs to project
+  const check = await pool.query(
+    `SELECT id FROM admin_console.project_stage_instances WHERE id = $1 AND project_id = $2`,
+    [stageInstanceId, projectId]
+  );
+  if (check.rows.length === 0) throw new Error('Stage instance not found for this project');
+
+  const result = await pool.query(
+    `INSERT INTO admin_console.project_issue_stage_entries
+       (project_stage_instance_id, issue_track_id, risk_level, notes)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (project_stage_instance_id, issue_track_id)
+     DO UPDATE SET
+       risk_level = EXCLUDED.risk_level,
+       notes      = EXCLUDED.notes,
+       updated_at = NOW()
+     RETURNING *`,
+    [stageInstanceId, issueTrackId, riskLevel || null, notes || null]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get entries for a specific stage instance (current stage, for pre-populating completion modal).
+ */
+export async function getCurrentStageEntries(projectId, stageInstanceId) {
+  const result = await pool.query(
+    `SELECT pise.issue_track_id, pise.risk_level, pise.notes
+     FROM admin_console.project_issue_stage_entries pise
+     JOIN admin_console.project_stage_instances psi ON psi.id = pise.project_stage_instance_id
+     WHERE psi.id = $1 AND psi.project_id = $2`,
+    [stageInstanceId, projectId]
+  );
+  return result.rows;
+}
+
+/**
  * Reorder issue tracks by updating their sort_order.
  * Accepts an array of issue track IDs in the desired order.
  */
@@ -390,8 +432,7 @@ export async function reorderIssueTracks(projectId, orderedIds) {
 /**
  * Create a custom issue track for a project.
  */
-export async function createProjectIssueTrack(projectId, { label, sortOrder }) {
-  // Place after existing tracks unless explicitly specified
+export async function createProjectIssueTrack(projectId, { label, discipline, sortOrder }) {
   let order = sortOrder;
   if (order == null) {
     const maxRow = await pool.query(
@@ -403,10 +444,10 @@ export async function createProjectIssueTrack(projectId, { label, sortOrder }) {
 
   const result = await pool.query(
     `INSERT INTO admin_console.project_issue_tracks
-       (project_id, track_type, label, sort_order, is_active, created_from_hlpv)
-     VALUES ($1, 'custom', $2, $3, TRUE, FALSE)
+       (project_id, track_type, discipline, label, sort_order, is_active, created_from_hlpv)
+     VALUES ($1, 'custom', $2, $3, $4, TRUE, FALSE)
      RETURNING *`,
-    [projectId, label, order]
+    [projectId, discipline || null, label || null, order]
   );
   return result.rows[0];
 }
@@ -415,16 +456,17 @@ export async function createProjectIssueTrack(projectId, { label, sortOrder }) {
  * Update issue track metadata (label, is_key_issue, is_active).
  */
 export async function updateProjectIssueTrack(issueTrackId, updates) {
-  const { label, isKeyIssue, isActive } = updates;
+  const { label, discipline, isKeyIssue, isActive } = updates;
   const result = await pool.query(
     `UPDATE admin_console.project_issue_tracks
      SET label        = COALESCE($1, label),
-         is_key_issue = COALESCE($2, is_key_issue),
-         is_active    = COALESCE($3, is_active),
+         discipline   = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE discipline END,
+         is_key_issue = COALESCE($3, is_key_issue),
+         is_active    = COALESCE($4, is_active),
          updated_at   = NOW()
-     WHERE id = $4
+     WHERE id = $5
      RETURNING *`,
-    [label ?? null, isKeyIssue ?? null, isActive ?? null, issueTrackId]
+    [label ?? null, discipline ?? null, isKeyIssue ?? null, isActive ?? null, issueTrackId]
   );
   if (result.rows.length === 0) throw new Error('Issue track not found');
   return result.rows[0];

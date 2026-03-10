@@ -99,6 +99,22 @@ export async function getPriorStageEntries(projectId, stageInstanceId) {
   return res.json();
 }
 
+export async function saveStageEntry(projectId, stageInstanceId, { issueTrackId, riskLevel, notes }) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/stages/${stageInstanceId}/entry`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issueTrackId, riskLevel, notes })
+  });
+  if (!res.ok) throw new Error('Failed to save stage entry');
+  return res.json();
+}
+
+export async function getCurrentStageEntries(projectId, stageInstanceId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/stages/${stageInstanceId}/entries`);
+  if (!res.ok) throw new Error('Failed to fetch current stage entries');
+  return res.json();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue Tracks
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,11 +129,11 @@ export async function reorderIssueTracks(projectId, orderedIds) {
   return res.json();
 }
 
-export async function createIssueTrack(projectId, { label, sortOrder }) {
+export async function createIssueTrack(projectId, { label, discipline, sortOrder }) {
   const res = await authFetch(`${BASE}/projects/${projectId}/issues`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ label, sortOrder })
+    body: JSON.stringify({ label, discipline, sortOrder })
   });
   if (!res.ok) throw new Error('Failed to create issue track');
   return res.json();

@@ -12,6 +12,8 @@ import {
   updateProjectStageHandler,
   toggleProjectStageApplicabilityHandler,
   getPriorStageEntriesHandler,
+  saveStageEntryHandler,
+  getCurrentStageEntriesHandler,
   reorderStageDefinitionsHandler,
   reorderIssueTracksHandler,
   createProjectIssueTrackHandler,
@@ -30,6 +32,8 @@ router.put('/projects/:projectId/stages/:stageId/complete', completeProjectStage
 router.put('/projects/:projectId/stages/:stageId', updateProjectStageHandler);
 router.put('/projects/:projectId/stages/:stageId/applicability', toggleProjectStageApplicabilityHandler);
 router.get('/projects/:projectId/stages/:stageId/prior-entries', getPriorStageEntriesHandler);
+router.put('/projects/:projectId/stages/:stageId/entry', saveStageEntryHandler);
+router.get('/projects/:projectId/stages/:stageId/entries', getCurrentStageEntriesHandler);
 
 // Stage reorder
 router.put('/stages/reorder', reorderStageDefinitionsHandler);
