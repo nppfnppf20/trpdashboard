@@ -61,7 +61,8 @@
 
     <!-- Create Project Button -->
     <button class="create-project-btn" on:click={openAddProjectModal} title="Create New Project">
-      <span class="plus-icon">+</span>
+      <i class="las la-plus"></i>
+      <span class="btn-label">New Project</span>
     </button>
 
     <!-- Header Section -->
@@ -385,11 +386,13 @@
 />
 
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
   .home-page {
     min-height: 100vh;
-    background: #f8fafc;
+    background: #f4f6fb;
     padding: 3rem 1rem;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   }
 
   .home-container {
@@ -398,30 +401,32 @@
     position: relative;
   }
 
+  /* --- Top controls --- */
+
   .logout-btn {
     position: absolute;
     top: 0;
     left: 0;
-    padding: 0.75rem 1.25rem;
-    background: #dc2626;
-    border: none;
-    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
     cursor: pointer;
-    color: white;
-    font-size: 0.875rem;
+    color: #6b7280;
+    font-size: 0.8125rem;
     font-weight: 500;
-    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
-    transition: all 0.2s;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    transition: all 0.15s;
   }
 
   .logout-btn:hover {
-    background: #b91c1c;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
+    background: #ffffff;
+    border-color: #9ca3af;
+    color: #374151;
   }
 
   .logout-btn:active {
-    transform: translateY(0);
+    transform: none;
   }
 
   .create-project-btn {
@@ -429,84 +434,97 @@
     top: 0;
     right: 0;
     z-index: 10;
-    width: 3.5rem;
-    height: 3.5rem;
-    background: #9333ea;
+    width: auto;
+    height: auto;
+    padding: 0.5rem 1.125rem;
+    background: #4361ee;
     border: none;
-    border-radius: 0.5rem;
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(147, 51, 234, 0.3);
-    transition: all 0.2s;
+    gap: 0.4rem;
+    transition: all 0.15s;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    box-shadow: 0 1px 3px rgba(67, 97, 238, 0.3);
   }
 
   .create-project-btn:hover {
-    background: #7e22ce;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(147, 51, 234, 0.4);
+    background: #3451d1;
+    box-shadow: 0 4px 14px rgba(67, 97, 238, 0.35);
   }
 
   .create-project-btn:active {
-    transform: translateY(0);
+    transform: none;
   }
 
-  .plus-icon {
-    font-size: 2rem;
+  .create-project-btn i {
+    font-size: 1rem;
     color: white;
-    line-height: 0;
-    font-weight: 300;
-    margin-top: -2px;
   }
+
+  .btn-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: white;
+  }
+
+  /* --- Header --- */
 
   .home-header {
     text-align: center;
-    margin-bottom: 3rem;
+    margin-bottom: 2.5rem;
+    padding-top: 1.5rem;
   }
 
   .home-title {
-    font-size: 2.5rem;
+    font-size: 2.25rem;
     font-weight: 700;
-    color: #1e293b;
-    margin: 0 0 1rem 0;
+    color: #111827;
+    margin: 0 0 0.75rem 0;
     line-height: 1.2;
+    letter-spacing: -0.025em;
   }
 
   .home-subtitle {
-    font-size: 1.25rem;
-    color: #64748b;
-    max-width: 600px;
+    font-size: 1rem;
+    color: #6b7280;
+    max-width: 520px;
     margin: 0 auto;
-    line-height: 1.5;
+    line-height: 1.6;
+    font-weight: 400;
   }
+
+  /* --- Grid --- */
 
   .tools-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-    gap: 2rem;
+    gap: 1.25rem;
     margin-bottom: 4rem;
   }
 
+  /* --- Cards --- */
+
   .tool-card {
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
     border-radius: 12px;
-    padding: 2rem;
+    padding: 1.75rem 2rem;
     cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   }
 
   .tool-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-    border-color: #cbd5e1;
+    transform: translateY(-3px);
+    box-shadow: 0 10px 28px rgba(67, 97, 238, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
+    border-color: #c7d0fa;
   }
 
   .tool-card:focus {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.18);
   }
 
   .card-content {
@@ -514,75 +532,52 @@
   }
 
   .card-icon {
-    width: 4rem;
-    height: 4rem;
-    border-radius: 50%;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 1.5rem;
+    margin: 0 auto 1.125rem;
   }
 
-  .card-icon-blue {
-    background: #dbeafe;
-    color: #3b82f6;
-  }
-
-  .card-icon-green {
-    background: #dcfce7;
-    color: #16a34a;
-  }
-
-  .card-icon-purple {
-    background: #f3e8ff;
-    color: #9333ea;
-  }
-
-  .card-icon-orange {
-    background: #ffedd5;
-    color: #f97316;
-  }
-
-  .card-icon-teal {
-    background: #ccfbf1;
-    color: #0d9488;
-  }
-
-  .card-icon-indigo {
-    background: #e0e7ff;
-    color: #4f46e5;
-  }
-
+  .card-icon-blue,
+  .card-icon-green,
+  .card-icon-purple,
+  .card-icon-orange,
+  .card-icon-teal,
+  .card-icon-indigo,
   .card-icon-slate {
-    background: #f1f5f9;
-    color: #475569;
+    background: #eef1fd;
+    color: #4361ee;
   }
 
   .card-icon i {
-    font-size: 2rem;
+    font-size: 1.5rem;
   }
 
   .card-title {
-    font-size: 1.75rem;
+    font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
-    margin: 0 0 1rem 0;
+    color: #111827;
+    margin: 0 0 0.625rem 0;
+    letter-spacing: -0.015em;
   }
 
   .card-description {
-    color: #64748b;
-    margin-bottom: 1.5rem;
+    color: #6b7280;
+    margin-bottom: 1.25rem;
     line-height: 1.6;
-    font-size: 1rem;
+    font-size: 0.9rem;
   }
 
   .features-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 2rem;
+    gap: 0.4rem;
+    margin-bottom: 1.5rem;
     text-align: left;
-    max-width: 300px;
+    max-width: 280px;
     margin-left: auto;
     margin-right: auto;
   }
@@ -590,122 +585,68 @@
   .feature-item {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-size: 0.875rem;
-    color: #64748b;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: #6b7280;
+    font-weight: 400;
   }
 
-  .feature-icon-check {
-    color: #16a34a;
-    font-size: 1rem;
-  }
-
-  .feature-icon-blue {
-    color: #3b82f6;
-    font-size: 1rem;
-  }
-
-  .feature-icon-orange {
-    color: #f97316;
-    font-size: 1rem;
-  }
-
-  .feature-icon-teal {
-    color: #0d9488;
-    font-size: 1rem;
-  }
-
-  .feature-icon-indigo {
-    color: #4f46e5;
-    font-size: 1rem;
-  }
-
+  .feature-icon-check,
+  .feature-icon-blue,
+  .feature-icon-orange,
+  .feature-icon-teal,
+  .feature-icon-indigo,
   .feature-icon-slate {
-    color: #475569;
-    font-size: 1rem;
+    color: #4361ee;
+    font-size: 0.875rem;
   }
 
   .tool-button {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.5rem;
+    gap: 0.4rem;
+    padding: 0.5625rem 1.125rem;
     border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 500;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     text-decoration: none;
     color: white;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: #4361ee;
+    box-shadow: 0 1px 3px rgba(67, 97, 238, 0.25);
   }
 
-  .tool-button-blue {
-    background: #3b82f6;
-  }
-
-  .tool-button-blue:hover {
-    background: #2563eb;
-    transform: translateY(-1px);
-  }
-
-  .tool-button-green {
-    background: #16a34a;
-  }
-
-  .tool-button-green:hover {
-    background: #15803d;
-    transform: translateY(-1px);
-  }
-
-  .tool-button-purple {
-    background: #9333ea;
-  }
-
-  .tool-button-purple:hover {
-    background: #7e22ce;
-    transform: translateY(-1px);
-  }
-
-  .tool-button-orange {
-    background: #f97316;
-  }
-
-  .tool-button-orange:hover {
-    background: #ea580c;
-    transform: translateY(-1px);
-  }
-
-  .tool-button-teal {
-    background: #0d9488;
-  }
-
-  .tool-button-teal:hover {
-    background: #0f766e;
-    transform: translateY(-1px);
-  }
-
-  .tool-button-indigo {
-    background: #4f46e5;
-  }
-
-  .tool-button-indigo:hover {
-    background: #4338ca;
-    transform: translateY(-1px);
-  }
-
+  .tool-button-blue,
+  .tool-button-green,
+  .tool-button-purple,
+  .tool-button-orange,
+  .tool-button-teal,
+  .tool-button-indigo,
   .tool-button-slate {
-    background: #475569;
+    background: #4361ee;
   }
 
+  .tool-button:hover,
+  .tool-button-blue:hover,
+  .tool-button-green:hover,
+  .tool-button-purple:hover,
+  .tool-button-orange:hover,
+  .tool-button-teal:hover,
+  .tool-button-indigo:hover,
   .tool-button-slate:hover {
-    background: #334155;
+    background: #3451d1;
     transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(67, 97, 238, 0.35);
   }
 
   .tool-button i {
-    font-size: 1.125rem;
+    font-size: 0.9375rem;
   }
+
+  /* --- Footer --- */
 
   .home-footer {
     text-align: center;
@@ -713,9 +654,10 @@
   }
 
   .footer-text {
-    color: #64748b;
-    font-size: 1rem;
+    color: #9ca3af;
+    font-size: 0.8125rem;
     margin: 0;
+    font-weight: 400;
   }
 
   @media (max-width: 768px) {
@@ -724,16 +666,16 @@
     }
 
     .home-title {
-      font-size: 2rem;
+      font-size: 1.75rem;
     }
 
     .home-subtitle {
-      font-size: 1.125rem;
+      font-size: 0.9375rem;
     }
 
     .tools-grid {
       grid-template-columns: 1fr;
-      gap: 1.5rem;
+      gap: 1rem;
     }
 
     .tool-card {
