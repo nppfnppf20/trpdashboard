@@ -84,7 +84,9 @@
 
   <!-- Main Content -->
   {#if selectedProject}
-    <PlanningDeliverablesPanel project={selectedProject} />
+    {#key selectedProject.id}
+      <PlanningDeliverablesPanel project={selectedProject} />
+    {/key}
   {:else}
     <div class="no-project-selected">
       <div class="empty-state">

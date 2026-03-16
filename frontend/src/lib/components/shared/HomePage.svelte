@@ -4,6 +4,7 @@
   import AddProjectModal from '../projects/AddProjectModal.svelte';
 
   let showAddProjectModal = false;
+  let openInfoCard = null;
 
   function navigateToHLPV() {
     goto('/hlpv');

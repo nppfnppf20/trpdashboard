@@ -1,7 +1,25 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun } from 'docx';
 import fileSaver from 'file-saver';
 
 const { saveAs } = fileSaver;
+
+/**
+ * Load company styles XML and logo for use in exports
+ */
+async function loadAssets() {
+  const [stylesResponse, logoResponse] = await Promise.all([
+    fetch('/company-styles.xml'),
+    fetch('/logo.png')
+  ]);
+
+  if (!stylesResponse.ok) throw new Error('Could not load company-styles.xml');
+  if (!logoResponse.ok) throw new Error('Could not load logo.png');
+
+  const externalStyles = await stylesResponse.text();
+  const logoBuffer = await logoResponse.arrayBuffer();
+
+  return { externalStyles, logoBuffer };
+}
 
 /**
  * Export a planning deliverable to Word format
@@ -10,10 +28,10 @@ const { saveAs } = fileSaver;
  */
 export async function exportDeliverableToWord(deliverable, html) {
   try {
-    const doc = createWordDocumentFromHTML(deliverable, html);
+    const { externalStyles, logoBuffer } = await loadAssets();
+    const doc = createWordDocumentFromHTML(deliverable, html, externalStyles, logoBuffer);
     const blob = await Packer.toBlob(doc);
-    
-    // Generate filename
+
     const safeName = deliverable.deliverable_name.replace(/[^a-zA-Z0-9]/g, '_');
     const filename = `${safeName}.docx`;
 
@@ -26,48 +44,66 @@ export async function exportDeliverableToWord(deliverable, html) {
 }
 
 /**
- * Convert HTML content to Word document
- * @param {Object} deliverable - The deliverable metadata
- * @param {string} html - HTML content
- * @returns {Document} Word document
+ * Convert HTML content to Word document using company styles
  */
-function createWordDocumentFromHTML(deliverable, html) {
+function createWordDocumentFromHTML(deliverable, html, externalStyles, logoBuffer) {
   const children = [];
+
+  // Logo at top of first page only
+  children.push(
+    new Paragraph({
+      children: [
+        new ImageRun({
+          data: logoBuffer,
+          transformation: { width: 120, height: 120 }
+        })
+      ],
+      spacing: { after: 400 }
+    })
+  );
 
   // Parse HTML and convert to Word paragraphs
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
 
-  // Process each element
-  Array.from(tempDiv.children).forEach(element => {
-    const paragraph = convertElementToParagraph(element);
-    if (paragraph) {
-      children.push(paragraph);
-    }
-  });
+  processElements(Array.from(tempDiv.children), children);
 
-  // If no content, add a placeholder
-  if (children.length === 0) {
-    children.push(
-      new Paragraph({
-        text: 'No content available',
-        spacing: { after: 200 }
-      })
-    );
+  if (children.length === 1) {
+    children.push(new Paragraph({ style: 'Normal', text: 'No content available' }));
   }
 
   return new Document({
+    externalStyles,
     sections: [{
       properties: {},
-      children: children
+      children
     }]
   });
 }
 
 /**
- * Convert HTML element to Word Paragraph
- * @param {HTMLElement} element - HTML element
- * @returns {Paragraph|null} Word paragraph or null
+ * Process an array of HTML elements into Word paragraphs, handling lists properly
+ */
+function processElements(elements, output) {
+  elements.forEach(element => {
+    const tagName = element.tagName.toLowerCase();
+
+    if (tagName === 'ul' || tagName === 'ol') {
+      Array.from(element.children).forEach(li => {
+        output.push(new Paragraph({
+          style: 'Bullet1',
+          children: getTextRuns(li)
+        }));
+      });
+    } else {
+      const paragraph = convertElementToParagraph(element);
+      if (paragraph) output.push(paragraph);
+    }
+  });
+}
+
+/**
+ * Convert a single HTML element to a Word Paragraph
  */
 function convertElementToParagraph(element) {
   const tagName = element.tagName.toLowerCase();
@@ -75,38 +111,44 @@ function convertElementToParagraph(element) {
   switch (tagName) {
     case 'h1':
       return new Paragraph({
-        text: element.textContent,
         heading: HeadingLevel.HEADING_1,
+        children: [new TextRun({ text: element.textContent })],
         spacing: { before: 400, after: 200 }
       });
 
     case 'h2':
       return new Paragraph({
-        text: element.textContent,
         heading: HeadingLevel.HEADING_2,
+        children: [new TextRun({ text: element.textContent })],
         spacing: { before: 300, after: 200 }
       });
 
     case 'h3':
       return new Paragraph({
-        text: element.textContent,
         heading: HeadingLevel.HEADING_3,
+        children: [new TextRun({ text: element.textContent })],
+        spacing: { before: 200, after: 100 }
+      });
+
+    case 'h4':
+      return new Paragraph({
+        heading: HeadingLevel.HEADING_4,
+        children: [new TextRun({ text: element.textContent })],
         spacing: { before: 200, after: 100 }
       });
 
     case 'p':
-      return createParagraphFromContent(element);
-
-    case 'ul':
-    case 'ol':
-      // For lists, we need to process each li individually
-      // This is a simplified version - proper list handling would require more logic
-      return null; // Will be handled by parent processing
+      return new Paragraph({
+        style: 'Normal',
+        children: getTextRuns(element),
+        spacing: { after: 200 }
+      });
 
     default:
       if (element.textContent.trim()) {
         return new Paragraph({
-          text: element.textContent,
+          style: 'Normal',
+          children: [new TextRun({ text: element.textContent })],
           spacing: { after: 200 }
         });
       }
@@ -115,57 +157,46 @@ function convertElementToParagraph(element) {
 }
 
 /**
- * Create a paragraph with formatted text runs (bold, italic, etc.)
- * @param {HTMLElement} element - The paragraph element
- * @returns {Paragraph} Word paragraph
+ * Extract inline-formatted TextRuns from an element (bold, italic, underline)
  */
-function createParagraphFromContent(element) {
-  const children = [];
+function getTextRuns(element) {
+  const runs = [];
 
-  // Process child nodes to handle inline formatting
   Array.from(element.childNodes).forEach(node => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent;
-      if (text.trim()) {
-        children.push(new TextRun({ text }));
-      }
+      if (text) runs.push(new TextRun({ text }));
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const tag = node.tagName.toLowerCase();
       const text = node.textContent;
 
       if (tag === 'strong' || tag === 'b') {
-        children.push(new TextRun({ text, bold: true }));
+        runs.push(new TextRun({ text, bold: true }));
       } else if (tag === 'em' || tag === 'i') {
-        children.push(new TextRun({ text, italics: true }));
+        runs.push(new TextRun({ text, italics: true }));
       } else if (tag === 'u') {
-        children.push(new TextRun({ text, underline: {} }));
+        runs.push(new TextRun({ text, underline: {} }));
       } else {
-        children.push(new TextRun({ text }));
+        runs.push(new TextRun({ text }));
       }
     }
   });
 
-  // If no formatted children, just use plain text
-  if (children.length === 0) {
-    children.push(new TextRun({ text: element.textContent }));
+  if (runs.length === 0) {
+    runs.push(new TextRun({ text: element.textContent }));
   }
 
-  return new Paragraph({
-    children,
-    spacing: { after: 200 }
-  });
+  return runs;
 }
 
 /**
- * Export to PDF (placeholder - will use print functionality)
+ * Export to PDF via browser print
  * @param {Object} deliverable - The deliverable data
  * @param {string} html - The HTML content
  */
 export function exportDeliverableToPDF(deliverable, html) {
-  // For now, we'll use browser print-to-PDF
-  // Create a new window with the content
   const printWindow = window.open('', '_blank');
-  
+
   if (!printWindow) {
     throw new Error('Could not open print window. Please allow popups for this site.');
   }
@@ -187,40 +218,13 @@ export function exportDeliverableToPDF(deliverable, html) {
             margin: 1in auto;
             padding: 0;
           }
-          h1 {
-            font-size: 24pt;
-            font-weight: 600;
-            margin: 1.5em 0 1em;
-            color: #000;
-          }
-          h2 {
-            font-size: 18pt;
-            font-weight: 600;
-            margin: 1.25em 0 0.75em;
-            color: #000;
-          }
-          h3 {
-            font-size: 14pt;
-            font-weight: 600;
-            margin: 1em 0 0.5em;
-            color: #000;
-          }
-          p {
-            margin: 0.5em 0;
-          }
-          ul, ol {
-            margin: 0.5em 0;
-            padding-left: 2em;
-          }
-          li {
-            margin: 0.25em 0;
-          }
-          @media print {
-            body {
-              margin: 0;
-              padding: 1in;
-            }
-          }
+          h1 { font-size: 24pt; font-weight: 600; margin: 1.5em 0 1em; color: #000; }
+          h2 { font-size: 18pt; font-weight: 600; margin: 1.25em 0 0.75em; color: #000; }
+          h3 { font-size: 14pt; font-weight: 600; margin: 1em 0 0.5em; color: #000; }
+          p { margin: 0.5em 0; }
+          ul, ol { margin: 0.5em 0; padding-left: 2em; }
+          li { margin: 0.25em 0; }
+          @media print { body { margin: 0; padding: 1in; } }
         </style>
       </head>
       <body>
@@ -230,8 +234,7 @@ export function exportDeliverableToPDF(deliverable, html) {
   `);
 
   printWindow.document.close();
-  
-  // Trigger print dialog after a short delay
+
   setTimeout(() => {
     printWindow.focus();
     printWindow.print();
@@ -242,4 +245,3 @@ export default {
   exportDeliverableToWord,
   exportDeliverableToPDF
 };
-
