@@ -15,10 +15,30 @@ async function loadAssets() {
   if (!stylesResponse.ok) throw new Error('Could not load company-styles.xml');
   if (!logoResponse.ok) throw new Error('Could not load logo.png');
 
-  const externalStyles = await stylesResponse.text();
+  const rawStyles = await stylesResponse.text();
+  const externalStyles = resolveThemeFonts(rawStyles);
   const logoBuffer = await logoResponse.arrayBuffer();
 
   return { externalStyles, logoBuffer };
+}
+
+/**
+ * Replace theme font references in styles.xml with explicit font names.
+ * The docx library does not embed theme1.xml, so Word cannot resolve
+ * w:asciiTheme="majorHAnsi" etc. without it — we resolve them here.
+ * majorHAnsi = Calibri Light (headings), minorHAnsi = Calibri (body).
+ */
+function resolveThemeFonts(stylesXml) {
+  const majorFont = 'Calibri Light';
+  const minorFont = 'Calibri';
+
+  return stylesXml
+    .replace(/w:asciiTheme="major[^"]*"/g, `w:ascii="${majorFont}"`)
+    .replace(/w:hAnsiTheme="major[^"]*"/g, `w:hAnsi="${majorFont}"`)
+    .replace(/w:asciiTheme="minor[^"]*"/g, `w:ascii="${minorFont}"`)
+    .replace(/w:hAnsiTheme="minor[^"]*"/g, `w:hAnsi="${minorFont}"`)
+    .replace(/w:eastAsiaTheme="[^"]*"/g, '')
+    .replace(/w:cstheme="[^"]*"/g, '');
 }
 
 /**
