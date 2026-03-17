@@ -359,6 +359,7 @@ function reconstructDisciplineData(discipline, summary, rules, findings, edit) {
   const data = {
     // Use edited values if available, otherwise use original
     overallRisk: edit?.edited_overall_risk || summary?.overall_risk || null,
+    editedSummary: edit?.edited_summary || null,
     disciplineRecommendation: summary?.discipline_recommendation || null,
     defaultTriggeredRecommendations: summary?.default_triggered_recommendations || [],
     defaultNoRulesRecommendations: summary?.default_no_rules_recommendations || [],
@@ -451,7 +452,7 @@ function reconstructFeature(finding) {
 /**
  * Save an edit to a discipline
  */
-export async function saveEdit(sessionId, discipline, editedRisk, editedRecommendations, userId) {
+export async function saveEdit(sessionId, discipline, editedRisk, editedRecommendations, editedSummary, userId) {
   const { data, error } = await supabase
     .from('analysis_edits')
     .upsert({
@@ -459,6 +460,7 @@ export async function saveEdit(sessionId, discipline, editedRisk, editedRecommen
       discipline,
       edited_overall_risk: editedRisk,
       edited_recommendations: editedRecommendations,
+      edited_summary: editedSummary ?? null,
       updated_by: userId
     }, {
       onConflict: 'session_id,discipline'

@@ -340,12 +340,13 @@ export async function saveSessionEdit(
   /** @type {string} */ discipline,
   /** @type {string} */ editedRisk,
   /** @type {string[]} */ editedRecommendations,
-  /** @type {any[]} */ changes = []
+  /** @type {any[]} */ changes = [],
+  /** @type {string|null} */ editedSummary = null
 ) {
   const res = await authFetch(`/api/session/${sessionId}/edit`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ discipline, editedRisk, editedRecommendations, changes })
+    body: JSON.stringify({ discipline, editedRisk, editedRecommendations, editedSummary, changes })
   });
   if (!res.ok) {
     const text = await res.text();

@@ -345,6 +345,22 @@ async function addDisciplineSection(discipline, helpers, figureCounter) {
     );
   }
 
+  // Discipline Summary (user-written)
+  if (discipline.summary && discipline.summary.trim()) {
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: discipline.summary.trim(),
+            size: DocumentConfig.fonts.body.size * 2,
+            font: DocumentConfig.fonts.family,
+          }),
+        ],
+        spacing: { after: 200 },
+      })
+    );
+  }
+
   // Assessment Rules
   paragraphs.push(helpers.createHeading(DocumentLabels.assessmentRules, 2));
 

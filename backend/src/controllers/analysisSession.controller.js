@@ -145,7 +145,7 @@ export async function getSessionRaw(req, res) {
 export async function saveSessionEdit(req, res) {
   try {
     const { sessionId } = req.params;
-    const { discipline, editedRisk, editedRecommendations, changes } = req.body;
+    const { discipline, editedRisk, editedRecommendations, editedSummary, changes } = req.body;
     const userId = req.user?.id || null;
 
     if (!sessionId || !discipline) {
@@ -153,7 +153,7 @@ export async function saveSessionEdit(req, res) {
     }
 
     // Save the edit
-    const edit = await saveEdit(sessionId, discipline, editedRisk, editedRecommendations, userId);
+    const edit = await saveEdit(sessionId, discipline, editedRisk, editedRecommendations, editedSummary, userId);
 
     // Log changes if provided
     if (changes && Array.isArray(changes)) {

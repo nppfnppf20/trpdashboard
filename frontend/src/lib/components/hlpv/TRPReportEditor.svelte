@@ -142,6 +142,17 @@
     }
   })();
 
+  // Map discipline display names to their source data props (for initialising editedSummary)
+  const disciplineSourceMap = {
+    'Heritage': heritageData,
+    'Landscape': landscapeData,
+    'Renewables': renewablesData,
+    'Ecology': ecologyData,
+    'Agricultural Land': agLandData,
+    'Trees': treesData,
+    'Airfields': airfieldsData
+  };
+
   // Initialize editable report when original report changes
   $: if (report && !editableReport) {
     editableReport = JSON.parse(JSON.stringify(report)); // Deep copy
@@ -152,6 +163,10 @@
     // Ensure every discipline has riskSummary.level set (resolveRiskSummary omits it)
     if (editableReport.structuredReport?.disciplines) {
       editableReport.structuredReport.disciplines.forEach((discipline, index) => {
+        // Initialise summary from saved edit (loaded via source data prop)
+        const sourceData = disciplineSourceMap[discipline.name];
+        discipline.summary = sourceData?.editedSummary || '';
+
         // Landscape risk must be explicitly set by the user
         if (discipline.name === 'Landscape') {
           discipline.riskSummary = { level: null, label: '-', description: '', bgColor: '#f3f4f6', color: '#6b7280' };
@@ -470,6 +485,11 @@
     hasUnsavedChanges = true;
   }
 
+  function handleDisciplineSummaryChange(disciplineIndex, newSummary) {
+    editableReport.structuredReport.disciplines[disciplineIndex].summary = newSummary;
+    hasUnsavedChanges = true;
+  }
+
   function handleOverallRiskChange(newOverallRisk) {
     editableReport.structuredReport.summary.overallRisk = newOverallRisk;
     hasUnsavedChanges = true;
@@ -510,6 +530,7 @@
 
           const editedRisk = discipline.riskSummary?.level || 'low_risk';
           const editedRecommendations = discipline.recommendations || getAggregatedRecommendations(discipline);
+          const editedSummary = discipline.summary || null;
 
           // Get changes specific to this discipline
           const disciplineChanges = pendingChanges.filter(
@@ -531,7 +552,8 @@
               disciplineKey,
               editedRisk,
               editedRecommendations,
-              disciplineChanges
+              disciplineChanges,
+              editedSummary
             )
           );
         }
@@ -862,6 +884,18 @@
               </div>
             </span>
           </h3>
+
+          <!-- 2a. Summary (Editable) -->
+          <div class="subsection">
+            <h4>Summary</h4>
+            <textarea
+              class="editable-textarea discipline-summary"
+              value={discipline.summary || ''}
+              on:input={(e) => { autoResizeTextarea(e.target); handleDisciplineSummaryChange(disciplineIndex, e.target.value); }}
+              placeholder="Enter a summary for {discipline.name}..."
+              use:autoResizeOnMount
+            ></textarea>
+          </div>
 
           <!-- 2b. Triggered Rules (Read-only) -->
           <div class="subsection">

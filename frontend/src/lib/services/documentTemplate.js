@@ -195,6 +195,7 @@ export function processDocumentContent(report) {
     content.disciplines = report.structuredReport.disciplines.map(discipline => ({
       name: discipline.name,
       riskSummary: discipline.riskSummary,
+      summary: discipline.summary || null,
       triggeredRules: (discipline.triggeredRules || []).map(rule => ({
         title: rule.rule || rule.title || rule.name,
         findings: rule.findings,
