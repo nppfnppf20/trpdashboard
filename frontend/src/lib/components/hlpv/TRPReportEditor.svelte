@@ -1,6 +1,7 @@
 <script lang="ts">
   import { buildCombinedReport, resolveRiskSummary } from '$lib/services/reportGenerator.js';
   import { saveSessionEdit } from '$lib/services/api.js';
+  import { createKeyIssue } from '$lib/services/workflowApi.js';
   import { generateWordReport } from '$lib/services/wordExport.js';
   import { generatePDFReport } from '$lib/services/pdfExport.js';
   import { generateFloodFindings } from '$lib/services/flood/floodFindings.js';
@@ -34,6 +35,9 @@
 
   /** @type {string|null} */
   export let analysisSessionId = null;
+
+  /** @type {number|null} */
+  export let projectId = null;
 
   // Flood form state
   /** @type {string} */
@@ -480,6 +484,54 @@
     };
   }
 
+  // ── Key Issues (per discipline) ──────────────────────────────────────────
+  /** @type {Record<string, Array<{label: string, riskLevel: string|null, summary: string|null}>>} */
+  let pendingKeyIssues = {};
+
+  /** @type {Record<string, boolean>} */
+  let addingKeyIssue = {};
+
+  /** @type {Record<string, string>} */
+  let newKILabel = {};
+  /** @type {Record<string, string>} */
+  let newKIRisk = {};
+  /** @type {Record<string, string>} */
+  let newKISummary = {};
+
+  function openAddKeyIssue(disciplineName) {
+    addingKeyIssue = { ...addingKeyIssue, [disciplineName]: true };
+    newKILabel = { ...newKILabel, [disciplineName]: '' };
+    newKIRisk = { ...newKIRisk, [disciplineName]: '' };
+    newKISummary = { ...newKISummary, [disciplineName]: '' };
+  }
+
+  function cancelAddKeyIssue(disciplineName) {
+    addingKeyIssue = { ...addingKeyIssue, [disciplineName]: false };
+  }
+
+  function confirmAddKeyIssue(disciplineName) {
+    const label = newKILabel[disciplineName]?.trim();
+    if (!label) return;
+    const item = {
+      label,
+      riskLevel: newKIRisk[disciplineName] || null,
+      summary: newKISummary[disciplineName]?.trim() || null
+    };
+    pendingKeyIssues = {
+      ...pendingKeyIssues,
+      [disciplineName]: [...(pendingKeyIssues[disciplineName] || []), item]
+    };
+    addingKeyIssue = { ...addingKeyIssue, [disciplineName]: false };
+    hasUnsavedChanges = true;
+  }
+
+  function removePendingKeyIssue(disciplineName, index) {
+    pendingKeyIssues = {
+      ...pendingKeyIssues,
+      [disciplineName]: pendingKeyIssues[disciplineName].filter((_, i) => i !== index)
+    };
+  }
+
   function handleSiteSummaryChange(newSummary) {
     editableReport.structuredReport.summary.site = newSummary;
     hasUnsavedChanges = true;
@@ -562,6 +614,29 @@
       // Wait for all saves to complete
       const results = await Promise.all(savePromises);
       console.log('✅ All discipline edits saved successfully:', results);
+
+      // Create any pending key issues
+      if (projectId) {
+        const kiPromises = [];
+        for (const [disciplineName, issues] of Object.entries(pendingKeyIssues)) {
+          const disciplineKey = disciplineToKey[disciplineName];
+          for (const ki of issues) {
+            kiPromises.push(
+              createKeyIssue(projectId, {
+                label: ki.label,
+                disciplineGroup: disciplineKey || disciplineName.toLowerCase(),
+                riskLevel: ki.riskLevel,
+                summary: ki.summary
+              })
+            );
+          }
+        }
+        if (kiPromises.length > 0) {
+          await Promise.all(kiPromises);
+          console.log(`✅ ${kiPromises.length} key issue(s) created`);
+        }
+        pendingKeyIssues = {};
+      }
 
       // Clear pending changes after successful save
       pendingChanges = [];
@@ -897,7 +972,59 @@
             ></textarea>
           </div>
 
-          <!-- 2b. Triggered Rules (Read-only) -->
+          <!-- 2b. Key Issues (per discipline) -->
+          {#if projectId}
+            <div class="subsection key-issues-section">
+              <h4>Key Issues</h4>
+
+              {#if pendingKeyIssues[discipline.name]?.length > 0}
+                <div class="ki-list">
+                  {#each pendingKeyIssues[discipline.name] as ki, kiIdx}
+                    <div class="ki-item">
+                      <span class="ki-label">{ki.label}</span>
+                      {#if ki.riskLevel}
+                        {@const rd = getRiskLevelData(ki.riskLevel)}
+                        <span class="ki-risk-badge" style="background-color: {rd.bgColor}; color: {rd.color};">{rd.label}</span>
+                      {/if}
+                      <button class="ki-remove-btn" on:click={() => removePendingKeyIssue(discipline.name, kiIdx)} title="Remove">×</button>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+
+              {#if addingKeyIssue[discipline.name]}
+                <div class="ki-form">
+                  <input
+                    class="ki-input"
+                    type="text"
+                    placeholder="Key issue label..."
+                    bind:value={newKILabel[discipline.name]}
+                  />
+                  <select class="ki-select" bind:value={newKIRisk[discipline.name]}>
+                    <option value="">-- Risk level (optional) --</option>
+                    {#each riskLevels as rl}
+                      <option value={rl.value}>{rl.label}</option>
+                    {/each}
+                  </select>
+                  <textarea
+                    class="editable-textarea ki-summary-input"
+                    placeholder="Summary (optional)..."
+                    bind:value={newKISummary[discipline.name]}
+                  ></textarea>
+                  <div class="ki-form-actions">
+                    <button class="btn-ki-confirm" on:click={() => confirmAddKeyIssue(discipline.name)}>Add</button>
+                    <button class="btn-ki-cancel" on:click={() => cancelAddKeyIssue(discipline.name)}>Cancel</button>
+                  </div>
+                </div>
+              {:else}
+                <button class="btn-ki-open" on:click={() => openAddKeyIssue(discipline.name)}>
+                  + Add Key Issue
+                </button>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- 2c. Triggered Rules (Read-only) -->
           <div class="subsection">
             <button
               class="rec-toggle-header"
@@ -1520,6 +1647,140 @@
   .add-recommendation-btn:hover {
     background: #059669;
     transform: translateY(-1px);
+  }
+
+  /* ── Key Issues ─────────────────────────────────────────────────────────── */
+  .key-issues-section {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+  }
+
+  .ki-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .ki-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #fefce8;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+  }
+
+  .ki-label {
+    flex: 1;
+    font-size: 0.875rem;
+    color: #1f2937;
+  }
+
+  .ki-risk-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .ki-remove-btn {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 0.25rem;
+  }
+
+  .ki-remove-btn:hover {
+    color: #dc2626;
+  }
+
+  .ki-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+  }
+
+  .ki-input,
+  .ki-select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: white;
+    color: #1f2937;
+  }
+
+  .ki-input:focus,
+  .ki-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  }
+
+  .ki-summary-input {
+    min-height: 60px;
+  }
+
+  .ki-form-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .btn-ki-confirm {
+    background: #f59e0b;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .btn-ki-confirm:hover {
+    background: #d97706;
+  }
+
+  .btn-ki-cancel {
+    background: #f3f4f6;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .btn-ki-cancel:hover {
+    background: #e5e7eb;
+  }
+
+  .btn-ki-open {
+    background: none;
+    border: 1px dashed #d1d5db;
+    border-radius: 6px;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    padding: 0.4rem 0.75rem;
+    transition: all 0.15s ease;
+  }
+
+  .btn-ki-open:hover {
+    border-color: #f59e0b;
+    color: #d97706;
+    background: #fefce8;
   }
 
   .risk-badge {

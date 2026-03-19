@@ -23,6 +23,7 @@
   let formData = {
     project_id: '',
     project_name: '',
+    project_type: '',
     local_planning_authority: [], // Array of LPAs
     project_lead: '',
     project_manager: '',
@@ -41,6 +42,7 @@
 
   // Status options for dropdown
   const statusOptions = ['Prospective', 'Instructed', 'Submitted', 'Post-Submission', 'Closed'];
+  const projectTypeOptions = ['Full Application', 'DoC', 'NMA', 'S73', 'Appeal', 'Other'];
 
   // LPA input handling
   let lpaInput = '';
@@ -288,6 +290,10 @@
       errors.project_name = 'Project Name is required';
     }
 
+    if (!formData.project_type) {
+      errors.project_type = 'Project Type is required';
+    }
+
     return Object.keys(errors).length === 0;
   }
 
@@ -326,6 +332,7 @@
     formData = {
       project_id: '',
       project_name: '',
+      project_type: '',
       local_planning_authority: [],
       project_lead: '',
       project_manager: '',
@@ -405,6 +412,21 @@
               />
               {#if errors.project_name}
                 <span class="error-text">{errors.project_name}</span>
+              {/if}
+            </div>
+
+            <div class="form-group">
+              <label for="project_type">
+                Project Type <span class="required">*</span>
+              </label>
+              <select id="project_type" bind:value={formData.project_type} class:error={errors.project_type}>
+                <option value="">Select project type...</option>
+                {#each projectTypeOptions as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+              {#if errors.project_type}
+                <span class="error-text">{errors.project_type}</span>
               {/if}
             </div>
 

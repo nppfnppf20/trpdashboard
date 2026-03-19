@@ -17,8 +17,16 @@ import {
   reorderStageDefinitionsHandler,
   reorderIssueTracksHandler,
   createProjectIssueTrackHandler,
-  updateProjectIssueTrackHandler
+  updateProjectIssueTrackHandler,
+  createProjectKeyIssueHandler
 } from '../controllers/workflow.controller.js';
+import {
+  getRefusalReasonsHandler,
+  createRefusalReasonHandler,
+  updateRefusalReasonHandler,
+  deleteRefusalReasonHandler,
+  reorderRefusalReasonsHandler
+} from '../controllers/refusalReasons.controller.js';
 
 const router = express.Router();
 
@@ -42,5 +50,15 @@ router.put('/stages/reorder', reorderStageDefinitionsHandler);
 router.put('/projects/:projectId/issues/reorder', reorderIssueTracksHandler);
 router.post('/projects/:projectId/issues', createProjectIssueTrackHandler);
 router.put('/issues/:issueId', updateProjectIssueTrackHandler);
+
+// Key issues
+router.post('/projects/:projectId/key-issues', createProjectKeyIssueHandler);
+
+// Refusal reasons (appeal projects)
+router.get('/projects/:projectId/refusal-reasons', getRefusalReasonsHandler);
+router.post('/projects/:projectId/refusal-reasons', createRefusalReasonHandler);
+router.put('/projects/:projectId/refusal-reasons/:reasonId', updateRefusalReasonHandler);
+router.delete('/projects/:projectId/refusal-reasons/:reasonId', deleteRefusalReasonHandler);
+router.put('/projects/:projectId/refusal-reasons/reorder', reorderRefusalReasonsHandler);
 
 export default router;

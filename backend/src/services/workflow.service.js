@@ -74,12 +74,29 @@ export async function getProjectStageBoard(projectId) {
       [projectId]
     );
 
-    // All stage entries for this project's stages
+    // Key issues for this project
+    const keyIssuesResult = await client.query(
+      `SELECT
+        id,
+        project_id,
+        label,
+        discipline_group,
+        sort_order,
+        is_active,
+        last_known_risk_level
+      FROM admin_console.project_key_issues
+      WHERE project_id = $1 AND is_active = TRUE
+      ORDER BY sort_order, id`,
+      [projectId]
+    );
+
+    // All stage entries for this project's stages (both track and key issue entries)
     const entriesResult = await client.query(
       `SELECT
         pise.id,
         pise.project_stage_instance_id,
         pise.issue_track_id,
+        pise.key_issue_id,
         pise.risk_level,
         pise.summary,
         pise.notes,
@@ -95,6 +112,7 @@ export async function getProjectStageBoard(projectId) {
     return {
       stages: stagesResult.rows,
       tracks: tracksResult.rows,
+      keyIssues: keyIssuesResult.rows,
       entries: entriesResult.rows
     };
   } finally {
@@ -104,8 +122,8 @@ export async function getProjectStageBoard(projectId) {
 
 /**
  * Initialize the stage board for a project.
- * Creates stage instances for all active global definitions and seeds
- * issue tracks from the most recent HLPV analysis for the project.
+ * Seeds appeal-specific stages for appeal projects, standard stages for all others.
+ * Seeds issue tracks from HLPV for non-appeal projects only.
  * Safe to call if already partially initialized (idempotent).
  */
 export async function initializeProjectStageBoard(projectId) {
@@ -113,65 +131,80 @@ export async function initializeProjectStageBoard(projectId) {
   try {
     await client.query('BEGIN');
 
-    // 1. Create stage instances for all active stage definitions
+    // Resolve project type to determine which stage definitions to seed
+    const projectRow = await client.query(
+      `SELECT project_type FROM public.projects WHERE id = $1`,
+      [projectId]
+    );
+    const projectType = projectRow.rows[0]?.project_type || null;
+    const isAppeal = projectType === 'Appeal';
+
+    // 1. Create stage instances for matching stage definitions only
     await client.query(
       `INSERT INTO admin_console.project_stage_instances
          (project_id, stage_definition_id, is_applicable, is_complete)
        SELECT $1, id, TRUE, FALSE
        FROM admin_console.project_stage_definitions
        WHERE is_active = TRUE
+         AND (
+           ($2 AND project_type_filter = 'appeal')
+           OR
+           (NOT $2 AND project_type_filter IS NULL)
+         )
        ON CONFLICT (project_id, stage_definition_id) DO NOTHING`,
-      [projectId]
+      [projectId, isAppeal]
     );
 
-    // 2. Check if issue tracks already exist for this project
-    const existingTracks = await client.query(
-      'SELECT id FROM admin_console.project_issue_tracks WHERE project_id = $1 LIMIT 1',
-      [projectId]
-    );
-
-    if (existingTracks.rows.length === 0) {
-      // 3. Fetch HLPV discipline summaries from the most recent analysis session
-      //    Prefer edited risk levels where available
-      const hlpvResult = await client.query(
-        `SELECT
-          ads.discipline,
-          COALESCE(ae.edited_overall_risk, ads.overall_risk) AS risk_level
-        FROM public.analysis_discipline_summary ads
-        JOIN public.analysis_sessions asess ON asess.id = ads.session_id
-        LEFT JOIN public.analysis_edits ae
-          ON ae.session_id = ads.session_id AND ae.discipline = ads.discipline
-        WHERE asess.project_id = $1
-          AND ads.overall_risk IS NOT NULL
-        ORDER BY asess.created_at DESC`,
+    // 2. For non-appeal projects only: seed issue tracks from HLPV
+    if (!isAppeal) {
+      const existingTracks = await client.query(
+        'SELECT id FROM admin_console.project_issue_tracks WHERE project_id = $1 LIMIT 1',
         [projectId]
       );
 
-      // Deduplicate to the latest session per discipline
-      const seenDisciplines = new Set();
-      const disciplines = [];
-      for (const row of hlpvResult.rows) {
-        if (!seenDisciplines.has(row.discipline)) {
-          seenDisciplines.add(row.discipline);
-          disciplines.push(row);
-        }
-      }
-
-      // Sort by risk severity (highest first)
-      disciplines.sort((a, b) => riskSortValue(a.risk_level) - riskSortValue(b.risk_level));
-
-      // 4. Seed issue tracks
-      for (let i = 0; i < disciplines.length; i++) {
-        const { discipline, risk_level } = disciplines[i];
-        const label = disciplineLabel(discipline);
-        await client.query(
-          `INSERT INTO admin_console.project_issue_tracks
-             (project_id, track_type, source_key, label, sort_order,
-              is_key_issue, is_active, created_from_hlpv, last_known_risk_level)
-           VALUES ($1, 'discipline', $2, $3, $4, FALSE, TRUE, TRUE, $5)
-           ON CONFLICT DO NOTHING`,
-          [projectId, discipline, label, i, risk_level]
+      if (existingTracks.rows.length === 0) {
+        // Fetch HLPV discipline summaries from the most recent analysis session.
+        // Prefer edited risk levels where available.
+        const hlpvResult = await client.query(
+          `SELECT
+            ads.discipline,
+            COALESCE(ae.edited_overall_risk, ads.overall_risk) AS risk_level
+          FROM public.analysis_discipline_summary ads
+          JOIN public.analysis_sessions asess ON asess.id = ads.session_id
+          LEFT JOIN public.analysis_edits ae
+            ON ae.session_id = ads.session_id AND ae.discipline = ads.discipline
+          WHERE asess.project_id = $1
+            AND ads.overall_risk IS NOT NULL
+          ORDER BY asess.created_at DESC`,
+          [projectId]
         );
+
+        // Deduplicate to the latest session per discipline
+        const seenDisciplines = new Set();
+        const disciplines = [];
+        for (const row of hlpvResult.rows) {
+          if (!seenDisciplines.has(row.discipline)) {
+            seenDisciplines.add(row.discipline);
+            disciplines.push(row);
+          }
+        }
+
+        // Sort by risk severity (highest first)
+        disciplines.sort((a, b) => riskSortValue(a.risk_level) - riskSortValue(b.risk_level));
+
+        // Seed issue tracks
+        for (let i = 0; i < disciplines.length; i++) {
+          const { discipline, risk_level } = disciplines[i];
+          const label = disciplineLabel(discipline);
+          await client.query(
+            `INSERT INTO admin_console.project_issue_tracks
+               (project_id, track_type, source_key, label, sort_order,
+                is_key_issue, is_active, created_from_hlpv, last_known_risk_level)
+             VALUES ($1, 'discipline', $2, $3, $4, FALSE, TRUE, TRUE, $5)
+             ON CONFLICT DO NOTHING`,
+            [projectId, discipline, label, i, risk_level]
+          );
+        }
       }
     }
 
@@ -470,6 +503,128 @@ export async function updateProjectIssueTrack(issueTrackId, updates) {
   );
   if (result.rows.length === 0) throw new Error('Issue track not found');
   return result.rows[0];
+}
+
+/**
+ * Sync the HLPV stage entry for a single discipline.
+ * Called automatically when the HLPV edit report is saved.
+ * Finds the HLPV stage instance for the project linked to the given session,
+ * then upserts a stage entry with the current risk and summary.
+ */
+export async function syncHLPVStageEntry(sessionId, discipline, riskLevel, summary) {
+  // Resolve project_id from the session
+  const sessionRow = await pool.query(
+    `SELECT project_id FROM public.analysis_sessions WHERE id = $1`,
+    [sessionId]
+  );
+  if (sessionRow.rows.length === 0 || !sessionRow.rows[0].project_id) return;
+  const projectId = sessionRow.rows[0].project_id;
+
+  // Find the HLPV stage instance
+  const stageRow = await pool.query(
+    `SELECT psi.id AS instance_id
+     FROM admin_console.project_stage_instances psi
+     JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+     WHERE psi.project_id = $1
+       AND psd.name = 'High-Level Planning View'`,
+    [projectId]
+  );
+  if (stageRow.rows.length === 0) return;
+  const stageInstanceId = stageRow.rows[0].instance_id;
+
+  // Find the discipline track
+  const trackRow = await pool.query(
+    `SELECT id FROM admin_console.project_issue_tracks
+     WHERE project_id = $1 AND source_key = $2 AND is_active = TRUE`,
+    [projectId, discipline]
+  );
+  if (trackRow.rows.length === 0) return;
+  const trackId = trackRow.rows[0].id;
+
+  // Upsert the stage entry
+  await pool.query(
+    `INSERT INTO admin_console.project_issue_stage_entries
+       (project_stage_instance_id, issue_track_id, risk_level, summary)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (project_stage_instance_id, issue_track_id)
+       WHERE issue_track_id IS NOT NULL
+     DO UPDATE SET
+       risk_level = EXCLUDED.risk_level,
+       summary    = EXCLUDED.summary,
+       updated_at = NOW()`,
+    [stageInstanceId, trackId, riskLevel || null, summary || null]
+  );
+
+  // Keep last_known_risk_level on the track in sync
+  if (riskLevel) {
+    await pool.query(
+      `UPDATE admin_console.project_issue_tracks
+       SET last_known_risk_level = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [riskLevel, trackId]
+    );
+  }
+}
+
+/**
+ * Create a key issue for a project and optionally seed an HLPV stage entry.
+ */
+export async function createProjectKeyIssue(projectId, { label, disciplineGroup, riskLevel, summary }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const maxRow = await client.query(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next
+       FROM admin_console.project_key_issues WHERE project_id = $1`,
+      [projectId]
+    );
+    const sortOrder = maxRow.rows[0].next;
+
+    const result = await client.query(
+      `INSERT INTO admin_console.project_key_issues
+         (project_id, label, discipline_group, sort_order, last_known_risk_level)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [projectId, label, disciplineGroup || null, sortOrder, riskLevel || null]
+    );
+    const keyIssue = result.rows[0];
+
+    // Seed the HLPV stage entry if a risk level was provided
+    if (riskLevel) {
+      const stageRow = await client.query(
+        `SELECT psi.id AS instance_id
+         FROM admin_console.project_stage_instances psi
+         JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+         WHERE psi.project_id = $1
+           AND psd.name = 'High-Level Planning View'`,
+        [projectId]
+      );
+      if (stageRow.rows.length > 0) {
+        const stageInstanceId = stageRow.rows[0].instance_id;
+        await client.query(
+          `INSERT INTO admin_console.project_issue_stage_entries
+             (project_stage_instance_id, key_issue_id, risk_level, summary)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (project_stage_instance_id, key_issue_id)
+             WHERE key_issue_id IS NOT NULL
+           DO UPDATE SET
+             risk_level = EXCLUDED.risk_level,
+             summary    = EXCLUDED.summary,
+             updated_at = NOW()`,
+          [stageInstanceId, keyIssue.id, riskLevel, summary || null]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    return keyIssue;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

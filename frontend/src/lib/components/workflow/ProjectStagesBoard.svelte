@@ -10,7 +10,11 @@
     reorderStages,
     reorderIssueTracks,
     createIssueTrack,
-    updateIssueTrack
+    updateIssueTrack,
+    getRefusalReasons,
+    createRefusalReason,
+    updateRefusalReason,
+    deleteRefusalReason
   } from '$lib/services/workflowApi.js';
 
   function focusOnMount(node) { node.focus(); node.select(); }
@@ -20,6 +24,7 @@
 
   let stages = [];
   let tracks = [];
+  let keyIssues = [];
   let entries = [];
   let loading = false;
   let error = null;
@@ -32,6 +37,24 @@
   let entryModalExisting = null;
   let editingTrackId = null;
   let editingLabel = '';
+
+  // Appeal-specific state
+  $: isAppealProject = project?.project_type === 'Appeal';
+  let refusalReasons = [];
+  let showAddReasonForm = false;
+  let editingReasonId = null;
+  let newReason = { title: '', summary: '', riskLevel: '', isKeyIssue: false };
+  let editingReasonData = { title: '', summary: '', riskLevel: '', isKeyIssue: false };
+
+  const RISK_LEVELS = [
+    { value: 'showstopper',         label: 'Showstopper' },
+    { value: 'extremely_high_risk', label: 'Extremely High' },
+    { value: 'high_risk',           label: 'High' },
+    { value: 'medium_high_risk',    label: 'Med-High' },
+    { value: 'medium_risk',         label: 'Medium' },
+    { value: 'medium_low_risk',     label: 'Med-Low' },
+    { value: 'low_risk',            label: 'Low' }
+  ];
 
   const RISK_ORDER = ['showstopper','extremely_high_risk','high_risk','medium_high_risk','medium_risk','medium_low_risk','low_risk'];
   function riskSortValue(level) { const i = RISK_ORDER.indexOf(level); return i === -1 ? 999 : i; }
@@ -64,6 +87,14 @@
     return entries.find(e => e.project_stage_instance_id === stageInstanceId && e.issue_track_id === trackId) || null;
   }
 
+  function getKeyIssueEntry(stageInstanceId, keyIssueId) {
+    return entries.find(e => e.project_stage_instance_id === stageInstanceId && e.key_issue_id === keyIssueId) || null;
+  }
+
+  function isHLPVStage(stage) {
+    return stage.stage_name === 'High-Level Planning View';
+  }
+
   async function loadBoard() {
     if (!project?.id) return;
     loading = true;
@@ -73,13 +104,77 @@
       if (board.stages.length === 0) board = await initializeStageBoard(project.id);
       stages = board.stages;
       tracks = board.tracks;
+      keyIssues = board.keyIssues || [];
       entries = board.entries;
       sortedTracks = applyRiskSort(tracks);
+
+      if (isAppealProject) {
+        const data = await getRefusalReasons(project.id);
+        refusalReasons = data.reasons || [];
+      }
     } catch (err) {
       error = err.message;
     } finally {
       loading = false;
     }
+  }
+
+  async function handleAddReason() {
+    if (!newReason.title.trim()) return;
+    try {
+      const created = await createRefusalReason(project.id, {
+        title: newReason.title.trim(),
+        summary: newReason.summary.trim() || null,
+        riskLevel: newReason.riskLevel || null,
+        isKeyIssue: newReason.isKeyIssue
+      });
+      refusalReasons = [...refusalReasons, created];
+      newReason = { title: '', summary: '', riskLevel: '', isKeyIssue: false };
+      showAddReasonForm = false;
+    } catch {}
+  }
+
+  function startEditReason(reason) {
+    editingReasonId = reason.id;
+    editingReasonData = {
+      title: reason.title,
+      summary: reason.summary || '',
+      riskLevel: reason.risk_level || '',
+      isKeyIssue: reason.is_key_issue
+    };
+  }
+
+  async function commitEditReason(reason) {
+    if (!editingReasonData.title.trim()) return;
+    try {
+      const updated = await updateRefusalReason(project.id, reason.id, {
+        title: editingReasonData.title.trim(),
+        summary: editingReasonData.summary.trim() || null,
+        riskLevel: editingReasonData.riskLevel || null,
+        isKeyIssue: editingReasonData.isKeyIssue
+      });
+      refusalReasons = refusalReasons.map(r => r.id === reason.id ? updated : r);
+      editingReasonId = null;
+    } catch {}
+  }
+
+  async function handleDeleteReason(reason) {
+    try {
+      await deleteRefusalReason(project.id, reason.id);
+      refusalReasons = refusalReasons.filter(r => r.id !== reason.id);
+    } catch {}
+  }
+
+  async function handleToggleReasonKeyIssue(reason) {
+    try {
+      const updated = await updateRefusalReason(project.id, reason.id, {
+        title: reason.title,
+        summary: reason.summary || null,
+        riskLevel: reason.risk_level || null,
+        isKeyIssue: !reason.is_key_issue
+      });
+      refusalReasons = refusalReasons.map(r => r.id === reason.id ? updated : r);
+    } catch {}
   }
 
   async function handleToggleApplicability(stage) {
@@ -99,6 +194,7 @@
       const board = await getStageBoard(project.id);
       stages = board.stages;
       tracks = board.tracks;
+      keyIssues = board.keyIssues || [];
       entries = board.entries;
       sortedTracks = applyRiskSort(tracks);
     } catch {}
@@ -109,7 +205,7 @@
       await createIssueTrack(project.id, { label: event.detail.label, discipline: event.detail.discipline });
       showAddIssueModal = false;
       const board = await getStageBoard(project.id);
-      stages = board.stages; tracks = board.tracks; entries = board.entries;
+      stages = board.stages; tracks = board.tracks; keyIssues = board.keyIssues || []; entries = board.entries;
       sortedTracks = applyRiskSort(tracks);
     } catch {}
   }
@@ -255,7 +351,110 @@
   <div class="loading"><div class="spinner"></div><p>Loading stage board…</p></div>
 {:else if error}
   <p class="empty">Error: {error}</p>
+{:else if isAppealProject}
+  <!-- ── Appeal Board ──────────────────────────────────────────────────── -->
+  <div class="appeal-board">
+    <div class="appeal-stages">
+      {#each stages as stage}
+        <div class="appeal-stage-card" class:complete={stage.is_complete} class:na={!stage.is_applicable}>
+          <button class="btn btn-ghost btn-sm btn-icon" title={stage.is_applicable ? 'Mark N/A' : 'Mark applicable'} on:click={() => handleToggleApplicability(stage)}>
+            <i class="las {stage.is_applicable ? 'la-eye' : 'la-eye-slash'}"></i>
+          </button>
+          <span class="appeal-stage-name" class:na-text={!stage.is_applicable}>{stage.stage_name}</span>
+          <button
+            class="btn btn-ghost btn-sm btn-icon complete-toggle"
+            class:is-done={stage.is_complete}
+            title={stage.is_complete ? 'Completed' : 'Mark complete'}
+            on:click={() => openCompletionModal(stage)}
+            disabled={!stage.is_applicable}
+          >
+            <i class="{stage.is_complete ? 'las la-check-square' : 'lar la-square'}"></i>
+          </button>
+        </div>
+      {/each}
+    </div>
+
+    <div class="rfr-panel">
+      <div class="rfr-header">
+        <h3>Reasons for Refusal</h3>
+        <button class="btn btn-secondary btn-sm" on:click={() => (showAddReasonForm = !showAddReasonForm)}>
+          <i class="las la-plus"></i> Add reason
+        </button>
+      </div>
+
+      {#if showAddReasonForm}
+        <div class="reason-form">
+          <div class="reason-form-row">
+            <input class="reason-input reason-title-input" placeholder="Reason title (required)" bind:value={newReason.title} />
+            <select class="reason-select" bind:value={newReason.riskLevel}>
+              <option value="">Risk level...</option>
+              {#each RISK_LEVELS as r}<option value={r.value}>{r.label}</option>{/each}
+            </select>
+            <label class="reason-key-issue-label">
+              <input type="checkbox" bind:checked={newReason.isKeyIssue} /> Key issue
+            </label>
+          </div>
+          <input class="reason-input" placeholder="Summary (optional)" bind:value={newReason.summary} />
+          <div class="reason-form-actions">
+            <button class="btn btn-primary btn-sm" on:click={handleAddReason}>Save</button>
+            <button class="btn btn-secondary btn-sm" on:click={() => { showAddReasonForm = false; newReason = { title: '', summary: '', riskLevel: '', isKeyIssue: false }; }}>Cancel</button>
+          </div>
+        </div>
+      {/if}
+
+      {#if refusalReasons.length === 0 && !showAddReasonForm}
+        <p class="rfr-empty">No reasons for refusal added yet.</p>
+      {/if}
+
+      {#each refusalReasons as reason}
+        <div class="reason-row" class:key-issue={reason.is_key_issue}>
+          {#if editingReasonId === reason.id}
+            <div class="reason-form">
+              <div class="reason-form-row">
+                <input class="reason-input reason-title-input" bind:value={editingReasonData.title} placeholder="Reason title" />
+                <select class="reason-select" bind:value={editingReasonData.riskLevel}>
+                  <option value="">Risk level...</option>
+                  {#each RISK_LEVELS as r}<option value={r.value}>{r.label}</option>{/each}
+                </select>
+                <label class="reason-key-issue-label">
+                  <input type="checkbox" bind:checked={editingReasonData.isKeyIssue} /> Key issue
+                </label>
+              </div>
+              <input class="reason-input" placeholder="Summary (optional)" bind:value={editingReasonData.summary} />
+              <div class="reason-form-actions">
+                <button class="btn btn-primary btn-sm" on:click={() => commitEditReason(reason)}>Save</button>
+                <button class="btn btn-secondary btn-sm" on:click={() => (editingReasonId = null)}>Cancel</button>
+              </div>
+            </div>
+          {:else}
+            <div class="reason-content">
+              <div class="reason-top">
+                <span class="reason-title" class:text-bold={reason.is_key_issue}>{reason.title}</span>
+                {#if reason.risk_level}
+                  <span class="risk-chip" style={riskStyle(reason.risk_level)}>{riskLabel(reason.risk_level)}</span>
+                {/if}
+                {#if reason.is_key_issue}
+                  <span class="ki-flag-static" title="Key Issue"><i class="las la-flag"></i></span>
+                {/if}
+              </div>
+              {#if reason.summary}
+                <p class="reason-summary">{reason.summary}</p>
+              {/if}
+            </div>
+            <div class="reason-actions">
+              <button class="action-btn" class:flagged={reason.is_key_issue} title={reason.is_key_issue ? 'Remove key issue' : 'Mark as key issue'} on:click={() => handleToggleReasonKeyIssue(reason)}>
+                <i class="las la-flag"></i>
+              </button>
+              <button class="action-btn edit-btn" title="Edit" on:click={() => startEditReason(reason)}><i class="las la-pen"></i></button>
+              <button class="action-btn delete-btn" title="Delete" on:click={() => handleDeleteReason(reason)}><i class="las la-trash"></i></button>
+            </div>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  </div>
 {:else}
+  <!-- ── Standard Board ─────────────────────────────────────────────────── -->
   <div class="board-header">
     <button class="btn btn-secondary btn-sm" on:click={() => (showAddIssueModal = true)}>
       <i class="las la-plus"></i> Add issue row
@@ -304,6 +503,70 @@
         </tr>
       </thead>
       <tbody>
+        <!-- KEY ISSUES SECTION -->
+        {#if keyIssues.length > 0}
+          <tr class="section-header-row">
+            <td colspan={stages.length + 4} class="section-header-cell">
+              <i class="las la-exclamation-triangle"></i> Key Issues
+            </td>
+          </tr>
+          {#each keyIssues as ki}
+            {@const kiEntry0 = getKeyIssueEntry(stages[0]?.instance_id, ki.id)}
+            <tr class="key-issue-row ki-row">
+              <td class="discipline-cell">
+                <div class="discipline-inner">
+                  {#if ki.discipline_group}
+                    <span class="discipline-badge">{ki.discipline_group}</span>
+                  {/if}
+                </div>
+              </td>
+              <td class="track-cell">
+                <div class="track-inner">
+                  <span class="text-bold">{ki.label}</span>
+                </div>
+              </td>
+              <td class="risk-cell">
+                {#if ki.last_known_risk_level}
+                  <span class="risk-chip" style={riskStyle(ki.last_known_risk_level)}>{riskLabel(ki.last_known_risk_level)}</span>
+                {:else}
+                  <span class="text-muted">—</span>
+                {/if}
+              </td>
+              <td class="key-issue-cell">
+                <span class="ki-flag-static" title="Key Issue"><i class="las la-flag"></i></span>
+              </td>
+              {#each stages as stage}
+                {@const kiEntry = getKeyIssueEntry(stage.instance_id, ki.id)}
+                <td
+                  class="entry-cell"
+                  class:na-cell={!stage.is_applicable}
+                  class:entry-clickable={stage.is_applicable && !isHLPVStage(stage)}
+                  class:hlpv-cell={isHLPVStage(stage)}
+                >
+                  {#if !stage.is_applicable}
+                    <span class="text-muted">N/A</span>
+                  {:else if kiEntry}
+                    <div class="entry-inner">
+                      {#if kiEntry.risk_level}
+                        <span class="risk-chip" style={riskStyle(kiEntry.risk_level)}>{riskLabel(kiEntry.risk_level)}</span>
+                      {/if}
+                      {#if kiEntry.summary}<p class="entry-summary">{kiEntry.summary}</p>{/if}
+                    </div>
+                  {:else}
+                    <span class="text-muted">{isHLPVStage(stage) ? '—' : '—'}</span>
+                  {/if}
+                </td>
+              {/each}
+            </tr>
+          {/each}
+          <tr class="section-header-row">
+            <td colspan={stages.length + 4} class="section-header-cell">
+              <i class="las la-layer-group"></i> Disciplines
+            </td>
+          </tr>
+        {/if}
+
+        <!-- DISCIPLINE TRACKS SECTION -->
         {#each sortedTracks as track, ri}
           <tr
             class:key-issue-row={track.is_key_issue}
@@ -357,8 +620,9 @@
               <td
                 class="entry-cell"
                 class:na-cell={!stage.is_applicable}
-                class:entry-clickable={stage.is_applicable}
-                on:click={() => openEntryModal(stage, track)}
+                class:entry-clickable={stage.is_applicable && !isHLPVStage(stage)}
+                class:hlpv-cell={isHLPVStage(stage)}
+                on:click={() => { if (!isHLPVStage(stage)) openEntryModal(stage, track); }}
               >
                 {#if !stage.is_applicable}
                   <span class="text-muted">N/A</span>
@@ -370,7 +634,7 @@
                     {#if entry.summary}<p class="entry-summary">{entry.summary}</p>{/if}
                   </div>
                 {:else}
-                  <span class="text-muted">—</span>
+                  <span class="text-muted">{isHLPVStage(stage) ? '—' : '—'}</span>
                 {/if}
               </td>
             {/each}
@@ -383,6 +647,7 @@
     </table>
   </div>
 {/if}
+<!-- end main board conditional -->
 
 {#if showCompletionModal && completionStage}
   <ProjectStageCompletionModal
@@ -486,4 +751,164 @@
   .entry-summary { margin: 0; font-size: 0.8125rem; color: #475569; line-height: 1.4; }
   .entry-clickable { cursor: pointer; }
   .entry-clickable:hover { background: #f5f3ff; }
+
+  /* HLPV stage cells — read-only, no hover */
+  .hlpv-cell { background: #fafafa; cursor: default; }
+
+  /* Section header rows */
+  .section-header-row td { background: #f1f5f9; padding: 0.35rem 1rem; font-size: 0.75rem; font-weight: 600; color: #64748b; letter-spacing: 0.05em; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; }
+  .section-header-cell { white-space: nowrap; }
+  .section-header-cell i { margin-right: 0.3rem; }
+
+  /* Key issue rows in the ki-row section */
+  .ki-row .discipline-cell,
+  .ki-row .track-cell,
+  .ki-row .risk-cell,
+  .ki-row .key-issue-cell { background: #fffbeb; }
+  .ki-row .entry-cell { background: rgba(245, 158, 11, 0.04); }
+
+  /* Discipline badge on key issue rows */
+  .discipline-badge { font-size: 0.65rem; font-weight: 600; padding: 0.1rem 0.35rem; border-radius: 3px; background: #e0e7ff; color: #4338ca; text-transform: capitalize; }
+
+  /* Static flag for key issues (always flagged, not a button) */
+  .ki-flag-static { color: #f59e0b; font-size: 1.1rem; }
+
+  /* ── Appeal board ─────────────────────────────────────────────────────── */
+  .appeal-board { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  .appeal-stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .appeal-stage-card {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1e293b;
+    min-width: 200px;
+  }
+
+  .appeal-stage-card.complete { background: #f0fdf4; border-color: #86efac; }
+  .appeal-stage-card.na { background: #f8fafc; border-color: #e2e8f0; }
+
+  .appeal-stage-name { flex: 1; }
+
+  /* Reason for Refusal panel */
+  .rfr-panel {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+
+  .rfr-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .rfr-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .rfr-empty { color: #94a3b8; font-size: 0.875rem; padding: 0.5rem 0; }
+
+  .reason-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.875rem 0;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .reason-row:last-child { border-bottom: none; }
+  .reason-row.key-issue { background: #fffbeb; border-radius: 6px; padding: 0.875rem 0.75rem; margin: 0 -0.75rem; }
+
+  .reason-content { flex: 1; min-width: 0; }
+
+  .reason-top {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.25rem;
+  }
+
+  .reason-title { font-size: 0.875rem; color: #1e293b; }
+  .reason-summary { margin: 0; font-size: 0.8125rem; color: #64748b; line-height: 1.5; }
+
+  .reason-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  .reason-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.875rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .reason-form-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .reason-input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background: white;
+    outline: none;
+  }
+
+  .reason-input:focus { border-color: #9333ea; box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.08); }
+  .reason-title-input { flex: 1; }
+
+  .reason-select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background: white;
+    outline: none;
+    min-width: 140px;
+  }
+
+  .reason-key-issue-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.875rem;
+    color: #475569;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .reason-form-actions { display: flex; gap: 0.5rem; }
+
+  .action-btn.flagged { color: #f59e0b !important; }
 </style>

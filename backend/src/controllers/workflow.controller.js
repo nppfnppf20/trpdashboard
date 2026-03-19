@@ -16,7 +16,8 @@ import {
   reorderStageDefinitions,
   reorderIssueTracks,
   createProjectIssueTrack,
-  updateProjectIssueTrack
+  updateProjectIssueTrack,
+  createProjectKeyIssue
 } from '../services/workflow.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,5 +243,26 @@ export async function updateProjectIssueTrackHandler(req, res) {
   } catch (error) {
     console.error('Error updating issue track:', error);
     res.status(500).json({ error: 'Failed to update issue track' });
+  }
+}
+
+export async function createProjectKeyIssueHandler(req, res) {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
+
+    const { label, disciplineGroup, riskLevel, summary } = req.body;
+    if (!label?.trim()) return res.status(400).json({ error: 'label is required' });
+
+    const keyIssue = await createProjectKeyIssue(projectId, {
+      label: label.trim(),
+      disciplineGroup: disciplineGroup?.trim() || null,
+      riskLevel: riskLevel?.trim() || null,
+      summary: summary?.trim() || null
+    });
+    res.status(201).json(keyIssue);
+  } catch (error) {
+    console.error('Error creating key issue:', error);
+    res.status(500).json({ error: 'Failed to create key issue' });
   }
 }

@@ -26,11 +26,13 @@
   let subSectorOptionsLoading = false;
 
   const statusOptions = ['Prospective', 'Instructed', 'Submitted', 'Post-Submission', 'Closed'];
+  const projectTypeOptions = ['Full Application', 'DoC', 'NMA', 'S73', 'Appeal', 'Other'];
 
   // Form data
   let formData = {
     project_id: '',
     project_name: '',
+    project_type: '',
     local_planning_authority: [],
     project_lead: '',
     project_manager: '',
@@ -163,6 +165,7 @@
       formData = {
         project_id: project.project_id || '',
         project_name: project.project_name || '',
+        project_type: project.project_type || '',
         local_planning_authority: project.local_planning_authority || [],
         project_lead: project.project_lead || '',
         project_manager: project.project_manager || '',
@@ -419,6 +422,17 @@
                   </div>
 
                   <div class="form-group">
+                    <label for="project_type">Project Type</label>
+                    <select id="project_type" value={formData.project_type} disabled>
+                      <option value="">Not set</option>
+                      {#each projectTypeOptions as option}
+                        <option value={option}>{option}</option>
+                      {/each}
+                    </select>
+                    <span class="field-hint">Project type cannot be changed after creation.</span>
+                  </div>
+
+                  <div class="form-group">
                     <label for="status">Status</label>
                     <select id="status" bind:value={formData.status}>
                       <option value="">Select status...</option>
@@ -605,7 +619,7 @@
             </div>
           {:else if activeTab === 'stages'}
             <div style="padding: 1.5rem;">
-              <ProjectStagesBoard project={{ id: projectIntId, project_name: formData.project_name }} />
+              <ProjectStagesBoard project={{ id: projectIntId, project_name: formData.project_name, project_type: formData.project_type }} />
             </div>
           {/if}
         </div>
@@ -842,6 +856,19 @@
     color: #ef4444;
     font-size: 0.75rem;
     margin-top: 0.25rem;
+  }
+
+  .field-hint {
+    display: block;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+  }
+
+  .form-group select:disabled {
+    background: #f8fafc;
+    color: #64748b;
+    cursor: not-allowed;
   }
 
   .lpa-input-group {

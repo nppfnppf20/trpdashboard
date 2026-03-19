@@ -148,3 +148,65 @@ export async function updateIssueTrack(issueTrackId, updates) {
   if (!res.ok) throw new Error('Failed to update issue track');
   return res.json();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Key Issues
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createKeyIssue(projectId, { label, disciplineGroup, riskLevel, summary }) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/key-issues`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label, disciplineGroup, riskLevel, summary })
+  });
+  if (!res.ok) throw new Error('Failed to create key issue');
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Refusal Reasons (appeal projects)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getRefusalReasons(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/refusal-reasons`);
+  if (!res.ok) throw new Error('Failed to fetch refusal reasons');
+  return res.json(); // { reasons: [...] }
+}
+
+export async function createRefusalReason(projectId, { title, summary, riskLevel, isKeyIssue }) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/refusal-reasons`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, summary, riskLevel, isKeyIssue })
+  });
+  if (!res.ok) throw new Error('Failed to create refusal reason');
+  return res.json();
+}
+
+export async function updateRefusalReason(projectId, reasonId, data) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/refusal-reasons/${reasonId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to update refusal reason');
+  return res.json();
+}
+
+export async function deleteRefusalReason(projectId, reasonId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/refusal-reasons/${reasonId}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error('Failed to delete refusal reason');
+  return res.json();
+}
+
+export async function reorderRefusalReasons(projectId, orderedIds) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/refusal-reasons/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedIds })
+  });
+  if (!res.ok) throw new Error('Failed to reorder refusal reasons');
+  return res.json();
+}

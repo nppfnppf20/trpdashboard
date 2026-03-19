@@ -689,6 +689,14 @@
       {/if}
     </div>
 
+    <!-- Appeal warning banner -->
+    {#if selectedProject?.project_type === 'Appeal'}
+      <div class="appeal-warning">
+        <i class="las la-info-circle"></i>
+        HLPV is not typically required for appeal projects but remains available if needed.
+      </div>
+    {/if}
+
     <!-- Tab Content -->
     <div class="tab-content">
       {#if activeTab === 'analysis'}
@@ -727,6 +735,7 @@
           treesData={treesResult}
           airfieldsData={airfieldsResult}
           {analysisSessionId}
+          projectId={selectedProject?.id || null}
         />
       {/if}
     </div>
@@ -768,6 +777,24 @@
 />
 
 <style>
+  .appeal-warning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    color: #92400e;
+  }
+
+  .appeal-warning i {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+
   .project-display {
     display: flex;
     align-items: center;

@@ -12,6 +12,7 @@ import {
   logChange,
   getChangeLog
 } from '../services/analysisSession.service.js';
+import { syncHLPVStageEntry } from '../services/workflow.service.js';
 
 /**
  * POST /api/session/create
@@ -171,6 +172,11 @@ export async function saveSessionEdit(req, res) {
     }
 
     console.log(`✅ Edit saved for session ${sessionId}, discipline ${discipline}`);
+
+    // Auto-sync HLPV stage entry (fire-and-forget — don't block the response)
+    syncHLPVStageEntry(sessionId, discipline, editedRisk, editedSummary).catch(err =>
+      console.error('⚠️ HLPV stage sync failed (non-fatal):', err.message)
+    );
 
     res.json({
       success: true,
