@@ -46,6 +46,89 @@ export async function getSurveyorOrganisationById(req, res) {
 }
 
 /**
+ * POST /api/admin-console/surveyor-organisations
+ * Create a new surveyor organisation
+ */
+export async function createSurveyorOrganisation(req, res) {
+  try {
+    const { organisation, discipline, location, notes, approval_status, small_business, contacts } = req.body;
+
+    if (!organisation?.trim()) {
+      return res.status(400).json({ error: 'Organisation name is required' });
+    }
+    if (!discipline?.trim()) {
+      return res.status(400).json({ error: 'Discipline is required' });
+    }
+
+    const surveyor = await surveyorOrganisationsService.createSurveyorOrganisation({
+      organisation: organisation.trim(),
+      discipline: discipline.trim(),
+      location,
+      notes,
+      approval_status,
+      small_business,
+      contacts: contacts || []
+    });
+    res.status(201).json(surveyor);
+  } catch (error) {
+    console.error('Error creating surveyor organisation:', error);
+    res.status(500).json({ error: 'Failed to create surveyor organisation', details: error.message });
+  }
+}
+
+/**
+ * PUT /api/admin-console/surveyor-organisations/:id
+ * Update a surveyor organisation
+ */
+export async function updateSurveyorOrganisation(req, res) {
+  try {
+    const { id } = req.params;
+    const { organisation, discipline, location, notes, approval_status, small_business, contacts } = req.body;
+
+    if (!organisation?.trim()) {
+      return res.status(400).json({ error: 'Organisation name is required' });
+    }
+    if (!discipline?.trim()) {
+      return res.status(400).json({ error: 'Discipline is required' });
+    }
+
+    const surveyor = await surveyorOrganisationsService.updateSurveyorOrganisation(id, {
+      organisation: organisation.trim(),
+      discipline: discipline.trim(),
+      location,
+      notes,
+      approval_status,
+      small_business,
+      contacts: contacts || []
+    });
+
+    if (!surveyor) {
+      return res.status(404).json({ error: 'Surveyor organisation not found' });
+    }
+
+    res.json(surveyor);
+  } catch (error) {
+    console.error('Error updating surveyor organisation:', error);
+    res.status(500).json({ error: 'Failed to update surveyor organisation', details: error.message });
+  }
+}
+
+/**
+ * DELETE /api/admin-console/surveyor-organisations/:id
+ * Delete a surveyor organisation
+ */
+export async function deleteSurveyorOrganisation(req, res) {
+  try {
+    const { id } = req.params;
+    await surveyorOrganisationsService.deleteSurveyorOrganisation(id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting surveyor organisation:', error);
+    res.status(500).json({ error: 'Failed to delete surveyor organisation', details: error.message });
+  }
+}
+
+/**
  * POST /api/admin-console/surveyor-organisations/refresh-ratings
  * Refresh ratings for all surveyor organisations
  */

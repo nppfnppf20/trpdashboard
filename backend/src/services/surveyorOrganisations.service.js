@@ -102,6 +102,108 @@ export async function getSurveyorOrganisationById(id) {
 }
 
 /**
+ * Create a new surveyor organisation with optional contacts
+ */
+export async function createSurveyorOrganisation(data) {
+  const { organisation, discipline, location, notes, approval_status, small_business, contacts = [] } = data;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orgResult = await client.query(
+      `INSERT INTO admin_console.surveyor_organisations (organisation, discipline, location, notes, approval_status, small_business)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [organisation, discipline, location || null, notes || null, approval_status || 'approved', small_business || null]
+    );
+    const orgId = orgResult.rows[0].id;
+
+    for (const contact of contacts) {
+      await client.query(
+        `INSERT INTO admin_console.contacts (name, email, phone_number, organisation_id, organisation_type, is_primary)
+         VALUES ($1, $2, $3, $4, 'surveyor', $5)`,
+        [contact.name, contact.email || null, contact.phone_number || null, orgId, contact.is_primary || false]
+      );
+    }
+
+    await client.query('COMMIT');
+    return getSurveyorOrganisationById(orgId);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Update a surveyor organisation and replace its contacts
+ */
+export async function updateSurveyorOrganisation(id, data) {
+  const { organisation, discipline, location, notes, approval_status, small_business, contacts = [] } = data;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `UPDATE admin_console.surveyor_organisations
+       SET organisation = $1, discipline = $2, location = $3, notes = $4,
+           approval_status = $5, small_business = $6, updated_at = now()
+       WHERE id = $7`,
+      [organisation, discipline, location || null, notes || null, approval_status || 'approved', small_business || null, id]
+    );
+
+    // Replace contacts: delete existing, insert new
+    await client.query(
+      `DELETE FROM admin_console.contacts WHERE organisation_id = $1 AND organisation_type = 'surveyor'`,
+      [id]
+    );
+
+    for (const contact of contacts) {
+      await client.query(
+        `INSERT INTO admin_console.contacts (name, email, phone_number, organisation_id, organisation_type, is_primary)
+         VALUES ($1, $2, $3, $4, 'surveyor', $5)`,
+        [contact.name, contact.email || null, contact.phone_number || null, id, contact.is_primary || false]
+      );
+    }
+
+    await client.query('COMMIT');
+    return getSurveyorOrganisationById(id);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Delete a surveyor organisation (contacts cascade via FK or deleted explicitly)
+ */
+export async function deleteSurveyorOrganisation(id) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM admin_console.contacts WHERE organisation_id = $1 AND organisation_type = 'surveyor'`,
+      [id]
+    );
+    await client.query(
+      `DELETE FROM admin_console.surveyor_organisations WHERE id = $1`,
+      [id]
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Refresh ratings for a single surveyor organisation
  */
 export async function refreshSurveyorRatings(surveyorOrgId) {

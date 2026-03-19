@@ -8,14 +8,23 @@ import * as surveyorOrganisationsController from '../controllers/surveyorOrganis
 
 const router = express.Router();
 
-// GET /api/admin-console/surveyor-organisations - Get all surveyor organisations
+// GET /api/admin-console/surveyor-organisations
 router.get('/', surveyorOrganisationsController.getAllSurveyorOrganisations);
 
-// POST /api/admin-console/surveyor-organisations/refresh-ratings - Refresh all ratings
+// POST /api/admin-console/surveyor-organisations
+router.post('/', surveyorOrganisationsController.createSurveyorOrganisation);
+
+// POST /api/admin-console/surveyor-organisations/refresh-ratings
 router.post('/refresh-ratings', surveyorOrganisationsController.refreshAllRatings);
 
-// GET /api/admin-console/surveyor-organisations/:id - Get single surveyor organisation
+// GET /api/admin-console/surveyor-organisations/:id
 router.get('/:id', surveyorOrganisationsController.getSurveyorOrganisationById);
+
+// PUT /api/admin-console/surveyor-organisations/:id
+router.put('/:id', surveyorOrganisationsController.updateSurveyorOrganisation);
+
+// DELETE /api/admin-console/surveyor-organisations/:id
+router.delete('/:id', surveyorOrganisationsController.deleteSurveyorOrganisation);
 
 export default router;
 
