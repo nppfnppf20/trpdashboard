@@ -176,11 +176,11 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th class={getSortClass('organisation')} on:click={() => handleSort('organisation')}>
+            <th class={getSortClass('organisation')} on:click={() => handleSort('organisation')} style="width: 40%">
               Organisation <span class="sort-indicator"><i class="las {getSortIcon('organisation')}"></i></span>
             </th>
-            <th class="no-sort">Primary Contact</th>
-            <th class="no-sort">Actions</th>
+            <th class="no-sort" style="width: 50%">Primary Contact</th>
+            <th class="no-sort" style="width: 10%">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -237,7 +237,8 @@
 
 <style>
   .clients-page {
-    max-width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
   }
 
   .clients-page :global(.table-controls) {
@@ -293,12 +294,12 @@
   }
 
   .btn-primary {
-    background: #9333ea;
+    background: #3b82f6;
     color: white;
   }
 
   .btn-primary:hover {
-    background: #7e22ce;
+    background: #2563eb;
   }
 
   .empty-state .btn {

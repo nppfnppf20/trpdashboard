@@ -488,11 +488,11 @@
   }
 
   .btn-primary {
-    background: #9333ea;
+    background: #3b82f6;
     color: white;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #7e22ce;
+    background: #2563eb;
   }
 </style>
