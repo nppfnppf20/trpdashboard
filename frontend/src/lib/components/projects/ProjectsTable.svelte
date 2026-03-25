@@ -146,7 +146,7 @@
       project.project_name?.toLowerCase().includes(search) ||
       project.client?.toLowerCase().includes(search) ||
       project.project_lead?.toLowerCase().includes(search) ||
-      project.sector?.toLowerCase().includes(search)
+      (project.sectors || []).some(s => s.toLowerCase().includes(search))
     );
   });
 
@@ -364,8 +364,8 @@
                 {formatLPA(project.local_planning_authority)}
               </td>
               <td>{project.project_lead || '-'}</td>
-              <td>{project.sector || '-'}</td>
-              <td>{project.sub_sector || '-'}</td>
+              <td>{(project.sectors || []).join(', ') || '-'}</td>
+              <td>{(project.sub_sectors || []).join(', ') || '-'}</td>
               <td>{project.area || '-'}</td>
               <td class="status-cell">
                 <span

@@ -100,8 +100,8 @@ export function buildPlaceholderMap(projectData) {
     'project_lead': projectData.project_lead || 'N/A',
     'project_manager': projectData.project_manager || 'N/A',
     'project_director': projectData.project_director || 'N/A',
-    'sub_sector': projectData.sub_sector || 'N/A',
-    'sector': projectData.sector || 'N/A',
+    'sub_sector': Array.isArray(projectData.sub_sectors) && projectData.sub_sectors.length ? projectData.sub_sectors.join(', ') : 'N/A',
+    'sector': Array.isArray(projectData.sectors) && projectData.sectors.length ? projectData.sectors.join(', ') : 'N/A',
     'designations_on_site': projectData.designations_on_site || 'None identified',
     'relevant_nearby_designations': projectData.relevant_nearby_designations || 'None identified'
   };
@@ -111,10 +111,10 @@ export function buildPlaceholderMap(projectData) {
   placeholderMap['Site_address_including_postcode'] = placeholderMap['address'];
   placeholderMap['Client_or_SPV_name_'] = placeholderMap['client_spv_name'];
   placeholderMap['Local_planning_authority'] = placeholderMap['local_planning_authority'];
-  placeholderMap['Detailed_Description_of_Development_'] = 
-    projectData.sub_sector && projectData.sub_sector !== 'N/A' 
-      ? `${projectData.sub_sector} development` 
-      : '[Insert detailed development description]';
+  const firstSubSector = Array.isArray(projectData.sub_sectors) ? projectData.sub_sectors[0] : null;
+  placeholderMap['Detailed_Description_of_Development_'] = firstSubSector
+    ? `${firstSubSector} development`
+    : '[Insert detailed development description]';
   
   // Technical solar fields - leave as placeholders (will be populated from another source later)
   placeholderMap['GWh_per_year'] = 'xx';

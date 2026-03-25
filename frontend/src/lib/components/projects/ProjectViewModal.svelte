@@ -557,11 +557,11 @@
                   </div>
                   <div class="detail-group">
                     <label>Sector</label>
-                    <div class="detail-value">{projectData.sector || '-'}</div>
+                    <div class="detail-value">{(projectData.sectors || []).join(', ') || '-'}</div>
                   </div>
                   <div class="detail-group">
                     <label>Sub-sector</label>
-                    <div class="detail-value">{projectData.sub_sector || '-'}</div>
+                    <div class="detail-value">{(projectData.sub_sectors || []).join(', ') || '-'}</div>
                   </div>
                   <div class="detail-group">
                     <label>Address</label>

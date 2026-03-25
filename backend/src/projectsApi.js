@@ -18,8 +18,8 @@ async function createProject(req, res) {
     area,
     client,
     client_spv_name,
-    sector,
-    sub_sector,
+    sectors,     // Array of strings
+    sub_sectors, // Array of strings
     designations_on_site,
     relevant_nearby_designations,
     status
@@ -53,7 +53,7 @@ async function createProject(req, res) {
       `INSERT INTO projects
        (project_id, project_name, local_planning_authority, project_lead,
         project_manager, project_director, address, polygon_geojson, area,
-        client, client_spv_name, sector, sub_sector,
+        client, client_spv_name, sectors, sub_sectors,
         designations_on_site, relevant_nearby_designations, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
@@ -69,8 +69,8 @@ async function createProject(req, res) {
         area || null,
         client || null,
         client_spv_name || null,
-        sector || null,
-        sub_sector || null,
+        sectors ? JSON.stringify(sectors) : '[]',
+        sub_sectors ? JSON.stringify(sub_sectors) : '[]',
         designations_on_site || null,
         relevant_nearby_designations || null,
         status || null
@@ -90,7 +90,7 @@ async function getAllProjects(req, res) {
     const result = await pool.query(
       `SELECT id, unique_id, project_id, project_name, local_planning_authority,
               project_lead, project_manager, project_director, address, area,
-              client, client_spv_name, sector, sub_sector,
+              client, client_spv_name, sectors, sub_sectors,
               designations_on_site, relevant_nearby_designations, status,
               case_officer_name, case_officer_email, case_officer_phone_number,
               lpa_reference, submission_date, validation_date,
@@ -173,8 +173,8 @@ async function updateProject(req, res) {
     area,
     client,
     client_spv_name,
-    sector,
-    sub_sector,
+    sectors,
+    sub_sectors,
     designations_on_site,
     relevant_nearby_designations,
     status,
@@ -210,8 +210,8 @@ async function updateProject(req, res) {
            area = COALESCE($9, area),
            client = COALESCE($10, client),
            client_spv_name = COALESCE($11, client_spv_name),
-           sector = COALESCE($12, sector),
-           sub_sector = COALESCE($13, sub_sector),
+           sectors = COALESCE($12, sectors),
+           sub_sectors = COALESCE($13, sub_sectors),
            designations_on_site = COALESCE($14, designations_on_site),
            relevant_nearby_designations = COALESCE($15, relevant_nearby_designations),
            status = COALESCE($16, status),
@@ -234,7 +234,10 @@ async function updateProject(req, res) {
       [
         project_id, project_name, lpaJson, project_lead, project_manager,
         project_director, address, polygon_geojson, area, client,
-        client_spv_name, sector, sub_sector, designations_on_site,
+        client_spv_name,
+        sectors ? JSON.stringify(sectors) : null,
+        sub_sectors ? JSON.stringify(sub_sectors) : null,
+        designations_on_site,
         relevant_nearby_designations, status,
         case_officer_name || null,
         case_officer_email || null,

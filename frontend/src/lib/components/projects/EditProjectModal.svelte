@@ -4,6 +4,7 @@
   import { authFetch } from '$lib/api/client.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
+  import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
 
   export let isOpen = false;
@@ -42,8 +43,8 @@
     area: '',
     client: '',
     client_spv_name: '',
-    sector: '',
-    sub_sector: '',
+    sectors: [],
+    sub_sectors: [],
     designations_on_site: '',
     relevant_nearby_designations: '',
     status: '',
@@ -175,8 +176,8 @@
         area: project.area || '',
         client: project.client || '',
         client_spv_name: project.client_spv_name || '',
-        sector: project.sector || '',
-        sub_sector: project.sub_sector || '',
+        sectors: project.sectors || [],
+        sub_sectors: project.sub_sectors || [],
         designations_on_site: project.designations_on_site || '',
         relevant_nearby_designations: project.relevant_nearby_designations || '',
         status: project.status || '',
@@ -331,7 +332,7 @@
       project_id: '', project_name: '', local_planning_authority: [],
       project_lead: '', project_manager: '', project_director: '',
       address: '', polygon_geojson: null, area: '', client: '',
-      client_spv_name: '', sector: '', sub_sector: '',
+      client_spv_name: '', sectors: [], sub_sectors: [],
       designations_on_site: '', relevant_nearby_designations: '', status: '',
       case_officer_name: '', case_officer_email: '', case_officer_phone_number: '',
       lpa_reference: '', submission_date: '', validation_date: '',
@@ -443,15 +444,23 @@
                   </div>
 
                   <div class="form-group">
-                    <label for="sector">Sector</label>
-                    <SearchableDropdown id="sector" options={sectorOptions} bind:value={formData.sector}
-                      valueField="label" placeholder="Select sector..." loading={sectorOptionsLoading} />
+                    <label>Sector</label>
+                    <MultiSelectDropdown
+                      options={sectorOptions}
+                      bind:selected={formData.sectors}
+                      placeholder="Select sector(s)..."
+                      loading={sectorOptionsLoading}
+                    />
                   </div>
 
                   <div class="form-group">
-                    <label for="sub_sector">Sub-sector</label>
-                    <SearchableDropdown id="sub_sector" options={subSectorOptions} bind:value={formData.sub_sector}
-                      valueField="label" placeholder="Select sub-sector..." loading={subSectorOptionsLoading} />
+                    <label>Sub-sector</label>
+                    <MultiSelectDropdown
+                      options={subSectorOptions}
+                      bind:selected={formData.sub_sectors}
+                      placeholder="Select sub-sector(s)..."
+                      loading={subSectorOptionsLoading}
+                    />
                   </div>
 
                   <div class="form-group">
@@ -967,5 +976,69 @@
   .btn-save:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .multi-autocomplete {
+    position: relative;
+  }
+
+  .multi-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 50;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 2px;
+  }
+
+  .multi-option {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.875rem;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #1e293b;
+    cursor: pointer;
+  }
+
+  .multi-option:last-child { border-bottom: none; }
+  .multi-option:hover { background: #f3e8ff; color: #7e22ce; }
+
+  .multi-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .multi-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    background: #f3e8ff;
+    color: #7e22ce;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+  }
+
+  .multi-tag button {
+    background: none;
+    border: none;
+    color: #7e22ce;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
   }
 </style>

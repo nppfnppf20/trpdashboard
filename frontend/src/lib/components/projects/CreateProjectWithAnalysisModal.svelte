@@ -31,7 +31,7 @@
     area: '',
     client: '',
     client_spv_name: '',
-    sector: '',
+    sectors: [],
     project_type: '',
     designations_on_site: '',
     relevant_nearby_designations: ''
@@ -252,7 +252,7 @@
       area: '',
       client: '',
       client_spv_name: '',
-      sector: '',
+      sectors: [],
       project_type: '',
       designations_on_site: '',
       relevant_nearby_designations: ''
@@ -379,7 +379,7 @@
             <!-- Project Details -->
             <div class="form-group">
               <label for="sector">Sector</label>
-              <input id="sector" type="text" bind:value={formData.sector} placeholder="" />
+              <input id="sector" type="text" placeholder="(set from project detail)" disabled />
             </div>
 
             <div class="form-group">

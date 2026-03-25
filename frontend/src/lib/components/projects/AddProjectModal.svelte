@@ -4,6 +4,7 @@
   import { authFetch } from '$lib/api/client.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
+  import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import NudgeBoundaryModal from '$lib/components/projects/NudgeBoundaryModal.svelte';
 
   export let isOpen = false;
@@ -37,8 +38,8 @@
     area: '',
     client: '',
     client_spv_name: '',
-    sector: '',
-    sub_sector: '',
+    sectors: [],
+    sub_sectors: [],
     designations_on_site: '',
     relevant_nearby_designations: '',
     status: ''
@@ -47,6 +48,7 @@
   // Status options for dropdown
   const statusOptions = ['Prospective', 'Instructed', 'Submitted', 'Post-Submission', 'Closed'];
   const projectTypeOptions = ['Full Application', 'DoC', 'NMA', 'S73', 'Appeal', 'Other'];
+
 
   // LPA input handling
   let lpaInput = '';
@@ -317,6 +319,7 @@
     showLpaDropdown = lpaInput.trim().length > 1;
   }
 
+
   function validateForm() {
     errors = {};
 
@@ -389,8 +392,8 @@
       area: '',
       client: '',
       client_spv_name: '',
-      sector: '',
-      sub_sector: '',
+      sectors: [],
+      sub_sectors: [],
       designations_on_site: '',
       relevant_nearby_designations: '',
       status: ''
@@ -571,25 +574,21 @@
 
             <!-- Project Details -->
             <div class="form-group">
-              <label for="sector">Sector</label>
-              <SearchableDropdown
-                id="sector"
+              <label>Sector</label>
+              <MultiSelectDropdown
                 options={sectorOptions}
-                bind:value={formData.sector}
-                valueField="label"
-                placeholder="Select sector..."
+                bind:selected={formData.sectors}
+                placeholder="Select sector(s)..."
                 loading={sectorOptionsLoading}
               />
             </div>
 
             <div class="form-group">
-              <label for="sub_sector">Sub-sector</label>
-              <SearchableDropdown
-                id="sub_sector"
+              <label>Sub-sector</label>
+              <MultiSelectDropdown
                 options={subSectorOptions}
-                bind:value={formData.sub_sector}
-                valueField="label"
-                placeholder="Select sub-sector..."
+                bind:selected={formData.sub_sectors}
+                placeholder="Select sub-sector(s)..."
                 loading={subSectorOptionsLoading}
               />
             </div>
