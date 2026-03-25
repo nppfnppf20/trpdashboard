@@ -465,7 +465,7 @@
         <h2>View Project</h2>
         <div class="header-actions">
           <button class="btn-edit-header" on:click={onEdit} title="Edit project">
-            <i class="las la-edit"></i>
+            <i class="las la-edit"></i> Edit
           </button>
           <button class="close-btn" on:click={handleClose}>&times;</button>
         </div>
@@ -1388,22 +1388,26 @@
   }
 
   .btn-edit-header {
-    background: none;
-    border: none;
-    color: #64748b;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    color: #475569;
     cursor: pointer;
-    padding: 0;
-    width: 2rem;
-    height: 2rem;
+    padding: 0.4rem 0.9rem;
     display: flex;
     align-items: center;
-    justify-content: center;
-    transition: color 0.2s;
-    font-size: 1.5rem;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
     line-height: 1;
   }
 
+  .btn-edit-header i { font-size: 1.1rem; }
+
   .btn-edit-header:hover {
+    background: #e2e8f0;
     color: #1e293b;
   }
 
