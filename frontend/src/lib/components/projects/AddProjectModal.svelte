@@ -629,10 +629,14 @@
         </div>
       </div>
 
+      {#if errors.submit}
+        <div class="submit-error-banner">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>{errors.submit}</span>
+        </div>
+      {/if}
+
       <div class="modal-footer">
-        {#if errors.submit}
-          <span class="error-text submit-error">{errors.submit}</span>
-        {/if}
         <button class="btn-cancel" on:click={handleClose} disabled={saving}>Cancel</button>
         <button class="btn-save" on:click={handleSave} disabled={saving}>
           {saving ? 'Saving...' : 'Create Project'}
@@ -883,8 +887,22 @@
     border-top: 1px solid #e2e8f0;
   }
 
-  .submit-error {
-    margin-right: auto;
+  .submit-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin: 0 2rem;
+    padding: 0.875rem 1.125rem;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 0.5rem;
+    color: #b91c1c;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .submit-error-banner svg {
+    flex-shrink: 0;
   }
 
   .btn-cancel,
