@@ -18,6 +18,9 @@
   let sectorOptionsLoading = false;
   let subSectorOptions = [];
   let subSectorOptionsLoading = false;
+  let lpaOptions = [];
+  let lpaOptionsLoading = false;
+  let showLpaDropdown = false;
 
   // Form data matching database schema
   let formData = {
@@ -46,6 +49,15 @@
 
   // LPA input handling
   let lpaInput = '';
+
+  $: filteredLpaOptions = lpaInput.trim().length > 1
+    ? lpaOptions
+        .filter(opt =>
+          opt.label.toLowerCase().includes(lpaInput.toLowerCase()) &&
+          !formData.local_planning_authority.includes(opt.label)
+        )
+        .slice(0, 8)
+    : [];
 
   // Map state
   let mapContainer;
@@ -80,6 +92,10 @@
     loadSubSectorOptions();
   }
 
+  $: if (browser && isOpen && lpaOptions.length === 0 && !lpaOptionsLoading) {
+    loadLpaOptions();
+  }
+
   async function loadClientOptions() {
     clientOptionsLoading = true;
     try {
@@ -110,6 +126,17 @@
       console.error('Failed to load sector options:', error);
     } finally {
       sectorOptionsLoading = false;
+    }
+  }
+
+  async function loadLpaOptions() {
+    lpaOptionsLoading = true;
+    try {
+      lpaOptions = await getLookupOptions('local_planning_authorities');
+    } catch (error) {
+      console.error('Failed to load LPA options:', error);
+    } finally {
+      lpaOptionsLoading = false;
     }
   }
 
@@ -261,11 +288,12 @@
     }
   }
 
-  function addLPA() {
-    if (lpaInput.trim()) {
-      formData.local_planning_authority = [...formData.local_planning_authority, lpaInput.trim()];
-      lpaInput = '';
+  function selectLpa(lpaLabel) {
+    if (!formData.local_planning_authority.includes(lpaLabel)) {
+      formData.local_planning_authority = [...formData.local_planning_authority, lpaLabel];
     }
+    lpaInput = '';
+    showLpaDropdown = false;
   }
 
   function removeLPA(index) {
@@ -275,8 +303,16 @@
   function handleLPAKeydown(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      addLPA();
+      if (filteredLpaOptions.length > 0) {
+        selectLpa(filteredLpaOptions[0].label);
+      }
+    } else if (e.key === 'Escape') {
+      showLpaDropdown = false;
     }
+  }
+
+  function handleLpaInput() {
+    showLpaDropdown = lpaInput.trim().length > 1;
   }
 
   function validateForm() {
@@ -433,15 +469,27 @@
             <!-- Local Planning Authority (Multiple) -->
             <div class="form-group">
               <label for="lpa">Local Planning Authority</label>
-              <div class="lpa-input-group">
+              <div class="lpa-autocomplete">
                 <input
                   id="lpa"
                   type="text"
                   bind:value={lpaInput}
+                  on:input={handleLpaInput}
                   on:keydown={handleLPAKeydown}
-                  placeholder="Type LPA name and press Add"
+                  on:focus={() => { if (lpaInput.trim().length > 1) showLpaDropdown = true; }}
+                  on:blur={() => setTimeout(() => { showLpaDropdown = false; }, 150)}
+                  placeholder={lpaOptionsLoading ? 'Loading...' : formData.local_planning_authority.length > 0 ? 'Search to add another LPA...' : 'Search for an LPA...'}
+                  autocomplete="off"
                 />
-                <button type="button" class="add-btn" on:click={addLPA}>Add</button>
+                {#if showLpaDropdown && filteredLpaOptions.length > 0}
+                  <div class="lpa-dropdown">
+                    {#each filteredLpaOptions as option}
+                      <button type="button" class="lpa-option" on:mousedown={() => selectLpa(option.label)}>
+                        {option.label}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
               </div>
               {#if formData.local_planning_authority.length > 0}
                 <div class="lpa-tags">
@@ -708,29 +756,46 @@
     margin-top: 0.25rem;
   }
 
-  .lpa-input-group {
-    display: flex;
-    gap: 0.5rem;
+  .lpa-autocomplete {
+    position: relative;
   }
 
-  .lpa-input-group input {
-    flex: 1;
-  }
-
-  .add-btn {
-    padding: 0.625rem 1rem;
-    background: #9333ea;
-    color: white;
-    border: none;
+  .lpa-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #cbd5e1;
     border-radius: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 50;
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: 2px;
   }
 
-  .add-btn:hover {
-    background: #7e22ce;
+  .lpa-option {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.875rem;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #1e293b;
+    cursor: pointer;
+  }
+
+  .lpa-option:last-child {
+    border-bottom: none;
+  }
+
+  .lpa-option:hover {
+    background: #f3e8ff;
+    color: #7e22ce;
   }
 
   .lpa-tags {

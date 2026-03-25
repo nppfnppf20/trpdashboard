@@ -5,7 +5,7 @@
 <div class="admin-console-home">
   <div class="header">
     <h1>Admin Console</h1>
-    <p>Manage surveyors and administrative data</p>
+    <p>Manage surveyors, clients, and administrative data</p>
   </div>
 
   <div class="tools-grid">
@@ -15,6 +15,13 @@
       </div>
       <h2>Surveyors</h2>
       <p>View and manage surveyor organisations, contacts, and performance ratings</p>
+    </button>
+    <button class="tool-card" on:click={() => goto('/admin-console/clients')}>
+      <div class="card-icon">
+        <i class="las la-building"></i>
+      </div>
+      <h2>Clients</h2>
+      <p>View and manage client organisations and their contacts</p>
     </button>
   </div>
 </div>

@@ -43,6 +43,12 @@ const LOOKUP_CONFIGS = {
     labelColumn: 'item',
     orderBy: 'item',
     distinct: true
+  },
+  'local_planning_authorities': {
+    table: 'admin_console.local_planning_authorities',
+    idColumn: 'lpa_code',
+    labelColumn: 'name',
+    orderBy: 'name'
   }
 };
 
