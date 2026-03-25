@@ -5,13 +5,17 @@ const { saveAs } = fileSaver;
 
 // Map template_type values to static .docx template files
 const TEMPLATE_MAP = {
-  planning_statement_solar: '/planningstatementsolar.docx'
+  planning_statement_solar: '/planningstatementsolar.docx',
+  site_justification:       '/planningstatementsolar.docx',
+  eia_screening:            '/planningstatementsolar.docx',
+  cover_letter:             '/letter.docx',
+  certificate_b_notice:     '/letter.docx'
 };
 
 const DEFAULT_TEMPLATE = '/planningstatementsolar.docx';
 
 function getTemplatePath(deliverable) {
-  return TEMPLATE_MAP[deliverable.template_type] || DEFAULT_TEMPLATE;
+  return TEMPLATE_MAP[deliverable.deliverable_type] || DEFAULT_TEMPLATE;
 }
 
 /**
@@ -25,16 +29,16 @@ export async function exportDeliverableToWord(deliverable, html) {
   const arrayBuffer = await response.arrayBuffer();
   const zip = new PizZip(arrayBuffer);
 
-  const documentXml = zip.file('word/document.xml').asText();
+  const documentXml = new TextDecoder('utf-8').decode(zip.file('word/document.xml').asUint8Array());
 
   // Generate OOXML body content from HTML
   const bodyContent = htmlToOOXML(html);
 
-  // Insert content before the sectPr, preserving existing body content (logo etc.)
-  const newDocXml = documentXml.replace(
-    /(<w:sectPr[\s\S]*?<\/w:sectPr><\/w:body>)/,
-    `${bodyContent}$1`
-  );
+  // Insert content before the final sectPr, preserving all existing body content (logo, text etc.)
+  const insertAt = documentXml.lastIndexOf('<w:sectPr');
+  const bodyClose = documentXml.lastIndexOf('</w:body>');
+  const position = (insertAt !== -1 && insertAt < bodyClose) ? insertAt : bodyClose;
+  const newDocXml = documentXml.slice(0, position) + bodyContent + documentXml.slice(position);
 
   zip.file('word/document.xml', newDocXml);
 
@@ -61,12 +65,16 @@ function elementToOOXML(el) {
 
   switch (tag) {
     case 'h1':
-      return paragraph('Heading1', inlineRuns(el), { pageBreakBefore: false });
+      stripLeadingNumber(el);
+      return paragraph('Heading1', inlineRuns(el));
     case 'h2':
+      stripLeadingNumber(el);
       return paragraph('Heading2', inlineRuns(el));
     case 'h3':
+      stripLeadingNumber(el);
       return paragraph('Heading3', inlineRuns(el));
     case 'h4':
+      stripLeadingNumber(el);
       return paragraph('Heading4', inlineRuns(el));
     case 'p':
       return paragraph('Normal', inlineRuns(el));
@@ -90,6 +98,12 @@ function paragraph(styleId, runsXml, options = {}) {
     ? '<w:pageBreakBefore/>'
     : '';
   return `<w:p><w:pPr><w:pStyle w:val="${styleId}"/>${pageBreak}</w:pPr>${runsXml}</w:p>`;
+}
+
+function stripLeadingNumber(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const firstText = walker.nextNode();
+  if (firstText) firstText.nodeValue = firstText.nodeValue.replace(/^\d+(\.\d+)*\.?\s+/, '');
 }
 
 function inlineRuns(el) {

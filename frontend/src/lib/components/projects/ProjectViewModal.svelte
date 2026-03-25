@@ -495,7 +495,7 @@
           class="tab-button {activeTab === 'conflict' ? 'active' : ''}"
           on:click={() => activeTab = 'conflict'}
         >
-          Initial Conflict Check
+          Nearby Renewables Check
         </button>
         <button
           class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
@@ -762,12 +762,12 @@
                 <div class="error-state">
                   <i class="las la-info-circle"></i>
                   <p>No site boundary defined for this project.</p>
-                  <p class="hint">A site boundary is required to run a conflict check.</p>
+                  <p class="hint">A site boundary is required to run a nearby renewables check.</p>
                 </div>
               {:else}
                 <div class="conflict-check-header">
                   <div>
-                    <h3>Initial Conflict Check</h3>
+                    <h3>Nearby Renewables Check</h3>
                     <p class="conflict-description">Check for nearby projects and developments within 5km of this site.</p>
                     {#if savedCheckInfo && conflictResults}
                       <p class="last-checked">
@@ -802,7 +802,7 @@
                         Running Check...
                       {:else}
                         <i class="las la-search"></i>
-                        {savedCheckInfo ? 'Re-run Check' : 'Run Conflict Check'}
+                        {savedCheckInfo ? 'Re-run Check' : 'Run Check'}
                       {/if}
                     </button>
                   </div>
@@ -1213,7 +1213,7 @@
                 {:else}
                   <div class="empty-state">
                     <i class="las la-search"></i>
-                    <p>Click "Run Conflict Check" to search for nearby projects and developments.</p>
+                    <p>Click "Run Check" to search for nearby projects and developments.</p>
                   </div>
                 {/if}
               {/if}

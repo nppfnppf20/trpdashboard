@@ -218,14 +218,18 @@
         </div>
       </div>
       <div class="header-actions">
+        {#if !['cover_letter', 'certificate_b_notice'].includes(deliverable.deliverable_type)}
         <button class="header-btn export-btn" on:click={handleExportWord} title="Export to Word">
           <i class="las la-file-word"></i>
           Export to Word
         </button>
+        {/if}
+        {#if ['cover_letter', 'certificate_b_notice'].includes(deliverable.deliverable_type)}
         <button class="header-btn copy-btn" on:click={handleCopyForWord} title="Copy content ready to paste into Word">
           <i class="las la-copy"></i>
           {copyLabel}
         </button>
+        {/if}
         <button class="header-btn save-btn" on:click={handleSave} disabled={saving || !hasUnsavedChanges}>
           {#if saving}
             <i class="las la-spinner la-spin"></i>
