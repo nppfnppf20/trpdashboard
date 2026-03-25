@@ -205,6 +205,23 @@ export async function initializeProjectStageBoard(projectId) {
             [projectId, discipline, label, i, risk_level]
           );
         }
+
+        // No HLPV data — seed default discipline rows so the board isn't empty
+        if (disciplines.length === 0) {
+          const defaults = ['heritage', 'landscape', 'ecology'];
+          for (let i = 0; i < defaults.length; i++) {
+            const discipline = defaults[i];
+            const label = disciplineLabel(discipline);
+            await client.query(
+              `INSERT INTO admin_console.project_issue_tracks
+                 (project_id, track_type, source_key, label, sort_order,
+                  is_key_issue, is_active, created_from_hlpv, last_known_risk_level)
+               VALUES ($1, 'discipline', $2, $3, $4, FALSE, TRUE, FALSE, NULL)
+               ON CONFLICT DO NOTHING`,
+              [projectId, discipline, label, i]
+            );
+          }
+        }
       }
     }
 

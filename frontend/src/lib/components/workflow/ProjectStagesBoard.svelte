@@ -37,6 +37,9 @@
   let entryModalExisting = null;
   let editingTrackId = null;
   let editingLabel = '';
+  let addingTrack = false;
+  let newTrackDiscipline = '';
+  let newTrackLabel = '';
 
   // Appeal-specific state
   $: isAppealProject = project?.project_type === 'Appeal';
@@ -45,6 +48,20 @@
   let editingReasonId = null;
   let newReason = { title: '', summary: '', riskLevel: '', isKeyIssue: false };
   let editingReasonData = { title: '', summary: '', riskLevel: '', isKeyIssue: false };
+
+  const DISCIPLINES = [
+    { value: 'heritage',   label: 'Heritage' },
+    { value: 'landscape',  label: 'Landscape' },
+    { value: 'ecology',    label: 'Ecology' },
+    { value: 'ag_land',    label: 'Agricultural Land' },
+    { value: 'renewables', label: 'Renewables' },
+    { value: 'trees',      label: 'Trees' },
+    { value: 'airfields',  label: 'Airfields' },
+    { value: 'flood',      label: 'Flood Risk' },
+    { value: 'aviation',   label: 'Aviation' },
+    { value: 'highways',   label: 'Highways' },
+    { value: 'amenity',    label: 'Amenity' }
+  ];
 
   const RISK_LEVELS = [
     { value: 'showstopper',         label: 'Showstopper' },
@@ -236,6 +253,29 @@
       tracks = tracks.filter(t => t.id !== track.id);
       sortedTracks = sortedTracks.filter(t => t.id !== track.id);
     } catch {}
+  }
+
+  async function commitAddTrack() {
+    const trimmed = newTrackLabel.trim();
+    if (!trimmed) { addingTrack = false; newTrackDiscipline = ''; newTrackLabel = ''; return; }
+    try {
+      await createIssueTrack(project.id, { label: trimmed, discipline: newTrackDiscipline.trim() || null });
+      newTrackDiscipline = '';
+      newTrackLabel = '';
+      addingTrack = false;
+      const board = await getStageBoard(project.id);
+      stages = board.stages; tracks = board.tracks; keyIssues = board.keyIssues || []; entries = board.entries;
+      sortedTracks = applyRiskSort(tracks);
+    } catch {}
+  }
+
+  function onAddTrackKeydown(event) {
+    if (event.key === 'Enter') commitAddTrack();
+    if (event.key === 'Escape') { addingTrack = false; newTrackDiscipline = ''; newTrackLabel = ''; }
+  }
+
+  function onAddDisciplineKeydown(event) {
+    if (event.key === 'Escape') { addingTrack = false; newTrackDiscipline = ''; newTrackLabel = ''; }
   }
 
   async function handleToggleKeyIssue(track) {
@@ -640,8 +680,43 @@
             {/each}
           </tr>
         {/each}
-        {#if sortedTracks.length === 0}
-          <tr><td class="text-muted" colspan={stages.length + 4} style="text-align:center;padding:2rem">No issue rows yet. Add one above, or run an HLPV analysis to auto-seed rows.</td></tr>
+        <!-- Inline add-track row -->
+        {#if addingTrack}
+          <tr class="add-track-row">
+            <td class="discipline-cell">
+              <select
+                class="add-discipline-select"
+                bind:value={newTrackDiscipline}
+                on:keydown={onAddDisciplineKeydown}
+                use:focusOnMount
+              >
+                <option value="">Discipline…</option>
+                {#each DISCIPLINES as d}<option value={d.value}>{d.label}</option>{/each}
+              </select>
+            </td>
+            <td class="track-cell">
+              <div class="track-inner">
+                <input
+                  class="rename-input"
+                  placeholder="Specific issue…"
+                  bind:value={newTrackLabel}
+                  on:keydown={onAddTrackKeydown}
+                />
+              </div>
+            </td>
+            <td colspan={stages.length + 2} style="vertical-align:middle; padding-left:0.5rem;">
+              <button class="btn btn-primary btn-sm" on:click={commitAddTrack}>Save</button>
+              <button class="btn btn-ghost btn-sm" on:click={() => { addingTrack = false; newTrackDiscipline = ''; newTrackLabel = ''; }}>Cancel</button>
+            </td>
+          </tr>
+        {:else}
+          <tr class="add-track-row">
+            <td colspan={stages.length + 4}>
+              <button class="btn btn-ghost btn-sm add-row-btn" on:click={() => (addingTrack = true)}>
+                <i class="las la-plus"></i> Add row
+              </button>
+            </td>
+          </tr>
         {/if}
       </tbody>
     </table>
@@ -738,8 +813,8 @@
   .key-issue-row .track-cell,
   .key-issue-row .risk-cell,
   .key-issue-row .key-issue-cell { background: #fffbeb; }
-  .board-table tbody tr { cursor: grab; }
-  .board-table tbody tr:active { cursor: grabbing; }
+  .board-table tbody tr:not(.add-track-row) { cursor: grab; }
+  .board-table tbody tr:not(.add-track-row):active { cursor: grabbing; }
   .row-dragging { opacity: 0.4; cursor: grabbing; }
   .row-drag-over td { box-shadow: inset 0 3px 0 #9333ea; }
   .key-issue-row .entry-cell { background: rgba(245, 158, 11, 0.04); }
@@ -772,6 +847,24 @@
 
   /* Static flag for key issues (always flagged, not a button) */
   .ki-flag-static { color: #f59e0b; font-size: 1.1rem; }
+
+  .add-discipline-select {
+    width: 100%;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid #9333ea;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+    background: white;
+  }
+
+  /* Add row button */
+  .add-track-row td { border-top: 1px dashed #e2e8f0; padding: 0.4rem 0.75rem; cursor: default; }
+  .add-track-row:active { cursor: default; }
+  .add-row-btn { color: #94a3b8; font-size: 0.8125rem; width: 100%; justify-content: flex-start; }
+  .add-row-btn:hover { color: #9333ea; background: #faf5ff; }
 
   /* ── Appeal board ─────────────────────────────────────────────────────── */
   .appeal-board { display: flex; flex-direction: column; gap: 1.5rem; }
