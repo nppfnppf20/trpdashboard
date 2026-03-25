@@ -4,6 +4,7 @@
   import { authFetch } from '$lib/api/client.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
+  import NudgeBoundaryModal from '$lib/components/projects/NudgeBoundaryModal.svelte';
 
   export let isOpen = false;
   export let onClose = () => {};
@@ -70,6 +71,7 @@
   let errors = {};
   let saving = false;
   let mapInitialized = false;
+  let showNudgeBoundary = false;
 
   $: if (browser && isOpen && !mapInitialized && mapContainer) {
     initializeMap();
@@ -338,6 +340,15 @@
       return;
     }
 
+    if (!formData.polygon_geojson) {
+      showNudgeBoundary = true;
+      return;
+    }
+
+    await doSave();
+  }
+
+  async function doSave() {
     saving = true;
 
     try {
@@ -629,6 +640,12 @@
       </div>
     </div>
   </div>
+
+  <NudgeBoundaryModal
+    isOpen={showNudgeBoundary}
+    onDrawBoundary={() => { showNudgeBoundary = false; }}
+    onContinueWithout={() => { showNudgeBoundary = false; doSave(); }}
+  />
 {/if}
 
 <style>
