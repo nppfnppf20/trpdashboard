@@ -140,6 +140,49 @@
       alert('Failed to export to Word: ' + err.message);
     }
   }
+
+  let copyLabel = 'Copy for Word';
+
+  const WORD_STYLES = {
+    h1: 'font-family:Calibri,Arial,sans-serif;font-size:24pt;font-weight:700;color:#1F4E78;margin:0 0 8pt;',
+    h2: 'font-family:"Calibri Light",Calibri,Arial,sans-serif;font-size:16pt;font-weight:300;color:#1F4E78;margin:0 0 6pt;',
+    h3: 'font-family:"Calibri Light",Calibri,Arial,sans-serif;font-size:13pt;font-weight:300;color:#1F4E78;margin:0 0 4pt;',
+    h4: 'font-family:"Calibri Light",Calibri,Arial,sans-serif;font-size:16pt;font-weight:300;color:#1F4E78;margin:0 0 4pt;',
+    p:  'font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000000;line-height:1.6;margin:0 0 8pt;',
+    li: 'font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000000;line-height:1.6;margin:0 0 3pt;'
+  };
+
+  function prepareForWord(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+
+    // Strip leading numbers from headings and apply inline styles
+    div.querySelectorAll('h1, h2, h3, h4, p, li').forEach(el => {
+      const tag = el.tagName.toLowerCase();
+      if (WORD_STYLES[tag]) el.setAttribute('style', WORD_STYLES[tag]);
+
+      if (['h1','h2','h3','h4'].includes(tag)) {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const firstText = walker.nextNode();
+        if (firstText) firstText.nodeValue = firstText.nodeValue.replace(/^\d+(\.\d+)*\.?\s+/, '');
+      }
+    });
+
+    return `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">${div.innerHTML}</div>`;
+  }
+
+  async function handleCopyForWord() {
+    try {
+      const styledHTML = prepareForWord(currentHTML);
+      const blob = new Blob([styledHTML], { type: 'text/html' });
+      await navigator.clipboard.write([new ClipboardItem({ 'text/html': blob })]);
+      copyLabel = 'Copied!';
+      setTimeout(() => { copyLabel = 'Copy for Word'; }, 2000);
+    } catch (err) {
+      console.error('Error copying to clipboard:', err);
+      alert('Failed to copy: ' + err.message);
+    }
+  }
 </script>
 
 <div class="editor-modal-overlay">
@@ -178,6 +221,10 @@
         <button class="header-btn export-btn" on:click={handleExportWord} title="Export to Word">
           <i class="las la-file-word"></i>
           Export to Word
+        </button>
+        <button class="header-btn copy-btn" on:click={handleCopyForWord} title="Copy content ready to paste into Word">
+          <i class="las la-copy"></i>
+          {copyLabel}
         </button>
         <button class="header-btn save-btn" on:click={handleSave} disabled={saving || !hasUnsavedChanges}>
           {#if saving}
@@ -405,6 +452,16 @@
   .export-btn:hover {
     background: #2563eb;
   }
+
+  .copy-btn {
+    background: #7c3aed;
+    color: white;
+  }
+
+  .copy-btn:hover {
+    background: #6d28d9;
+  }
+
 
   .close-btn {
     background: white;

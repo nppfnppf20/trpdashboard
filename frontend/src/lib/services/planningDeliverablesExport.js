@@ -1,267 +1,127 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun } from 'docx';
+import PizZip from 'pizzip';
 import fileSaver from 'file-saver';
 
 const { saveAs } = fileSaver;
 
-/**
- * Load company styles XML and logo for use in exports
- */
-async function loadAssets() {
-  const [stylesResponse, logoResponse] = await Promise.all([
-    fetch('/company-styles.xml'),
-    fetch('/logo.png')
-  ]);
+// Map template_type values to static .docx template files
+const TEMPLATE_MAP = {
+  planning_statement_solar: '/planningstatementsolar.docx'
+};
 
-  if (!stylesResponse.ok) throw new Error('Could not load company-styles.xml');
-  if (!logoResponse.ok) throw new Error('Could not load logo.png');
+const DEFAULT_TEMPLATE = '/planningstatementsolar.docx';
 
-  const rawStyles = await stylesResponse.text();
-  const externalStyles = resolveThemeFonts(rawStyles);
-  const logoBuffer = await logoResponse.arrayBuffer();
-
-  return { externalStyles, logoBuffer };
+function getTemplatePath(deliverable) {
+  return TEMPLATE_MAP[deliverable.template_type] || DEFAULT_TEMPLATE;
 }
 
 /**
- * Replace theme font references in styles.xml with explicit font names.
- * The docx library does not embed theme1.xml, so Word cannot resolve
- * w:asciiTheme="majorHAnsi" etc. without it — we resolve them here.
- * majorHAnsi = Calibri Light (headings), minorHAnsi = Calibri (body).
- */
-function resolveThemeFonts(stylesXml) {
-  const majorFont = 'Calibri Light';
-  const minorFont = 'Calibri';
-
-  return stylesXml
-    .replace(/w:asciiTheme="major[^"]*"/g, `w:ascii="${majorFont}"`)
-    .replace(/w:hAnsiTheme="major[^"]*"/g, `w:hAnsi="${majorFont}"`)
-    .replace(/w:asciiTheme="minor[^"]*"/g, `w:ascii="${minorFont}"`)
-    .replace(/w:hAnsiTheme="minor[^"]*"/g, `w:hAnsi="${minorFont}"`)
-    .replace(/w:eastAsiaTheme="[^"]*"/g, '')
-    .replace(/w:cstheme="[^"]*"/g, '');
-}
-
-/**
- * Export a planning deliverable to Word format
- * @param {Object} deliverable - The deliverable data
- * @param {string} html - The HTML content from the editor
+ * Export a planning deliverable to Word using a .docx style template
  */
 export async function exportDeliverableToWord(deliverable, html) {
-  try {
-    const { externalStyles, logoBuffer } = await loadAssets();
-    const doc = createWordDocumentFromHTML(deliverable, html, externalStyles, logoBuffer);
-    const blob = await Packer.toBlob(doc);
+  const templatePath = getTemplatePath(deliverable);
+  const response = await fetch(templatePath);
+  if (!response.ok) throw new Error(`Could not load template: ${templatePath}`);
 
-    const safeName = deliverable.deliverable_name.replace(/[^a-zA-Z0-9]/g, '_');
-    const filename = `${safeName}.docx`;
+  const arrayBuffer = await response.arrayBuffer();
+  const zip = new PizZip(arrayBuffer);
 
-    saveAs(blob, filename);
-    console.log('✅ Word document exported successfully:', filename);
-  } catch (error) {
-    console.error('❌ Error exporting to Word:', error);
-    throw error;
-  }
-}
+  const documentXml = zip.file('word/document.xml').asText();
 
-/**
- * Convert HTML content to Word document using company styles
- */
-function createWordDocumentFromHTML(deliverable, html, externalStyles, logoBuffer) {
-  const children = [];
+  // Generate OOXML body content from HTML
+  const bodyContent = htmlToOOXML(html);
 
-  // Logo at top of first page only
-  children.push(
-    new Paragraph({
-      children: [
-        new ImageRun({
-          data: logoBuffer,
-          transformation: { width: 120, height: 120 }
-        })
-      ],
-      spacing: { after: 400 }
-    })
+  // Insert content before the sectPr, preserving existing body content (logo etc.)
+  const newDocXml = documentXml.replace(
+    /(<w:sectPr[\s\S]*?<\/w:sectPr><\/w:body>)/,
+    `${bodyContent}$1`
   );
 
-  // Parse HTML and convert to Word paragraphs
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
+  zip.file('word/document.xml', newDocXml);
 
-  processElements(Array.from(tempDiv.children), children);
-
-  if (children.length === 1) {
-    children.push(new Paragraph({ style: 'Normal', text: 'No content available' }));
-  }
-
-  return new Document({
-    externalStyles,
-    sections: [{
-      properties: {},
-      children
-    }]
+  const blob = zip.generate({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   });
-}
-
-/**
- * Process an array of HTML elements into Word paragraphs, handling lists properly
- */
-function processElements(elements, output) {
-  elements.forEach(element => {
-    const tagName = element.tagName.toLowerCase();
-
-    if (tagName === 'ul' || tagName === 'ol') {
-      Array.from(element.children).forEach(li => {
-        output.push(new Paragraph({
-          style: 'Bullet1',
-          children: getTextRuns(li)
-        }));
-      });
-    } else {
-      const paragraph = convertElementToParagraph(element);
-      if (paragraph) output.push(paragraph);
-    }
-  });
-}
-
-/**
- * Convert a single HTML element to a Word Paragraph
- */
-function convertElementToParagraph(element) {
-  const tagName = element.tagName.toLowerCase();
-
-  switch (tagName) {
-    case 'h1':
-      return new Paragraph({
-        heading: HeadingLevel.HEADING_1,
-        children: [new TextRun({ text: element.textContent })],
-        spacing: { before: 400, after: 200 }
-      });
-
-    case 'h2':
-      return new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        children: [new TextRun({ text: element.textContent })],
-        spacing: { before: 300, after: 200 }
-      });
-
-    case 'h3':
-      return new Paragraph({
-        heading: HeadingLevel.HEADING_3,
-        children: [new TextRun({ text: element.textContent })],
-        spacing: { before: 200, after: 100 }
-      });
-
-    case 'h4':
-      return new Paragraph({
-        heading: HeadingLevel.HEADING_4,
-        children: [new TextRun({ text: element.textContent })],
-        spacing: { before: 200, after: 100 }
-      });
-
-    case 'p':
-      return new Paragraph({
-        style: 'Normal',
-        children: getTextRuns(element),
-        spacing: { after: 200 }
-      });
-
-    default:
-      if (element.textContent.trim()) {
-        return new Paragraph({
-          style: 'Normal',
-          children: [new TextRun({ text: element.textContent })],
-          spacing: { after: 200 }
-        });
-      }
-      return null;
-  }
-}
-
-/**
- * Extract inline-formatted TextRuns from an element (bold, italic, underline)
- */
-function getTextRuns(element) {
-  const runs = [];
-
-  Array.from(element.childNodes).forEach(node => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent;
-      if (text) runs.push(new TextRun({ text }));
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const tag = node.tagName.toLowerCase();
-      const text = node.textContent;
-
-      if (tag === 'strong' || tag === 'b') {
-        runs.push(new TextRun({ text, bold: true }));
-      } else if (tag === 'em' || tag === 'i') {
-        runs.push(new TextRun({ text, italics: true }));
-      } else if (tag === 'u') {
-        runs.push(new TextRun({ text, underline: {} }));
-      } else {
-        runs.push(new TextRun({ text }));
-      }
-    }
-  });
-
-  if (runs.length === 0) {
-    runs.push(new TextRun({ text: element.textContent }));
-  }
-
-  return runs;
-}
-
-/**
- * Export to PDF via browser print
- * @param {Object} deliverable - The deliverable data
- * @param {string} html - The HTML content
- */
-export function exportDeliverableToPDF(deliverable, html) {
-  const printWindow = window.open('', '_blank');
-
-  if (!printWindow) {
-    throw new Error('Could not open print window. Please allow popups for this site.');
-  }
 
   const safeName = deliverable.deliverable_name.replace(/[^a-zA-Z0-9]/g, '_');
-
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>${safeName}</title>
-        <style>
-          body {
-            font-family: 'Calibri', 'Arial', sans-serif;
-            font-size: 12pt;
-            line-height: 1.6;
-            color: #000;
-            max-width: 8.5in;
-            margin: 1in auto;
-            padding: 0;
-          }
-          h1 { font-size: 24pt; font-weight: 600; margin: 1.5em 0 1em; color: #000; }
-          h2 { font-size: 18pt; font-weight: 600; margin: 1.25em 0 0.75em; color: #000; }
-          h3 { font-size: 14pt; font-weight: 600; margin: 1em 0 0.5em; color: #000; }
-          p { margin: 0.5em 0; }
-          ul, ol { margin: 0.5em 0; padding-left: 2em; }
-          li { margin: 0.25em 0; }
-          @media print { body { margin: 0; padding: 1in; } }
-        </style>
-      </head>
-      <body>
-        ${html}
-      </body>
-    </html>
-  `);
-
-  printWindow.document.close();
-
-  setTimeout(() => {
-    printWindow.focus();
-    printWindow.print();
-  }, 250);
+  saveAs(blob, `${safeName}.docx`);
 }
 
-export default {
-  exportDeliverableToWord,
-  exportDeliverableToPDF
-};
+/**
+ * Convert HTML to OOXML paragraphs
+ */
+function htmlToOOXML(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return Array.from(div.children).map(el => elementToOOXML(el)).filter(Boolean).join('');
+}
+
+function elementToOOXML(el) {
+  const tag = el.tagName.toLowerCase();
+
+  switch (tag) {
+    case 'h1':
+      return paragraph('Heading1', inlineRuns(el), { pageBreakBefore: false });
+    case 'h2':
+      return paragraph('Heading2', inlineRuns(el));
+    case 'h3':
+      return paragraph('Heading3', inlineRuns(el));
+    case 'h4':
+      return paragraph('Heading4', inlineRuns(el));
+    case 'p':
+      return paragraph('Normal', inlineRuns(el));
+    case 'ul':
+      return Array.from(el.querySelectorAll('li')).map(li =>
+        paragraph('ListBullet', inlineRuns(li))
+      ).join('');
+    case 'ol':
+      return Array.from(el.querySelectorAll('li')).map(li =>
+        paragraph('ListNumber', inlineRuns(li))
+      ).join('');
+    default:
+      return el.textContent.trim()
+        ? paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
+        : '';
+  }
+}
+
+function paragraph(styleId, runsXml, options = {}) {
+  const pageBreak = options.pageBreakBefore
+    ? '<w:pageBreakBefore/>'
+    : '';
+  return `<w:p><w:pPr><w:pStyle w:val="${styleId}"/>${pageBreak}</w:pPr>${runsXml}</w:p>`;
+}
+
+function inlineRuns(el) {
+  let xml = '';
+  el.childNodes.forEach(node => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.textContent) {
+        xml += `<w:r><w:t xml:space="preserve">${escapeXml(node.textContent)}</w:t></w:r>`;
+      }
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName.toLowerCase();
+      const text = escapeXml(node.textContent);
+      if (tag === 'strong' || tag === 'b') {
+        xml += `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      } else if (tag === 'em' || tag === 'i') {
+        xml += `<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      } else if (tag === 'u') {
+        xml += `<w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      } else {
+        xml += `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      }
+    }
+  });
+  return xml;
+}
+
+function escapeXml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export default { exportDeliverableToWord };

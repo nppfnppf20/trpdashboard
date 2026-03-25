@@ -37,6 +37,7 @@
 		"leaflet-draw": "^1.0.4",
 		"leaflet-image": "^0.4.0",
 		"leaflet-ruler": "^1.0.0",
+		"pizzip": "^3.2.0",
 		"tabulator-tables": "^6.3.1"
 	}
 }
