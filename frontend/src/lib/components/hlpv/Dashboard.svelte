@@ -693,7 +693,7 @@
     {#if selectedProject?.project_type === 'Appeal'}
       <div class="appeal-warning">
         <i class="las la-info-circle"></i>
-        HLPV is not typically required for appeal projects but remains available if needed.
+        Renewables HLPV is not typically required for appeal projects but remains available if needed.
       </div>
     {/if}
 

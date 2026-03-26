@@ -16,7 +16,7 @@
     <span>Home</span>
   </button>
   <div class="navbar-content">
-    <h1 class="navbar-title">HLPV Planning Assessment</h1>
+    <h1 class="navbar-title">Renewables HLPV Planning Assessment</h1>
   </div>
 </nav>
 

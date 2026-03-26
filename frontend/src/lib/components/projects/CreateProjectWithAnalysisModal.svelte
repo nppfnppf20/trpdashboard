@@ -288,7 +288,7 @@
           <div class="form-scroll">
             <div class="info-banner">
               <i class="las la-info-circle"></i>
-              <p>The site boundary from your HLPV analysis is locked to ensure the analysis results remain accurate. If you need a different boundary, please run a new HLPV analysis.</p>
+              <p>The site boundary from your Renewables HLPV analysis is locked to ensure the analysis results remain accurate. If you need a different boundary, please run a new Renewables HLPV analysis.</p>
             </div>
 
             <!-- Required Fields -->
@@ -403,7 +403,7 @@
         <div class="map-section">
           <div class="map-header">
             <h3>Site Boundary</h3>
-            <p class="map-hint">The polygon from your HLPV analysis is locked and displayed below.</p>
+            <p class="map-hint">The polygon from your Renewables HLPV analysis is locked and displayed below.</p>
           </div>
           <div class="map-container" bind:this={mapContainer}></div>
           {#if errors.geometry}

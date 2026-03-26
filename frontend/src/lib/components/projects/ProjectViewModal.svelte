@@ -489,7 +489,7 @@
           class="tab-button {activeTab === 'hlpv' ? 'active' : ''}"
           on:click={() => activeTab = 'hlpv'}
         >
-          HLPV Analysis
+          Renewables HLPV Analysis
         </button>
         <button
           class="tab-button {activeTab === 'conflict' ? 'active' : ''}"
@@ -702,7 +702,7 @@
               {#if !projectData.hlpv_last_analyzed}
                 <div class="error-state">
                   <i class="las la-info-circle"></i>
-                  <p>No HLPV analysis has been run for this project yet.</p>
+                  <p>No Renewables HLPV analysis has been run for this project yet.</p>
                 </div>
               {:else}
                 <div class="hlpv-content">

@@ -128,7 +128,7 @@
           </div>
 
           <h2 class="card-title">
-            High-Level Planning View Tool (beta)
+            Renewables HLPV Tool (beta)
           </h2>
 
           <p class="card-description">
@@ -157,7 +157,7 @@
           </div>
 
           <button class="tool-button tool-button-blue" on:click|stopPropagation={navigateToHLPV}>
-            Launch HLPV Assessment
+            Launch Renewables HLPV Assessment
             <i class="las la-arrow-right"></i>
           </button>
         </div>
