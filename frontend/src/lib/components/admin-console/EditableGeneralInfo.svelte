@@ -685,7 +685,8 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
           <span class="value">{project.additional_notes || '-'}</span>
         {/if}
       </div>
-      <div class="info-row" class:editing={editMode}>
+      <!-- Invoicing details hidden for now -->
+      <!-- <div class="info-row" class:editing={editMode}>
         <span class="label">Invoicing Details:</span>
         {#if editMode}
           <textarea
@@ -698,7 +699,7 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
         {:else}
           <span class="value">{project.invoicing_details || '-'}</span>
         {/if}
-      </div>
+      </div> -->
       <div class="info-row full-width">
         <span class="label">SharePoint Link:</span>
         {#if editMode}
@@ -949,7 +950,6 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
   }
 
   .project-code {
-    font-family: 'Courier New', monospace;
     color: #9333ea;
     font-weight: 600;
   }
