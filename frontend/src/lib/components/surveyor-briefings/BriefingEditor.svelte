@@ -190,6 +190,15 @@
     document.body.removeChild(container);
   }
 
+  function handleOpenInEmail() {
+    if (!richTextEditor) return;
+    const plainText = stripHtml(richTextEditor.getHTML());
+    const to = selectedSurveyors[0]?.contactEmail || '';
+    const subject = encodeURIComponent(currentSubject || '');
+    const body = encodeURIComponent(plainText);
+    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  }
+
   async function handleSaveAsSent() {
     if (!richTextEditor || !projectId) return;
 
@@ -364,6 +373,14 @@
         >
           <i class="las la-copy"></i>
           Copy to Clipboard
+        </button>
+        <button
+          class="btn btn-secondary"
+          on:click={handleOpenInEmail}
+          disabled={saving || !richTextEditor || !hasSurveyorSelected}
+        >
+          <i class="las la-envelope"></i>
+          Open in Email
         </button>
         <button
           class="btn btn-primary"
