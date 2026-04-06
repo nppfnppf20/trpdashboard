@@ -15,6 +15,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@supabase/supabase-js": "^2.90.1",
     "ag-grid-community": "^30.2.1",
     "ag-grid-svelte": "^0.3.0",
@@ -24,6 +25,8 @@
     "express-rate-limit": "^7.4.1",
     "express-validator": "^7.2.0",
     "helmet": "^8.0.0",
+    "multer": "^2.1.1",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.16.3"
   },
   "devDependencies": {

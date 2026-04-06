@@ -19,6 +19,7 @@ import quotesRoutes from './quotes.routes.js';
 import quoteRequestsRoutes from './quoteRequests.routes.js';
 import lookupsRoutes from './lookups.routes.js';
 import workflowRoutes from './workflow.routes.js';
+import ingestionRoutes from './ingestion.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -69,6 +70,9 @@ router.use('/api/admin-console/workflow', workflowRoutes);
 
 // Lookups - dropdown options (GET /api/lookups/*)
 router.use('/api/lookups', lookupsRoutes);
+
+// Issue tracker — document ingestion + topic timeline (GET/POST /api/ingestion/*)
+router.use('/api/ingestion', ingestionRoutes);
 
 export default router;
 
