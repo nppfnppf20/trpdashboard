@@ -257,16 +257,22 @@ export async function completeProjectStage(projectId, stageInstanceId, entries, 
     for (const entry of entries) {
       await client.query(
         `INSERT INTO admin_console.project_issue_stage_entries
-           (project_stage_instance_id, issue_track_id, risk_level, summary, notes, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (project_stage_instance_id, issue_track_id, risk_level, summary, notes,
+            reason_for_change, notes_llm_suggested, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (project_stage_instance_id, issue_track_id)
          DO UPDATE SET
-           risk_level  = EXCLUDED.risk_level,
-           summary     = EXCLUDED.summary,
-           notes       = EXCLUDED.notes,
-           updated_by  = EXCLUDED.updated_by,
-           updated_at  = NOW()`,
-        [stageInstanceId, entry.issueTrackId, entry.riskLevel, entry.summary, entry.notes, completedBy]
+           risk_level          = EXCLUDED.risk_level,
+           summary             = EXCLUDED.summary,
+           notes               = EXCLUDED.notes,
+           reason_for_change   = EXCLUDED.reason_for_change,
+           notes_llm_suggested = EXCLUDED.notes_llm_suggested,
+           updated_by          = EXCLUDED.updated_by,
+           updated_at          = NOW()`,
+        [
+          stageInstanceId, entry.issueTrackId, entry.riskLevel, entry.summary, entry.notes,
+          entry.reasonForChange ?? null, entry.notesLlmSuggested ?? false, completedBy
+        ]
       );
 
       // Update last_known_risk_level and is_key_issue on the track
@@ -355,7 +361,8 @@ export async function getPriorStageEntries(projectId, stageInstanceId) {
        pise.issue_track_id,
        pise.risk_level,
        pise.summary,
-       pise.notes
+       pise.notes,
+       pise.notes_llm_suggested
      FROM admin_console.project_issue_stage_entries pise
      JOIN admin_console.project_stage_instances psi ON psi.id = pise.project_stage_instance_id
      JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id

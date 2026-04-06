@@ -6,6 +6,8 @@
  */
 
 import { createRequire } from 'module';
+import mammoth from 'mammoth';
+
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 
@@ -13,8 +15,8 @@ const CHUNK_CHAR_LIMIT = 6000;
 
 /**
  * Parse an uploaded file buffer into plain text.
- * Tries pdf-parse first for PDFs, falls back to raw UTF-8 if it throws.
- * Returns { text, warning } where warning is non-null if the fallback was used.
+ * Supports PDF, Word (.docx), plain text, and markdown.
+ * Falls back gracefully on parse failures rather than blocking ingestion.
  *
  * @param {Buffer} buffer
  * @param {string} originalname
@@ -28,11 +30,22 @@ export async function parseFile(buffer, originalname) {
       const result = await pdfParse(buffer);
       return { text: result.text, warning: null };
     } catch (err) {
-      // pdf-parse can fail on scanned/encrypted PDFs — fall back rather than blocking ingestion
       const fallback = buffer.toString('utf8');
       return {
         text: fallback,
         warning: `pdf-parse failed (${err.message}); content read as raw UTF-8 — accuracy may be reduced`
+      };
+    }
+  }
+
+  if (ext === 'docx') {
+    try {
+      const result = await mammoth.extractRawText({ buffer });
+      return { text: result.value, warning: null };
+    } catch (err) {
+      return {
+        text: '',
+        warning: `Word document could not be parsed (${err.message}). Try saving as PDF or pasting the text directly.`
       };
     }
   }

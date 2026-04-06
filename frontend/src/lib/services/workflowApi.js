@@ -210,3 +210,60 @@ export async function reorderRefusalReasons(projectId, orderedIds) {
   if (!res.ok) throw new Error('Failed to reorder refusal reasons');
   return res.json();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LLM Stage Document Analysis
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Upload a document and get LLM-suggested notes per issue track.
+ * Does NOT write anything to the DB — caller applies results to form state.
+ *
+ * @param {number} projectId
+ * @param {number} stageInstanceId
+ * @param {File} file
+ * @param {Record<number, string>} userGuidance  optional per-issue guidance
+ * @returns {Promise<{ stage_name: string, parse_warning: string|null, results: Array }>}
+ */
+/**
+ * @param {number} projectId
+ * @param {number} stageInstanceId
+ * @param {{ file?: File, pastedText?: string }} source  — one of file or pastedText required
+ * @param {Record<number, string>} userGuidance
+ */
+/**
+ * Parse a file and return its size/truncation status — no LLM calls.
+ * Call this on file select so the user sees any truncation warning upfront.
+ *
+ * @param {File} file
+ * @returns {Promise<{ status: 'ok'|'truncated'|'rejected', total_chunks: number, analysed_chunks: number, warning: string|null }>}
+ */
+export async function checkDocumentSize(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await authFetch(`${BASE}/check-document-size`, { method: 'POST', body: form });
+  if (!res.ok) throw new Error('Size check failed');
+  return res.json();
+}
+
+export async function analyseStageDocument(projectId, stageInstanceId, source, userGuidance = {}) {
+  const form = new FormData();
+  if (source.file) {
+    form.append('file', source.file);
+  } else if (source.pastedText) {
+    form.append('pasted_text', source.pastedText);
+  }
+  if (Object.keys(userGuidance).length) {
+    form.append('user_guidance', JSON.stringify(userGuidance));
+  }
+  const res = await authFetch(`${BASE}/projects/${projectId}/stages/${stageInstanceId}/analyse`, {
+    method: 'POST',
+    body: form
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    // Surface the human-readable message for size errors
+    throw Object.assign(new Error(err.message || 'Analysis failed'), { code: err.error });
+  }
+  return res.json();
+}
