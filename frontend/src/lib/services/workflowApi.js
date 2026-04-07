@@ -256,10 +256,21 @@ export async function analyseStageDocument(projectId, stageInstanceId, source, u
   if (Object.keys(userGuidance).length) {
     form.append('user_guidance', JSON.stringify(userGuidance));
   }
-  const res = await authFetch(`${BASE}/projects/${projectId}/stages/${stageInstanceId}/analyse`, {
-    method: 'POST',
-    body: form
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 300_000); // 5 min client timeout
+  let res;
+  try {
+    res = await authFetch(`${BASE}/projects/${projectId}/stages/${stageInstanceId}/analyse`, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Analysis timed out after 5 minutes. Try a shorter document or paste the key section directly.');
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     // Surface the human-readable message for size errors

@@ -414,7 +414,9 @@ export async function analyseDocumentForStage(rawText, stageName, issueTracks, u
 
   // Analyse each chunk sequentially to stay within rate limits
   const chunkResults = [];
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    console.log(`[stage-analysis] chunk ${i + 1}/${chunks.length}`);
+    const chunk = chunks[i];
     const userPrompt = STAGE_ANALYSIS_USER_TEMPLATE
       .replace('{{STAGE_NAME}}', stageName)
       .replace('{{CHUNK_TEXT}}', chunk)
@@ -454,6 +456,7 @@ export async function analyseDocumentForStage(rawText, stageName, issueTracks, u
 
     let suggested_notes = null;
     if (mentionedEntries.length > 0) {
+      console.log(`[stage-analysis] synthesising issue track ${trackId}`);
       // Always run synthesis so every relevant issue gets the full ~1000-word treatment
       // with prior history and user guidance in context — not just multi-chunk issues.
       const track = issueTracks.find(t => String(t.id) === trackId);
