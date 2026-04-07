@@ -4,7 +4,7 @@
   import ConflictDetailPopup from './ConflictDetailPopup.svelte';
   import { authFetch } from '$lib/api/client.js';
   import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
-  import IngestionPanel from '$lib/components/ingestion/IngestionPanel.svelte';
+  import SimilarSchemesTab from '$lib/components/projects/SimilarSchemesTab.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
 
@@ -511,10 +511,10 @@
           Project Stages
         </button>
         <button
-          class="tab-button {activeTab === 'documents' ? 'active' : ''}"
-          on:click={() => activeTab = 'documents'}
+          class="tab-button {activeTab === 'similar_schemes' ? 'active' : ''}"
+          on:click={() => activeTab = 'similar_schemes'}
         >
-          Documents
+          Similar Schemes
         </button>
       </div>
 
@@ -1329,8 +1329,8 @@
             </div>
           {:else if activeTab === 'stages'}
             <ProjectStagesBoard project={projectData} />
-          {:else if activeTab === 'documents'}
-            <IngestionPanel project={projectData} />
+          {:else if activeTab === 'similar_schemes'}
+            <SimilarSchemesTab project={projectData} />
           {/if}
         {/if}
       </div>
