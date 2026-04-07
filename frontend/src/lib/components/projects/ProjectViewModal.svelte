@@ -496,13 +496,13 @@
           class="tab-button {activeTab === 'stages' ? 'active' : ''}"
           on:click={() => activeTab = 'stages'}
         >
-          Project Stages
+          Project Stages <span class="beta-tag">Beta</span>
         </button>
         <button
           class="tab-button {activeTab === 'similar_schemes' ? 'active' : ''}"
           on:click={() => activeTab = 'similar_schemes'}
         >
-          Similar Schemes
+          Similar Schemes <span class="beta-tag">Beta</span>
         </button>
         <button
           class="tab-button {activeTab === 'hlpv' ? 'active' : ''}"
@@ -1624,6 +1624,22 @@
   .tab-button.active {
     color: #9333ea;
     border-bottom-color: #9333ea;
+  }
+
+  .beta-tag {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: #f3e8ff;
+    color: #7e22ce;
+    border: 1px solid #d8b4fe;
+    border-radius: 4px;
+    padding: 1px 5px;
+    vertical-align: middle;
+    margin-left: 4px;
+    line-height: 1.4;
   }
 
   /* HLPV Analysis Section */
