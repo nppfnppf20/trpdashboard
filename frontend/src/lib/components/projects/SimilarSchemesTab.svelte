@@ -70,7 +70,7 @@
   }
 
   function formatDate(d) {
-    if (!d) return '—';
+    if (!d) return '-';
     return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
@@ -90,7 +90,7 @@
   <div class="suggest-panel">
     <div class="suggest-header">
       <div>
-        <div class="suggest-title"><i class="las la-robot"></i> AI Keyword Suggestions</div>
+        <div class="suggest-title">AI Keyword Suggestions</div>
         <div class="suggest-sub">Claude reads this project's sector, HLPV findings, and designations to suggest search terms.</div>
       </div>
       <button class="btn-suggest" on:click={fetchSuggestions} disabled={loadingSuggestions}>
@@ -179,7 +179,7 @@
         <div class="result-card">
           <div class="result-desc">{r.description || '(No description)'}</div>
           <div class="result-meta">
-            <span class="meta-item"><i class="las la-map-marker"></i> {r.address || r.authority_name || '—'}</span>
+            <span class="meta-item"><i class="las la-map-marker"></i> {r.address || r.authority_name || '-'}</span>
             <span class="meta-item"><i class="las la-calendar"></i> Submitted {formatDate(r.start_date)}</span>
             {#if r.decided_date}
               <span class="meta-item"><i class="las la-gavel"></i> Decided {formatDate(r.decided_date)}</span>

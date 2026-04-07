@@ -171,8 +171,8 @@
         <div class="analyse-section">
           <div class="analyse-header">
             <div>
-              <div class="analyse-title"><i class="las la-robot"></i> AI Document Analysis <span class="optional-tag">optional</span></div>
-              <div class="analyse-subtitle">Drop a PDF, Word, .txt or .md file — or paste text — to have the AI suggest notes for each issue based on this project's history.</div>
+              <div class="analyse-title">AI Document Analysis <span class="optional-tag">optional</span></div>
+              <div class="analyse-subtitle">Drop a PDF, Word, .txt or .md file or paste text to have the AI suggest notes for each issue based on this project's history.</div>
             </div>
           </div>
 
@@ -190,7 +190,7 @@
             <textarea
               class="paste-textarea"
               rows="6"
-              placeholder="Paste the document text here — e.g. copy from a PDF, email, or meeting notes…"
+              placeholder="Paste the document text here, e.g. copy from a PDF, email, or meeting notes..."
               bind:value={pastedText}
             ></textarea>
           {:else}
@@ -309,7 +309,7 @@
               <div class="notes-label-row">
                 <span class="notes-label">This stage notes</span>
                 {#if row.notesLlmSuggested}
-                  <span class="ai-badge"><i class="las la-robot"></i> AI suggested — review before saving</span>
+                  <span class="ai-badge">AI suggested - review before saving</span>
                 {/if}
                 <button
                   class="btn-guidance-toggle"

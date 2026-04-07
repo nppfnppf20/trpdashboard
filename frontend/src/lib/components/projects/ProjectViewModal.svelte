@@ -487,18 +487,6 @@
           Project Details
         </button>
         <button
-          class="tab-button {activeTab === 'hlpv' ? 'active' : ''}"
-          on:click={() => activeTab = 'hlpv'}
-        >
-          Renewables HLPV Analysis
-        </button>
-        <button
-          class="tab-button {activeTab === 'conflict' ? 'active' : ''}"
-          on:click={() => activeTab = 'conflict'}
-        >
-          Nearby Renewables Check
-        </button>
-        <button
           class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
           on:click={() => activeTab = 'surveyor'}
         >
@@ -515,6 +503,18 @@
           on:click={() => activeTab = 'similar_schemes'}
         >
           Similar Schemes
+        </button>
+        <button
+          class="tab-button {activeTab === 'hlpv' ? 'active' : ''}"
+          on:click={() => activeTab = 'hlpv'}
+        >
+          Renewables HLPV Analysis
+        </button>
+        <button
+          class="tab-button {activeTab === 'conflict' ? 'active' : ''}"
+          on:click={() => activeTab = 'conflict'}
+        >
+          Nearby Renewables Check
         </button>
       </div>
 
