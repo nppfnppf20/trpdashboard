@@ -47,6 +47,26 @@ export async function initializeStageBoard(projectId) {
   return res.json();
 }
 
+export async function reorderProjectStages(projectId, orderedInstanceIds) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/stages/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedInstanceIds })
+  });
+  if (!res.ok) throw new Error('Failed to reorder project stages');
+  return res.json();
+}
+
+export async function createCustomStage(projectId, { name }) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/stages/custom`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  if (!res.ok) throw new Error('Failed to create custom stage');
+  return res.json();
+}
+
 /**
  * @param {number} projectId
  * @param {number} stageInstanceId

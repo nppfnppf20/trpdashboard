@@ -52,11 +52,11 @@ export async function analyseStageDocument(req, res) {
   }
 
   try {
-    // Verify stage belongs to project and get stage name
+    // Verify stage belongs to project and get stage name (LEFT JOIN to support custom stages)
     const { rows: stageRows } = await pool.query(
-      `SELECT psi.id, psd.name AS stage_name
+      `SELECT psi.id, COALESCE(psd.name, psi.custom_name) AS stage_name
        FROM admin_console.project_stage_instances psi
-       JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+       LEFT JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
        WHERE psi.id = $1 AND psi.project_id = $2`,
       [stageInstanceId, projectId]
     );
@@ -79,15 +79,15 @@ export async function analyseStageDocument(req, res) {
       `SELECT
          pise.issue_track_id,
          pise.notes,
-         psd.name AS stage_name,
-         psd.display_order
+         COALESCE(psd.name, psi.custom_name) AS stage_name,
+         COALESCE(psd.display_order, psi.custom_display_order) AS display_order
        FROM admin_console.project_issue_stage_entries pise
        JOIN admin_console.project_stage_instances psi ON psi.id = pise.project_stage_instance_id
-       JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+       LEFT JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
        WHERE psi.project_id = $1
          AND psi.is_complete = TRUE
          AND pise.notes IS NOT NULL
-       ORDER BY psd.display_order ASC`,
+       ORDER BY COALESCE(psd.display_order, psi.custom_display_order) ASC`,
       [projectId]
     );
 

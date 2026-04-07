@@ -33,7 +33,7 @@ function riskSortValue(level) {
 export async function getProjectStageBoard(projectId) {
   const client = await pool.connect();
   try {
-    // Stage instances (with definition info)
+    // Stage instances (with definition info — LEFT JOIN to include custom stages)
     const stagesResult = await client.query(
       `SELECT
         psi.id            AS instance_id,
@@ -44,13 +44,13 @@ export async function getProjectStageBoard(projectId) {
         psi.completed_at,
         psi.completed_by,
         psd.id            AS stage_definition_id,
-        psd.name          AS stage_name,
-        psd.display_order
+        COALESCE(psd.name, psi.custom_name)                                                   AS stage_name,
+        COALESCE(psi.project_display_order, psd.display_order, psi.custom_display_order)     AS display_order
       FROM admin_console.project_stage_instances psi
-      JOIN admin_console.project_stage_definitions psd
+      LEFT JOIN admin_console.project_stage_definitions psd
         ON psd.id = psi.stage_definition_id
       WHERE psi.project_id = $1
-      ORDER BY psd.display_order`,
+      ORDER BY COALESCE(psi.project_display_order, psd.display_order, psi.custom_display_order)`,
       [projectId]
     );
 
@@ -347,9 +347,9 @@ export async function toggleProjectStageApplicability(projectId, stageInstanceId
 export async function getPriorStageEntries(projectId, stageInstanceId) {
   // Find display_order of the target stage
   const stageRow = await pool.query(
-    `SELECT psd.display_order
+    `SELECT COALESCE(psi.project_display_order, psd.display_order, psi.custom_display_order) AS display_order
      FROM admin_console.project_stage_instances psi
-     JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+     LEFT JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
      WHERE psi.id = $1 AND psi.project_id = $2`,
     [stageInstanceId, projectId]
   );
@@ -365,11 +365,11 @@ export async function getPriorStageEntries(projectId, stageInstanceId) {
        pise.notes_llm_suggested
      FROM admin_console.project_issue_stage_entries pise
      JOIN admin_console.project_stage_instances psi ON psi.id = pise.project_stage_instance_id
-     JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+     LEFT JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
      WHERE psi.project_id = $1
        AND psi.is_complete = TRUE
-       AND psd.display_order < $2
-     ORDER BY psd.display_order DESC`,
+       AND COALESCE(psi.project_display_order, psd.display_order, psi.custom_display_order) < $2
+     ORDER BY COALESCE(psi.project_display_order, psd.display_order, psi.custom_display_order) DESC`,
     [projectId, targetOrder]
   );
 
@@ -414,6 +414,54 @@ export async function reorderStageDefinitions(orderedDefinitionIds) {
   } finally {
     client.release();
   }
+}
+
+/**
+ * Reorder stage instances for a specific project by updating project_display_order.
+ * Accepts an array of project_stage_instance ids in the desired order.
+ * Works for both standard and custom stages.
+ */
+export async function reorderProjectStageInstances(projectId, orderedInstanceIds) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (let i = 0; i < orderedInstanceIds.length; i++) {
+      await client.query(
+        `UPDATE admin_console.project_stage_instances
+         SET project_display_order = $1
+         WHERE id = $2 AND project_id = $3`,
+        [i + 1, orderedInstanceIds[i], projectId]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Add a custom (project-specific) stage to a project's stage board.
+ * Placed after all existing stages by default.
+ */
+export async function createCustomProjectStage(projectId, { name }) {
+  const maxResult = await pool.query(
+    `SELECT COALESCE(MAX(COALESCE(psd.display_order, psi.custom_display_order)), 0) AS max_order
+     FROM admin_console.project_stage_instances psi
+     LEFT JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+     WHERE psi.project_id = $1`,
+    [projectId]
+  );
+  const nextOrder = maxResult.rows[0].max_order + 1;
+
+  await pool.query(
+    `INSERT INTO admin_console.project_stage_instances
+       (project_id, stage_definition_id, custom_name, custom_display_order, is_applicable, is_complete)
+     VALUES ($1, NULL, $2, $3, TRUE, FALSE)`,
+    [projectId, name.trim(), nextOrder]
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

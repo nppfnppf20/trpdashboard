@@ -17,7 +17,9 @@ import {
   reorderIssueTracks,
   createProjectIssueTrack,
   updateProjectIssueTrack,
-  createProjectKeyIssue
+  createProjectKeyIssue,
+  createCustomProjectStage,
+  reorderProjectStageInstances
 } from '../services/workflow.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,5 +266,40 @@ export async function createProjectKeyIssueHandler(req, res) {
   } catch (error) {
     console.error('Error creating key issue:', error);
     res.status(500).json({ error: 'Failed to create key issue' });
+  }
+}
+
+export async function createCustomProjectStageHandler(req, res) {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
+
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
+
+    await createCustomProjectStage(projectId, { name: name.trim() });
+    const board = await getProjectStageBoard(projectId);
+    res.status(201).json(board);
+  } catch (error) {
+    console.error('Error creating custom stage:', error);
+    res.status(500).json({ error: 'Failed to create custom stage' });
+  }
+}
+
+export async function reorderProjectStagesHandler(req, res) {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
+
+    const { orderedInstanceIds } = req.body;
+    if (!Array.isArray(orderedInstanceIds) || orderedInstanceIds.some(id => typeof id !== 'number')) {
+      return res.status(400).json({ error: 'orderedInstanceIds must be an array of numbers' });
+    }
+
+    await reorderProjectStageInstances(projectId, orderedInstanceIds);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error reordering project stages:', error);
+    res.status(500).json({ error: 'Failed to reorder project stages' });
   }
 }

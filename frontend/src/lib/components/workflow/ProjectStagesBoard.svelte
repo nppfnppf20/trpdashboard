@@ -14,7 +14,9 @@
     getRefusalReasons,
     createRefusalReason,
     updateRefusalReason,
-    deleteRefusalReason
+    deleteRefusalReason,
+    createCustomStage,
+    reorderProjectStages
   } from '$lib/services/workflowApi.js';
 
   function focusOnMount(node) { node.focus(); node.select(); }
@@ -40,6 +42,11 @@
   let addingTrack = false;
   let newTrackDiscipline = '';
   let newTrackLabel = '';
+
+  // Custom stage state
+  let showAddStageForm = false;
+  let newStageName = '';
+  let addingStage = false;
 
   // Appeal-specific state
   $: isAppealProject = project?.project_type === 'Appeal';
@@ -278,6 +285,28 @@
     if (event.key === 'Escape') { addingTrack = false; newTrackDiscipline = ''; newTrackLabel = ''; }
   }
 
+  async function handleAddStage() {
+    const trimmed = newStageName.trim();
+    if (!trimmed) { showAddStageForm = false; return; }
+    addingStage = true;
+    try {
+      const board = await createCustomStage(project.id, { name: trimmed });
+      stages = board.stages;
+      tracks = board.tracks;
+      keyIssues = board.keyIssues || [];
+      entries = board.entries;
+      sortedTracks = applyRiskSort(tracks);
+      newStageName = '';
+      showAddStageForm = false;
+    } catch {}
+    addingStage = false;
+  }
+
+  function onAddStageKeydown(event) {
+    if (event.key === 'Enter') handleAddStage();
+    if (event.key === 'Escape') { showAddStageForm = false; newStageName = ''; }
+  }
+
   async function handleToggleKeyIssue(track) {
     try {
       const res = await updateIssueTrack(track.id, { isKeyIssue: !track.is_key_issue });
@@ -344,7 +373,7 @@
     draggedIdx = null;
     dragOverIdx = null;
     try {
-      await reorderStages(reordered.map(s => s.stage_definition_id));
+      await reorderProjectStages(project.id, reordered.map(s => s.instance_id));
     } catch {}
   }
 
@@ -499,6 +528,24 @@
     <button class="btn btn-secondary btn-sm" on:click={() => (showAddIssueModal = true)}>
       <i class="las la-plus"></i> Add issue row
     </button>
+    <button class="btn btn-secondary btn-sm" on:click={() => { showAddStageForm = !showAddStageForm; newStageName = ''; }}>
+      <i class="las la-plus"></i> Add stage
+    </button>
+    {#if showAddStageForm}
+      <div class="add-stage-form">
+        <input
+          class="rename-input"
+          placeholder="Stage name"
+          bind:value={newStageName}
+          on:keydown={onAddStageKeydown}
+          use:focusOnMount
+        />
+        <button class="btn btn-primary btn-sm" disabled={addingStage} on:click={handleAddStage}>
+          {addingStage ? 'Adding…' : 'Add'}
+        </button>
+        <button class="btn btn-secondary btn-sm" on:click={() => { showAddStageForm = false; newStageName = ''; }}>Cancel</button>
+      </div>
+    {/if}
   </div>
 
   <div class="table-wrapper board-scroll">
@@ -748,7 +795,8 @@
 {/if}
 
 <style>
-  .board-header { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
+  .board-header { display: flex; align-items: center; gap: 0.5rem; justify-content: flex-end; margin-bottom: 0.75rem; flex-wrap: wrap; }
+  .add-stage-form { display: flex; align-items: center; gap: 0.4rem; }
   .board-scroll { overflow-x: auto; }
   .board-table { min-width: max-content; }
   .discipline-col { min-width: 140px; position: sticky; left: 0; background: #f8fafc; z-index: 2; }

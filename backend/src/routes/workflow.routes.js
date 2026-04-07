@@ -20,7 +20,9 @@ import {
   reorderIssueTracksHandler,
   createProjectIssueTrackHandler,
   updateProjectIssueTrackHandler,
-  createProjectKeyIssueHandler
+  createProjectKeyIssueHandler,
+  createCustomProjectStageHandler,
+  reorderProjectStagesHandler
 } from '../controllers/workflow.controller.js';
 import {
   getRefusalReasonsHandler,
@@ -44,17 +46,19 @@ const router = express.Router();
 // Notification centre
 router.get('/notifications', getWorkflowNotificationsHandler);
 
-// Project stage board
+// Project stage board — literal paths first, param routes after
 router.get('/projects/:projectId/stages', getProjectStageBoardHandler);
 router.post('/projects/:projectId/stages/initialize', initializeProjectStageBoardHandler);
+router.post('/projects/:projectId/stages/custom', createCustomProjectStageHandler);
+router.put('/projects/:projectId/stages/reorder', reorderProjectStagesHandler);
 router.put('/projects/:projectId/stages/:stageId/complete', completeProjectStageHandler);
-router.put('/projects/:projectId/stages/:stageId', updateProjectStageHandler);
 router.put('/projects/:projectId/stages/:stageId/applicability', toggleProjectStageApplicabilityHandler);
-router.get('/projects/:projectId/stages/:stageId/prior-entries', getPriorStageEntriesHandler);
 router.put('/projects/:projectId/stages/:stageId/entry', saveStageEntryHandler);
+router.put('/projects/:projectId/stages/:stageId', updateProjectStageHandler);
+router.get('/projects/:projectId/stages/:stageId/prior-entries', getPriorStageEntriesHandler);
 router.get('/projects/:projectId/stages/:stageId/entries', getCurrentStageEntriesHandler);
 
-// Stage reorder
+// Stage reorder (global definitions)
 router.put('/stages/reorder', reorderStageDefinitionsHandler);
 
 // Issue tracks
