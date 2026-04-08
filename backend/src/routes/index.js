@@ -21,6 +21,7 @@ import lookupsRoutes from './lookups.routes.js';
 import workflowRoutes from './workflow.routes.js';
 import ingestionRoutes from './ingestion.routes.js';
 import planitRoutes from './planit.routes.js';
+import lpaAnalysisRoutes from './lpaAnalysis.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -77,6 +78,9 @@ router.use('/api/ingestion', ingestionRoutes);
 
 // PlanIt — similar schemes search + LLM keyword suggestions
 router.use('/api/planit', planitRoutes);
+
+// LPA Analysis — relevant policies + LPA decision document analysis
+router.use('/api/lpa', lpaAnalysisRoutes);
 
 export default router;
 

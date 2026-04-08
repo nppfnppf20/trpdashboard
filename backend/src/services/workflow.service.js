@@ -151,7 +151,7 @@ export async function initializeProjectStageBoard(projectId) {
            OR
            (NOT $2 AND project_type_filter IS NULL)
          )
-       ON CONFLICT (project_id, stage_definition_id) DO NOTHING`,
+       ON CONFLICT (project_id, stage_definition_id) WHERE stage_definition_id IS NOT NULL DO NOTHING`,
       [projectId, isAppeal]
     );
 

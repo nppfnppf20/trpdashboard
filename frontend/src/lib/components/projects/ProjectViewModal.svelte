@@ -5,6 +5,8 @@
   import { authFetch } from '$lib/api/client.js';
   import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
   import SimilarSchemesTab from '$lib/components/projects/SimilarSchemesTab.svelte';
+  import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
+  import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
 
@@ -499,10 +501,22 @@
           Project Stages <span class="beta-tag">Beta</span>
         </button>
         <button
+          class="tab-button {activeTab === 'relevant_policy' ? 'active' : ''}"
+          on:click={() => activeTab = 'relevant_policy'}
+        >
+          Relevant Policy
+        </button>
+        <button
           class="tab-button {activeTab === 'similar_schemes' ? 'active' : ''}"
           on:click={() => activeTab = 'similar_schemes'}
         >
           Similar Schemes <span class="beta-tag">Beta</span>
+        </button>
+        <button
+          class="tab-button {activeTab === 'lpa_decision_analysis' ? 'active' : ''}"
+          on:click={() => activeTab = 'lpa_decision_analysis'}
+        >
+          LPA Decision Analysis <span class="beta-tag">Beta</span>
         </button>
         <button
           class="tab-button {activeTab === 'hlpv' ? 'active' : ''}"
@@ -1329,8 +1343,12 @@
             </div>
           {:else if activeTab === 'stages'}
             <ProjectStagesBoard project={projectData} />
+          {:else if activeTab === 'relevant_policy'}
+            <RelevantPolicyTab project={projectData} />
           {:else if activeTab === 'similar_schemes'}
             <SimilarSchemesTab project={projectData} />
+          {:else if activeTab === 'lpa_decision_analysis'}
+            <LpaDecisionAnalysisTab project={projectData} />
           {/if}
         {/if}
       </div>
