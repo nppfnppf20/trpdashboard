@@ -22,6 +22,7 @@ import workflowRoutes from './workflow.routes.js';
 import ingestionRoutes from './ingestion.routes.js';
 import planitRoutes from './planit.routes.js';
 import lpaAnalysisRoutes from './lpaAnalysis.routes.js';
+import appealRoutes from './appeal.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -81,6 +82,9 @@ router.use('/api/planit', planitRoutes);
 
 // LPA Analysis — relevant policies + LPA decision document analysis
 router.use('/api/lpa', lpaAnalysisRoutes);
+
+// Appeal drafting tool — argument document + document review
+router.use('/api/appeal', appealRoutes);
 
 export default router;
 

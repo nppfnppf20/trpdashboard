@@ -692,3 +692,119 @@ export async function analyseDocumentForStage(rawText, stageName, issueTracks, u
 
   return results;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Appeal drafting — generate initial argument from key issues + refusal reasons
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generate the initial structured appeal argument document.
+ * Returns HTML suitable for the RichTextEditor.
+ */
+export async function generateAppealArgument({ projectName, refusalReasons, keyIssues, initialNotes }) {
+  const reasonsText = refusalReasons.length
+    ? refusalReasons.map((r, i) => `${i + 1}. ${r.title}${r.summary ? ` — ${r.summary}` : ''}${r.risk_level ? ` [${r.risk_level}]` : ''}`).join('\n')
+    : 'None recorded';
+
+  const issuesText = keyIssues.length
+    ? keyIssues.map(k => `- ${k.label}${k.discipline_group ? ` (${k.discipline_group})` : ''}`).join('\n')
+    : 'None recorded';
+
+  const notesSection = initialNotes?.trim()
+    ? `\n\nInitial strategic notes from the team:\n${initialNotes}`
+    : '';
+
+  const prompt = `You are an experienced planning appeal consultant drafting a working argument summary for a planning appeal.
+
+Project: ${projectName}
+
+Reasons for refusal:
+${reasonsText}
+
+Key issues identified for this appeal:
+${issuesText}${notesSection}
+
+Produce a structured working argument summary in HTML. Use <h2> for the main sections, <h3> for issue headings, <p> for body text, and <ul>/<li> for bullet points. Do not use markdown.
+
+Structure:
+1. Appeal Overview — brief description of what is being appealed and the overall strategic position
+2. Reasons for Refusal — for each reason, one paragraph on the current position and a provisional argument
+3. Argument by Issue — for each key issue listed, a section with:
+   - Current position
+   - Provisional argument
+   - Evidence gaps / items still needed
+4. Risks and Unknowns — what could change strategy; what still needs confirmation
+5. Next Steps — immediate actions and evidence required
+
+Be concise and professional. Write in working note style, not formal legal prose. This is a starting point the user will edit.`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  return response.content[0].text;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Appeal drafting — review an uploaded document against the live argument
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Review a single document against the current live argument.
+ * Returns structured JSON with relevance, extracted points, and drafting suggestions.
+ */
+export async function reviewDocumentAgainstArgument({ documentText, currentArgument, keyIssues, refusalReasons, filename }) {
+  const issueLabels = keyIssues.map(k => k.label).join(', ') || 'none listed';
+  const reasonTitles = refusalReasons.map(r => r.title).join('; ') || 'none listed';
+
+  // Strip HTML tags from the current argument for the prompt
+  const plainArgument = currentArgument.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const prompt = `You are a planning appeal consultant reviewing a document against the current working argument for an appeal.
+
+Document filename: ${filename}
+
+Key issues in this appeal: ${issueLabels}
+Reasons for refusal: ${reasonTitles}
+
+Current working argument (condensed):
+<current_argument>
+${plainArgument.slice(0, 6000)}
+</current_argument>
+
+Document to review:
+<document>
+${documentText.slice(0, 8000)}
+</document>
+
+Respond ONLY with valid JSON in this exact shape (no markdown, no explanation):
+{
+  "relevant": true or false,
+  "relevance_summary": "one sentence explaining why this document is or isn't relevant",
+  "affected_issues": ["issue label 1", "issue label 2"],
+  "extracted_points": {
+    "helpful": ["point 1", "point 2"],
+    "harmful": ["point 1"],
+    "procedural": ["point 1"],
+    "policy": ["point 1"]
+  },
+  "argument_impact": "strengthens" | "weakens" | "qualifies" | "neutral" | "new_sub_point",
+  "impact_explanation": "one or two sentences",
+  "bullet_suggestions": ["Add under [Issue]: ...", "Under [Issue], note that ..."],
+  "draft_paragraph": "optional suggested paragraph text to add to the argument, or null",
+  "caution_note": "any verification needed or contradictions to flag, or null"
+}`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 2000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim();
+  // Strip markdown code fences if present
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  return JSON.parse(cleaned);
+}

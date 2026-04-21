@@ -420,108 +420,6 @@
   <div class="loading"><div class="spinner"></div><p>Loading stage board…</p></div>
 {:else if error}
   <p class="empty">Error: {error}</p>
-{:else if isAppealProject}
-  <!-- ── Appeal Board ──────────────────────────────────────────────────── -->
-  <div class="appeal-board">
-    <div class="appeal-stages">
-      {#each stages as stage}
-        <div class="appeal-stage-card" class:complete={stage.is_complete} class:na={!stage.is_applicable}>
-          <button class="btn btn-ghost btn-sm btn-icon" title={stage.is_applicable ? 'Mark N/A' : 'Mark applicable'} on:click={() => handleToggleApplicability(stage)}>
-            <i class="las {stage.is_applicable ? 'la-eye' : 'la-eye-slash'}"></i>
-          </button>
-          <span class="appeal-stage-name" class:na-text={!stage.is_applicable}>{stage.stage_name}</span>
-          <button
-            class="btn btn-ghost btn-sm btn-icon complete-toggle"
-            class:is-done={stage.is_complete}
-            title={stage.is_complete ? 'Completed' : 'Mark complete'}
-            on:click={() => openCompletionModal(stage)}
-            disabled={!stage.is_applicable}
-          >
-            <i class="{stage.is_complete ? 'las la-check-square' : 'lar la-square'}"></i>
-          </button>
-        </div>
-      {/each}
-    </div>
-
-    <div class="rfr-panel">
-      <div class="rfr-header">
-        <h3>Reasons for Refusal</h3>
-        <button class="btn btn-secondary btn-sm" on:click={() => (showAddReasonForm = !showAddReasonForm)}>
-          <i class="las la-plus"></i> Add reason
-        </button>
-      </div>
-
-      {#if showAddReasonForm}
-        <div class="reason-form">
-          <div class="reason-form-row">
-            <input class="reason-input reason-title-input" placeholder="Reason title (required)" bind:value={newReason.title} />
-            <select class="reason-select" bind:value={newReason.riskLevel}>
-              <option value="">Risk level...</option>
-              {#each RISK_LEVELS as r}<option value={r.value}>{r.label}</option>{/each}
-            </select>
-            <label class="reason-key-issue-label">
-              <input type="checkbox" bind:checked={newReason.isKeyIssue} /> Key issue
-            </label>
-          </div>
-          <input class="reason-input" placeholder="Summary (optional)" bind:value={newReason.summary} />
-          <div class="reason-form-actions">
-            <button class="btn btn-primary btn-sm" on:click={handleAddReason}>Save</button>
-            <button class="btn btn-secondary btn-sm" on:click={() => { showAddReasonForm = false; newReason = { title: '', summary: '', riskLevel: '', isKeyIssue: false }; }}>Cancel</button>
-          </div>
-        </div>
-      {/if}
-
-      {#if refusalReasons.length === 0 && !showAddReasonForm}
-        <p class="rfr-empty">No reasons for refusal added yet.</p>
-      {/if}
-
-      {#each refusalReasons as reason}
-        <div class="reason-row" class:key-issue={reason.is_key_issue}>
-          {#if editingReasonId === reason.id}
-            <div class="reason-form">
-              <div class="reason-form-row">
-                <input class="reason-input reason-title-input" bind:value={editingReasonData.title} placeholder="Reason title" />
-                <select class="reason-select" bind:value={editingReasonData.riskLevel}>
-                  <option value="">Risk level...</option>
-                  {#each RISK_LEVELS as r}<option value={r.value}>{r.label}</option>{/each}
-                </select>
-                <label class="reason-key-issue-label">
-                  <input type="checkbox" bind:checked={editingReasonData.isKeyIssue} /> Key issue
-                </label>
-              </div>
-              <input class="reason-input" placeholder="Summary (optional)" bind:value={editingReasonData.summary} />
-              <div class="reason-form-actions">
-                <button class="btn btn-primary btn-sm" on:click={() => commitEditReason(reason)}>Save</button>
-                <button class="btn btn-secondary btn-sm" on:click={() => (editingReasonId = null)}>Cancel</button>
-              </div>
-            </div>
-          {:else}
-            <div class="reason-content">
-              <div class="reason-top">
-                <span class="reason-title" class:text-bold={reason.is_key_issue}>{reason.title}</span>
-                {#if reason.risk_level}
-                  <span class="risk-chip" style={riskStyle(reason.risk_level)}>{riskLabel(reason.risk_level)}</span>
-                {/if}
-                {#if reason.is_key_issue}
-                  <span class="ki-flag-static" title="Key Issue"><i class="las la-flag"></i></span>
-                {/if}
-              </div>
-              {#if reason.summary}
-                <p class="reason-summary">{reason.summary}</p>
-              {/if}
-            </div>
-            <div class="reason-actions">
-              <button class="action-btn" class:flagged={reason.is_key_issue} title={reason.is_key_issue ? 'Remove key issue' : 'Mark as key issue'} on:click={() => handleToggleReasonKeyIssue(reason)}>
-                <i class="las la-flag"></i>
-              </button>
-              <button class="action-btn edit-btn" title="Edit" on:click={() => startEditReason(reason)}><i class="las la-pen"></i></button>
-              <button class="action-btn delete-btn" title="Delete" on:click={() => handleDeleteReason(reason)}><i class="las la-trash"></i></button>
-            </div>
-          {/if}
-        </div>
-      {/each}
-    </div>
-  </div>
 {:else}
   <!-- ── Standard Board ─────────────────────────────────────────────────── -->
   <div class="board-header">
@@ -768,6 +666,7 @@
       </tbody>
     </table>
   </div>
+
 {/if}
 <!-- end main board conditional -->
 

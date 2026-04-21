@@ -34,6 +34,10 @@
     goto('/admin-console');
   }
 
+  function navigateToAppeal() {
+    goto('/appeal');
+  }
+
   function openAddProjectModal() {
     showAddProjectModal = true;
   }
@@ -370,6 +374,47 @@
       </div>
     </div>
 
+      <!-- Appeal Drafting Card -->
+      <div class="tool-card" on:click={navigateToAppeal} on:keydown={(e) => e.key === 'Enter' && navigateToAppeal()} role="button" tabindex="0">
+        <div class="card-content">
+          <div class="card-icon card-icon-violet">
+            <i class="las la-balance-scale"></i>
+          </div>
+
+          <h2 class="card-title">
+            Appeal Drafting
+          </h2>
+
+          <p class="card-description">
+            Generate a structured working argument from refusal reasons and key issues, then iteratively strengthen it by uploading documents one at a time for AI-powered review.
+          </p>
+
+          <div class="features-list">
+            <div class="feature-item">
+              <i class="las la-magic feature-icon-violet"></i>
+              <span>AI-Generated Starting Argument</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-file-upload feature-icon-violet"></i>
+              <span>Document-by-Document Review</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-edit feature-icon-violet"></i>
+              <span>Live Editable Working Draft</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-layer-group feature-icon-violet"></i>
+              <span>Seeded from Key Issues</span>
+            </div>
+          </div>
+
+          <button class="tool-button tool-button-violet" on:click|stopPropagation={navigateToAppeal}>
+            Open Appeal Drafting
+            <i class="las la-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
     <!-- Footer Info -->
     <div class="home-footer">
       <p class="footer-text">
@@ -553,6 +598,11 @@
     color: #4361ee;
   }
 
+  .card-icon-violet {
+    background: #ede9fe;
+    color: #7c3aed;
+  }
+
   .card-icon i {
     font-size: 1.5rem;
   }
@@ -602,6 +652,11 @@
     font-size: 0.875rem;
   }
 
+  .feature-icon-violet {
+    color: #7c3aed;
+    font-size: 0.875rem;
+  }
+
   .tool-button {
     display: inline-flex;
     align-items: center;
@@ -630,6 +685,10 @@
     background: #4361ee;
   }
 
+  .tool-button-violet {
+    background: #7c3aed;
+  }
+
   .tool-button:hover,
   .tool-button-blue:hover,
   .tool-button-green:hover,
@@ -641,6 +700,12 @@
     background: #3451d1;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(67, 97, 238, 0.35);
+  }
+
+  .tool-button-violet:hover {
+    background: #6d28d9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
   }
 
   .tool-button i {

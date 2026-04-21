@@ -10,6 +10,7 @@ async function createProject(req, res) {
     project_id,
     project_name,
     local_planning_authority, // Array of strings
+    project_type,
     project_lead,
     project_manager,
     project_director,
@@ -51,15 +52,16 @@ async function createProject(req, res) {
     // Insert into projects table
     const result = await pool.query(
       `INSERT INTO projects
-       (project_id, project_name, local_planning_authority, project_lead,
+       (project_id, project_name, project_type, local_planning_authority, project_lead,
         project_manager, project_director, address, polygon_geojson, area,
         client, client_spv_name, sectors, sub_sectors,
         designations_on_site, relevant_nearby_designations, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING *`,
       [
         project_id,
         project_name,
+        project_type || null,
         lpaJson,
         project_lead || null,
         project_manager || null,
