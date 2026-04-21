@@ -8,6 +8,8 @@ import multer from 'multer';
 import {
   getKeyIssues,
   updateKeyIssueSummary,
+  getIssueNotes,
+  upsertIssueNote,
   getArgument,
   saveArgument,
   generateArgument,
@@ -35,6 +37,10 @@ const upload = multer({
 // Key issues
 router.get('/projects/:projectId/key-issues', getKeyIssues);
 router.patch('/key-issues/:trackId/summary', updateKeyIssueSummary);
+
+// Issue notes
+router.get('/projects/:projectId/issue-notes', getIssueNotes);
+router.put('/projects/:projectId/issue-notes/:trackId', upsertIssueNote);
 
 // Argument document
 router.get('/projects/:projectId/argument', getArgument);

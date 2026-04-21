@@ -36,6 +36,22 @@ export async function saveArgument(projectId, argumentHtml) {
   return res.json();
 }
 
+export async function getIssueNotes(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/issue-notes`);
+  if (!res.ok) throw new Error('Failed to fetch issue notes');
+  return res.json();
+}
+
+export async function upsertIssueNote(projectId, trackId, argumentAgainst, argumentFor) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/issue-notes/${trackId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ argument_against: argumentAgainst, argument_for: argumentFor })
+  });
+  if (!res.ok) throw new Error('Failed to save issue note');
+  return res.json();
+}
+
 export async function generateArgument(projectId, initialNotes) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/generate`, {
     method: 'POST',

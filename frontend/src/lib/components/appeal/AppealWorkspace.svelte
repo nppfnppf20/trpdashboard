@@ -1,75 +1,12 @@
 <script>
-  import { onMount, createEventDispatcher } from 'svelte';
-  import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getArgument, saveArgument } from '$lib/api/appeal.js';
-
-  export let project;
-
-  const dispatch = createEventDispatcher();
-
-  let activeTab = 'key-issues';
-
-  // Data
-  let keyIssues = [];
-  let argument = null;
-  let loading = true;
-  let loadError = null;
-
-  // Argument editor
-  let editorComponent;
-  let saving = false;
-  let lastSaved = null;
-  let saveTimer = null;
+  import { onMount } from 'svelte';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote } from '$lib/api/appeal.js';
 
   // Document upload
   let fileInput;
   let dragOver = false;
   let pasteText = '';
-  let activeInputTab = 'upload'; // 'upload' | 'paste'
-
-  onMount(load);
-
-  async function load() {
-    loading = true;
-    loadError = null;
-    try {
-      [keyIssues, argument] = await Promise.all([
-        getKeyIssues(project.id),
-        getArgument(project.id)
-      ]);
-    } catch (err) {
-      loadError = err.message;
-    } finally {
-      loading = false;
-    }
-  }
-
-  // Build initial HTML skeleton from key issues (headings only, no generate call yet)
-  function buildArgumentSkeleton() {
-    if (!keyIssues.length) return '<p>No key issues found for this project.</p>';
-    return keyIssues.map(issue =>
-      `<h2>${issue.label}</h2><p></p>`
-    ).join('\n');
-  }
-
-  $: argumentContent = argument?.argument_html || buildArgumentSkeleton();
-
-  function handleEditorChange(event) {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => autoSave(event.detail.html), 2000);
-  }
-
-  async function autoSave(html) {
-    saving = true;
-    try {
-      argument = await saveArgument(project.id, html);
-      lastSaved = new Date();
-    } catch (err) {
-      console.error('Auto-save failed:', err);
-    } finally {
-      saving = false;
-    }
-  }
+  let activeInputTab = 'upload';
 
   function onDrop(e) {
     e.preventDefault();
@@ -85,18 +22,71 @@
   }
 
   function handleFile(file) {
-    // Wiring up later — just log for now
     console.log('File selected:', file.name);
   }
 
+  export let project;
+
+  let activeTab = 'key-issues';
+
+  let keyIssues = [];
+  let issueNotes = {};   // { [track_id]: notes string }
+  let loading = true;
+  let loadError = null;
+
+  // Per-note save state: { [track_id]: 'saving' | 'saved' | null }
+  let noteStatus = {};
+
+  let saveTimers = {};
+
+  onMount(load);
+
+  async function load() {
+    loading = true;
+    loadError = null;
+    try {
+      [keyIssues, issueNotes] = await Promise.all([
+        getKeyIssues(project.id),
+        getIssueNotes(project.id)
+      ]);
+    } catch (err) {
+      loadError = err.message;
+    } finally {
+      loading = false;
+    }
+  }
+
+  function handleNoteInput(trackId, field, value) {
+    issueNotes = {
+      ...issueNotes,
+      [trackId]: { ...(issueNotes[trackId] ?? {}), [field]: value }
+    };
+    const key = `${trackId}`;
+    if (saveTimers[key]) clearTimeout(saveTimers[key]);
+    saveTimers[key] = setTimeout(() => saveNote(trackId), 1500);
+  }
+
+  async function saveNote(trackId) {
+    noteStatus = { ...noteStatus, [trackId]: 'saving' };
+    try {
+      const n = issueNotes[trackId] ?? {};
+      await upsertIssueNote(project.id, trackId, n.argument_against ?? null, n.argument_for ?? null);
+      noteStatus = { ...noteStatus, [trackId]: 'saved' };
+      setTimeout(() => { noteStatus = { ...noteStatus, [trackId]: null }; }, 2000);
+    } catch (err) {
+      console.error('Failed to save note:', err);
+      noteStatus = { ...noteStatus, [trackId]: null };
+    }
+  }
+
   const riskColours = {
-    showstopper:        { bg: '#fee2e2', colour: '#991b1b' },
-    extremely_high_risk:{ bg: '#fee2e2', colour: '#dc2626' },
-    high_risk:          { bg: '#ffedd5', colour: '#c2410c' },
-    medium_high_risk:   { bg: '#fef9c3', colour: '#a16207' },
-    medium_risk:        { bg: '#fef9c3', colour: '#ca8a04' },
-    medium_low_risk:    { bg: '#dcfce7', colour: '#15803d' },
-    low_risk:           { bg: '#dcfce7', colour: '#16a34a' }
+    showstopper:         { bg: '#fee2e2', colour: '#991b1b' },
+    extremely_high_risk: { bg: '#fee2e2', colour: '#dc2626' },
+    high_risk:           { bg: '#ffedd5', colour: '#c2410c' },
+    medium_high_risk:    { bg: '#fef9c3', colour: '#a16207' },
+    medium_risk:         { bg: '#fef9c3', colour: '#ca8a04' },
+    medium_low_risk:     { bg: '#dcfce7', colour: '#15803d' },
+    low_risk:            { bg: '#dcfce7', colour: '#16a34a' }
   };
 </script>
 
@@ -104,22 +94,10 @@
 
   <!-- Header -->
   <div class="workspace-header">
-    <div class="header-left">
-      <div class="header-info">
-        <h1>{project.project_name}</h1>
-        {#if project.project_id}<span class="project-ref">{project.project_id}</span>{/if}
-      </div>
+    <div class="header-info">
+      <h1>{project.project_name}</h1>
+      {#if project.project_id}<span class="project-ref">{project.project_id}</span>{/if}
     </div>
-
-    {#if activeTab === 'argument'}
-      <div class="save-status">
-        {#if saving}
-          <span class="saving"><div class="mini-spinner"></div> Saving...</span>
-        {:else if lastSaved}
-          <span class="saved"><i class="las la-check"></i> Saved {lastSaved.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>
-        {/if}
-      </div>
-    {/if}
   </div>
 
   <!-- Tabs -->
@@ -170,10 +148,7 @@
                   <span class="issue-name">{issue.label}</span>
                 </div>
                 {#if issue.last_known_risk_level}
-                  <span
-                    class="risk-chip"
-                    style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}"
-                  >
+                  <span class="risk-chip" style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}">
                     {issue.last_known_risk_level.replace(/_/g, ' ')}
                   </span>
                 {/if}
@@ -181,8 +156,8 @@
               <textarea
                 class="summary-field"
                 placeholder="Add notes on this issue — position, key evidence, approach..."
-                bind:value={issue.summary}
-                on:blur={() => updateKeyIssueSummary(issue.id, issue.summary)}
+                value={issue.summary ?? ''}
+                on:blur={(e) => updateKeyIssueSummary(issue.id, e.target.value)}
               ></textarea>
             </div>
           {/each}
@@ -194,31 +169,69 @@
     <!-- ── Tab 2: Argument Structure ── -->
     <div class="argument-body">
 
-      <!-- Left: editor -->
-      <div class="editor-panel">
-        <RichTextEditor
-          bind:this={editorComponent}
-          content={argumentContent}
-          placeholder="Your argument will appear here, structured by key issue..."
-          on:change={handleEditorChange}
-        />
+      <!-- Left: per-issue notes -->
+      <div class="argument-panel">
+        {#if keyIssues.length === 0}
+          <div class="empty-state">
+            <i class="las la-list-alt"></i>
+            <p>No key issues found. Add them in the Key Issues tab first.</p>
+          </div>
+        {:else}
+          <div class="argument-list">
+            {#each keyIssues as issue (issue.id)}
+              {@const risk = riskColours[issue.last_known_risk_level]}
+              <div class="argument-section">
+                <div class="argument-heading">
+                  <div class="argument-title-row">
+                    {#if issue.discipline}
+                      <span class="discipline-tag">{issue.discipline.replace(/_/g, ' ')}</span>
+                    {/if}
+                    <h2 class="argument-issue-title">{issue.label}</h2>
+                    {#if issue.last_known_risk_level}
+                      <span class="risk-chip" style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}">
+                        {issue.last_known_risk_level.replace(/_/g, ' ')}
+                      </span>
+                    {/if}
+                  </div>
+                  {#if noteStatus[issue.id] === 'saving'}
+                    <span class="note-status saving"><div class="mini-spinner"></div> Saving</span>
+                  {:else if noteStatus[issue.id] === 'saved'}
+                    <span class="note-status saved"><i class="las la-check"></i> Saved</span>
+                  {/if}
+                </div>
+                <div class="note-fields">
+                  <div class="note-field-group against">
+                    <label class="note-label against-label">Argument Against</label>
+                    <textarea
+                      class="notes-field against-field"
+                      placeholder="Paste the refusal reason, inspector's objection, or opposing position..."
+                      value={issueNotes[issue.id]?.argument_against ?? ''}
+                      on:input={(e) => handleNoteInput(issue.id, 'argument_against', e.target.value)}
+                    ></textarea>
+                  </div>
+                  <div class="note-field-group for">
+                    <label class="note-label for-label">Argument For</label>
+                    <textarea
+                      class="notes-field for-field"
+                      placeholder="Our response — evidence, policy hooks, expert position, how we address the objection..."
+                      value={issueNotes[issue.id]?.argument_for ?? ''}
+                      on:input={(e) => handleNoteInput(issue.id, 'argument_for', e.target.value)}
+                    ></textarea>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
 
-      <!-- Right: input panel -->
+      <!-- Right: document upload panel -->
       <div class="input-panel">
         <div class="input-tabs">
-          <button
-            class="input-tab"
-            class:active={activeInputTab === 'upload'}
-            on:click={() => activeInputTab = 'upload'}
-          >
+          <button class="input-tab" class:active={activeInputTab === 'upload'} on:click={() => activeInputTab = 'upload'}>
             <i class="las la-file-upload"></i> Upload PDF
           </button>
-          <button
-            class="input-tab"
-            class:active={activeInputTab === 'paste'}
-            on:click={() => activeInputTab = 'paste'}
-          >
+          <button class="input-tab" class:active={activeInputTab === 'paste'} on:click={() => activeInputTab = 'paste'}>
             <i class="las la-paste"></i> Paste Text
           </button>
         </div>
@@ -239,28 +252,21 @@
             <span>Drop a PDF here or click to upload</span>
             <span class="upload-sub">PDF, TXT or MD · max 20MB</span>
           </div>
-          <input
-            type="file"
-            accept=".pdf,.txt,.md"
-            bind:this={fileInput}
-            on:change={onFileInputChange}
-            style="display:none"
-          />
+          <input type="file" accept=".pdf,.txt,.md" bind:this={fileInput} on:change={onFileInputChange} style="display:none" />
         {:else}
           <textarea
             class="paste-area"
             bind:value={pasteText}
             placeholder="Paste text from a document, report or meeting notes here..."
           ></textarea>
-          <button class="analyse-btn" disabled={!pasteText.trim()}>
-            Analyse text
-          </button>
+          <button class="analyse-btn" disabled={!pasteText.trim()}>Analyse text</button>
         {/if}
       </div>
+
     </div>
 
   {:else if activeTab === 'draft'}
-    <!-- ── Tab 3: Draft Document (placeholder) ── -->
+    <!-- ── Tab 3: Draft Document ── -->
     <div class="tab-body">
       <div class="empty-state">
         <i class="las la-file-alt"></i>
@@ -279,21 +285,13 @@
     background: #f8fafc;
   }
 
-  /* Header */
   .workspace-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 0.75rem 1.5rem;
     background: white;
     border-bottom: 1px solid #e2e8f0;
     flex-shrink: 0;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
   }
 
   .header-info {
@@ -317,14 +315,9 @@
     border-radius: 4px;
   }
 
-  .save-status { font-size: 0.8rem; }
-  .saving { color: #94a3b8; display: flex; align-items: center; gap: 0.375rem; }
-  .saved  { color: #16a34a; display: flex; align-items: center; gap: 0.375rem; }
-
   /* Tabs */
   .tabs {
     display: flex;
-    gap: 0;
     background: white;
     border-bottom: 1px solid #e2e8f0;
     padding: 0 1.5rem;
@@ -348,14 +341,14 @@
   .tab.active { color: #7c3aed; border-bottom-color: #7c3aed; }
   .tab:hover:not(.active) { color: #374151; }
 
-  /* Generic tab body (key issues + draft) */
+  /* Tab body */
   .tab-body {
     flex: 1;
     overflow-y: auto;
     padding: 1.5rem;
   }
 
-  /* Key issues list */
+  /* ── Key Issues ── */
   .issues-list {
     display: flex;
     flex-direction: column;
@@ -387,97 +380,42 @@
     min-width: 0;
   }
 
-  .discipline-tag {
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: #f1f5f9;
-    color: #64748b;
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
-    white-space: nowrap;
-    text-transform: capitalize;
-  }
-
   .issue-name {
     font-size: 0.9375rem;
     font-weight: 500;
     color: #1e293b;
   }
 
-  .risk-chip {
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.2rem 0.625rem;
-    border-radius: 999px;
-    white-space: nowrap;
-    text-transform: capitalize;
-    flex-shrink: 0;
-  }
-
-  .summary-field {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 0.625rem 0.75rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    color: #374151;
-    background: #f8fafc;
-    resize: vertical;
-    min-height: 72px;
-    line-height: 1.5;
-    transition: border-color 0.15s, background 0.15s;
-  }
-
-  .summary-field:focus {
-    outline: none;
-    border-color: #7c3aed;
-    background: white;
-    box-shadow: 0 0 0 3px rgba(124,58,237,0.07);
-  }
-
-  .summary-field::placeholder { color: #94a3b8; }
-
-  /* Argument tab — two panels */
+  /* ── Argument Structure two-panel ── */
   .argument-body {
-    flex: 1;
     display: grid;
-    grid-template-columns: 1fr 320px;
-    gap: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .editor-panel {
+    grid-template-columns: 3fr 2fr;
+    align-items: start;
     padding: 1.5rem;
-    overflow-y: auto;
-    border-right: 1px solid #e2e8f0;
-    background: white;
+    gap: 1.5rem;
+    min-height: 600px;
   }
 
-  .editor-panel :global(.rich-text-editor) {
-    border: none;
-    height: 100%;
+  .argument-panel {
+    padding: 0;
+    background: transparent;
   }
 
-  .editor-panel :global(.editor-content) {
-    min-height: 400px;
-    max-height: none;
-  }
-
-  /* Right input panel */
   .input-panel {
     display: flex;
     flex-direction: column;
-    background: #f8fafc;
-    overflow-y: auto;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    position: sticky;
+    top: 1.5rem;
   }
 
   .input-tabs {
     display: flex;
     border-bottom: 1px solid #e2e8f0;
-    background: white;
+    background: #f8fafc;
     flex-shrink: 0;
   }
 
@@ -518,11 +456,7 @@
     text-align: center;
   }
 
-  .upload-zone:hover, .upload-zone.drag-over {
-    border-color: #7c3aed;
-    background: #faf5ff;
-  }
-
+  .upload-zone:hover, .upload-zone.drag-over { border-color: #7c3aed; background: #faf5ff; }
   .upload-zone i { font-size: 2.25rem; color: #94a3b8; }
   .upload-zone span { font-size: 0.875rem; color: #475569; font-weight: 500; }
   .upload-sub { font-size: 0.8rem !important; color: #94a3b8 !important; font-weight: 400 !important; }
@@ -536,16 +470,12 @@
     font-size: 0.875rem;
     font-family: inherit;
     resize: none;
-    min-height: 240px;
+    min-height: 200px;
     transition: border-color 0.15s;
     background: white;
   }
 
-  .paste-area:focus {
-    outline: none;
-    border-color: #7c3aed;
-    box-shadow: 0 0 0 3px rgba(124,58,237,0.08);
-  }
+  .paste-area:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.08); }
 
   .analyse-btn {
     margin: 0 1.25rem 1.25rem;
@@ -563,6 +493,124 @@
 
   .analyse-btn:hover:not(:disabled) { background: #6d28d9; }
   .analyse-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Argument Structure ── */
+  .argument-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    max-width: 800px;
+  }
+
+  .argument-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .argument-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .argument-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+  }
+
+  .argument-issue-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+
+  .note-status {
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+  }
+
+  .note-status.saving { color: #94a3b8; }
+  .note-status.saved  { color: #16a34a; }
+
+  /* Shared chips */
+  .discipline-tag {
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #f1f5f9;
+    color: #64748b;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    text-transform: capitalize;
+    flex-shrink: 0;
+  }
+
+  .risk-chip {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.625rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    text-transform: capitalize;
+    flex-shrink: 0;
+  }
+
+  /* Shared textarea styles */
+  .summary-field,
+  .notes-field {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #374151;
+    background: #f8fafc;
+    resize: vertical;
+    line-height: 1.5;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .summary-field { min-height: 72px; }
+  .notes-field   { min-height: 100px; }
+
+  .note-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .note-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .note-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+  }
+
+  .summary-field:focus,
+  .notes-field:focus {
+    outline: none;
+    border-color: #7c3aed;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.07);
+  }
+
+  .summary-field::placeholder,
+  .notes-field::placeholder { color: #94a3b8; }
 
   /* Loading / error / empty */
   .loading-state {
@@ -595,6 +643,7 @@
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.875rem;
+    font-family: inherit;
   }
 
   .empty-state {
@@ -610,7 +659,6 @@
   .empty-state i { font-size: 3rem; }
   .empty-state p { margin: 0; font-size: 0.9rem; max-width: 360px; }
 
-  /* Spinners */
   .spinner {
     width: 1.5rem;
     height: 1.5rem;

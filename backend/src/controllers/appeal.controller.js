@@ -49,6 +49,54 @@ export async function updateKeyIssueSummary(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Issue notes (per-issue argument structure notes)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getIssueNotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT track_id, argument_against, argument_for
+       FROM public.appeal_issue_notes
+       WHERE project_id = $1`,
+      [projectId]
+    );
+    // Return as a map: { [track_id]: { argument_against, argument_for } }
+    const map = {};
+    for (const row of rows) {
+      map[row.track_id] = {
+        argument_against: row.argument_against,
+        argument_for: row.argument_for
+      };
+    }
+    res.json(map);
+  } catch (err) {
+    console.error('getIssueNotes error:', err);
+    res.status(500).json({ error: 'Failed to fetch issue notes' });
+  }
+}
+
+export async function upsertIssueNote(req, res) {
+  const { projectId, trackId } = req.params;
+  const { argument_against, argument_for } = req.body;
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO public.appeal_issue_notes (project_id, track_id, argument_against, argument_for, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (project_id, track_id)
+       DO UPDATE SET argument_against = $3, argument_for = $4, updated_at = NOW()
+       RETURNING track_id, argument_against, argument_for, updated_at`,
+      [projectId, trackId, argument_against ?? null, argument_for ?? null]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('upsertIssueNote error:', err);
+    res.status(500).json({ error: 'Failed to save issue note' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Argument document
 // ─────────────────────────────────────────────────────────────────────────────
 
