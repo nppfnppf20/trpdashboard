@@ -808,3 +808,127 @@ Respond ONLY with valid JSON in this exact shape (no markdown, no explanation):
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   return JSON.parse(cleaned);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Appeal: extract actionable points from an uploaded document
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DOC_TYPE_INSTRUCTIONS = {
+  'Officer Report':        'This is a local authority officer report recommending refusal. Extract points that articulate the planning authority\'s objections — these should populate "argument_against". Also extract any concessions or positive observations that could support the appeal — these go to "argument_for".',
+  'Refusal Notice':        'This is the formal refusal notice. Extract each reason for refusal as an "argument_against" point, mapped to the most relevant key issue.',
+  'Appeal Decision':       'This is an appeal inspector\'s decision. Extract the inspector\'s reasoning against the proposal as "argument_against" points and any findings that favour the appellant as "argument_for" points.',
+  'Planning Statement':    'This is a planning statement supporting the proposal. Extract points that support the argument for the appeal — these go to "argument_for".',
+  'Proof of Evidence':     'This is an expert proof of evidence. Extract technical findings and conclusions that support the appeal case — these go to "argument_for".',
+  'Expert Report':         'This is an expert technical report. Extract findings and conclusions relevant to the key issues — "argument_for" if supportive, "argument_against" if they identify problems.',
+  'Consultation Response': 'This is a consultation response. Extract objections as "argument_against" and any supportive comments as "argument_for".',
+  'Other':                 'Extract any points relevant to the key issues. Use your judgement on whether each point supports "argument_for" or "argument_against".'
+};
+
+/**
+ * Build the extraction prompt template with {{DOCUMENT}} as the placeholder
+ * for the actual document text. Used when saving/loading editable templates.
+ * Issue list and context are baked in fresh at call time.
+ */
+export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes }) {
+  return buildExtractPointsPrompt({ text: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes });
+}
+
+/**
+ * Build the extraction prompt without running the LLM.
+ * Exported so the controller can return it for preview/editing.
+ */
+export function buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes }) {
+  const docInstruction = DOC_TYPE_INSTRUCTIONS[documentType] || DOC_TYPE_INSTRUCTIONS['Other'];
+
+  const directionInstruction = documentDirection === 'for'
+    ? 'This document SUPPORTS the proposal. Unless a point clearly articulates an objection or problem, default to tagging it as "argument_for".'
+    : 'This document is AGAINST the proposal (e.g. officer report, refusal notice, objection). Unless a point clearly supports the appellant, default to tagging it as "argument_against".';
+
+  const issues = targetIssues.length > 0 ? targetIssues : allIssues;
+
+  const issueList = issues.map(issue => {
+    const against = issue.argument_against ? `\n    Current against: ${issue.argument_against.slice(0, 400)}` : '';
+    const forNote  = issue.argument_for    ? `\n    Current for: ${issue.argument_for.slice(0, 400)}`    : '';
+    return `- id:${issue.id} | ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}${against}${forNote}`;
+  }).join('\n');
+
+  const fullContext = allIssues.map(issue => {
+    const parts = [];
+    if (issue.argument_against) parts.push(`Against: ${issue.argument_against.slice(0, 200)}`);
+    if (issue.argument_for)     parts.push(`For: ${issue.argument_for.slice(0, 200)}`);
+    return parts.length ? `${issue.label}: ${parts.join(' | ')}` : null;
+  }).filter(Boolean).join('\n');
+
+  const userNotesSection = userNotes
+    ? `\n\n⚑ USER GUIDANCE (treat this as high priority context — it overrides your own judgement where it conflicts):\n${userNotes}\n`
+    : '';
+
+  const targetNote = targetIssues.length > 0
+    ? `The user has indicated this document is specifically relevant to: ${targetIssues.map(i => i.label).join(', ')}. Focus extraction on these issues first, but still surface any other relevant points.`
+    : `No specific issues were flagged — review against all issues and use your judgement.`;
+
+  return `You are a planning appeal consultant helping to build the argument structure for a planning appeal. Your job is to read a document and extract points that could strengthen or inform the working argument.
+${userNotesSection}
+Document type: ${documentType}
+${directionInstruction}
+${docInstruction}
+
+${targetNote}
+
+Issues to extract against (with current working notes):
+${issueList}
+
+Full working argument context (all issues, for background):
+${fullContext || 'No notes yet.'}
+
+Document:
+<document>
+${text.slice(0, 10000)}
+</document>
+
+Instructions:
+- Extract every point from the document that could be useful to the argument, including things that fill gaps in the current notes
+- Do NOT repeat points already captured in the current working notes above
+- Map each point to the most relevant issue id, or null if it is general
+- Tag each point as "argument_against" (articulates the opposing position) or "argument_for" (supports the appeal)
+- Write each point as a concise, directly usable note (1–3 sentences max)
+- If the user guidance above directs you to specific themes or paragraphs, prioritise those
+
+Respond ONLY with valid JSON in this exact shape — no markdown, no explanation:
+{
+  "summary": "2-4 sentence overview of the document and its overall relevance to the appeal",
+  "coverage": [
+    { "issue_id": 42, "assessment": "one sentence on how this document bears on this issue" }
+  ],
+  "points": [
+    { "track_id": 42, "field": "argument_against", "point": "The officer found that..." },
+    { "track_id": 42, "field": "argument_for", "point": "Paragraph 6.4 acknowledges that..." },
+    { "track_id": null, "field": "argument_for", "point": "The committee noted a general presumption in favour..." }
+  ]
+}
+
+If no relevant points are found, return points as an empty array but still provide the summary and coverage.`;
+}
+
+export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, customPrompt }) {
+  const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes });
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 3000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim();
+  console.log('[extractPointsFromDocument] raw response length:', raw.length);
+  console.log('[extractPointsFromDocument] raw response preview:', raw.slice(0, 300));
+
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseErr) {
+    console.error('[extractPointsFromDocument] JSON.parse failed. cleaned length:', cleaned.length);
+    console.error('[extractPointsFromDocument] cleaned preview:', cleaned.slice(0, 500));
+    throw new Error(`LLM returned unparseable response: ${parseErr.message}`);
+  }
+}

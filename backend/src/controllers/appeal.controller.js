@@ -5,7 +5,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -93,6 +93,98 @@ export async function upsertIssueNote(req, res) {
   } catch (err) {
     console.error('upsertIssueNote error:', err);
     res.status(500).json({ error: 'Failed to save issue note' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document analysis — extract points mapped to key issues
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function analyseDocument(req, res) {
+  try {
+    console.log('analyseDocument hit — contentType:', req.headers['content-type'], 'hasFile:', !!req.file, 'bodyKeys:', Object.keys(req.body || {}));
+
+    const { projectId } = req.params;
+    const preview = req.query.preview === 'true';
+    const documentType = req.body.document_type || 'Other';
+    const documentDirection = req.body.document_direction || 'against';
+    const userNotes = req.body.user_notes || null;
+    const customPrompt = req.body.custom_prompt || null;
+
+    const rawIds = req.body.relevant_track_ids;
+    let relevantTrackIds = [];
+    if (Array.isArray(rawIds)) {
+      relevantTrackIds = rawIds;
+    } else if (typeof rawIds === 'string' && rawIds.trim()) {
+      relevantTrackIds = JSON.parse(rawIds);
+    }
+
+    let text;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+    } else if (req.body.text) {
+      text = req.body.text;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    console.log('analyseDocument text length:', text?.length, 'trackIds:', relevantTrackIds);
+
+    const { rows: allIssues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const targetIssues = relevantTrackIds.length > 0
+      ? allIssues.filter(i => relevantTrackIds.includes(i.id))
+      : [];
+
+    // Look up any saved prompt template for this project
+    const { rows: templateRows } = await pool.query(
+      `SELECT extract_points_template FROM public.appeal_prompt_settings WHERE project_id = $1`,
+      [projectId]
+    );
+    const savedTemplate = templateRows[0]?.extract_points_template ?? null;
+
+    if (preview) {
+      // Return the saved template (with {{DOCUMENT}} placeholder) if one exists,
+      // otherwise generate a fresh default template with current issue context.
+      const template = savedTemplate
+        ?? buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes });
+      return res.json({ template });
+    }
+
+    // Resolve the prompt to use for this run:
+    // 1. Explicit custom_prompt from request (user edited in modal and ran)
+    // 2. Saved template with {{DOCUMENT}} substituted
+    // 3. Fresh build from current context
+    let resolvedPrompt = null;
+    if (customPrompt) {
+      resolvedPrompt = customPrompt.replace('{{DOCUMENT}}', text.slice(0, 10000));
+    } else if (savedTemplate) {
+      resolvedPrompt = savedTemplate.replace('{{DOCUMENT}}', text.slice(0, 10000));
+    }
+
+    const result = await extractPointsFromDocument({
+      text,
+      allIssues,
+      targetIssues,
+      documentType,
+      documentDirection,
+      userNotes,
+      customPrompt: resolvedPrompt
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('analyseDocument error:', err.message);
+    console.error(err.stack);
+    res.status(500).json({ error: err.message });
   }
 }
 
@@ -268,6 +360,55 @@ export async function uploadDocument(req, res) {
   } catch (err) {
     console.error('uploadDocument error:', err);
     res.status(500).json({ error: 'Failed to process document' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt template — saved per-project extraction prompt
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getPromptTemplate(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT extract_points_template, updated_at FROM public.appeal_prompt_settings WHERE project_id = $1`,
+      [projectId]
+    );
+    res.json(rows[0] ?? null);
+  } catch (err) {
+    console.error('getPromptTemplate error:', err);
+    res.status(500).json({ error: 'Failed to fetch prompt template' });
+  }
+}
+
+export async function savePromptTemplate(req, res) {
+  const { projectId } = req.params;
+  const { template } = req.body;
+  if (!template?.trim()) return res.status(400).json({ error: 'template is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO public.appeal_prompt_settings (project_id, extract_points_template, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (project_id)
+       DO UPDATE SET extract_points_template = $2, updated_at = NOW()
+       RETURNING extract_points_template, updated_at`,
+      [projectId, template.trim()]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('savePromptTemplate error:', err);
+    res.status(500).json({ error: 'Failed to save prompt template' });
+  }
+}
+
+export async function deletePromptTemplate(req, res) {
+  const { projectId } = req.params;
+  try {
+    await pool.query(`DELETE FROM public.appeal_prompt_settings WHERE project_id = $1`, [projectId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deletePromptTemplate error:', err);
+    res.status(500).json({ error: 'Failed to delete prompt template' });
   }
 }
 

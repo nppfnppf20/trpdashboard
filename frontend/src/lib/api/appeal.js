@@ -52,6 +52,40 @@ export async function upsertIssueNote(projectId, trackId, argumentAgainst, argum
   return res.json();
 }
 
+export async function analyseDocument(projectId, { file, text, documentType, documentDirection, userNotes, relevantTrackIds, customPrompt, preview = false }) {
+  const qs = preview ? '?preview=true' : '';
+  if (file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('document_type', documentType);
+    if (documentDirection) formData.append('document_direction', documentDirection);
+    if (userNotes) formData.append('user_notes', userNotes);
+    if (relevantTrackIds?.length) formData.append('relevant_track_ids', JSON.stringify(relevantTrackIds));
+    if (customPrompt) formData.append('custom_prompt', customPrompt);
+    const res = await authFetch(`/api/appeal/projects/${projectId}/analyse${qs}`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to analyse document'); }
+    return res.json();
+  } else {
+    const res = await authFetch(`/api/appeal/projects/${projectId}/analyse${qs}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        document_type: documentType,
+        document_direction: documentDirection,
+        user_notes: userNotes,
+        relevant_track_ids: relevantTrackIds ?? [],
+        custom_prompt: customPrompt ?? null
+      })
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to analyse document'); }
+    return res.json();
+  }
+}
+
 export async function generateArgument(projectId, initialNotes) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/generate`, {
     method: 'POST',
@@ -76,6 +110,28 @@ export async function uploadDocument(projectId, file) {
     body: formData
   });
   if (!res.ok) throw new Error('Failed to upload document');
+  return res.json();
+}
+
+export async function getPromptTemplate(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/prompt-template`);
+  if (!res.ok) throw new Error('Failed to fetch prompt template');
+  return res.json(); // null if none saved
+}
+
+export async function savePromptTemplate(projectId, template) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/prompt-template`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template })
+  });
+  if (!res.ok) throw new Error('Failed to save prompt template');
+  return res.json();
+}
+
+export async function deletePromptTemplate(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/prompt-template`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete prompt template');
   return res.json();
 }
 

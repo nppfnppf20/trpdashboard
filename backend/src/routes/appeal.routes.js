@@ -10,12 +10,16 @@ import {
   updateKeyIssueSummary,
   getIssueNotes,
   upsertIssueNote,
+  analyseDocument,
   getArgument,
   saveArgument,
   generateArgument,
   getDocuments,
   uploadDocument,
-  updateDocumentStatus
+  updateDocumentStatus,
+  getPromptTemplate,
+  savePromptTemplate,
+  deletePromptTemplate
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -41,6 +45,14 @@ router.patch('/key-issues/:trackId/summary', updateKeyIssueSummary);
 // Issue notes
 router.get('/projects/:projectId/issue-notes', getIssueNotes);
 router.put('/projects/:projectId/issue-notes/:trackId', upsertIssueNote);
+
+// Document analysis
+router.post('/projects/:projectId/analyse', upload.single('file'), analyseDocument);
+
+// Prompt template
+router.get('/projects/:projectId/prompt-template', getPromptTemplate);
+router.put('/projects/:projectId/prompt-template', savePromptTemplate);
+router.delete('/projects/:projectId/prompt-template', deletePromptTemplate);
 
 // Argument document
 router.get('/projects/:projectId/argument', getArgument);
