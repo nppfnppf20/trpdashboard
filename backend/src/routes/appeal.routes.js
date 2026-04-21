@@ -7,6 +7,7 @@ import express from 'express';
 import multer from 'multer';
 import {
   getKeyIssues,
+  updateKeyIssueSummary,
   getArgument,
   saveArgument,
   generateArgument,
@@ -31,8 +32,9 @@ const upload = multer({
   }
 });
 
-// Key issues (read-only)
+// Key issues
 router.get('/projects/:projectId/key-issues', getKeyIssues);
+router.patch('/key-issues/:trackId/summary', updateKeyIssueSummary);
 
 // Argument document
 router.get('/projects/:projectId/argument', getArgument);

@@ -15,8 +15,8 @@ export async function getKeyIssues(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, label, discipline_group, sort_order, last_known_risk_level
-       FROM admin_console.project_key_issues
+      `SELECT id, label, discipline, sort_order, last_known_risk_level, summary
+       FROM admin_console.project_issue_tracks
        WHERE project_id = $1 AND is_active = TRUE
        ORDER BY sort_order, id`,
       [projectId]
@@ -25,6 +25,26 @@ export async function getKeyIssues(req, res) {
   } catch (err) {
     console.error('getKeyIssues error:', err);
     res.status(500).json({ error: 'Failed to fetch key issues' });
+  }
+}
+
+export async function updateKeyIssueSummary(req, res) {
+  const { trackId } = req.params;
+  const { summary } = req.body;
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE admin_console.project_issue_tracks
+       SET summary = $1
+       WHERE id = $2
+       RETURNING id, label, discipline, sort_order, last_known_risk_level, summary`,
+      [summary ?? null, trackId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Issue track not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('updateKeyIssueSummary error:', err);
+    res.status(500).json({ error: 'Failed to update summary' });
   }
 }
 

@@ -1,7 +1,7 @@
 <script>
   import { onMount, createEventDispatcher } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
-  import { getKeyIssues, getArgument, saveArgument } from '$lib/api/appeal.js';
+  import { getKeyIssues, updateKeyIssueSummary, getArgument, saveArgument } from '$lib/api/appeal.js';
 
   export let project;
 
@@ -159,23 +159,31 @@
         </div>
       {:else}
         <div class="issues-list">
-          {#each keyIssues as issue}
+          {#each keyIssues as issue (issue.id)}
             {@const risk = riskColours[issue.last_known_risk_level]}
-            <div class="issue-row">
-              <div class="issue-label">
-                {#if issue.discipline_group}
-                  <span class="discipline-tag">{issue.discipline_group}</span>
+            <div class="issue-card">
+              <div class="issue-top">
+                <div class="issue-label">
+                  {#if issue.discipline}
+                    <span class="discipline-tag">{issue.discipline.replace(/_/g, ' ')}</span>
+                  {/if}
+                  <span class="issue-name">{issue.label}</span>
+                </div>
+                {#if issue.last_known_risk_level}
+                  <span
+                    class="risk-chip"
+                    style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}"
+                  >
+                    {issue.last_known_risk_level.replace(/_/g, ' ')}
+                  </span>
                 {/if}
-                <span class="issue-name">{issue.label}</span>
               </div>
-              {#if issue.last_known_risk_level}
-                <span
-                  class="risk-chip"
-                  style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}"
-                >
-                  {issue.last_known_risk_level.replace(/_/g, ' ')}
-                </span>
-              {/if}
+              <textarea
+                class="summary-field"
+                placeholder="Add notes on this issue — position, key evidence, approach..."
+                bind:value={issue.summary}
+                on:blur={() => updateKeyIssueSummary(issue.id, issue.summary)}
+              ></textarea>
             </div>
           {/each}
         </div>
@@ -351,18 +359,24 @@
   .issues-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    max-width: 720px;
+    gap: 0.75rem;
+    max-width: 800px;
   }
 
-  .issue-row {
+  .issue-card {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 0.625rem;
     padding: 0.875rem 1.125rem;
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
+  }
+
+  .issue-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 1rem;
   }
 
@@ -399,6 +413,31 @@
     text-transform: capitalize;
     flex-shrink: 0;
   }
+
+  .summary-field {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #374151;
+    background: #f8fafc;
+    resize: vertical;
+    min-height: 72px;
+    line-height: 1.5;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .summary-field:focus {
+    outline: none;
+    border-color: #7c3aed;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.07);
+  }
+
+  .summary-field::placeholder { color: #94a3b8; }
 
   /* Argument tab — two panels */
   .argument-body {

@@ -10,6 +10,16 @@ export async function getKeyIssues(projectId) {
   return res.json();
 }
 
+export async function updateKeyIssueSummary(trackId, summary) {
+  const res = await authFetch(`/api/appeal/key-issues/${trackId}/summary`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary })
+  });
+  if (!res.ok) throw new Error('Failed to update summary');
+  return res.json();
+}
+
 export async function getArgument(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/argument`);
   if (!res.ok) throw new Error('Failed to fetch argument');
