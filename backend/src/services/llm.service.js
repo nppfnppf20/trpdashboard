@@ -723,7 +723,7 @@ Instructions:
 /**
  * Generate a single section of an appeal draft document.
  */
-async function generateDraftSection({ section, projectName, draftTypeName, issueContext }) {
+export async function generateDraftSection({ section, projectName, draftTypeName, issueContext }) {
   const instructions = section.generation_prompt?.trim() ||
     `Write the "${section.name}" section of a ${draftTypeName}. Use formal planning language suitable for submission to the Planning Inspectorate. Produce clean HTML: <h2> for the section heading, <p> for body text, <ol>/<li> for numbered lists. Do not add placeholder text — write the full section from the material provided.`;
 
@@ -731,20 +731,30 @@ async function generateDraftSection({ section, projectName, draftTypeName, issue
     ? `The following is an example of this section's tone and format. Match the style but use NO information from it — all content must come from the working argument notes:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n`
     : '';
 
-  const prompt = `${instructions}
+  const prompt = `You are drafting the "${section.name}" section of a formal planning appeal document. Output HTML only — no markdown.
+
+CONTENT INSTRUCTIONS:
+${instructions}
 
 ${exampleBlock}Project: ${projectName}
 Document: ${draftTypeName}
-Section: ${section.name}
 
-Working argument notes by issue:
+Working argument notes:
 ${issueContext}
 
-Write only the "${section.name}" section now. Start with <h2>${section.name}</h2>.`;
+FORMAT RULES (mandatory):
+- Your entire response must be valid HTML
+- Begin with <h2>${section.name}</h2>
+- Every paragraph must be wrapped in <p>...</p> tags
+- Numbered lists must use <ol><li>...</li></ol>
+- Bullet lists must use <ul><li>...</li></ul>
+- Bold text must use <strong>...</strong>
+- Do not use **, *, #, ---, or any other markdown characters at all`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 2000,
+    system: 'You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error.',
     messages: [{ role: 'user', content: prompt }]
   });
 

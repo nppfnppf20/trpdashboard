@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate, getDraftTypes, getDraft, saveDraft, generateDraft, getSections, createSection, updateSection, deleteSection, reorderSections } from '$lib/api/appeal.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate, getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections } from '$lib/api/appeal.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
 
   const DOC_TYPES = [
@@ -212,12 +212,16 @@
   let newSectionName = '';
   let addingSectionLoading = false;
 
+  let sectionGenerating = null;   // section id currently generating
+
   // Per-section prompt/example editing
-  let sectionPromptId = null;  // which section is being edited (prompt)
+  let sectionExpandedId = null;   // which section row is expanded inline
+  let sectionPromptId = null;
   let sectionPromptText = '';
   let sectionPromptSaving = false;
   let sectionPromptSaved = false;
 
+  let sectionExampleModalOpen = false;
   let sectionExampleId = null;
   let sectionExampleEditor;
   let sectionExampleSaving = false;
@@ -279,49 +283,140 @@
     }
   }
 
-  function openDraftPromptModal(typeId) {
-    const type = draftTypes.find(t => t.id === typeId);
-    draftPromptTypeId = typeId;
-    draftPromptText = type?.generation_prompt ?? '';
-    draftPromptSaved = false;
-    draftPromptModalOpen = true;
-  }
-
-  async function saveDraftPrompt() {
-    draftPromptSaving = true;
+  async function openSectionsModal(typeId) {
+    sectionsTypeId = typeId;
+    sectionsTypeName = draftTypes.find(t => t.id === typeId)?.name ?? '';
+    sectionsModalOpen = true;
+    sectionsLoading = true;
+    sectionExpandedId = null;
     try {
-      const updated = await updateDraftType(draftPromptTypeId, { generation_prompt: draftPromptText });
-      draftTypes = draftTypes.map(t => t.id === draftPromptTypeId ? { ...t, ...updated } : t);
-      draftPromptSaved = true;
-      setTimeout(() => { draftPromptSaved = false; }, 2500);
+      sections = await getSections(typeId);
     } catch (err) {
-      console.error('Save prompt failed:', err);
+      console.error('Failed to load sections:', err);
     } finally {
-      draftPromptSaving = false;
+      sectionsLoading = false;
     }
   }
 
-  function openDraftExampleModal(typeId) {
-    const type = draftTypes.find(t => t.id === typeId);
-    draftExampleTypeId = typeId;
-    draftExampleSaved = false;
-    draftExampleModalOpen = true;
-    // Set editor content after tick
-    setTimeout(() => { draftExampleEditor?.setHTML(type?.example_document ?? ''); }, 50);
+  async function handleAddSection() {
+    if (!newSectionName.trim()) return;
+    addingSectionLoading = true;
+    try {
+      const s = await createSection(sectionsTypeId, { name: newSectionName.trim(), description: '' });
+      sections = [...sections, s];
+      newSectionName = '';
+    } catch (err) {
+      console.error('Failed to add section:', err);
+    } finally {
+      addingSectionLoading = false;
+    }
   }
 
-  async function saveDraftExample() {
-    draftExampleSaving = true;
+  async function handleDeleteSection(sectionId) {
+    if (!confirm('Delete this section?')) return;
     try {
-      const html = draftExampleEditor?.getHTML() ?? '';
-      const updated = await updateDraftType(draftExampleTypeId, { example_document: html });
-      draftTypes = draftTypes.map(t => t.id === draftExampleTypeId ? { ...t, ...updated } : t);
-      draftExampleSaved = true;
-      setTimeout(() => { draftExampleSaved = false; }, 2500);
+      await deleteSection(sectionId);
+      sections = sections.filter(s => s.id !== sectionId);
+      if (sectionExpandedId === sectionId) sectionExpandedId = null;
     } catch (err) {
-      console.error('Save example failed:', err);
+      console.error('Failed to delete section:', err);
+    }
+  }
+
+  async function moveSectionUp(idx) {
+    if (idx === 0) return;
+    const reordered = [...sections];
+    [reordered[idx - 1], reordered[idx]] = [reordered[idx], reordered[idx - 1]];
+    sections = reordered;
+    try { await reorderSections(sectionsTypeId, reordered.map(s => s.id)); } catch {}
+  }
+
+  async function moveSectionDown(idx) {
+    if (idx >= sections.length - 1) return;
+    const reordered = [...sections];
+    [reordered[idx], reordered[idx + 1]] = [reordered[idx + 1], reordered[idx]];
+    sections = reordered;
+    try { await reorderSections(sectionsTypeId, reordered.map(s => s.id)); } catch {}
+  }
+
+  function toggleSectionExpand(sectionId) {
+    if (sectionExpandedId === sectionId) {
+      sectionExpandedId = null;
+    } else {
+      sectionExpandedId = sectionId;
+      const s = sections.find(sec => sec.id === sectionId);
+      sectionPromptId = sectionId;
+      sectionPromptText = s?.generation_prompt ?? '';
+      sectionPromptSaved = false;
+    }
+  }
+
+  async function handleSaveSectionPrompt(sectionId) {
+    sectionPromptSaving = true;
+    try {
+      const updated = await updateSection(sectionId, { generation_prompt: sectionPromptText });
+      sections = sections.map(s => s.id === sectionId ? { ...s, ...updated } : s);
+      sectionPromptSaved = true;
+      setTimeout(() => { sectionPromptSaved = false; }, 2500);
+    } catch (err) {
+      console.error('Failed to save section prompt:', err);
     } finally {
-      draftExampleSaving = false;
+      sectionPromptSaving = false;
+    }
+  }
+
+  function openSectionExampleModal(sectionId) {
+    sectionExampleId = sectionId;
+    sectionExampleSaved = false;
+    sectionExampleModalOpen = true;
+    const s = sections.find(sec => sec.id === sectionId);
+    setTimeout(() => { sectionExampleEditor?.setHTML(s?.example_text ?? ''); }, 50);
+  }
+
+  async function handleSaveSectionExample() {
+    sectionExampleSaving = true;
+    try {
+      const html = sectionExampleEditor?.getHTML() ?? '';
+      const updated = await updateSection(sectionExampleId, { example_text: html });
+      sections = sections.map(s => s.id === sectionExampleId ? { ...s, ...updated } : s);
+      sectionExampleSaved = true;
+      setTimeout(() => { sectionExampleSaved = false; }, 2500);
+    } catch (err) {
+      console.error('Failed to save section example:', err);
+    } finally {
+      sectionExampleSaving = false;
+    }
+  }
+
+  function patchSectionInDraft(draftHtml, sectionName, newSectionHtml) {
+    if (!draftHtml) return newSectionHtml;
+    const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Match <h2>SectionName</h2> through to the next <h2> or end of string
+    const pattern = new RegExp(`<h2>\\s*${escaped}\\s*<\\/h2>[\\s\\S]*?(?=<h2>|$)`, 'i');
+    if (pattern.test(draftHtml)) {
+      return draftHtml.replace(pattern, newSectionHtml + '\n\n');
+    }
+    return draftHtml + '\n\n' + newSectionHtml;
+  }
+
+  async function handleGenerateSection(sectionId) {
+    sectionGenerating = sectionId;
+    try {
+      const result = await generateDraftSection(project.id, sectionsTypeId, sectionId);
+      const currentHtml = drafts[sectionsTypeId]?.content_html ?? '';
+      const section = sections.find(s => s.id === sectionId);
+      const patched = patchSectionInDraft(currentHtml, section.name, result.html);
+      const saved = await saveDraft(project.id, sectionsTypeId, patched);
+      drafts = { ...drafts, [sectionsTypeId]: saved };
+      if (activeDraftTypeId === sectionsTypeId) {
+        draftEditorHtml = patched;
+        draftEditor?.setHTML(patched);
+      }
+    } catch (err) {
+      console.error('Generate section failed:', err);
+      alert(`Failed to generate section: ${err.message}`);
+    } finally {
+      sectionGenerating = null;
     }
   }
 
@@ -797,11 +892,8 @@
                 </div>
               </div>
               <div class="draft-type-settings">
-                <button class="draft-setting-btn" on:click={() => openDraftPromptModal(type.id)}>
-                  <i class="las la-code"></i> Edit prompt
-                </button>
-                <button class="draft-setting-btn" on:click={() => openDraftExampleModal(type.id)}>
-                  <i class="las la-file-alt"></i> Edit example
+                <button class="draft-setting-btn" on:click={() => openSectionsModal(type.id)}>
+                  <i class="las la-layer-group"></i> Configure sections
                 </button>
               </div>
             </div>
@@ -813,53 +905,102 @@
 
 </div>
 
-<!-- Draft prompt modal -->
-{#if draftPromptModalOpen}
-  {@const type = draftTypes.find(t => t.id === draftPromptTypeId)}
-  <div class="modal-overlay" on:click|self={() => draftPromptModalOpen = false} role="dialog" aria-modal="true">
-    <div class="modal">
+<!-- Sections manager modal -->
+{#if sectionsModalOpen}
+  <div class="modal-overlay" on:click|self={() => sectionsModalOpen = false} role="dialog" aria-modal="true">
+    <div class="modal modal-sections">
       <div class="modal-header">
-        <span class="modal-title">Generation Prompt — {type?.name}</span>
-        <button class="modal-close" on:click={() => draftPromptModalOpen = false}><i class="las la-times"></i></button>
+        <span class="modal-title">Sections — {sectionsTypeName}</span>
+        <button class="modal-close" on:click={() => sectionsModalOpen = false}><i class="las la-times"></i></button>
       </div>
-      <div class="modal-body">
-        <p class="prompt-hint">Instructions sent to the AI when generating this document type. Leave blank to use the built-in default.</p>
-        <textarea class="prompt-editor" bind:value={draftPromptText}></textarea>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left"></div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => draftPromptModalOpen = false}>Cancel</button>
-          <button class="modal-save" disabled={draftPromptSaving} on:click={saveDraftPrompt}>
-            {#if draftPromptSaving}Saving...{:else if draftPromptSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
-          </button>
-        </div>
+      <div class="modal-body sections-body">
+        {#if sectionsLoading}
+          <div class="prompt-loading"><div class="spinner"></div><span>Loading...</span></div>
+        {:else}
+          {#if sections.length === 0}
+            <p class="sections-empty">No sections yet. Add one below to define the structure of this document.</p>
+          {:else}
+            <div class="sections-list">
+              {#each sections as section, idx (section.id)}
+                <div class="section-row" class:expanded={sectionExpandedId === section.id}>
+                  <div class="section-row-header">
+                    <div class="section-order-btns">
+                      <button class="section-order-btn" disabled={idx === 0} on:click={() => moveSectionUp(idx)} title="Move up"><i class="las la-angle-up"></i></button>
+                      <button class="section-order-btn" disabled={idx === sections.length - 1} on:click={() => moveSectionDown(idx)} title="Move down"><i class="las la-angle-down"></i></button>
+                    </div>
+                    <span class="section-name">{section.name}</span>
+                    <div class="section-row-actions">
+                      <button class="section-generate-btn" disabled={sectionGenerating === section.id} on:click={() => handleGenerateSection(section.id)} title="Generate this section">
+                        {#if sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
+                      </button>
+                      <button class="section-edit-btn" on:click={() => toggleSectionExpand(section.id)}>
+                        {sectionExpandedId === section.id ? 'Close' : 'Edit'}
+                      </button>
+                      <button class="section-delete-btn" on:click={() => handleDeleteSection(section.id)} title="Delete section">
+                        <i class="las la-trash"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  {#if sectionExpandedId === section.id}
+                    <div class="section-expand">
+                      <label class="section-field-label">Generation prompt <span class="form-label-hint">(leave blank for default)</span></label>
+                      <textarea class="prompt-editor section-prompt" bind:value={sectionPromptText} use:autoresize={sectionPromptText}></textarea>
+                      <div class="section-expand-actions">
+                        <button class="section-example-btn" on:click={() => openSectionExampleModal(section.id)}>
+                          <i class="las la-file-alt"></i> Edit style example
+                        </button>
+                        <button class="modal-save" disabled={sectionPromptSaving} on:click={() => handleSaveSectionPrompt(section.id)}>
+                          {#if sectionPromptSaving}Saving...{:else if sectionPromptSaved}<i class="las la-check"></i> Saved{:else}Save prompt{/if}
+                        </button>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <div class="add-section-row">
+            <input
+              class="add-section-input"
+              type="text"
+              placeholder="New section name..."
+              bind:value={newSectionName}
+              on:keydown={(e) => e.key === 'Enter' && handleAddSection()}
+            />
+            <button class="add-section-btn" disabled={!newSectionName.trim() || addingSectionLoading} on:click={handleAddSection}>
+              {#if addingSectionLoading}<div class="mini-spinner"></div>{:else}<i class="las la-plus"></i>{/if}
+              Add
+            </button>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
 {/if}
 
-<!-- Draft example modal -->
-{#if draftExampleModalOpen}
-  {@const type = draftTypes.find(t => t.id === draftExampleTypeId)}
-  <div class="modal-overlay" on:click|self={() => draftExampleModalOpen = false} role="dialog" aria-modal="true">
+<!-- Section example sub-modal -->
+{#if sectionExampleModalOpen}
+  {@const exSection = sections.find(s => s.id === sectionExampleId)}
+  <div class="modal-overlay" on:click|self={() => sectionExampleModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-wide">
       <div class="modal-header">
-        <span class="modal-title">Style Example — {type?.name}</span>
-        <button class="modal-close" on:click={() => draftExampleModalOpen = false}><i class="las la-times"></i></button>
+        <span class="modal-title">Style Example — {exSection?.name}</span>
+        <button class="modal-close" on:click={() => sectionExampleModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body">
-        <p class="prompt-hint">Paste or write an example document here. The AI will match its tone and formatting when generating.</p>
+        <p class="prompt-hint">Paste an example of how this section should read. The AI will match its tone and format.</p>
         <div class="example-editor-wrap">
-          <RichTextEditor bind:this={draftExampleEditor} placeholder="Paste an example document here..." />
+          <RichTextEditor bind:this={sectionExampleEditor} placeholder="Paste an example here..." />
         </div>
       </div>
       <div class="modal-footer">
         <div class="modal-footer-left"></div>
         <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => draftExampleModalOpen = false}>Cancel</button>
-          <button class="modal-save" disabled={draftExampleSaving} on:click={saveDraftExample}>
-            {#if draftExampleSaving}Saving...{:else if draftExampleSaved}<i class="las la-check"></i> Saved{:else}Save example{/if}
+          <button class="modal-cancel" on:click={() => sectionExampleModalOpen = false}>Cancel</button>
+          <button class="modal-save" disabled={sectionExampleSaving} on:click={handleSaveSectionExample}>
+            {#if sectionExampleSaving}Saving...{:else if sectionExampleSaved}<i class="las la-check"></i> Saved{:else}Save example{/if}
           </button>
         </div>
       </div>
@@ -1984,4 +2125,209 @@
 
   .modal-run:hover:not(:disabled) { background: #6d28d9; }
   .modal-run:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Sections manager modal ── */
+  .modal-sections { max-width: 680px; }
+
+  .sections-body {
+    padding: 0;
+    overflow-y: auto;
+  }
+
+  .sections-empty {
+    margin: 0;
+    padding: 2rem 1.25rem 1rem;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    text-align: center;
+  }
+
+  .sections-list {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .section-row {
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .section-row:last-child { border-bottom: none; }
+
+  .section-row.expanded { background: #faf5ff; }
+
+  .section-row-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+  }
+
+  .section-order-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .section-order-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.125rem;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0;
+    transition: color 0.1s;
+  }
+
+  .section-order-btn:hover:not(:disabled) { color: #374151; }
+  .section-order-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+
+  .section-name {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1e293b;
+    min-width: 0;
+  }
+
+  .section-row-actions {
+    display: flex;
+    gap: 0.375rem;
+    flex-shrink: 0;
+    align-items: center;
+  }
+
+  .section-generate-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    background: white;
+    color: #7c3aed;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+  }
+  .section-generate-btn:hover:not(:disabled) { background: #faf5ff; border-color: #c4b5fd; }
+  .section-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .section-edit-btn {
+    padding: 0.3rem 0.625rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .section-edit-btn:hover { background: #f1f5f9; }
+
+  .section-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    background: white;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+  }
+  .section-delete-btn:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+
+  .section-expand {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0 1.25rem 1rem 1.25rem;
+  }
+
+  .section-field-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+  }
+
+  .section-prompt {
+    min-height: 80px;
+    resize: none;
+    overflow: hidden;
+  }
+
+  .section-expand-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .section-example-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .section-example-btn:hover { background: #f1f5f9; color: #374151; }
+
+  .add-section-row {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+  }
+
+  .add-section-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: white;
+    transition: border-color 0.15s;
+  }
+  .add-section-input:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.07); }
+  .add-section-input::placeholder { color: #94a3b8; }
+
+  .add-section-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.5rem 0.875rem;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .add-section-btn:hover:not(:disabled) { background: #6d28d9; }
+  .add-section-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

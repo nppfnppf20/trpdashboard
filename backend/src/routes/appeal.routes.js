@@ -24,6 +24,7 @@ import {
   getDraft,
   saveDraft,
   generateDraft,
+  generateSection,
   getSections,
   createSection,
   updateSection,
@@ -78,6 +79,7 @@ router.put('/draft-types/:typeId/sections/reorder', reorderSections);
 router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
+router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
 
 // Documents
 router.get('/projects/:projectId/documents', getDocuments);

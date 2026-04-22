@@ -212,6 +212,14 @@ export async function generateDraft(projectId, typeId) {
   return res.json();
 }
 
+export async function generateDraftSection(projectId, typeId, sectionId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/sections/${sectionId}/generate`, {
+    method: 'POST'
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate section'); }
+  return res.json();
+}
+
 export async function updateDocumentStatus(docId, reviewStatus) {
   const res = await authFetch(`/api/appeal/documents/${docId}/status`, {
     method: 'PUT',

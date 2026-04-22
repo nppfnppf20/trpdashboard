@@ -5,7 +5,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -441,6 +441,57 @@ export async function updateDocumentStatus(req, res) {
 // Draft documents — appeal_draft_types + appeal_drafts
 // ─────────────────────────────────────────────────────────────────────────────
 
+export async function generateSection(req, res) {
+  const { projectId, typeId, sectionId } = req.params;
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const { rows: typeRows } = await pool.query(
+      `SELECT name FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+
+    const { rows: sectionRows } = await pool.query(
+      `SELECT * FROM appeals.appeal_draft_sections WHERE id = $1 AND draft_type_id = $2`,
+      [sectionId, typeId]
+    );
+    if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
+
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const issueContext = issues.map(issue => {
+      const lines = [`## ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}`];
+      if (issue.argument_against) lines.push(`Opposing position:\n${issue.argument_against}`);
+      if (issue.argument_for)     lines.push(`Our case:\n${issue.argument_for}`);
+      if (!issue.argument_against && !issue.argument_for) lines.push('(No notes yet.)');
+      return lines.join('\n');
+    }).join('\n\n---\n\n');
+
+    const html = await generateDraftSection({
+      section: sectionRows[0],
+      projectName: projectRows[0].project_name,
+      draftTypeName: typeRows[0].name,
+      issueContext
+    });
+
+    res.json({ html, section_id: sectionRows[0].id, section_name: sectionRows[0].name });
+  } catch (err) {
+    console.error('generateSection error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function getDraftTypes(req, res) {
   try {
     const { rows } = await pool.query(
@@ -604,8 +655,7 @@ export async function generateDraft(req, res) {
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
     const { rows: typeRows } = await pool.query(
-      `SELECT id, name, generation_prompt, example_document
-       FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+      `SELECT id, name FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
     const draftType = typeRows[0];
