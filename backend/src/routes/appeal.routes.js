@@ -19,7 +19,16 @@ import {
   updateDocumentStatus,
   getPromptTemplate,
   savePromptTemplate,
-  deletePromptTemplate
+  deletePromptTemplate,
+  getDraftTypes,
+  getDraft,
+  saveDraft,
+  generateDraft,
+  getSections,
+  createSection,
+  updateSection,
+  deleteSection,
+  reorderSections
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -58,6 +67,17 @@ router.delete('/projects/:projectId/prompt-template', deletePromptTemplate);
 router.get('/projects/:projectId/argument', getArgument);
 router.put('/projects/:projectId/argument', saveArgument);
 router.post('/projects/:projectId/generate', generateArgument);
+
+// Draft documents
+router.get('/draft-types', getDraftTypes);
+router.get('/draft-types/:typeId/sections', getSections);
+router.post('/draft-types/:typeId/sections', createSection);
+router.patch('/sections/:sectionId', updateSection);
+router.delete('/sections/:sectionId', deleteSection);
+router.put('/draft-types/:typeId/sections/reorder', reorderSections);
+router.get('/projects/:projectId/drafts/:typeId', getDraft);
+router.put('/projects/:projectId/drafts/:typeId', saveDraft);
+router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 
 // Documents
 router.get('/projects/:projectId/documents', getDocuments);

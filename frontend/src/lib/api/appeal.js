@@ -115,7 +115,10 @@ export async function uploadDocument(projectId, file) {
 
 export async function getPromptTemplate(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/prompt-template`);
-  if (!res.ok) throw new Error('Failed to fetch prompt template');
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`GET prompt-template ${res.status}: ${body.slice(0, 200)}`);
+  }
   return res.json(); // null if none saved
 }
 
@@ -132,6 +135,80 @@ export async function savePromptTemplate(projectId, template) {
 export async function deletePromptTemplate(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/prompt-template`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete prompt template');
+  return res.json();
+}
+
+// ── Draft documents ────────────────────────────────────────────────────────
+
+export async function getDraftTypes() {
+  const res = await authFetch('/api/appeal/draft-types');
+  if (!res.ok) throw new Error('Failed to fetch draft types');
+  return res.json();
+}
+
+export async function getSections(typeId) {
+  const res = await authFetch(`/api/appeal/draft-types/${typeId}/sections`);
+  if (!res.ok) throw new Error('Failed to fetch sections');
+  return res.json();
+}
+
+export async function createSection(typeId, { name, description }) {
+  const res = await authFetch(`/api/appeal/draft-types/${typeId}/sections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description })
+  });
+  if (!res.ok) throw new Error('Failed to create section');
+  return res.json();
+}
+
+export async function updateSection(sectionId, fields) {
+  const res = await authFetch(`/api/appeal/sections/${sectionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields)
+  });
+  if (!res.ok) throw new Error('Failed to update section');
+  return res.json();
+}
+
+export async function deleteSection(sectionId) {
+  const res = await authFetch(`/api/appeal/sections/${sectionId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete section');
+  return res.json();
+}
+
+export async function reorderSections(typeId, order) {
+  const res = await authFetch(`/api/appeal/draft-types/${typeId}/sections/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order })
+  });
+  if (!res.ok) throw new Error('Failed to reorder sections');
+  return res.json();
+}
+
+export async function getDraft(projectId, typeId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}`);
+  if (!res.ok) throw new Error('Failed to fetch draft');
+  return res.json();
+}
+
+export async function saveDraft(projectId, typeId, contentHtml) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content_html: contentHtml })
+  });
+  if (!res.ok) throw new Error('Failed to save draft');
+  return res.json();
+}
+
+export async function generateDraft(projectId, typeId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/generate`, {
+    method: 'POST'
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate draft'); }
   return res.json();
 }
 

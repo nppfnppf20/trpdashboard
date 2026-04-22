@@ -5,7 +5,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -434,5 +434,217 @@ export async function updateDocumentStatus(req, res) {
   } catch (err) {
     console.error('updateDocumentStatus error:', err);
     res.status(500).json({ error: 'Failed to update document status' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Draft documents — appeal_draft_types + appeal_drafts
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getDraftTypes(req, res) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, slug, description, sort_order
+       FROM appeals.appeal_draft_types
+       ORDER BY sort_order, id`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getDraftTypes error:', err);
+    res.status(500).json({ error: 'Failed to fetch draft types' });
+  }
+}
+
+// ── Sections ──────────────────────────────────────────────────────────────────
+
+export async function getSections(req, res) {
+  const { typeId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, draft_type_id, name, slug, description, sort_order, generation_prompt, example_text
+       FROM appeals.appeal_draft_sections
+       WHERE draft_type_id = $1
+       ORDER BY sort_order, id`,
+      [typeId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getSections error:', err);
+    res.status(500).json({ error: 'Failed to fetch sections' });
+  }
+}
+
+export async function createSection(req, res) {
+  const { typeId } = req.params;
+  const { name, description } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
+
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+  try {
+    // Place at end
+    const { rows: maxRows } = await pool.query(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM appeals.appeal_draft_sections WHERE draft_type_id = $1`,
+      [typeId]
+    );
+    const { rows } = await pool.query(
+      `INSERT INTO appeals.appeal_draft_sections (draft_type_id, name, slug, description, sort_order)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [typeId, name.trim(), slug, description ?? null, maxRows[0].next_order]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('createSection error:', err);
+    res.status(500).json({ error: 'Failed to create section' });
+  }
+}
+
+export async function updateSection(req, res) {
+  const { sectionId } = req.params;
+  const { name, description, sort_order, generation_prompt, example_text } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE appeals.appeal_draft_sections
+       SET name              = COALESCE($1, name),
+           description       = COALESCE($2, description),
+           sort_order        = COALESCE($3, sort_order),
+           generation_prompt = $4,
+           example_text      = $5
+       WHERE id = $6
+       RETURNING *`,
+      [name ?? null, description ?? null, sort_order ?? null, generation_prompt ?? null, example_text ?? null, sectionId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Section not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('updateSection error:', err);
+    res.status(500).json({ error: 'Failed to update section' });
+  }
+}
+
+export async function deleteSection(req, res) {
+  const { sectionId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM appeals.appeal_draft_sections WHERE id = $1 RETURNING id`, [sectionId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Section not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deleteSection error:', err);
+    res.status(500).json({ error: 'Failed to delete section' });
+  }
+}
+
+export async function reorderSections(req, res) {
+  const { typeId } = req.params;
+  const { order } = req.body; // array of section ids in desired order
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'order must be an array of ids' });
+  try {
+    await Promise.all(order.map((id, idx) =>
+      pool.query(
+        `UPDATE appeals.appeal_draft_sections SET sort_order = $1 WHERE id = $2 AND draft_type_id = $3`,
+        [idx, id, typeId]
+      )
+    ));
+    const { rows } = await pool.query(
+      `SELECT * FROM appeals.appeal_draft_sections WHERE draft_type_id = $1 ORDER BY sort_order, id`,
+      [typeId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('reorderSections error:', err);
+    res.status(500).json({ error: 'Failed to reorder sections' });
+  }
+}
+
+export async function getDraft(req, res) {
+  const { projectId, typeId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, project_id, draft_type_id, content_html, generated_at, updated_at
+       FROM appeals.appeal_drafts
+       WHERE project_id = $1 AND draft_type_id = $2`,
+      [projectId, typeId]
+    );
+    res.json(rows[0] ?? null);
+  } catch (err) {
+    console.error('getDraft error:', err);
+    res.status(500).json({ error: 'Failed to fetch draft' });
+  }
+}
+
+export async function saveDraft(req, res) {
+  const { projectId, typeId } = req.params;
+  const { content_html } = req.body;
+  if (content_html === undefined) return res.status(400).json({ error: 'content_html is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO appeals.appeal_drafts (project_id, draft_type_id, content_html, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (project_id, draft_type_id)
+       DO UPDATE SET content_html = $3, updated_at = NOW()
+       RETURNING *`,
+      [projectId, typeId, content_html]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('saveDraft error:', err);
+    res.status(500).json({ error: 'Failed to save draft' });
+  }
+}
+
+export async function generateDraft(req, res) {
+  const { projectId, typeId } = req.params;
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const { rows: typeRows } = await pool.query(
+      `SELECT id, name, generation_prompt, example_document
+       FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+    const draftType = typeRows[0];
+
+    // Fetch key issues with their argument notes
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const { rows: sections } = await pool.query(
+      `SELECT * FROM appeals.appeal_draft_sections WHERE draft_type_id = $1 ORDER BY sort_order, id`,
+      [typeId]
+    );
+
+    const contentHtml = await generateAppealDraft({
+      projectName: projectRows[0].project_name,
+      draftTypeName: draftType.name,
+      sections,
+      issues
+    });
+
+    // Persist
+    const { rows } = await pool.query(
+      `INSERT INTO appeals.appeal_drafts (project_id, draft_type_id, content_html, generated_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (project_id, draft_type_id)
+       DO UPDATE SET content_html = $3, generated_at = NOW(), updated_at = NOW()
+       RETURNING *`,
+      [projectId, typeId, contentHtml]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('generateDraft error:', err);
+    res.status(500).json({ error: err.message });
   }
 }

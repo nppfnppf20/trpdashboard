@@ -694,6 +694,117 @@ export async function analyseDocumentForStage(rawText, stageName, issueTracks, u
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Appeal drafting — generate a formal appeal document from working argument
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DEFAULT_DRAFT_PROMPT = `You are an experienced planning appeal consultant drafting a formal appeal document.
+You will be given the working argument notes for an appeal — the case built up across all key issues — and you must polish these into a well-structured, professionally written document.
+
+Instructions:
+- Write in formal planning language suitable for submission to the Planning Inspectorate
+- Structure the document clearly with numbered sections and sub-sections
+- Draw on ALL the argument notes provided — do not omit issues
+- Where argument_against notes set out the opposing position, acknowledge it before rebutting with the argument_for
+- Produce clean HTML using <h2> for main sections, <h3> for sub-sections, <p> for body text, <ol>/<li> for numbered lists
+- Do not include a title — start directly with the first section
+- Do not add placeholder text or "[INSERT X]" gaps — write the full document from the material provided`;
+
+/**
+ * Generate a formal appeal document from the working argument notes.
+ *
+ * @param {object} params
+ * @param {string} params.projectName
+ * @param {string} params.draftTypeName  e.g. "Statement of Case"
+ * @param {string|null} params.generationPrompt  custom instructions (overrides default)
+ * @param {string|null} params.exampleDocument  HTML style example shown to LLM
+ * @param {Array<{ label: string, discipline: string|null, argument_against: string|null, argument_for: string|null }>} params.issues
+ * @returns {Promise<string>}  HTML document
+ */
+/**
+ * Generate a single section of an appeal draft document.
+ */
+async function generateDraftSection({ section, projectName, draftTypeName, issueContext }) {
+  const instructions = section.generation_prompt?.trim() ||
+    `Write the "${section.name}" section of a ${draftTypeName}. Use formal planning language suitable for submission to the Planning Inspectorate. Produce clean HTML: <h2> for the section heading, <p> for body text, <ol>/<li> for numbered lists. Do not add placeholder text — write the full section from the material provided.`;
+
+  const exampleBlock = section.example_text?.trim()
+    ? `The following is an example of this section's tone and format. Match the style but use NO information from it — all content must come from the working argument notes:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n`
+    : '';
+
+  const prompt = `${instructions}
+
+${exampleBlock}Project: ${projectName}
+Document: ${draftTypeName}
+Section: ${section.name}
+
+Working argument notes by issue:
+${issueContext}
+
+Write only the "${section.name}" section now. Start with <h2>${section.name}</h2>.`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 2000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim();
+  return raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+}
+
+/**
+ * Generate a full appeal draft document, section by section.
+ * Falls back to a single-call approach if no sections are defined.
+ *
+ * @param {object} params
+ * @param {string} params.projectName
+ * @param {string} params.draftTypeName
+ * @param {Array} params.sections  rows from appeal_draft_sections ordered by sort_order
+ * @param {Array} params.issues
+ * @returns {Promise<string>}  stitched HTML
+ */
+export async function generateAppealDraft({ projectName, draftTypeName, sections, issues }) {
+  const issueContext = issues.map(issue => {
+    const lines = [`## ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}`];
+    if (issue.argument_against) lines.push(`Opposing position:\n${issue.argument_against}`);
+    if (issue.argument_for)     lines.push(`Our case:\n${issue.argument_for}`);
+    if (!issue.argument_against && !issue.argument_for) lines.push('(No notes yet — acknowledge this issue but flag it as to be developed.)');
+    return lines.join('\n');
+  }).join('\n\n---\n\n');
+
+  if (!sections || sections.length === 0) {
+    // No sections defined — single-call fallback
+    const prompt = `${DEFAULT_DRAFT_PROMPT}
+
+Project: ${projectName}
+Document type: ${draftTypeName}
+
+Working argument notes by issue:
+${issueContext}
+
+Produce the complete ${draftTypeName} as HTML now.`;
+
+    const response = await client.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: 6000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const raw = response.content[0].text.trim();
+    return raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  }
+
+  // Section-by-section generation (sequential to respect rate limits)
+  const parts = [];
+  for (const section of sections) {
+    console.log(`[generateAppealDraft] generating section: ${section.name}`);
+    const html = await generateDraftSection({ section, projectName, draftTypeName, issueContext });
+    parts.push(html);
+  }
+
+  return parts.join('\n\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Appeal drafting — generate initial argument from key issues + refusal reasons
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate } from '$lib/api/appeal.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate, getDraftTypes, getDraft, saveDraft, generateDraft, getSections, createSection, updateSection, deleteSection, reorderSections } from '$lib/api/appeal.js';
+  import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
 
   const DOC_TYPES = [
     'Officer Report',
@@ -191,6 +192,139 @@
     return groups;
   })();
 
+  // Draft document tab
+  let draftTypes = [];
+  let drafts = {};            // { [typeId]: draft row | null }
+  let draftLoading = {};      // { [typeId]: boolean }
+  let draftGenerating = null; // typeId currently generating
+  let activeDraftTypeId = null;
+  let draftEditorHtml = '';
+  let draftSaving = false;
+  let draftSaved = false;
+  let draftEditor;
+
+  // Sections manager
+  let sectionsModalOpen = false;
+  let sectionsTypeId = null;
+  let sectionsTypeName = '';
+  let sections = [];           // sections for currently open type
+  let sectionsLoading = false;
+  let newSectionName = '';
+  let addingSectionLoading = false;
+
+  // Per-section prompt/example editing
+  let sectionPromptId = null;  // which section is being edited (prompt)
+  let sectionPromptText = '';
+  let sectionPromptSaving = false;
+  let sectionPromptSaved = false;
+
+  let sectionExampleId = null;
+  let sectionExampleEditor;
+  let sectionExampleSaving = false;
+  let sectionExampleSaved = false;
+
+  async function loadDraftTypes() {
+    try {
+      draftTypes = await getDraftTypes();
+      // Load existing drafts for each type
+      await Promise.all(draftTypes.map(async t => {
+        const d = await getDraft(project.id, t.id);
+        drafts = { ...drafts, [t.id]: d };
+      }));
+    } catch (err) {
+      console.error('Failed to load draft types:', err);
+    }
+  }
+
+  async function handleGenerate(typeId) {
+    draftGenerating = typeId;
+    try {
+      const result = await generateDraft(project.id, typeId);
+      drafts = { ...drafts, [typeId]: result };
+      openDraft(typeId);
+    } catch (err) {
+      console.error('Generate failed:', err);
+      alert(`Generation failed: ${err.message}`);
+    } finally {
+      draftGenerating = null;
+    }
+  }
+
+  function openDraft(typeId) {
+    const draft = drafts[typeId];
+    if (!draft) return;
+    activeDraftTypeId = typeId;
+    draftEditorHtml = draft.content_html ?? '';
+    draftSaved = false;
+  }
+
+  function closeDraft() {
+    activeDraftTypeId = null;
+    draftEditorHtml = '';
+  }
+
+  async function handleSaveDraft() {
+    if (!activeDraftTypeId) return;
+    draftSaving = true;
+    try {
+      const html = draftEditor?.getHTML() ?? draftEditorHtml;
+      const result = await saveDraft(project.id, activeDraftTypeId, html);
+      drafts = { ...drafts, [activeDraftTypeId]: result };
+      draftSaved = true;
+      setTimeout(() => { draftSaved = false; }, 2500);
+    } catch (err) {
+      console.error('Save draft failed:', err);
+    } finally {
+      draftSaving = false;
+    }
+  }
+
+  function openDraftPromptModal(typeId) {
+    const type = draftTypes.find(t => t.id === typeId);
+    draftPromptTypeId = typeId;
+    draftPromptText = type?.generation_prompt ?? '';
+    draftPromptSaved = false;
+    draftPromptModalOpen = true;
+  }
+
+  async function saveDraftPrompt() {
+    draftPromptSaving = true;
+    try {
+      const updated = await updateDraftType(draftPromptTypeId, { generation_prompt: draftPromptText });
+      draftTypes = draftTypes.map(t => t.id === draftPromptTypeId ? { ...t, ...updated } : t);
+      draftPromptSaved = true;
+      setTimeout(() => { draftPromptSaved = false; }, 2500);
+    } catch (err) {
+      console.error('Save prompt failed:', err);
+    } finally {
+      draftPromptSaving = false;
+    }
+  }
+
+  function openDraftExampleModal(typeId) {
+    const type = draftTypes.find(t => t.id === typeId);
+    draftExampleTypeId = typeId;
+    draftExampleSaved = false;
+    draftExampleModalOpen = true;
+    // Set editor content after tick
+    setTimeout(() => { draftExampleEditor?.setHTML(type?.example_document ?? ''); }, 50);
+  }
+
+  async function saveDraftExample() {
+    draftExampleSaving = true;
+    try {
+      const html = draftExampleEditor?.getHTML() ?? '';
+      const updated = await updateDraftType(draftExampleTypeId, { example_document: html });
+      draftTypes = draftTypes.map(t => t.id === draftExampleTypeId ? { ...t, ...updated } : t);
+      draftExampleSaved = true;
+      setTimeout(() => { draftExampleSaved = false; }, 2500);
+    } catch (err) {
+      console.error('Save example failed:', err);
+    } finally {
+      draftExampleSaving = false;
+    }
+  }
+
   export let project;
 
   let activeTab = 'key-issues';
@@ -215,6 +349,7 @@
         getKeyIssues(project.id),
         getIssueNotes(project.id)
       ]);
+      await loadDraftTypes();
     } catch (err) {
       loadError = err.message;
     } finally {
@@ -615,15 +750,122 @@
 
   {:else if activeTab === 'draft'}
     <!-- ── Tab 3: Draft Document ── -->
-    <div class="tab-body">
-      <div class="empty-state">
-        <i class="las la-file-alt"></i>
-        <p>Draft document — coming soon.</p>
+    {#if activeDraftTypeId !== null}
+      <!-- Editor view -->
+      {@const activeType = draftTypes.find(t => t.id === activeDraftTypeId)}
+      <div class="draft-editor-bar">
+        <button class="reset-btn" on:click={closeDraft}><i class="las la-arrow-left"></i> Documents</button>
+        <span class="draft-editor-title">{activeType?.name ?? ''}</span>
+        <div class="draft-editor-actions">
+          <button class="draft-regen-btn" disabled={draftGenerating === activeDraftTypeId} on:click={() => handleGenerate(activeDraftTypeId)}>
+            {#if draftGenerating === activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
+          </button>
+          <button class="draft-save-btn" disabled={draftSaving} on:click={handleSaveDraft}>
+            {#if draftSaving}Saving...{:else if draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
+          </button>
+        </div>
       </div>
-    </div>
+      <div class="draft-editor-wrap">
+        <RichTextEditor bind:this={draftEditor} content={draftEditorHtml} on:change={() => { draftSaved = false; }} />
+      </div>
+    {:else}
+      <!-- Document type list -->
+      <div class="tab-body">
+        <div class="draft-types-list">
+          {#each draftTypes as type (type.id)}
+            {@const draft = drafts[type.id]}
+            <div class="draft-type-card">
+              <div class="draft-type-main">
+                <div class="draft-type-info">
+                  <span class="draft-type-name">{type.name}</span>
+                  {#if type.description}<span class="draft-type-desc">{type.description}</span>{/if}
+                  {#if draft?.generated_at}
+                    <span class="draft-type-meta">Last generated {new Date(draft.generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  {/if}
+                </div>
+                <div class="draft-type-actions">
+                  {#if draft}
+                    <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
+                  {/if}
+                  <button class="draft-generate-btn" disabled={draftGenerating === type.id} on:click={() => handleGenerate(type.id)}>
+                    {#if draftGenerating === type.id}
+                      <div class="mini-spinner"></div> Generating...
+                    {:else}
+                      <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
+                    {/if}
+                  </button>
+                </div>
+              </div>
+              <div class="draft-type-settings">
+                <button class="draft-setting-btn" on:click={() => openDraftPromptModal(type.id)}>
+                  <i class="las la-code"></i> Edit prompt
+                </button>
+                <button class="draft-setting-btn" on:click={() => openDraftExampleModal(type.id)}>
+                  <i class="las la-file-alt"></i> Edit example
+                </button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
   {/if}
 
 </div>
+
+<!-- Draft prompt modal -->
+{#if draftPromptModalOpen}
+  {@const type = draftTypes.find(t => t.id === draftPromptTypeId)}
+  <div class="modal-overlay" on:click|self={() => draftPromptModalOpen = false} role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Generation Prompt — {type?.name}</span>
+        <button class="modal-close" on:click={() => draftPromptModalOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="prompt-hint">Instructions sent to the AI when generating this document type. Leave blank to use the built-in default.</p>
+        <textarea class="prompt-editor" bind:value={draftPromptText}></textarea>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left"></div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={() => draftPromptModalOpen = false}>Cancel</button>
+          <button class="modal-save" disabled={draftPromptSaving} on:click={saveDraftPrompt}>
+            {#if draftPromptSaving}Saving...{:else if draftPromptSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Draft example modal -->
+{#if draftExampleModalOpen}
+  {@const type = draftTypes.find(t => t.id === draftExampleTypeId)}
+  <div class="modal-overlay" on:click|self={() => draftExampleModalOpen = false} role="dialog" aria-modal="true">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <span class="modal-title">Style Example — {type?.name}</span>
+        <button class="modal-close" on:click={() => draftExampleModalOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="prompt-hint">Paste or write an example document here. The AI will match its tone and formatting when generating.</p>
+        <div class="example-editor-wrap">
+          <RichTextEditor bind:this={draftExampleEditor} placeholder="Paste an example document here..." />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left"></div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={() => draftExampleModalOpen = false}>Cancel</button>
+          <button class="modal-save" disabled={draftExampleSaving} on:click={saveDraftExample}>
+            {#if draftExampleSaving}Saving...{:else if draftExampleSaved}<i class="las la-check"></i> Saved{:else}Save example{/if}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Prompt modal -->
 {#if promptModalOpen}
@@ -1340,6 +1582,176 @@
   }
 
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Draft Document tab ── */
+  .draft-types-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 680px;
+  }
+
+  .draft-type-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .draft-type-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .draft-type-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .draft-type-name { font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
+  .draft-type-desc { font-size: 0.8125rem; color: #64748b; }
+  .draft-type-meta { font-size: 0.75rem; color: #94a3b8; }
+
+  .draft-type-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    align-items: center;
+  }
+
+  .draft-open-btn {
+    padding: 0.4rem 0.875rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .draft-open-btn:hover { background: #f1f5f9; }
+
+  .draft-generate-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.875rem;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .draft-generate-btn:hover:not(:disabled) { background: #6d28d9; }
+  .draft-generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .draft-type-settings {
+    display: flex;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .draft-setting-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.625rem;
+    background: transparent;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .draft-setting-btn:hover { background: #f1f5f9; color: #374151; }
+
+  /* Draft editor view */
+  .draft-editor-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.625rem 1.5rem;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+  }
+
+  .draft-editor-title {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .draft-editor-actions { display: flex; gap: 0.5rem; }
+
+  .draft-regen-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .draft-regen-btn:hover:not(:disabled) { background: #f1f5f9; }
+  .draft-regen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .draft-save-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.875rem;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .draft-save-btn:hover:not(:disabled) { background: #6d28d9; }
+  .draft-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .draft-editor-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    background: #f8fafc;
+  }
+
+  .modal-wide { max-width: 900px; }
+
+  .example-editor-wrap {
+    flex: 1;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    min-height: 400px;
+  }
 
   /* Analyse row */
   .analyse-row {
