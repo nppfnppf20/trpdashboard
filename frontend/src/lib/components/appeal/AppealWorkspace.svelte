@@ -330,17 +330,17 @@
               <div class="direction-toggle">
                 <button
                   class="direction-btn"
-                  class:active={$documentDirection === 'against'}
-                  on:click={() => $documentDirection = 'against'}
-                >
-                  Against the proposal
-                </button>
-                <button
-                  class="direction-btn"
                   class:active={$documentDirection === 'for'}
                   on:click={() => $documentDirection = 'for'}
                 >
-                  For the proposal
+                  In favour of appellant's case
+                </button>
+                <button
+                  class="direction-btn"
+                  class:active={$documentDirection === 'against'}
+                  on:click={() => $documentDirection = 'against'}
+                >
+                  Against appellant's case
                 </button>
               </div>
             </div>

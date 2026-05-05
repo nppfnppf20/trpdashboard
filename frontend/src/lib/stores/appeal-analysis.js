@@ -6,7 +6,7 @@ import { appendToNote } from '$lib/stores/appeal-notes.js';
 export const activeInputTab = writable('upload');
 export const selectedFile = writable(null);
 export const documentType = writable('Officer Report');
-export const documentDirection = writable('against');
+export const documentDirection = writable('for');
 export const userNotes = writable('');
 export const selectedTrackIds = writable([]);
 export const dragOver = writable(false);
@@ -179,6 +179,6 @@ export function resetAnalysis() {
   pasteText.set('');
   userNotes.set('');
   selectedTrackIds.set([]);
-  documentDirection.set('against');
+  documentDirection.set('for');
   analysisError.set(null);
 }
