@@ -412,6 +412,45 @@ export async function deletePromptTemplate(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Document log
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getDocumentLog(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, project_id, title, code, document_summary, argument_points, logged_at
+       FROM appeals.appeal_document_log
+       WHERE project_id = $1
+       ORDER BY logged_at DESC`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getDocumentLog error:', err);
+    res.status(500).json({ error: 'Failed to fetch document log' });
+  }
+}
+
+export async function createDocumentLogEntry(req, res) {
+  const { projectId } = req.params;
+  const { title, code, document_summary, argument_points } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO appeals.appeal_document_log (project_id, title, code, document_summary, argument_points)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [projectId, title.trim(), code?.trim() || null, document_summary?.trim() || null, JSON.stringify(argument_points ?? [])]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('createDocumentLogEntry error:', err);
+    res.status(500).json({ error: 'Failed to create log entry' });
+  }
+}
+
 export async function updateDocumentStatus(req, res) {
   const { docId } = req.params;
   const { review_status } = req.body;

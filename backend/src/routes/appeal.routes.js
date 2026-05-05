@@ -29,7 +29,9 @@ import {
   createSection,
   updateSection,
   deleteSection,
-  reorderSections
+  reorderSections,
+  getDocumentLog,
+  createDocumentLogEntry
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -80,6 +82,10 @@ router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
+
+// Document log
+router.get('/projects/:projectId/document-log', getDocumentLog);
+router.post('/projects/:projectId/document-log', createDocumentLogEntry);
 
 // Documents
 router.get('/projects/:projectId/documents', getDocuments);

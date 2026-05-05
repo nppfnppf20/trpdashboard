@@ -220,6 +220,22 @@ export async function generateDraftSection(projectId, typeId, sectionId) {
   return res.json();
 }
 
+export async function getDocumentLog(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/document-log`);
+  if (!res.ok) throw new Error('Failed to fetch document log');
+  return res.json();
+}
+
+export async function createDocumentLogEntry(projectId, { title, code, document_summary, argument_points }) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/document-log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, code, document_summary, argument_points })
+  });
+  if (!res.ok) throw new Error('Failed to save log entry');
+  return res.json();
+}
+
 export async function updateDocumentStatus(docId, reviewStatus) {
   const res = await authFetch(`/api/appeal/documents/${docId}/status`, {
     method: 'PUT',

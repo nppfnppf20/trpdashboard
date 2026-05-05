@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate, getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections } from '$lib/api/appeal.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate, getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections, getDocumentLog, createDocumentLogEntry } from '$lib/api/appeal.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
 
   const DOC_TYPES = [
@@ -39,6 +39,18 @@
   let analysisSummary = '';
   let analysisCoverage = []; // [{ issue_id, assessment }]
   let extractedPoints = []; // [{ track_id, field, point, dismissed }]
+  let acceptedPoints = [];  // [{ track_id, issue_label, field, point }] — accumulated as user ticks
+
+  // Log modal
+  let logModalOpen = false;
+  let logTitle = '';
+  let logCode = '';
+  let logSummary = '';
+  let logPoints = []; // [{ id, track_id, issue_label, field, text }] — editable
+  let logSaving = false;
+
+  // Document log tab
+  let documentLog = [];
 
   function onDrop(e) {
     e.preventDefault();
@@ -145,12 +157,49 @@
     analysisSummary = '';
     analysisCoverage = [];
     extractedPoints = [];
+    acceptedPoints = [];
     selectedFile = null;
     pasteText = '';
     userNotes = '';
     selectedTrackIds = [];
     documentDirection = 'against';
     analysisError = null;
+  }
+
+  function openLogModal() {
+    logTitle = '';
+    logCode = '';
+    logSummary = analysisSummary;
+    logPoints = acceptedPoints.map((p, i) => ({ id: i, ...p, text: p.point }));
+    logModalOpen = true;
+  }
+
+  function removeLogPoint(id) {
+    logPoints = logPoints.filter(p => p.id !== id);
+  }
+
+  async function saveLogEntry() {
+    if (!logTitle.trim()) return;
+    logSaving = true;
+    try {
+      const entry = await createDocumentLogEntry(project.id, {
+        title: logTitle,
+        code: logCode,
+        document_summary: logSummary,
+        argument_points: logPoints.map(p => ({
+          track_id: p.track_id,
+          issue_label: p.issue_label,
+          field: p.field,
+          point: p.text
+        }))
+      });
+      documentLog = [entry, ...documentLog];
+      logModalOpen = false;
+    } catch (err) {
+      console.error('Failed to save log entry:', err);
+    } finally {
+      logSaving = false;
+    }
   }
 
   function toggleTrack(id) {
@@ -166,7 +215,7 @@
   function acceptPoint(idx) {
     const point = extractedPoints[idx];
     const trackId = point.track_id;
-    const field = point.field; // 'argument_against' | 'argument_for'
+    const field = point.field;
 
     if (trackId !== null) {
       const current = issueNotes[trackId]?.[field] ?? '';
@@ -177,7 +226,10 @@
       };
       saveNote(trackId);
     }
-    // For general (null track_id) points we just dismiss — user copies manually
+    const issueLabel = trackId !== null
+      ? (keyIssues.find(i => String(i.id) === String(trackId))?.label ?? 'General')
+      : 'General';
+    acceptedPoints = [...acceptedPoints, { track_id: trackId, issue_label: issueLabel, field, point: point.point }];
     extractedPoints = extractedPoints.map((p, i) => i === idx ? { ...p, dismissed: true } : p);
   }
 
@@ -440,9 +492,10 @@
     loading = true;
     loadError = null;
     try {
-      [keyIssues, issueNotes] = await Promise.all([
+      [keyIssues, issueNotes, documentLog] = await Promise.all([
         getKeyIssues(project.id),
-        getIssueNotes(project.id)
+        getIssueNotes(project.id),
+        getDocumentLog(project.id)
       ]);
       await loadDraftTypes();
     } catch (err) {
@@ -519,6 +572,9 @@
     </button>
     <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
       Draft Document
+    </button>
+    <button class="tab" class:active={activeTab === 'log'} on:click={() => activeTab = 'log'}>
+      Document Log
     </button>
   </div>
 
@@ -649,7 +705,14 @@
         {:else if analysisState === 'results'}
           <div class="results-header">
             <span class="results-title">Analysis</span>
-            <button class="reset-btn" on:click={resetAnalysis}><i class="las la-arrow-left"></i> New document</button>
+            <div class="results-header-actions">
+              {#if acceptedPoints.length > 0}
+                <button class="log-btn" on:click={openLogModal}>
+                  <i class="las la-save"></i> Save to log
+                </button>
+              {/if}
+              <button class="reset-btn" on:click={resetAnalysis}><i class="las la-arrow-left"></i> New document</button>
+            </div>
           </div>
 
           <div class="results-list">
@@ -843,6 +906,49 @@
 
     </div>
 
+  {:else if activeTab === 'log'}
+    <!-- ── Tab 4: Document Log ── -->
+    <div class="tab-body">
+      {#if documentLog.length === 0}
+        <div class="empty-state">
+          <i class="las la-file-alt"></i>
+          <p>No documents logged yet. Analyse a document, tick the useful arguments, then click "Save to log".</p>
+        </div>
+      {:else}
+        <div class="log-list">
+          {#each documentLog as entry (entry.id)}
+            <div class="log-card">
+              <div class="log-card-header">
+                <div class="log-card-title-row">
+                  <span class="log-card-title">{entry.title}</span>
+                  {#if entry.code}<span class="log-card-code">{entry.code}</span>{/if}
+                </div>
+                <span class="log-card-date">{new Date(entry.logged_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              </div>
+              {#if entry.document_summary}
+                <p class="log-card-summary">{entry.document_summary}</p>
+              {/if}
+              {#if entry.argument_points?.length > 0}
+                <div class="log-points">
+                  {#each entry.argument_points as pt}
+                    <div class="log-point">
+                      <div class="log-point-meta">
+                        <span class="result-field-tag" class:against={pt.field === 'argument_against'} class:for={pt.field === 'argument_for'}>
+                          {pt.field === 'argument_against' ? 'Against' : 'For'}
+                        </span>
+                        <span class="log-point-issue">{pt.issue_label}</span>
+                      </div>
+                      <p class="log-point-text">{pt.point}</p>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
   {:else if activeTab === 'draft'}
     <!-- ── Tab 3: Draft Document ── -->
     {#if activeDraftTypeId !== null}
@@ -904,6 +1010,70 @@
   {/if}
 
 </div>
+
+<!-- Save to log modal -->
+{#if logModalOpen}
+  <div class="modal-overlay" on:click|self={() => logModalOpen = false} role="dialog" aria-modal="true">
+    <div class="modal modal-log">
+      <div class="modal-header">
+        <span class="modal-title">Save to Document Log</span>
+        <button class="modal-close" on:click={() => logModalOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body log-modal-body">
+        <div class="log-form">
+          <div class="log-form-row">
+            <div class="log-form-field">
+              <label class="section-field-label">Document title <span style="color:#ef4444">*</span></label>
+              <input class="add-section-input" type="text" bind:value={logTitle} placeholder="e.g. Officer Report — Land at Station Road" />
+            </div>
+            <div class="log-form-field log-form-field-sm">
+              <label class="section-field-label">Reference / code</label>
+              <input class="add-section-input" type="text" bind:value={logCode} placeholder="e.g. CD/1.2" />
+            </div>
+          </div>
+
+          {#if logSummary}
+            <div class="log-form-field">
+              <label class="section-field-label">Document summary</label>
+              <textarea class="prompt-editor" style="min-height:80px;resize:vertical" bind:value={logSummary}></textarea>
+            </div>
+          {/if}
+
+          <div class="log-form-field">
+            <label class="section-field-label">Arguments used ({logPoints.length})</label>
+            {#if logPoints.length === 0}
+              <p class="sections-empty" style="padding:0.5rem 0;text-align:left">No arguments were ticked during analysis. You can add them manually after saving.</p>
+            {:else}
+              <div class="log-points-editor">
+                {#each logPoints as lp (lp.id)}
+                  <div class="log-point-edit">
+                    <div class="log-point-edit-header">
+                      <span class="result-field-tag" class:against={lp.field === 'argument_against'} class:for={lp.field === 'argument_for'}>
+                        {lp.field === 'argument_against' ? 'Against' : 'For'}
+                      </span>
+                      <span class="log-point-issue">{lp.issue_label}</span>
+                      <button class="section-delete-btn" style="margin-left:auto" on:click={() => removeLogPoint(lp.id)} title="Remove"><i class="las la-times"></i></button>
+                    </div>
+                    <textarea class="notes-field" style="min-height:60px" bind:value={lp.text} use:autoresize={lp.text}></textarea>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left"></div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={() => logModalOpen = false}>Cancel</button>
+          <button class="modal-run" disabled={!logTitle.trim() || logSaving} on:click={saveLogEntry}>
+            {logSaving ? 'Saving...' : 'Save to log'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Sections manager modal -->
 {#if sectionsModalOpen}
@@ -2330,4 +2500,159 @@
   }
   .add-section-btn:hover:not(:disabled) { background: #6d28d9; }
   .add-section-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Results header actions ── */
+  .results-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .log-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.625rem;
+    background: #ede9fe;
+    border: 1px solid #c4b5fd;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #6d28d9;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .log-btn:hover { background: #ddd6fe; }
+
+  /* ── Document log tab ── */
+  .log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 800px;
+  }
+
+  .log-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .log-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .log-card-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .log-card-title { font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
+  .log-card-code {
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #f1f5f9;
+    color: #64748b;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+  }
+  .log-card-date { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+
+  .log-card-summary {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #475569;
+    line-height: 1.5;
+    padding: 0.625rem 0.75rem;
+    background: #f8fafc;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .log-points {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .log-point {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.5rem 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+
+  .log-point-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .log-point-issue { font-size: 0.8rem; font-weight: 500; color: #374151; }
+
+  .log-point-text {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: #374151;
+    line-height: 1.5;
+  }
+
+  /* ── Log modal ── */
+  .modal-log { max-width: 680px; }
+
+  .log-modal-body {
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+  }
+
+  .log-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .log-form-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+
+  .log-form-field { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
+  .log-form-field-sm { flex: 0 0 160px; }
+
+  .log-points-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .log-point-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.625rem 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+
+  .log-point-edit-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
 </style>
