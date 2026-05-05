@@ -1,6 +1,10 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate, getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections, getDocumentLog, createDocumentLogEntry } from '$lib/api/appeal.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog } from '$lib/api/appeal.js';
+  import { issueNotes, noteStatus, initNotes, handleNoteInput } from '$lib/stores/appeal-notes.js';
+  import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry } from '$lib/stores/appeal-log.js';
+  import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/appeal-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
 
   const DOC_TYPES = [
@@ -14,477 +18,23 @@
     'Other'
   ];
 
-  // Upload panel state
   let fileInput;
-  let dragOver = false;
-  let pasteText = '';
-  let activeInputTab = 'upload';
-  let selectedFile = null;
-  let documentType = 'Officer Report';
-  let documentDirection = 'against'; // 'for' | 'against'
-  let userNotes = '';
-  let selectedTrackIds = [];
 
-  // Analysis state: 'idle' | 'loading' | 'results'
-  let analysisState = 'idle';
-  let analysisError = null;
 
-  // Prompt modal
-  let promptModalOpen = false;
-  let promptText = '';
-  let promptLoading = false;
-  let promptSaving = false;
-  let promptSaved = false;
-  let promptIsCustom = false; // true if a saved template exists
-  let analysisSummary = '';
-  let analysisCoverage = []; // [{ issue_id, assessment }]
-  let extractedPoints = []; // [{ track_id, field, point, dismissed }]
-  let acceptedPoints = [];  // [{ track_id, issue_label, field, point }] — accumulated as user ticks
 
-  // Log modal
-  let logModalOpen = false;
-  let logTitle = '';
-  let logCode = '';
-  let logSummary = '';
-  let logPoints = []; // [{ id, track_id, issue_label, field, text }] — editable
-  let logSaving = false;
-
-  // Document log tab
-  let documentLog = [];
-
-  function onDrop(e) {
-    e.preventDefault();
-    dragOver = false;
-    const file = e.dataTransfer.files[0];
-    if (file) selectedFile = file;
-  }
-
-  function onFileInputChange(e) {
-    selectedFile = e.target.files[0] ?? null;
-    e.target.value = '';
-  }
-
-  function buildPayload(extras = {}) {
-    return {
-      documentType,
-      documentDirection,
-      userNotes: userNotes.trim() || null,
-      relevantTrackIds: selectedTrackIds,
-      ...(activeInputTab === 'upload' ? { file: selectedFile } : { text: pasteText }),
-      ...extras
-    };
-  }
-
-  async function openPromptModal() {
-    promptLoading = true;
-    promptModalOpen = true;
-    promptText = '';
-    promptSaved = false;
-    try {
-      // Try saved template first
-      const saved = await getPromptTemplate(project.id);
-      if (saved?.extract_points_template) {
-        promptText = saved.extract_points_template;
-        promptIsCustom = true;
-      } else {
-        // No saved template — generate default with current issue context
-        const result = await analyseDocument(project.id, buildPayload({ preview: true }));
-        promptText = result.template;
-        promptIsCustom = false;
-      }
-    } catch (err) {
-      promptText = `Error loading prompt: ${err.message}`;
-    } finally {
-      promptLoading = false;
-    }
-  }
-
-  async function savePrompt() {
-    promptSaving = true;
-    try {
-      await savePromptTemplate(project.id, promptText);
-      promptIsCustom = true;
-      promptSaved = true;
-      setTimeout(() => { promptSaved = false; }, 2500);
-    } catch (err) {
-      console.error('Failed to save prompt:', err);
-    } finally {
-      promptSaving = false;
-    }
-  }
-
-  async function resetPromptToDefault() {
-    promptLoading = true;
-    try {
-      await deletePromptTemplate(project.id);
-      const result = await analyseDocument(project.id, buildPayload({ preview: true }));
-      promptText = result.template;
-      promptIsCustom = false;
-    } catch (err) {
-      console.error('Failed to reset prompt:', err);
-    } finally {
-      promptLoading = false;
-    }
-  }
-
-  async function runAnalysisWithPrompt() {
-    promptModalOpen = false;
-    // Replace {{DOCUMENT}} on the backend — send template as customPrompt
-    await runAnalysis(promptText);
-  }
-
-  async function runAnalysis(customPrompt = null) {
-    analysisState = 'loading';
-    analysisError = null;
-    try {
-      const payload = buildPayload(customPrompt ? { customPrompt } : {});
-      const raw = await analyseDocument(project.id, payload);
-      // Handle both new object format and legacy array format
-      const result = Array.isArray(raw) ? { summary: '', coverage: [], points: raw } : raw;
-      analysisSummary = result.summary ?? '';
-      analysisCoverage = result.coverage ?? [];
-      extractedPoints = (result.points ?? []).map(p => ({ ...p, dismissed: false }));
-      console.log('Analysis result:', result);
-      analysisState = 'results';
-    } catch (err) {
-      analysisError = err.message;
-      analysisState = 'idle';
-    }
-  }
-
-  function resetAnalysis() {
-    analysisState = 'idle';
-    analysisSummary = '';
-    analysisCoverage = [];
-    extractedPoints = [];
-    acceptedPoints = [];
-    selectedFile = null;
-    pasteText = '';
-    userNotes = '';
-    selectedTrackIds = [];
-    documentDirection = 'against';
-    analysisError = null;
-  }
-
-  function openLogModal() {
-    logTitle = '';
-    logCode = '';
-    logSummary = analysisSummary;
-    logPoints = acceptedPoints.map((p, i) => ({ id: i, ...p, text: p.point }));
-    logModalOpen = true;
-  }
-
-  function removeLogPoint(id) {
-    logPoints = logPoints.filter(p => p.id !== id);
-  }
-
-  async function saveLogEntry() {
-    if (!logTitle.trim()) return;
-    logSaving = true;
-    try {
-      const entry = await createDocumentLogEntry(project.id, {
-        title: logTitle,
-        code: logCode,
-        document_summary: logSummary,
-        argument_points: logPoints.map(p => ({
-          track_id: p.track_id,
-          issue_label: p.issue_label,
-          field: p.field,
-          point: p.text
-        }))
-      });
-      documentLog = [entry, ...documentLog];
-      logModalOpen = false;
-    } catch (err) {
-      console.error('Failed to save log entry:', err);
-    } finally {
-      logSaving = false;
-    }
-  }
-
-  function toggleTrack(id) {
-    selectedTrackIds = selectedTrackIds.includes(id)
-      ? selectedTrackIds.filter(t => t !== id)
-      : [...selectedTrackIds, id];
-  }
-
-  function dismissPoint(idx) {
-    extractedPoints = extractedPoints.map((p, i) => i === idx ? { ...p, dismissed: true } : p);
-  }
-
-  function acceptPoint(idx) {
-    const point = extractedPoints[idx];
-    const trackId = point.track_id;
-    const field = point.field;
-
-    if (trackId !== null) {
-      const current = issueNotes[trackId]?.[field] ?? '';
-      const updated = current ? `${current}\n\n${point.point}` : point.point;
-      issueNotes = {
-        ...issueNotes,
-        [trackId]: { ...(issueNotes[trackId] ?? {}), [field]: updated }
-      };
-      saveNote(trackId);
-    }
-    const issueLabel = trackId !== null
-      ? (keyIssues.find(i => String(i.id) === String(trackId))?.label ?? 'General')
-      : 'General';
-    acceptedPoints = [...acceptedPoints, { track_id: trackId, issue_label: issueLabel, field, point: point.point }];
-    extractedPoints = extractedPoints.map((p, i) => i === idx ? { ...p, dismissed: true } : p);
-  }
-
-  $: activePoints = extractedPoints.filter(p => !p.dismissed);
-  $: pointsByIssue = (() => {
-    const groups = {};
-    for (const p of activePoints) {
-      const key = p.track_id ?? '__general__';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(p);
-    }
-    return groups;
-  })();
-
-  // Draft document tab
-  let draftTypes = [];
-  let drafts = {};            // { [typeId]: draft row | null }
-  let draftLoading = {};      // { [typeId]: boolean }
-  let draftGenerating = null; // typeId currently generating
-  let activeDraftTypeId = null;
-  let draftEditorHtml = '';
-  let draftSaving = false;
-  let draftSaved = false;
   let draftEditor;
-
-  // Sections manager
-  let sectionsModalOpen = false;
-  let sectionsTypeId = null;
-  let sectionsTypeName = '';
-  let sections = [];           // sections for currently open type
-  let sectionsLoading = false;
-  let newSectionName = '';
-  let addingSectionLoading = false;
-
-  let sectionGenerating = null;   // section id currently generating
-
-  // Per-section prompt/example editing
-  let sectionExpandedId = null;   // which section row is expanded inline
-  let sectionPromptId = null;
-  let sectionPromptText = '';
-  let sectionPromptSaving = false;
-  let sectionPromptSaved = false;
-
-  let sectionExampleModalOpen = false;
-  let sectionExampleId = null;
   let sectionExampleEditor;
-  let sectionExampleSaving = false;
-  let sectionExampleSaved = false;
 
-  async function loadDraftTypes() {
-    try {
-      draftTypes = await getDraftTypes();
-      // Load existing drafts for each type
-      await Promise.all(draftTypes.map(async t => {
-        const d = await getDraft(project.id, t.id);
-        drafts = { ...drafts, [t.id]: d };
-      }));
-    } catch (err) {
-      console.error('Failed to load draft types:', err);
-    }
-  }
-
-  async function handleGenerate(typeId) {
-    draftGenerating = typeId;
-    try {
-      const result = await generateDraft(project.id, typeId);
-      drafts = { ...drafts, [typeId]: result };
-      openDraft(typeId);
-    } catch (err) {
-      console.error('Generate failed:', err);
-      alert(`Generation failed: ${err.message}`);
-    } finally {
-      draftGenerating = null;
-    }
-  }
-
-  function openDraft(typeId) {
-    const draft = drafts[typeId];
-    if (!draft) return;
-    activeDraftTypeId = typeId;
-    draftEditorHtml = draft.content_html ?? '';
-    draftSaved = false;
-  }
-
-  function closeDraft() {
-    activeDraftTypeId = null;
-    draftEditorHtml = '';
-  }
-
-  async function handleSaveDraft() {
-    if (!activeDraftTypeId) return;
-    draftSaving = true;
-    try {
-      const html = draftEditor?.getHTML() ?? draftEditorHtml;
-      const result = await saveDraft(project.id, activeDraftTypeId, html);
-      drafts = { ...drafts, [activeDraftTypeId]: result };
-      draftSaved = true;
-      setTimeout(() => { draftSaved = false; }, 2500);
-    } catch (err) {
-      console.error('Save draft failed:', err);
-    } finally {
-      draftSaving = false;
-    }
-  }
-
-  async function openSectionsModal(typeId) {
-    sectionsTypeId = typeId;
-    sectionsTypeName = draftTypes.find(t => t.id === typeId)?.name ?? '';
-    sectionsModalOpen = true;
-    sectionsLoading = true;
-    sectionExpandedId = null;
-    try {
-      sections = await getSections(typeId);
-    } catch (err) {
-      console.error('Failed to load sections:', err);
-    } finally {
-      sectionsLoading = false;
-    }
-  }
-
-  async function handleAddSection() {
-    if (!newSectionName.trim()) return;
-    addingSectionLoading = true;
-    try {
-      const s = await createSection(sectionsTypeId, { name: newSectionName.trim(), description: '' });
-      sections = [...sections, s];
-      newSectionName = '';
-    } catch (err) {
-      console.error('Failed to add section:', err);
-    } finally {
-      addingSectionLoading = false;
-    }
-  }
-
-  async function handleDeleteSection(sectionId) {
-    if (!confirm('Delete this section?')) return;
-    try {
-      await deleteSection(sectionId);
-      sections = sections.filter(s => s.id !== sectionId);
-      if (sectionExpandedId === sectionId) sectionExpandedId = null;
-    } catch (err) {
-      console.error('Failed to delete section:', err);
-    }
-  }
-
-  async function moveSectionUp(idx) {
-    if (idx === 0) return;
-    const reordered = [...sections];
-    [reordered[idx - 1], reordered[idx]] = [reordered[idx], reordered[idx - 1]];
-    sections = reordered;
-    try { await reorderSections(sectionsTypeId, reordered.map(s => s.id)); } catch {}
-  }
-
-  async function moveSectionDown(idx) {
-    if (idx >= sections.length - 1) return;
-    const reordered = [...sections];
-    [reordered[idx], reordered[idx + 1]] = [reordered[idx + 1], reordered[idx]];
-    sections = reordered;
-    try { await reorderSections(sectionsTypeId, reordered.map(s => s.id)); } catch {}
-  }
-
-  function toggleSectionExpand(sectionId) {
-    if (sectionExpandedId === sectionId) {
-      sectionExpandedId = null;
-    } else {
-      sectionExpandedId = sectionId;
-      const s = sections.find(sec => sec.id === sectionId);
-      sectionPromptId = sectionId;
-      sectionPromptText = s?.generation_prompt ?? '';
-      sectionPromptSaved = false;
-    }
-  }
-
-  async function handleSaveSectionPrompt(sectionId) {
-    sectionPromptSaving = true;
-    try {
-      const updated = await updateSection(sectionId, { generation_prompt: sectionPromptText });
-      sections = sections.map(s => s.id === sectionId ? { ...s, ...updated } : s);
-      sectionPromptSaved = true;
-      setTimeout(() => { sectionPromptSaved = false; }, 2500);
-    } catch (err) {
-      console.error('Failed to save section prompt:', err);
-    } finally {
-      sectionPromptSaving = false;
-    }
-  }
-
-  function openSectionExampleModal(sectionId) {
-    sectionExampleId = sectionId;
-    sectionExampleSaved = false;
-    sectionExampleModalOpen = true;
-    const s = sections.find(sec => sec.id === sectionId);
-    setTimeout(() => { sectionExampleEditor?.setHTML(s?.example_text ?? ''); }, 50);
-  }
-
-  async function handleSaveSectionExample() {
-    sectionExampleSaving = true;
-    try {
-      const html = sectionExampleEditor?.getHTML() ?? '';
-      const updated = await updateSection(sectionExampleId, { example_text: html });
-      sections = sections.map(s => s.id === sectionExampleId ? { ...s, ...updated } : s);
-      sectionExampleSaved = true;
-      setTimeout(() => { sectionExampleSaved = false; }, 2500);
-    } catch (err) {
-      console.error('Failed to save section example:', err);
-    } finally {
-      sectionExampleSaving = false;
-    }
-  }
-
-  function patchSectionInDraft(draftHtml, sectionName, newSectionHtml) {
-    if (!draftHtml) return newSectionHtml;
-    const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Match <h2>SectionName</h2> through to the next <h2> or end of string
-    const pattern = new RegExp(`<h2>\\s*${escaped}\\s*<\\/h2>[\\s\\S]*?(?=<h2>|$)`, 'i');
-    if (pattern.test(draftHtml)) {
-      return draftHtml.replace(pattern, newSectionHtml + '\n\n');
-    }
-    return draftHtml + '\n\n' + newSectionHtml;
-  }
-
-  async function handleGenerateSection(sectionId) {
-    sectionGenerating = sectionId;
-    try {
-      const result = await generateDraftSection(project.id, sectionsTypeId, sectionId);
-      const currentHtml = drafts[sectionsTypeId]?.content_html ?? '';
-      const section = sections.find(s => s.id === sectionId);
-      const patched = patchSectionInDraft(currentHtml, section.name, result.html);
-      const saved = await saveDraft(project.id, sectionsTypeId, patched);
-      drafts = { ...drafts, [sectionsTypeId]: saved };
-      if (activeDraftTypeId === sectionsTypeId) {
-        draftEditorHtml = patched;
-        draftEditor?.setHTML(patched);
-      }
-    } catch (err) {
-      console.error('Generate section failed:', err);
-      alert(`Failed to generate section: ${err.message}`);
-    } finally {
-      sectionGenerating = null;
-    }
-  }
+  $: setDraftEditor(draftEditor);
+  $: setSectionExampleEditor(sectionExampleEditor);
 
   export let project;
 
   let activeTab = 'key-issues';
 
   let keyIssues = [];
-  let issueNotes = {};   // { [track_id]: notes string }
   let loading = true;
   let loadError = null;
-
-  // Per-note save state: { [track_id]: 'saving' | 'saved' | null }
-  let noteStatus = {};
-
-  let saveTimers = {};
 
   onMount(load);
 
@@ -492,41 +42,25 @@
     loading = true;
     loadError = null;
     try {
-      [keyIssues, issueNotes, documentLog] = await Promise.all([
+      const [issues, notes, log] = await Promise.all([
         getKeyIssues(project.id),
         getIssueNotes(project.id),
         getDocumentLog(project.id)
       ]);
-      await loadDraftTypes();
+      keyIssues = issues;
+      initAnalysis(project.id);
+      initDrafts(project.id);
+      initNotes(project.id, notes);
+      initLog(log);
     } catch (err) {
       loadError = err.message;
     } finally {
       loading = false;
     }
+    // Run independently — draft failures must not block the rest of the workspace
+    await loadDraftTypes();
   }
 
-  function handleNoteInput(trackId, field, value) {
-    issueNotes = {
-      ...issueNotes,
-      [trackId]: { ...(issueNotes[trackId] ?? {}), [field]: value }
-    };
-    const key = `${trackId}`;
-    if (saveTimers[key]) clearTimeout(saveTimers[key]);
-    saveTimers[key] = setTimeout(() => saveNote(trackId), 1500);
-  }
-
-  async function saveNote(trackId) {
-    noteStatus = { ...noteStatus, [trackId]: 'saving' };
-    try {
-      const n = issueNotes[trackId] ?? {};
-      await upsertIssueNote(project.id, trackId, n.argument_against ?? null, n.argument_for ?? null);
-      noteStatus = { ...noteStatus, [trackId]: 'saved' };
-      setTimeout(() => { noteStatus = { ...noteStatus, [trackId]: null }; }, 2000);
-    } catch (err) {
-      console.error('Failed to save note:', err);
-      noteStatus = { ...noteStatus, [trackId]: null };
-    }
-  }
 
   function autoresize(node, _value) {
     function resize() {
@@ -659,9 +193,9 @@
                       </span>
                     {/if}
                   </div>
-                  {#if noteStatus[issue.id] === 'saving'}
+                  {#if $noteStatus[issue.id] === 'saving'}
                     <span class="note-status saving"><div class="mini-spinner"></div> Saving</span>
-                  {:else if noteStatus[issue.id] === 'saved'}
+                  {:else if $noteStatus[issue.id] === 'saved'}
                     <span class="note-status saved"><i class="las la-check"></i> Saved</span>
                   {/if}
                 </div>
@@ -671,8 +205,8 @@
                     <textarea
                       class="notes-field against-field"
                       placeholder="Paste the refusal reason, inspector's objection, or opposing position..."
-                      value={issueNotes[issue.id]?.argument_against ?? ''}
-                      use:autoresize={issueNotes[issue.id]?.argument_against}
+                      value={$issueNotes[issue.id]?.argument_against ?? ''}
+                      use:autoresize={$issueNotes[issue.id]?.argument_against}
                       on:input={(e) => handleNoteInput(issue.id, 'argument_against', e.target.value)}
                     ></textarea>
                   </div>
@@ -681,8 +215,8 @@
                     <textarea
                       class="notes-field for-field"
                       placeholder="Our response — evidence, policy hooks, expert position, how we address the objection..."
-                      value={issueNotes[issue.id]?.argument_for ?? ''}
-                      use:autoresize={issueNotes[issue.id]?.argument_for}
+                      value={$issueNotes[issue.id]?.argument_for ?? ''}
+                      use:autoresize={$issueNotes[issue.id]?.argument_for}
                       on:input={(e) => handleNoteInput(issue.id, 'argument_for', e.target.value)}
                     ></textarea>
                   </div>
@@ -696,18 +230,18 @@
       <!-- Right: document upload panel -->
       <div class="input-panel">
 
-        {#if analysisState === 'loading'}
+        {#if $analysisState === 'loading'}
           <div class="analysis-loading">
             <div class="spinner"></div>
             <p>Analysing document...</p>
           </div>
 
-        {:else if analysisState === 'results'}
+        {:else if $analysisState === 'results'}
           <div class="results-header">
             <span class="results-title">Analysis</span>
             <div class="results-header-actions">
-              {#if acceptedPoints.length > 0}
-                <button class="log-btn" on:click={openLogModal}>
+              {#if $acceptedPoints.length > 0}
+                <button class="log-btn" on:click={() => openLogModal($analysisSummary, $acceptedPoints)}>
                   <i class="las la-save"></i> Save to log
                 </button>
               {/if}
@@ -717,16 +251,16 @@
 
           <div class="results-list">
 
-            {#if analysisSummary}
+            {#if $analysisSummary}
               <div class="result-summary">
-                <p>{analysisSummary}</p>
+                <p>{$analysisSummary}</p>
               </div>
             {/if}
 
-            {#if analysisCoverage.length > 0}
+            {#if $analysisCoverage.length > 0}
               <div class="result-group">
                 <div class="result-group-label">Issue coverage</div>
-                {#each analysisCoverage as cov}
+                {#each $analysisCoverage as cov}
                   {@const issue = keyIssues.find(i => i.id === cov.issue_id)}
                   {#if issue}
                     <div class="coverage-row">
@@ -738,29 +272,29 @@
               </div>
             {/if}
 
-            {#if activePoints.length === 0}
+            {#if $activePoints.length === 0}
               <div class="results-empty">
                 <i class="las la-check-circle"></i>
-                <p>{extractedPoints.length > 0 ? 'All points reviewed.' : 'No specific points extracted — see summary above.'}</p>
+                <p>{$extractedPoints.length > 0 ? 'All points reviewed.' : 'No specific points extracted — see summary above.'}</p>
               </div>
             {:else}
               <div class="result-group">
                 <div class="result-group-label">Suggested points — tick to add, cross to dismiss</div>
-                {#each Object.entries(pointsByIssue) as [groupKey, points]}
+                {#each Object.entries($pointsByIssue) as [groupKey, points]}
                   {@const issueLabel = groupKey === '__general__'
                     ? 'General'
                     : (keyIssues.find(i => String(i.id) === String(groupKey))?.label ?? 'Unknown')}
                   <div class="result-subgroup">
                     <div class="result-subgroup-label">{issueLabel}</div>
                     {#each points as point}
-                      {@const globalIdx = extractedPoints.indexOf(point)}
+                      {@const globalIdx = $extractedPoints.indexOf(point)}
                       <div class="result-card">
                         <div class="result-card-top">
                           <span class="result-field-tag" class:against={point.field === 'argument_against'} class:for={point.field === 'argument_for'}>
                             {point.field === 'argument_against' ? 'Against' : 'For'}
                           </span>
                           <div class="result-actions">
-                            <button class="result-btn accept" title="Add to notes" on:click={() => acceptPoint(globalIdx)}>
+                            <button class="result-btn accept" title="Add to notes" on:click={() => acceptPoint(globalIdx, keyIssues)}>
                               <i class="las la-check"></i>
                             </button>
                             <button class="result-btn dismiss" title="Dismiss" on:click={() => dismissPoint(globalIdx)}>
@@ -781,10 +315,10 @@
         {:else}
           <!-- Idle: upload / paste -->
           <div class="input-tabs">
-            <button class="input-tab" class:active={activeInputTab === 'upload'} on:click={() => activeInputTab = 'upload'}>
+            <button class="input-tab" class:active={$activeInputTab === 'upload'} on:click={() => $activeInputTab = 'upload'}>
               <i class="las la-file-upload"></i> Upload
             </button>
-            <button class="input-tab" class:active={activeInputTab === 'paste'} on:click={() => activeInputTab = 'paste'}>
+            <button class="input-tab" class:active={$activeInputTab === 'paste'} on:click={() => $activeInputTab = 'paste'}>
               <i class="las la-paste"></i> Paste Text
             </button>
           </div>
@@ -796,15 +330,15 @@
               <div class="direction-toggle">
                 <button
                   class="direction-btn"
-                  class:active={documentDirection === 'against'}
-                  on:click={() => documentDirection = 'against'}
+                  class:active={$documentDirection === 'against'}
+                  on:click={() => $documentDirection = 'against'}
                 >
                   Against the proposal
                 </button>
                 <button
                   class="direction-btn"
-                  class:active={documentDirection === 'for'}
-                  on:click={() => documentDirection = 'for'}
+                  class:active={$documentDirection === 'for'}
+                  on:click={() => $documentDirection = 'for'}
                 >
                   For the proposal
                 </button>
@@ -813,27 +347,27 @@
 
             <div class="form-row">
               <label class="form-label">Document type</label>
-              <select class="doc-type-select" bind:value={documentType}>
+              <select class="doc-type-select" bind:value={$documentType}>
                 {#each DOC_TYPES as t}<option>{t}</option>{/each}
               </select>
             </div>
 
-            {#if activeInputTab === 'upload'}
+            {#if $activeInputTab === 'upload'}
               <div
                 class="upload-zone"
-                class:drag-over={dragOver}
-                class:has-file={selectedFile}
-                on:dragover|preventDefault={() => dragOver = true}
-                on:dragleave={() => dragOver = false}
+                class:drag-over={$dragOver}
+                class:has-file={$selectedFile}
+                on:dragover|preventDefault={() => $dragOver = true}
+                on:dragleave={() => $dragOver = false}
                 on:drop={onDrop}
                 on:click={() => fileInput.click()}
                 role="button"
                 tabindex="0"
                 on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
               >
-                {#if selectedFile}
+                {#if $selectedFile}
                   <i class="las la-file-alt"></i>
-                  <span>{selectedFile.name}</span>
+                  <span>{$selectedFile.name}</span>
                   <span class="upload-sub">Click to change</span>
                 {:else}
                   <i class="las la-cloud-upload-alt"></i>
@@ -845,7 +379,7 @@
             {:else}
               <textarea
                 class="paste-area"
-                bind:value={pasteText}
+                bind:value={$pasteText}
                 placeholder="Paste text from a document, report or meeting notes here..."
               ></textarea>
             {/if}
@@ -854,7 +388,7 @@
               <label class="form-label">Your guidance <span class="form-label-hint">(optional — directs what the AI looks for)</span></label>
               <textarea
                 class="user-notes-field"
-                bind:value={userNotes}
+                bind:value={$userNotes}
                 placeholder="e.g. Focus on paragraph 5.3 regarding noise, the officer concedes the heritage impact is minor..."
               ></textarea>
             </div>
@@ -867,7 +401,7 @@
                     <label class="issue-check-label">
                       <input
                         type="checkbox"
-                        checked={selectedTrackIds.includes(issue.id)}
+                        checked={$selectedTrackIds.includes(issue.id)}
                         on:change={() => toggleTrack(issue.id)}
                       />
                       <span>{issue.label}</span>
@@ -880,14 +414,14 @@
             <div class="analyse-row">
               <button
                 class="analyse-btn"
-                disabled={activeInputTab === 'upload' ? !selectedFile : !pasteText.trim()}
+                disabled={$activeInputTab === 'upload' ? !$selectedFile : !$pasteText.trim()}
                 on:click={() => runAnalysis()}
               >
                 Analyse document
               </button>
               <button
                 class="prompt-btn"
-                disabled={activeInputTab === 'upload' ? !selectedFile : !pasteText.trim()}
+                disabled={$activeInputTab === 'upload' ? !$selectedFile : !$pasteText.trim()}
                 on:click={openPromptModal}
                 title="View and edit the prompt before running"
               >
@@ -895,8 +429,8 @@
               </button>
             </div>
 
-            {#if analysisError}
-              <p class="analysis-error">{analysisError}</p>
+            {#if $analysisError}
+              <p class="analysis-error">{$analysisError}</p>
             {/if}
 
           </div>
@@ -909,14 +443,14 @@
   {:else if activeTab === 'log'}
     <!-- ── Tab 4: Document Log ── -->
     <div class="tab-body">
-      {#if documentLog.length === 0}
+      {#if $documentLog.length === 0}
         <div class="empty-state">
           <i class="las la-file-alt"></i>
           <p>No documents logged yet. Analyse a document, tick the useful arguments, then click "Save to log".</p>
         </div>
       {:else}
         <div class="log-list">
-          {#each documentLog as entry (entry.id)}
+          {#each $documentLog as entry (entry.id)}
             <div class="log-card">
               <div class="log-card-header">
                 <div class="log-card-title-row">
@@ -951,30 +485,30 @@
 
   {:else if activeTab === 'draft'}
     <!-- ── Tab 3: Draft Document ── -->
-    {#if activeDraftTypeId !== null}
+    {#if $activeDraftTypeId !== null}
       <!-- Editor view -->
-      {@const activeType = draftTypes.find(t => t.id === activeDraftTypeId)}
+      {@const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
       <div class="draft-editor-bar">
         <button class="reset-btn" on:click={closeDraft}><i class="las la-arrow-left"></i> Documents</button>
         <span class="draft-editor-title">{activeType?.name ?? ''}</span>
         <div class="draft-editor-actions">
-          <button class="draft-regen-btn" disabled={draftGenerating === activeDraftTypeId} on:click={() => handleGenerate(activeDraftTypeId)}>
-            {#if draftGenerating === activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
+          <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => handleGenerate($activeDraftTypeId)}>
+            {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
-          <button class="draft-save-btn" disabled={draftSaving} on:click={handleSaveDraft}>
-            {#if draftSaving}Saving...{:else if draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
+          <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
+            {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
           </button>
         </div>
       </div>
       <div class="draft-editor-wrap">
-        <RichTextEditor bind:this={draftEditor} content={draftEditorHtml} on:change={() => { draftSaved = false; }} />
+        <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
       </div>
     {:else}
       <!-- Document type list -->
       <div class="tab-body">
         <div class="draft-types-list">
-          {#each draftTypes as type (type.id)}
-            {@const draft = drafts[type.id]}
+          {#each $draftTypes as type (type.id)}
+            {@const draft = $drafts[type.id]}
             <div class="draft-type-card">
               <div class="draft-type-main">
                 <div class="draft-type-info">
@@ -988,8 +522,8 @@
                   {#if draft}
                     <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
-                  <button class="draft-generate-btn" disabled={draftGenerating === type.id} on:click={() => handleGenerate(type.id)}>
-                    {#if draftGenerating === type.id}
+                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => handleGenerate(type.id)}>
+                    {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
                     {:else}
                       <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
@@ -1012,40 +546,40 @@
 </div>
 
 <!-- Save to log modal -->
-{#if logModalOpen}
-  <div class="modal-overlay" on:click|self={() => logModalOpen = false} role="dialog" aria-modal="true">
+{#if $logModalOpen}
+  <div class="modal-overlay" on:click|self={() => $logModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-log">
       <div class="modal-header">
         <span class="modal-title">Save to Document Log</span>
-        <button class="modal-close" on:click={() => logModalOpen = false}><i class="las la-times"></i></button>
+        <button class="modal-close" on:click={() => $logModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body log-modal-body">
         <div class="log-form">
           <div class="log-form-row">
             <div class="log-form-field">
               <label class="section-field-label">Document title <span style="color:#ef4444">*</span></label>
-              <input class="add-section-input" type="text" bind:value={logTitle} placeholder="e.g. Officer Report — Land at Station Road" />
+              <input class="add-section-input" type="text" bind:value={$logTitle} placeholder="e.g. Officer Report — Land at Station Road" />
             </div>
             <div class="log-form-field log-form-field-sm">
               <label class="section-field-label">Reference / code</label>
-              <input class="add-section-input" type="text" bind:value={logCode} placeholder="e.g. CD/1.2" />
+              <input class="add-section-input" type="text" bind:value={$logCode} placeholder="e.g. CD/1.2" />
             </div>
           </div>
 
-          {#if logSummary}
+          {#if $logSummary}
             <div class="log-form-field">
               <label class="section-field-label">Document summary</label>
-              <textarea class="prompt-editor" style="min-height:80px;resize:vertical" bind:value={logSummary}></textarea>
+              <textarea class="prompt-editor" style="min-height:80px;resize:vertical" bind:value={$logSummary}></textarea>
             </div>
           {/if}
 
           <div class="log-form-field">
-            <label class="section-field-label">Arguments used ({logPoints.length})</label>
-            {#if logPoints.length === 0}
+            <label class="section-field-label">Arguments used ({$logPoints.length})</label>
+            {#if $logPoints.length === 0}
               <p class="sections-empty" style="padding:0.5rem 0;text-align:left">No arguments were ticked during analysis. You can add them manually after saving.</p>
             {:else}
               <div class="log-points-editor">
-                {#each logPoints as lp (lp.id)}
+                {#each $logPoints as lp, i (lp.id)}
                   <div class="log-point-edit">
                     <div class="log-point-edit-header">
                       <span class="result-field-tag" class:against={lp.field === 'argument_against'} class:for={lp.field === 'argument_for'}>
@@ -1054,7 +588,7 @@
                       <span class="log-point-issue">{lp.issue_label}</span>
                       <button class="section-delete-btn" style="margin-left:auto" on:click={() => removeLogPoint(lp.id)} title="Remove"><i class="las la-times"></i></button>
                     </div>
-                    <textarea class="notes-field" style="min-height:60px" bind:value={lp.text} use:autoresize={lp.text}></textarea>
+                    <textarea class="notes-field" style="min-height:60px" bind:value={$logPoints[i].text} use:autoresize={$logPoints[i].text}></textarea>
                   </div>
                 {/each}
               </div>
@@ -1065,9 +599,9 @@
       <div class="modal-footer">
         <div class="modal-footer-left"></div>
         <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => logModalOpen = false}>Cancel</button>
-          <button class="modal-run" disabled={!logTitle.trim() || logSaving} on:click={saveLogEntry}>
-            {logSaving ? 'Saving...' : 'Save to log'}
+          <button class="modal-cancel" on:click={() => $logModalOpen = false}>Cancel</button>
+          <button class="modal-run" disabled={!$logTitle.trim() || $logSaving} on:click={() => saveLogEntry(project.id)}>
+            {$logSaving ? 'Saving...' : 'Save to log'}
           </button>
         </div>
       </div>
@@ -1076,35 +610,35 @@
 {/if}
 
 <!-- Sections manager modal -->
-{#if sectionsModalOpen}
-  <div class="modal-overlay" on:click|self={() => sectionsModalOpen = false} role="dialog" aria-modal="true">
+{#if $sectionsModalOpen}
+  <div class="modal-overlay" on:click|self={() => $sectionsModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-sections">
       <div class="modal-header">
-        <span class="modal-title">Sections — {sectionsTypeName}</span>
-        <button class="modal-close" on:click={() => sectionsModalOpen = false}><i class="las la-times"></i></button>
+        <span class="modal-title">Sections — {$sectionsTypeName}</span>
+        <button class="modal-close" on:click={() => $sectionsModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body sections-body">
-        {#if sectionsLoading}
+        {#if $sectionsLoading}
           <div class="prompt-loading"><div class="spinner"></div><span>Loading...</span></div>
         {:else}
-          {#if sections.length === 0}
+          {#if $sections.length === 0}
             <p class="sections-empty">No sections yet. Add one below to define the structure of this document.</p>
           {:else}
             <div class="sections-list">
-              {#each sections as section, idx (section.id)}
-                <div class="section-row" class:expanded={sectionExpandedId === section.id}>
+              {#each $sections as section, idx (section.id)}
+                <div class="section-row" class:expanded={$sectionExpandedId === section.id}>
                   <div class="section-row-header">
                     <div class="section-order-btns">
                       <button class="section-order-btn" disabled={idx === 0} on:click={() => moveSectionUp(idx)} title="Move up"><i class="las la-angle-up"></i></button>
-                      <button class="section-order-btn" disabled={idx === sections.length - 1} on:click={() => moveSectionDown(idx)} title="Move down"><i class="las la-angle-down"></i></button>
+                      <button class="section-order-btn" disabled={idx === $sections.length - 1} on:click={() => moveSectionDown(idx)} title="Move down"><i class="las la-angle-down"></i></button>
                     </div>
                     <span class="section-name">{section.name}</span>
                     <div class="section-row-actions">
-                      <button class="section-generate-btn" disabled={sectionGenerating === section.id} on:click={() => handleGenerateSection(section.id)} title="Generate this section">
-                        {#if sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
+                      <button class="section-generate-btn" disabled={$sectionGenerating === section.id} on:click={() => handleGenerateSection(section.id)} title="Generate this section">
+                        {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
                       </button>
                       <button class="section-edit-btn" on:click={() => toggleSectionExpand(section.id)}>
-                        {sectionExpandedId === section.id ? 'Close' : 'Edit'}
+                        {$sectionExpandedId === section.id ? 'Close' : 'Edit'}
                       </button>
                       <button class="section-delete-btn" on:click={() => handleDeleteSection(section.id)} title="Delete section">
                         <i class="las la-trash"></i>
@@ -1112,16 +646,16 @@
                     </div>
                   </div>
 
-                  {#if sectionExpandedId === section.id}
+                  {#if $sectionExpandedId === section.id}
                     <div class="section-expand">
                       <label class="section-field-label">Generation prompt <span class="form-label-hint">(leave blank for default)</span></label>
-                      <textarea class="prompt-editor section-prompt" bind:value={sectionPromptText} use:autoresize={sectionPromptText}></textarea>
+                      <textarea class="prompt-editor section-prompt" bind:value={$sectionPromptText} use:autoresize={$sectionPromptText}></textarea>
                       <div class="section-expand-actions">
                         <button class="section-example-btn" on:click={() => openSectionExampleModal(section.id)}>
                           <i class="las la-file-alt"></i> Edit style example
                         </button>
-                        <button class="modal-save" disabled={sectionPromptSaving} on:click={() => handleSaveSectionPrompt(section.id)}>
-                          {#if sectionPromptSaving}Saving...{:else if sectionPromptSaved}<i class="las la-check"></i> Saved{:else}Save prompt{/if}
+                        <button class="modal-save" disabled={$sectionPromptSaving} on:click={() => handleSaveSectionPrompt(section.id)}>
+                          {#if $sectionPromptSaving}Saving...{:else if $sectionPromptSaved}<i class="las la-check"></i> Saved{:else}Save prompt{/if}
                         </button>
                       </div>
                     </div>
@@ -1136,11 +670,11 @@
               class="add-section-input"
               type="text"
               placeholder="New section name..."
-              bind:value={newSectionName}
+              bind:value={$newSectionName}
               on:keydown={(e) => e.key === 'Enter' && handleAddSection()}
             />
-            <button class="add-section-btn" disabled={!newSectionName.trim() || addingSectionLoading} on:click={handleAddSection}>
-              {#if addingSectionLoading}<div class="mini-spinner"></div>{:else}<i class="las la-plus"></i>{/if}
+            <button class="add-section-btn" disabled={!$newSectionName.trim() || $addingSectionLoading} on:click={handleAddSection}>
+              {#if $addingSectionLoading}<div class="mini-spinner"></div>{:else}<i class="las la-plus"></i>{/if}
               Add
             </button>
           </div>
@@ -1151,13 +685,13 @@
 {/if}
 
 <!-- Section example sub-modal -->
-{#if sectionExampleModalOpen}
-  {@const exSection = sections.find(s => s.id === sectionExampleId)}
-  <div class="modal-overlay" on:click|self={() => sectionExampleModalOpen = false} role="dialog" aria-modal="true">
+{#if $sectionExampleModalOpen}
+  {@const exSection = $sections.find(s => s.id === $sectionExampleId)}
+  <div class="modal-overlay" on:click|self={() => $sectionExampleModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-wide">
       <div class="modal-header">
         <span class="modal-title">Style Example — {exSection?.name}</span>
-        <button class="modal-close" on:click={() => sectionExampleModalOpen = false}><i class="las la-times"></i></button>
+        <button class="modal-close" on:click={() => $sectionExampleModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body">
         <p class="prompt-hint">Paste an example of how this section should read. The AI will match its tone and format.</p>
@@ -1168,9 +702,9 @@
       <div class="modal-footer">
         <div class="modal-footer-left"></div>
         <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => sectionExampleModalOpen = false}>Cancel</button>
-          <button class="modal-save" disabled={sectionExampleSaving} on:click={handleSaveSectionExample}>
-            {#if sectionExampleSaving}Saving...{:else if sectionExampleSaved}<i class="las la-check"></i> Saved{:else}Save example{/if}
+          <button class="modal-cancel" on:click={() => $sectionExampleModalOpen = false}>Cancel</button>
+          <button class="modal-save" disabled={$sectionExampleSaving} on:click={handleSaveSectionExample}>
+            {#if $sectionExampleSaving}Saving...{:else if $sectionExampleSaved}<i class="las la-check"></i> Saved{:else}Save example{/if}
           </button>
         </div>
       </div>
@@ -1179,42 +713,42 @@
 {/if}
 
 <!-- Prompt modal -->
-{#if promptModalOpen}
-  <div class="modal-overlay" on:click|self={() => promptModalOpen = false} role="dialog" aria-modal="true">
+{#if $promptModalOpen}
+  <div class="modal-overlay" on:click|self={() => $promptModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal">
       <div class="modal-header">
         <div class="modal-header-left">
           <span class="modal-title">Extraction Prompt</span>
-          {#if promptIsCustom}
+          {#if $promptIsCustom}
             <span class="prompt-custom-badge">Custom saved</span>
           {:else}
             <span class="prompt-default-badge">Default</span>
           {/if}
         </div>
-        <button class="modal-close" on:click={() => promptModalOpen = false}><i class="las la-times"></i></button>
+        <button class="modal-close" on:click={() => $promptModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body">
-        {#if promptLoading}
+        {#if $promptLoading}
           <div class="prompt-loading"><div class="spinner"></div><span>Loading prompt...</span></div>
         {:else}
           <p class="prompt-hint"><code>&#123;&#123;DOCUMENT&#125;&#125;</code> is replaced with your document text when running.</p>
-          <textarea class="prompt-editor" bind:value={promptText}></textarea>
+          <textarea class="prompt-editor" bind:value={$promptText}></textarea>
         {/if}
       </div>
       <div class="modal-footer">
         <div class="modal-footer-left">
-          {#if promptIsCustom}
-            <button class="modal-reset" on:click={resetPromptToDefault} disabled={promptLoading}>
+          {#if $promptIsCustom}
+            <button class="modal-reset" on:click={resetPromptToDefault} disabled={$promptLoading}>
               Reset to default
             </button>
           {/if}
         </div>
         <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => promptModalOpen = false}>Cancel</button>
-          <button class="modal-save" disabled={promptLoading || promptSaving || !promptText} on:click={savePrompt}>
-            {#if promptSaving}Saving...{:else if promptSaved}<i class="las la-check"></i> Saved{:else}Save as default{/if}
+          <button class="modal-cancel" on:click={() => $promptModalOpen = false}>Cancel</button>
+          <button class="modal-save" disabled={$promptLoading || $promptSaving || !$promptText} on:click={savePrompt}>
+            {#if $promptSaving}Saving...{:else if $promptSaved}<i class="las la-check"></i> Saved{:else}Save as default{/if}
           </button>
-          <button class="modal-run" disabled={promptLoading || !promptText} on:click={runAnalysisWithPrompt}>
+          <button class="modal-run" disabled={$promptLoading || !$promptText} on:click={runAnalysisWithPrompt}>
             Run analysis
           </button>
         </div>
