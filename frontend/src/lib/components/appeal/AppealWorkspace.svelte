@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog } from '$lib/api/appeal.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getArgumentPoints } from '$lib/api/appeal.js';
   import { issueNotes, noteStatus, initNotes, handleNoteInput } from '$lib/stores/appeal-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry } from '$lib/stores/appeal-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
@@ -35,6 +35,12 @@
   let keyIssues = [];
   let loading = true;
   let loadError = null;
+  let argumentPointsByTrack = {};
+  let expandedPoints = {};
+
+  function toggleExpanded(id) {
+    expandedPoints = { ...expandedPoints, [id]: !expandedPoints[id] };
+  }
 
   onMount(load);
 
@@ -42,16 +48,23 @@
     loading = true;
     loadError = null;
     try {
-      const [issues, notes, log] = await Promise.all([
+      const [issues, notes, log, points] = await Promise.all([
         getKeyIssues(project.id),
         getIssueNotes(project.id),
-        getDocumentLog(project.id)
+        getDocumentLog(project.id),
+        getArgumentPoints(project.id).catch(() => [])
       ]);
       keyIssues = issues;
       initAnalysis(project.id);
       initDrafts(project.id);
       initNotes(project.id, notes);
       initLog(log);
+      const grouped = {};
+      for (const pt of points) {
+        if (!grouped[pt.track_id]) grouped[pt.track_id] = [];
+        grouped[pt.track_id].push(pt);
+      }
+      argumentPointsByTrack = grouped;
     } catch (err) {
       loadError = err.message;
     } finally {
@@ -180,6 +193,9 @@
           <div class="argument-list">
             {#each keyIssues as issue (issue.id)}
               {@const risk = riskColours[issue.last_known_risk_level]}
+              {@const issuePoints = argumentPointsByTrack[issue.id] ?? []}
+              {@const againstPoints = issuePoints.filter(p => p.field === 'argument_against')}
+              {@const forPoints = issuePoints.filter(p => p.field === 'argument_for')}
               <div class="argument-section">
                 <div class="argument-heading">
                   <div class="argument-title-row">
@@ -202,6 +218,29 @@
                 <div class="note-fields">
                   <div class="note-field-group against">
                     <label class="note-label against-label">Argument Against</label>
+                    {#if againstPoints.length > 0}
+                      <div class="arg-points-list">
+                        {#each againstPoints as pt (pt.id)}
+                          {@const ev = pt.evidence?.[0]}
+                          <div class="arg-point-row">
+                            <span class="arg-point-headline">{pt.headline}</span>
+                            {#if pt.detailed_summary || ev?.relevance_note}
+                              <button class="arg-point-info" title="View detail" on:click={() => toggleExpanded(pt.id)}>
+                                <i class="las la-info-circle"></i>
+                              </button>
+                            {/if}
+                          </div>
+                          {#if expandedPoints[pt.id] && (pt.detailed_summary || ev?.relevance_note)}
+                            <div class="arg-point-detail">
+                              {#if pt.detailed_summary}<p>{pt.detailed_summary}</p>{/if}
+                              {#if ev?.relevance_note}
+                                <span class="citation-ref-strong">{ev.relevance_note}</span>
+                              {/if}
+                            </div>
+                          {/if}
+                        {/each}
+                      </div>
+                    {/if}
                     <textarea
                       class="notes-field against-field"
                       placeholder="Paste the refusal reason, inspector's objection, or opposing position..."
@@ -212,6 +251,29 @@
                   </div>
                   <div class="note-field-group for">
                     <label class="note-label for-label">Argument For</label>
+                    {#if forPoints.length > 0}
+                      <div class="arg-points-list">
+                        {#each forPoints as pt (pt.id)}
+                          {@const ev = pt.evidence?.[0]}
+                          <div class="arg-point-row">
+                            <span class="arg-point-headline">{pt.headline}</span>
+                            {#if pt.detailed_summary || ev?.relevance_note}
+                              <button class="arg-point-info" title="View detail" on:click={() => toggleExpanded(pt.id)}>
+                                <i class="las la-info-circle"></i>
+                              </button>
+                            {/if}
+                          </div>
+                          {#if expandedPoints[pt.id] && (pt.detailed_summary || ev?.relevance_note)}
+                            <div class="arg-point-detail">
+                              {#if pt.detailed_summary}<p>{pt.detailed_summary}</p>{/if}
+                              {#if ev?.relevance_note}
+                                <span class="citation-ref-strong">{ev.relevance_note}</span>
+                              {/if}
+                            </div>
+                          {/if}
+                        {/each}
+                      </div>
+                    {/if}
                     <textarea
                       class="notes-field for-field"
                       placeholder="Our response — evidence, policy hooks, expert position, how we address the objection..."
@@ -294,6 +356,11 @@
                             {point.field === 'argument_against' ? 'Against' : 'For'}
                           </span>
                           <div class="result-actions">
+                            {#if point.detailed_summary}
+                              <button class="result-btn info" title="View detail" on:click={() => toggleExpanded(globalIdx)}>
+                                <i class="las la-info-circle"></i>
+                              </button>
+                            {/if}
                             <button class="result-btn accept" title="Add to notes" on:click={() => acceptPoint(globalIdx, keyIssues)}>
                               <i class="las la-check"></i>
                             </button>
@@ -302,7 +369,18 @@
                             </button>
                           </div>
                         </div>
-                        <p class="result-point">{point.point}</p>
+                        <p class="result-point">{point.headline ?? point.point}</p>
+                        {#if expandedPoints[globalIdx] && (point.detailed_summary || point.citation?.quote || point.citation?.para_ref)}
+                          <div class="result-point-detail">
+                            {#if point.detailed_summary}<p>{point.detailed_summary}</p>{/if}
+                            {#if point.citation?.quote || point.citation?.para_ref}
+                              <div class="citation-block">
+                                {#if point.citation.quote}<span class="citation-quote">"{point.citation.quote}"</span>{/if}
+                                {#if point.citation.para_ref}<span class="citation-ref">{point.citation.para_ref}</span>{/if}
+                              </div>
+                            {/if}
+                          </div>
+                        {/if}
                       </div>
                     {/each}
                   </div>
@@ -1214,11 +1292,90 @@
   .result-field-tag.against { background: #fee2e2; color: #b91c1c; }
   .result-field-tag.for     { background: #ede9fe; color: #6d28d9; }
 
+  .result-point-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .result-point-row:disabled { cursor: default; }
+
+  .result-expand-icon {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+  }
+
+  .result-point-detail {
+    margin: 0.375rem 0 0;
+    font-size: 0.8rem;
+    color: #475569;
+    line-height: 1.55;
+    padding: 0.5rem 0.625rem;
+    background: #f8fafc;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .result-point-detail p { margin: 0; }
+
+  .arg-point-detail {
+    padding: 0.5rem 0.75rem 0.625rem;
+    background: white;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .arg-point-detail p { margin: 0; font-size: 0.8rem; color: #475569; line-height: 1.55; }
+
+  .citation-block {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.375rem;
+  }
+
+  .citation-quote {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  .citation-ref {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+
+  .citation-ref-strong {
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-style: italic;
+    color: #475569;
+  }
+
   .result-point {
     margin: 0;
     font-size: 0.8125rem;
     color: #374151;
     line-height: 1.5;
+    flex: 1;
   }
 
   .result-actions { display: flex; gap: 0.4rem; }
@@ -1237,6 +1394,8 @@
     transition: all 0.15s;
   }
 
+  .result-btn.info { color: #7c3aed; }
+  .result-btn.info:hover { background: #f5f3ff; border-color: #c4b5fd; }
   .result-btn.accept { color: #16a34a; }
   .result-btn.accept:hover { background: #f0fdf4; border-color: #86efac; }
   .result-btn.dismiss { color: #94a3b8; }
@@ -1360,6 +1519,50 @@
 
   .summary-field::placeholder,
   .notes-field::placeholder { color: #94a3b8; }
+
+  /* Structured argument points */
+  .arg-points-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .arg-point-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .arg-point-row:first-child { border-top: none; }
+
+  .arg-point-headline {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #1e293b;
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  .arg-point-info {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 0.1rem 0.2rem;
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 0.95rem;
+    line-height: 1;
+    transition: color 0.12s;
+  }
+
+  .arg-point-info:hover { color: #7c3aed; }
+
 
   /* Loading / error / empty */
   .loading-state {

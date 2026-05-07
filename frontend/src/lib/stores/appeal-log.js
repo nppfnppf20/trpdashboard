@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { createDocumentLogEntry } from '$lib/api/appeal.js';
+import { createDocumentLogEntry, createArgumentPoint } from '$lib/api/appeal.js';
 
 export const documentLog = writable([]);
 export const logModalOpen = writable(false);
@@ -17,7 +17,15 @@ export function openLogModal(analysisSummary, acceptedPoints) {
   logTitle.set('');
   logCode.set('');
   logSummary.set(analysisSummary);
-  logPoints.set(acceptedPoints.map((p, i) => ({ id: i, ...p, text: p.point })));
+  logPoints.set(acceptedPoints.map((p, i) => ({
+    id: i,
+    ...p,
+    text: p.headline ?? p.point,
+    headline: p.headline ?? p.point,
+    detailed_summary: p.detailed_summary ?? null,
+    citation: p.citation ?? null,
+    relevant_chunk_indices: p.relevant_chunk_indices ?? []
+  })));
   logModalOpen.set(true);
 }
 
@@ -41,6 +49,22 @@ export async function saveLogEntry(projectId) {
       }))
     });
     documentLog.update(log => [entry, ...log]);
+
+    // Save structured argument points so detailed_summary is persisted and queryable.
+    // Fire-and-forget — failures don't block the log save.
+    const points = get(logPoints).filter(p => p.track_id != null);
+    for (const p of points) {
+      createArgumentPoint(projectId, {
+        track_id: p.track_id,
+        document_log_id: entry.id,
+        field: p.field,
+        headline: p.headline ?? p.text,
+        detailed_summary: p.detailed_summary ?? null,
+        citation: p.citation ?? null,
+        relevant_chunk_indices: p.relevant_chunk_indices ?? []
+      }).catch(err => console.warn('Failed to create argument point:', err));
+    }
+
     logModalOpen.set(false);
   } catch (err) {
     console.error('Failed to save log entry:', err);

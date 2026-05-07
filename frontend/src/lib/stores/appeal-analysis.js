@@ -87,12 +87,21 @@ export function acceptPoint(idx, keyIssues) {
   const field = point.field;
 
   if (trackId !== null) {
-    appendToNote(trackId, field, point.point);
+    appendToNote(trackId, field, point.headline ?? point.point);
   }
   const issueLabel = trackId !== null
     ? (keyIssues.find(i => String(i.id) === String(trackId))?.label ?? 'General')
     : 'General';
-  acceptedPoints.update(pts => [...pts, { track_id: trackId, issue_label: issueLabel, field, point: point.point }]);
+  acceptedPoints.update(pts => [...pts, {
+    track_id: trackId,
+    issue_label: issueLabel,
+    field,
+    point: point.headline ?? point.point,
+    headline: point.headline ?? point.point,
+    detailed_summary: point.detailed_summary ?? null,
+    citation: point.citation ?? null,
+    relevant_chunk_indices: point.relevant_chunk_indices ?? []
+  }]);
   extractedPoints.update(pts => pts.map((p, i) => i === idx ? { ...p, dismissed: true } : p));
 }
 

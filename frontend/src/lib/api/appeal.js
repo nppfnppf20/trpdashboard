@@ -236,6 +236,22 @@ export async function createDocumentLogEntry(projectId, { title, code, document_
   return res.json();
 }
 
+export async function getArgumentPoints(projectId) {
+  const res = await authFetch(`/api/planning-application/projects/${projectId}/argument-points`);
+  if (!res.ok) throw new Error('Failed to fetch argument points');
+  return res.json();
+}
+
+export async function createArgumentPoint(projectId, point) {
+  const res = await authFetch(`/api/planning-application/projects/${projectId}/argument-points`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(point)
+  });
+  if (!res.ok) throw new Error('Failed to create argument point');
+  return res.json();
+}
+
 export async function updateDocumentStatus(docId, reviewStatus) {
   const res = await authFetch(`/api/appeal/documents/${docId}/status`, {
     method: 'PUT',
