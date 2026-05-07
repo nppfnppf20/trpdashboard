@@ -38,6 +38,10 @@
     goto('/appeal');
   }
 
+  function navigateToPlanning() {
+    goto('/planning-application');
+  }
+
   function openAddProjectModal() {
     showAddProjectModal = true;
   }
@@ -410,6 +414,47 @@
 
           <button class="tool-button tool-button-violet" on:click|stopPropagation={navigateToAppeal}>
             Open Appeal Drafting
+            <i class="las la-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Planning Application Tool Card -->
+      <div class="tool-card" on:click={navigateToPlanning} on:keydown={(e) => e.key === 'Enter' && navigateToPlanning()} role="button" tabindex="0">
+        <div class="card-content">
+          <div class="card-icon" style="background: #e0f2fe; color: #0369a1;">
+            <i class="las la-clipboard-list"></i>
+          </div>
+
+          <h2 class="card-title">
+            Planning Application Tool
+          </h2>
+
+          <p class="card-description">
+            Structure and develop your planning argument issue by issue, with AI-powered document review and live editable drafts.
+          </p>
+
+          <div class="features-list">
+            <div class="feature-item">
+              <i class="las la-magic" style="color: #0369a1;"></i>
+              <span>AI-Generated Starting Argument</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-file-upload" style="color: #0369a1;"></i>
+              <span>Document-by-Document Review</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-edit" style="color: #0369a1;"></i>
+              <span>Live Editable Working Draft</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-layer-group" style="color: #0369a1;"></i>
+              <span>Seeded from Key Issues</span>
+            </div>
+          </div>
+
+          <button class="tool-button" style="background: #0369a1;" on:click|stopPropagation={navigateToPlanning}>
+            Open Planning Application Tool
             <i class="las la-arrow-right"></i>
           </button>
         </div>
