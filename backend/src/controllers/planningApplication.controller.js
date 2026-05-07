@@ -11,7 +11,8 @@ import {
   buildDocumentBlock,
   buildIssueContext,
   generateAppealDraft,
-  generateDraftSection
+  generateDraftSection,
+  generatePlanningStatementAssessment
 } from '../services/llm.service.js';
 
 const SCHEMA = 'planning_applications';
@@ -661,6 +662,25 @@ async function fetchEvidenceByTrack(projectId) {
   return map;
 }
 
+async function fetchLinkedPoliciesByTrack(projectId) {
+  const { rows } = await pool.query(
+    `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
+            pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy,
+            ptr.track_id
+     FROM public.project_policies pp
+     JOIN planning_applications.policy_track_relevance ptr ON ptr.policy_id = pp.id
+     WHERE pp.project_id = $1
+     ORDER BY ptr.track_id, pp.policy_type, pp.policy_reference`,
+    [projectId]
+  );
+  const map = {};
+  for (const row of rows) {
+    if (!map[row.track_id]) map[row.track_id] = [];
+    map[row.track_id].push(row);
+  }
+  return map;
+}
+
 export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
   try {
@@ -674,10 +694,12 @@ export async function generateDraft(req, res) {
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
 
-    const [{ rows: issues }, { rows: sections }, evidenceByTrack] = await Promise.all([
+    const [{ rows: issues }, { rows: sections }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
       pool.query(
         `SELECT pit.id, pit.label, pit.discipline,
-                ain.argument_against, ain.argument_for
+                ain.argument_against, ain.argument_for,
+                ain.policy_national, ain.policy_local, ain.policy_neighbourhood,
+                ain.policy_supplementary, ain.policy_other
          FROM admin_console.project_issue_tracks pit
          LEFT JOIN planning_applications.issue_notes ain
            ON ain.track_id = pit.id AND ain.project_id = $1
@@ -690,16 +712,35 @@ export async function generateDraft(req, res) {
          WHERE draft_type_id = $1 ORDER BY sort_order, id`,
         [typeId]
       ),
-      fetchEvidenceByTrack(projectId)
+      fetchEvidenceByTrack(projectId),
+      fetchLinkedPoliciesByTrack(projectId)
     ]);
 
-    const contentHtml = await generateAppealDraft({
-      projectName: projectRows[0].project_name,
-      draftTypeName: typeRows[0].name,
-      sections,
-      issues,
-      evidenceByTrack
-    });
+    const isPlanningApp = Object.keys(linkedPoliciesByTrack).length > 0;
+
+    let contentHtml;
+    if (isPlanningApp) {
+      const sectionParts = [];
+      for (const section of sections) {
+        const html = await generatePlanningStatementAssessment({
+          projectName: projectRows[0].project_name,
+          section,
+          issues,
+          linkedPoliciesByTrack,
+          evidenceByTrack
+        });
+        sectionParts.push(html);
+      }
+      contentHtml = sectionParts.join('\n\n');
+    } else {
+      contentHtml = await generateAppealDraft({
+        projectName: projectRows[0].project_name,
+        draftTypeName: typeRows[0].name,
+        sections,
+        issues,
+        evidenceByTrack
+      });
+    }
 
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.drafts
@@ -736,10 +777,12 @@ export async function generateSection(req, res) {
     );
     if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
 
-    const [{ rows: issues }, evidenceByTrack] = await Promise.all([
+    const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
       pool.query(
         `SELECT pit.id, pit.label, pit.discipline,
-                ain.argument_against, ain.argument_for
+                ain.argument_against, ain.argument_for,
+                ain.policy_national, ain.policy_local, ain.policy_neighbourhood,
+                ain.policy_supplementary, ain.policy_other
          FROM admin_console.project_issue_tracks pit
          LEFT JOIN planning_applications.issue_notes ain
            ON ain.track_id = pit.id AND ain.project_id = $1
@@ -747,17 +790,30 @@ export async function generateSection(req, res) {
          ORDER BY pit.sort_order, pit.id`,
         [projectId]
       ),
-      fetchEvidenceByTrack(projectId)
+      fetchEvidenceByTrack(projectId),
+      fetchLinkedPoliciesByTrack(projectId)
     ]);
 
-    const issueContext = buildIssueContext(issues, evidenceByTrack);
+    const isPlanningApp = Object.keys(linkedPoliciesByTrack).length > 0;
 
-    const html = await generateDraftSection({
-      section: sectionRows[0],
-      projectName: projectRows[0].project_name,
-      draftTypeName: typeRows[0].name,
-      issueContext
-    });
+    let html;
+    if (isPlanningApp) {
+      html = await generatePlanningStatementAssessment({
+        projectName: projectRows[0].project_name,
+        section: sectionRows[0],
+        issues,
+        linkedPoliciesByTrack,
+        evidenceByTrack
+      });
+    } else {
+      const issueContext = buildIssueContext(issues, evidenceByTrack);
+      html = await generateDraftSection({
+        section: sectionRows[0],
+        projectName: projectRows[0].project_name,
+        draftTypeName: typeRows[0].name,
+        issueContext
+      });
+    }
 
     res.json({ html, section_id: sectionRows[0].id, section_name: sectionRows[0].name });
   } catch (err) {

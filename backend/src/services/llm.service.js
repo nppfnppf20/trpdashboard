@@ -1223,6 +1223,128 @@ citation rules:
 If no relevant points are found, return points as an empty array but still provide the summary and coverage.`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Planning Statement generation — per-issue assessment sections
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PLANNING_TIER_LABELS = {
+  national:      'National Planning Policy',
+  local:         'Local Plan Policy',
+  neighbourhood: 'Neighbourhood Plan Policy',
+  supplementary: 'Supplementary Planning Guidance',
+  other:         'Other Material Considerations'
+};
+
+const PLANNING_TIER_ORDER = ['national', 'local', 'neighbourhood', 'supplementary', 'other'];
+
+function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = []) {
+  const lines = [];
+
+  for (const tier of PLANNING_TIER_ORDER) {
+    const tierPolicies = linkedPolicies.filter(p => p.policy_type === tier);
+    if (!tierPolicies.length) continue;
+    lines.push(`### ${PLANNING_TIER_LABELS[tier]}`);
+    for (const p of tierPolicies) {
+      const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+      const keyTag = p.is_key_policy ? ' [KEY POLICY — quote verbatim in draft]' : '';
+      lines.push(`**${ref}${p.policy_name}**${keyTag}`);
+      if (p.policy_text?.trim()) {
+        lines.push(`Policy wording: "${p.policy_text.trim()}"`);
+      }
+      if (p.relevant_supporting_text?.trim()) {
+        lines.push(`Supporting context: ${p.relevant_supporting_text.trim().slice(0, 400)}`);
+      }
+    }
+  }
+
+  if (issue.argument_for?.trim()) {
+    lines.push(`### Policy Assessment Notes`);
+    lines.push(issue.argument_for.trim());
+  }
+
+  if (evidence.length) {
+    lines.push(`### Supporting Evidence from Documents`);
+    for (const e of evidence) {
+      const source = e.source_doc_title ? `[${e.source_doc_title}]` : '[Document]';
+      const ref = e.relevance_note ? ` (${e.relevance_note})` : '';
+      const quote = e.quote_snapshot ? `"${e.quote_snapshot.slice(0, 300)}"` : '';
+      lines.push(`- ${source}${ref}${quote ? ': ' + quote : ''}`);
+      if (e.detailed_summary) lines.push(`  ${e.detailed_summary}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Generate a Planning Statement "Planning Assessment" section by producing one
+ * <h3> sub-section per issue and stitching them under the section <h2>.
+ *
+ * @param {object} params
+ * @param {string} params.projectName
+ * @param {{ name: string, example_text?: string }} params.section
+ * @param {Array} params.issues  rows from project_issue_tracks + issue_notes
+ * @param {Record<number, Array>} params.linkedPoliciesByTrack  track_id → policy rows
+ * @param {Record<number, Array>} params.evidenceByTrack  track_id → evidence rows
+ * @returns {Promise<string>}  stitched HTML
+ */
+export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack }) {
+  const exampleBlock = section.example_text?.trim()
+    ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
+    : '';
+
+  const parts = [`<h2>${section.name}</h2>`];
+
+  for (const issue of issues) {
+    const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
+    const evidence = evidenceByTrack[issue.id] ?? [];
+
+    if (!linkedPolicies.length && !issue.argument_for?.trim() && !evidence.length) continue;
+
+    const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence);
+
+    const allPolicyRefs = linkedPolicies
+      .filter(p => p.policy_reference)
+      .map(p => p.policy_reference);
+    const policyRefList = allPolicyRefs.length ? allPolicyRefs.join(', ') : 'the relevant policies';
+
+    const prompt = `You are a planning consultant drafting the "${section.name}" section of a Planning Statement for the project "${projectName}". Output HTML only — no markdown.
+
+${exampleBlock}CONTENT INSTRUCTIONS:
+Write a Planning Assessment sub-section for the issue "${issue.label}"${issue.discipline ? ` (${issue.discipline})` : ''}.
+
+Structure the sub-section as follows:
+1. Policy framework — state the relevant policies. For any policy marked [KEY POLICY], quote the policy wording verbatim within the running text (e.g. "Policy X states that '...'"). For non-key policies, summarise what they require in a sentence.
+2. Assessment — explain in professional planning language how the proposal is compliant with each policy. Draw on the assessment notes and supporting evidence provided below. Where expert evidence supports compliance, reference it specifically (e.g. "The Heritage Statement concludes that...").
+3. Conclusion — end the sub-section with a single concluding paragraph. If the proposal is compliant, state: "The proposals are therefore considered to comply with ${policyRefList}." If compliance is subject to conditions or mitigation mentioned in the assessment, say instead: "Subject to [the conditions/mitigation described above], the proposals are considered to comply with ${policyRefList}."
+
+Issue context (policy framework, assessment notes, and evidence):
+${issueContext}
+
+FORMAT RULES (mandatory):
+- Begin with <h3>${issue.label}</h3>
+- Every paragraph must be wrapped in <p>...</p>
+- Bold policy names and references with <strong>...</strong>
+- Do not use **, *, #, ---, or any other markdown characters
+- Do not add placeholder text — write the full sub-section from the material provided
+- If assessment notes are sparse, produce a professional assessment drawing from the policy wording and evidence`;
+
+    console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
+
+    const response = await client.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: 2000,
+      system: 'You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.',
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const raw = response.content[0].text.trim();
+    parts.push(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+  }
+
+  return parts.join('\n\n');
+}
+
 export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], customPrompt }) {
   const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies });
 
