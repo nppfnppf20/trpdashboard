@@ -5,7 +5,7 @@
   import { initNotes } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry } from '$lib/stores/planning-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, argumentPointsByTrack, initAnalysis, initArgumentPoints, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/planning-analysis.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, toggleCardExpand } from '$lib/stores/planning-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
@@ -512,6 +512,9 @@
         <div class="draft-types-list">
           {#each $draftTypes as type (type.id)}
             {@const draft = $drafts[type.id]}
+            {@const isExpanded = $cardExpandedTypeId === type.id}
+            {@const typeSections = $cardSections[type.id] ?? []}
+            {@const typeLoading = $cardSectionsLoading[type.id] ?? false}
             <div class="draft-type-card">
               <div class="draft-type-main">
                 <div class="draft-type-info">
@@ -534,11 +537,42 @@
                   </button>
                 </div>
               </div>
-              <div class="draft-type-settings">
-                <button class="draft-setting-btn" on:click={() => openSectionsModal(type.id)}>
-                  <i class="las la-layer-group"></i> Configure sections
-                </button>
-              </div>
+
+              <!-- Sections toggle row -->
+              <button class="draft-sections-toggle" on:click={() => toggleCardExpand(type.id)}>
+                <i class="las la-layer-group"></i>
+                Sections
+                <i class="las {isExpanded ? 'la-angle-up' : 'la-angle-down'} toggle-chevron"></i>
+              </button>
+
+              {#if isExpanded}
+                <div class="draft-inline-sections">
+                  {#if typeLoading}
+                    <div class="draft-inline-loading"><div class="mini-spinner"></div><span>Loading...</span></div>
+                  {:else if typeSections.length === 0}
+                    <p class="draft-inline-empty">No sections yet. <button class="inline-link" on:click={() => openSectionsModal(type.id)}>Add one</button></p>
+                  {:else}
+                    {#each typeSections as section (section.id)}
+                      <div class="draft-inline-section">
+                        <span class="draft-inline-section-name">{section.name}</span>
+                        <div class="draft-inline-section-actions">
+                          <button
+                            class="section-generate-btn"
+                            disabled={$sectionGenerating === section.id}
+                            title="Generate this section"
+                            on:click={() => handleGenerateSection(section.id, type.id)}
+                          >
+                            {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
+                          </button>
+                        </div>
+                      </div>
+                    {/each}
+                  {/if}
+                  <button class="draft-setting-btn draft-configure-btn" on:click={() => openSectionsModal(type.id)}>
+                    <i class="las la-cog"></i> Configure sections
+                  </button>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -1530,6 +1564,85 @@
   }
   .draft-generate-btn:hover:not(:disabled) { background: #6d28d9; }
   .draft-generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .draft-sections-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.5rem 0;
+    border: none;
+    border-top: 1px solid #f1f5f9;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: color 0.15s;
+  }
+  .draft-sections-toggle:hover { color: #374151; }
+  .toggle-chevron { margin-left: auto; font-size: 0.75rem; }
+
+  .draft-inline-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-bottom: 0.375rem;
+  }
+
+  .draft-inline-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    font-size: 0.8rem;
+    color: #94a3b8;
+  }
+
+  .draft-inline-empty {
+    margin: 0;
+    padding: 0.5rem 0;
+    font-size: 0.8rem;
+    color: #94a3b8;
+  }
+
+  .inline-link {
+    background: none;
+    border: none;
+    color: #7c3aed;
+    font-size: inherit;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+    text-decoration: underline;
+  }
+
+  .draft-inline-section {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.4rem 0.625rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+
+  .draft-inline-section-name {
+    flex: 1;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #1e293b;
+    min-width: 0;
+  }
+
+  .draft-inline-section-actions { display: flex; gap: 0.375rem; align-items: center; }
+
+  .draft-configure-btn {
+    margin-top: 0.25rem;
+    align-self: flex-start;
+  }
 
   .draft-type-settings {
     display: flex;

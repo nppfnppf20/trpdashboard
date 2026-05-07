@@ -720,15 +720,26 @@ export async function generateDraft(req, res) {
 
     let contentHtml;
     if (isPlanningApp) {
+      const issueContext = buildIssueContext(issues, evidenceByTrack);
       const sectionParts = [];
       for (const section of sections) {
-        const html = await generatePlanningStatementAssessment({
-          projectName: projectRows[0].project_name,
-          section,
-          issues,
-          linkedPoliciesByTrack,
-          evidenceByTrack
-        });
+        let html;
+        if (section.slug === 'planning_assessment') {
+          html = await generatePlanningStatementAssessment({
+            projectName: projectRows[0].project_name,
+            section,
+            issues,
+            linkedPoliciesByTrack,
+            evidenceByTrack
+          });
+        } else {
+          html = await generateDraftSection({
+            section,
+            projectName: projectRows[0].project_name,
+            draftTypeName: typeRows[0].name,
+            issueContext
+          });
+        }
         sectionParts.push(html);
       }
       contentHtml = sectionParts.join('\n\n');
@@ -795,12 +806,13 @@ export async function generateSection(req, res) {
     ]);
 
     const isPlanningApp = Object.keys(linkedPoliciesByTrack).length > 0;
+    const section = sectionRows[0];
 
     let html;
-    if (isPlanningApp) {
+    if (isPlanningApp && section.slug === 'planning_assessment') {
       html = await generatePlanningStatementAssessment({
         projectName: projectRows[0].project_name,
-        section: sectionRows[0],
+        section,
         issues,
         linkedPoliciesByTrack,
         evidenceByTrack
@@ -808,7 +820,7 @@ export async function generateSection(req, res) {
     } else {
       const issueContext = buildIssueContext(issues, evidenceByTrack);
       html = await generateDraftSection({
-        section: sectionRows[0],
+        section,
         projectName: projectRows[0].project_name,
         draftTypeName: typeRows[0].name,
         issueContext

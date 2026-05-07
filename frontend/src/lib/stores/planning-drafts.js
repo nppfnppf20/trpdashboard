@@ -123,9 +123,11 @@ export async function handleAddSection() {
   if (!name) return;
   addingSectionLoading.set(true);
   try {
-    const s = await createSection(get(sectionsTypeId), { name, description: '' });
+    const typeId = get(sectionsTypeId);
+    const s = await createSection(typeId, { name, description: '' });
     sections.update(ss => [...ss, s]);
     newSectionName.set('');
+    invalidateCardSections(typeId);
   } catch (err) {
     console.error('Failed to add section:', err);
   } finally {
@@ -136,9 +138,11 @@ export async function handleAddSection() {
 export async function handleDeleteSection(sectionId) {
   if (!confirm('Delete this section?')) return;
   try {
+    const typeId = get(sectionsTypeId);
     await deleteSection(sectionId);
     sections.update(ss => ss.filter(s => s.id !== sectionId));
     if (get(sectionExpandedId) === sectionId) sectionExpandedId.set(null);
+    invalidateCardSections(typeId);
   } catch (err) {
     console.error('Failed to delete section:', err);
   }
@@ -230,13 +234,43 @@ function patchSectionInDraft(draftHtml, sectionName, newSectionHtml) {
   return draftHtml + '\n\n' + newSectionHtml;
 }
 
-export async function handleGenerateSection(sectionId) {
+// ── Inline card sections (expand on draft type card without opening modal) ──
+
+export const cardExpandedTypeId = writable(null);
+export const cardSections = writable({});       // typeId → section[]
+export const cardSectionsLoading = writable({}); // typeId → bool
+
+export async function toggleCardExpand(typeId) {
+  if (get(cardExpandedTypeId) === typeId) {
+    cardExpandedTypeId.set(null);
+    return;
+  }
+  cardExpandedTypeId.set(typeId);
+  if (!get(cardSections)[typeId]) {
+    cardSectionsLoading.update(s => ({ ...s, [typeId]: true }));
+    try {
+      const loaded = await getSections(typeId);
+      cardSections.update(s => ({ ...s, [typeId]: loaded }));
+    } catch (err) {
+      console.error('Failed to load card sections:', err);
+    } finally {
+      cardSectionsLoading.update(s => ({ ...s, [typeId]: false }));
+    }
+  }
+}
+
+export function invalidateCardSections(typeId) {
+  cardSections.update(s => { const copy = { ...s }; delete copy[typeId]; return copy; });
+}
+
+export async function handleGenerateSection(sectionId, explicitTypeId = null) {
   sectionGenerating.set(sectionId);
   try {
-    const typeId = get(sectionsTypeId);
+    const typeId = explicitTypeId ?? get(sectionsTypeId);
     const result = await generateDraftSection(_projectId, typeId, sectionId);
     const currentHtml = get(drafts)[typeId]?.content_html ?? '';
-    const section = get(sections).find(s => s.id === sectionId);
+    const section = get(sections).find(s => s.id === sectionId)
+      ?? Object.values(get(cardSections)).flat().find(s => s.id === sectionId);
     const patched = patchSectionInDraft(currentHtml, section.name, result.html);
     const saved = await saveDraft(_projectId, typeId, patched);
     drafts.update(d => ({ ...d, [typeId]: saved }));
