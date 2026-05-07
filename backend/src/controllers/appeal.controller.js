@@ -140,6 +140,19 @@ export async function analyseDocument(req, res) {
       [projectId]
     );
 
+    const { rows: pointRows } = await pool.query(
+      `SELECT track_id, field, headline, detailed_summary
+       FROM planning_applications.argument_points
+       WHERE project_id = $1 AND accepted = TRUE
+       ORDER BY track_id, created_at`,
+      [projectId]
+    );
+    const argumentPoints = {};
+    for (const row of pointRows) {
+      if (!argumentPoints[row.track_id]) argumentPoints[row.track_id] = [];
+      argumentPoints[row.track_id].push(row);
+    }
+
     const targetIssues = relevantTrackIds.length > 0
       ? allIssues.filter(i => relevantTrackIds.includes(i.id))
       : [];
@@ -155,7 +168,7 @@ export async function analyseDocument(req, res) {
       // Return the saved template (with {{DOCUMENT}} placeholder) if one exists,
       // otherwise generate a fresh default template with current issue context.
       const template = savedTemplate
-        ?? buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes });
+        ?? buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, argumentPoints });
       return res.json({ template });
     }
 
@@ -177,6 +190,7 @@ export async function analyseDocument(req, res) {
       documentType,
       documentDirection,
       userNotes,
+      argumentPoints,
       customPrompt: resolvedPrompt
     });
 

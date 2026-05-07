@@ -1015,8 +1015,8 @@ export function buildDocumentBlock(text, maxChunks = 4) {
  * for the actual document text. Used when saving/loading editable templates.
  * Issue list and context are baked in fresh at call time.
  */
-export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [] }) {
-  return buildExtractPointsPrompt({ documentBlock: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies });
+export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {} }) {
+  return buildExtractPointsPrompt({ documentBlock: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, argumentPoints });
 }
 
 /**
@@ -1025,7 +1025,7 @@ export function buildExtractPointsTemplate({ allIssues, targetIssues, documentTy
  * Pass either `text` (raw document text, will be formatted as indexed chunks)
  * or `documentBlock` (pre-formatted string, used by buildExtractPointsTemplate).
  */
-export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [] }) {
+export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {} }) {
   const docBlock = documentBlock ?? buildDocumentBlock(text);
   const issues = targetIssues.length > 0 ? targetIssues : allIssues;
   const isPlanningApp = linkedPolicies.length > 0;
@@ -1148,15 +1148,39 @@ If no relevant points are found, return points as an empty array but still provi
     : 'This document is AGAINST the proposal (e.g. officer report, refusal notice, objection). Unless a point clearly supports the appellant, default to tagging it as "argument_against".';
 
   const issueList = issues.map(issue => {
-    const against = issue.argument_against ? `\n    Current against: ${issue.argument_against.slice(0, 400)}` : '';
-    const forNote  = issue.argument_for    ? `\n    Current for: ${issue.argument_for.slice(0, 400)}`    : '';
-    return `- id:${issue.id} | ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}${against}${forNote}`;
+    const points = argumentPoints[issue.id] ?? [];
+    const forPoints     = points.filter(p => p.field === 'argument_for');
+    const againstPoints = points.filter(p => p.field === 'argument_against');
+
+    let againstSection, forSection;
+    if (againstPoints.length > 0) {
+      againstSection = '\n    Established argument_against:\n' +
+        againstPoints.map(p => `      • ${p.headline}${p.detailed_summary ? `\n        ${p.detailed_summary}` : ''}`).join('\n');
+    } else if (issue.argument_against) {
+      againstSection = `\n    Current against: ${issue.argument_against.slice(0, 400)}`;
+    } else {
+      againstSection = '';
+    }
+    if (forPoints.length > 0) {
+      forSection = '\n    Established argument_for:\n' +
+        forPoints.map(p => `      • ${p.headline}${p.detailed_summary ? `\n        ${p.detailed_summary}` : ''}`).join('\n');
+    } else if (issue.argument_for) {
+      forSection = `\n    Current for: ${issue.argument_for.slice(0, 400)}`;
+    } else {
+      forSection = '';
+    }
+    return `- id:${issue.id} | ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}${againstSection}${forSection}`;
   }).join('\n');
 
   const fullContext = allIssues.map(issue => {
+    const points = argumentPoints[issue.id] ?? [];
+    const forPoints     = points.filter(p => p.field === 'argument_for');
+    const againstPoints = points.filter(p => p.field === 'argument_against');
     const parts = [];
-    if (issue.argument_against) parts.push(`Against: ${issue.argument_against.slice(0, 200)}`);
-    if (issue.argument_for)     parts.push(`For: ${issue.argument_for.slice(0, 200)}`);
+    if (againstPoints.length > 0)    parts.push(`Against: ${againstPoints.map(p => p.headline).join('; ')}`);
+    else if (issue.argument_against) parts.push(`Against: ${issue.argument_against.slice(0, 200)}`);
+    if (forPoints.length > 0)        parts.push(`For: ${forPoints.map(p => p.headline).join('; ')}`);
+    else if (issue.argument_for)     parts.push(`For: ${issue.argument_for.slice(0, 200)}`);
     return parts.length ? `${issue.label}: ${parts.join(' | ')}` : null;
   }).filter(Boolean).join('\n');
 
@@ -1182,7 +1206,7 @@ ${docBlock}
 Instructions:
 - Chunks marked HIGH VALUE SECTION contain conclusions, summaries or recommendations — these carry the most weight; extract all relevant points from them before moving to regular chunks
 - Extract every point from the document that could be useful to the argument, including things that fill gaps in the current notes
-- Do NOT repeat points already captured in the current working notes above
+- Do NOT repeat points already captured in the established argument points above — check both headline and detail before suggesting a point
 - Map each point to the most relevant issue id, or null if it is general
 - Tag each point as "argument_against" (articulates the opposing position) or "argument_for" (supports the appeal)
 - For each point, write a short headline (max 15 words) and a fuller detailed_summary (2–4 sentences with any technical detail, measurements, or specific findings)
@@ -1345,8 +1369,8 @@ FORMAT RULES (mandatory):
   return parts.join('\n\n');
 }
 
-export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], customPrompt }) {
-  const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies });
+export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {}, customPrompt }) {
+  const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, argumentPoints });
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
