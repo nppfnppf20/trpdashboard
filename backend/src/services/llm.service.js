@@ -773,14 +773,39 @@ FORMAT RULES (mandatory):
  * @param {Array} params.issues
  * @returns {Promise<string>}  stitched HTML
  */
-export async function generateAppealDraft({ projectName, draftTypeName, sections, issues }) {
-  const issueContext = issues.map(issue => {
+/**
+ * Build the issueContext string passed to draft generation prompts.
+ * evidenceByTrack is a map of track_id → array of { headline, detailed_summary, quote_snapshot, source_doc_title }.
+ * When evidence is present it is appended under each issue so the LLM can quote sources directly.
+ *
+ * @param {Array} issues
+ * @param {Record<number, Array>} evidenceByTrack
+ * @returns {string}
+ */
+export function buildIssueContext(issues, evidenceByTrack = {}) {
+  return issues.map(issue => {
     const lines = [`## ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}`];
     if (issue.argument_against) lines.push(`Opposing position:\n${issue.argument_against}`);
     if (issue.argument_for)     lines.push(`Our case:\n${issue.argument_for}`);
     if (!issue.argument_against && !issue.argument_for) lines.push('(No notes yet — acknowledge this issue but flag it as to be developed.)');
+
+    const evidence = evidenceByTrack[issue.id];
+    if (evidence?.length) {
+      const evidenceLines = evidence.map(e => {
+        const source = e.source_doc_title ? `[${e.source_doc_title}]` : '[Document]';
+        const quote = e.quote_snapshot ? `"${e.quote_snapshot.slice(0, 500)}"` : '(no direct quote)';
+        const detail = e.detailed_summary ?? e.headline ?? '';
+        return `- ${source}: ${quote}\n  ${detail}`;
+      });
+      lines.push(`Source evidence from documents:\n${evidenceLines.join('\n')}`);
+    }
+
     return lines.join('\n');
   }).join('\n\n---\n\n');
+}
+
+export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {} }) {
+  const issueContext = buildIssueContext(issues, evidenceByTrack);
 
   if (!sections || sections.length === 0) {
     // No sections defined — single-call fallback
@@ -945,27 +970,182 @@ const DOC_TYPE_INSTRUCTIONS = {
   'Other':                 'Extract any points relevant to the key issues. Use your judgement on whether each point supports "argument_for" or "argument_against".'
 };
 
+const PLANNING_APP_DOC_TYPE_INSTRUCTIONS = {
+  'Surveyor Report':       'This is a specialist surveyor\'s or consultant\'s report commissioned to support the proposal. Extract technical findings, assessments, and conclusions that demonstrate the proposal\'s compliance with the linked policies. Focus on what the expert concludes, what technical evidence they cite, and any conditions or mitigation they propose to secure compliance.',
+  'Heritage Statement':    'This is a heritage statement. Extract assessments of heritage significance, the expert\'s conclusions on impact, and any findings that show the proposal preserves or enhances the character, appearance, or significance of heritage assets as required by policy.',
+  'Ecology Report':        'This is an ecology report. Extract species survey results, impact assessments, and mitigation or enhancement measures that demonstrate policy compliance.',
+  'Transport Assessment':  'This is a transport assessment. Extract trip generation figures, capacity assessments, and conclusions on highway safety and accessibility that demonstrate policy compliance.',
+  'Noise Assessment':      'This is a noise assessment. Extract measured levels, comparison against standards, and mitigation proposed that demonstrate the proposal would not cause unacceptable harm.',
+  'Planning Statement':    'This is a planning statement. Extract the policy compliance arguments, assessments of need, and planning balance conclusions that support the application.',
+  'Design and Access Statement': 'This is a design and access statement. Extract the design rationale, character assessments, and accessibility provisions that demonstrate policy compliance.',
+  'Other':                 'This is a supporting document. Extract any technical findings, assessments, or conclusions that demonstrate the proposal\'s compliance with the linked planning policies.'
+};
+
+const HIGH_VALUE_PATTERN = /^(conclusions?|executive summary|summary(?: and conclusions)?|recommendations|key findings|overall assessment)\s*$/im;
+
+/**
+ * Format raw document text as indexed chunks for the extraction prompt.
+ * High-value sections (Conclusions, Executive Summary etc.) are floated to the
+ * front so the model reads them first, regardless of where they appear in the doc.
+ * Each chunk retains its original index so span matching stays correct.
+ * maxChunks=4 — high-value section + 3 regular early chunks.
+ */
+export function buildDocumentBlock(text, maxChunks = 4) {
+  const allChunks = chunkText(text);
+
+  const highValueIndices = new Set(
+    allChunks
+      .map((c, i) => HIGH_VALUE_PATTERN.test(c.trim().slice(0, 200)) ? i : -1)
+      .filter(i => i !== -1)
+  );
+
+  const regularIndices = allChunks.map((_, i) => i).filter(i => !highValueIndices.has(i));
+  const ordered = [...highValueIndices, ...regularIndices].slice(0, maxChunks);
+
+  return ordered.map(i => {
+    const label = highValueIndices.has(i)
+      ? `[Chunk ${i} — HIGH VALUE SECTION: read this first, weight it heavily]`
+      : `[Chunk ${i}]`;
+    return `${label}\n${allChunks[i]}`;
+  }).join('\n\n');
+}
+
 /**
  * Build the extraction prompt template with {{DOCUMENT}} as the placeholder
  * for the actual document text. Used when saving/loading editable templates.
  * Issue list and context are baked in fresh at call time.
  */
-export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes }) {
-  return buildExtractPointsPrompt({ text: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes });
+export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [] }) {
+  return buildExtractPointsPrompt({ documentBlock: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies });
 }
 
 /**
  * Build the extraction prompt without running the LLM.
  * Exported so the controller can return it for preview/editing.
+ * Pass either `text` (raw document text, will be formatted as indexed chunks)
+ * or `documentBlock` (pre-formatted string, used by buildExtractPointsTemplate).
  */
-export function buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes }) {
+export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [] }) {
+  const docBlock = documentBlock ?? buildDocumentBlock(text);
+  const issues = targetIssues.length > 0 ? targetIssues : allIssues;
+  const isPlanningApp = linkedPolicies.length > 0;
+
+  const tierOrder = ['national', 'local', 'neighbourhood', 'supplementary', 'other'];
+  const tierLabels = { national: 'National Policy', local: 'Local Plan Policy', neighbourhood: 'Neighbourhood Plan Policy', supplementary: 'Supplementary Guidance', other: 'Other Policy' };
+  const tierFields = { national: 'policy_national', local: 'policy_local', neighbourhood: 'policy_neighbourhood', supplementary: 'policy_supplementary', other: 'policy_other' };
+
+  const linkedPoliciesBlock = linkedPolicies.length > 0
+    ? '\n\n## Policies Linked to the Target Issue(s)\n' +
+      'The following policies have been linked to the relevant issue(s) by the project team. ' +
+      'Assess the document\'s content against these policies specifically — ' +
+      'find evidence that supports compliance with each one.\n\n' +
+      tierOrder
+        .flatMap(tier => linkedPolicies.filter(p => p.policy_type === tier))
+        .map(p => {
+          const header = `### ${tierLabels[p.policy_type] ?? p.policy_type} — ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name}${p.is_key_policy ? ' [KEY POLICY]' : ''}`;
+          const policyText = p.policy_text?.trim() ? `Policy wording:\n${p.policy_text.trim()}` : '(No policy wording recorded)';
+          const support = p.relevant_supporting_text?.trim() ? `\nRelevant context/guidance:\n${p.relevant_supporting_text.trim()}` : '';
+          return `${header}\n${policyText}${support}`;
+        })
+        .join('\n\n')
+    : '';
+
+  const userNotesSection = userNotes
+    ? `\n\n⚑ USER GUIDANCE (treat this as high priority context — it overrides your own judgement where it conflicts):\n${userNotes}\n`
+    : '';
+
+  const targetNote = targetIssues.length > 0
+    ? `The user has indicated this document is specifically relevant to: ${targetIssues.map(i => i.label).join(', ')}. Focus extraction on these issues first, but still surface any other relevant points.`
+    : `No specific issues were flagged — review against all issues and use your judgement.`;
+
+  if (isPlanningApp) {
+    // ── Planning application mode ──────────────────────────────────────────────
+    // Documents are specialist consultant reports supporting the proposal.
+    // Points are tagged to policy tiers, not for/against.
+
+    const docInstruction = PLANNING_APP_DOC_TYPE_INSTRUCTIONS[documentType] || PLANNING_APP_DOC_TYPE_INSTRUCTIONS['Other'];
+
+    const issueList = issues.map(issue => {
+      const tierNotes = [
+        issue.policy_national      && `    National policy notes: ${issue.policy_national.slice(0, 300)}`,
+        issue.policy_local         && `    Local policy notes: ${issue.policy_local.slice(0, 300)}`,
+        issue.policy_neighbourhood && `    Neighbourhood policy notes: ${issue.policy_neighbourhood.slice(0, 300)}`,
+        issue.policy_supplementary && `    Supplementary notes: ${issue.policy_supplementary.slice(0, 300)}`,
+      ].filter(Boolean).join('\n');
+      return `- id:${issue.id} | ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}${tierNotes ? '\n' + tierNotes : ''}`;
+    }).join('\n');
+
+    const tierFieldList = tierOrder.map(t => `"${tierFields[t]}" → ${tierLabels[t]} points`).join(', ');
+
+    return `You are a planning consultant preparing a planning statement. Your job is to read a specialist consultant's report and extract evidence that demonstrates the proposal's compliance with the linked planning policies.
+${userNotesSection}
+Document type: ${documentType}
+${docInstruction}
+
+This is a SUPPORTING document. Extract technical findings, assessments, and conclusions that show the proposal complies with the relevant policies. Where the expert proposes mitigation or conditions to secure compliance, extract those too.
+
+${targetNote}
+
+Issues to assess (with existing policy notes for context):
+${issueList}
+${linkedPoliciesBlock}
+
+Document (shown as numbered chunks — note the chunk index for each point you extract):
+<document>
+${docBlock}
+</document>
+
+Instructions:
+- Chunks marked HIGH VALUE SECTION contain conclusions, summaries or recommendations — read these first and extract all relevant compliance evidence from them
+- For each point, identify which linked policy it most directly addresses and use that policy's tier as the field value
+- Field values must be one of: ${tierFieldList}, or "argument_for" for generally supportive points not tied to a specific policy tier
+- Do NOT repeat points already covered in the existing policy notes shown above
+- Map each point to the most relevant issue id, or null if general
+- Write a short headline (max 15 words) and a detailed_summary (2–4 sentences including the specific technical finding, figure, or assessment that supports compliance)
+- For every point, record the citation: the most specific paragraph/section/page reference available, and a verbatim quote (max 150 chars) of the key phrase
+- Record which chunk index or indices contain the source evidence
+- If the user guidance above directs you to specific themes or paragraphs, prioritise those
+
+Respond ONLY with valid JSON in this exact shape — no markdown, no explanation:
+{
+  "summary": "2-4 sentence overview of the document and what it demonstrates about the proposal's policy compliance",
+  "coverage": [
+    { "issue_id": 42, "assessment": "one sentence on how this document addresses the policy compliance case for this issue" }
+  ],
+  "points": [
+    {
+      "track_id": 42,
+      "field": "policy_local",
+      "headline": "Heritage consultant concludes no less than substantial harm",
+      "detailed_summary": "Section 7.3 of the Heritage Statement concludes that the proposed works would result in less than substantial harm to the significance of the Listed Building, engaging NPPF paragraph 208. The consultant finds the harm sits at the lower end of the scale, to be weighed against the public benefits of the enabling development.",
+      "citation": { "para_ref": "Section 7.3", "quote": "the proposed works would result in less than substantial harm to the significance of the Listed Building" },
+      "relevant_chunk_indices": [0]
+    },
+    {
+      "track_id": 42,
+      "field": "policy_national",
+      "headline": "Public benefits identified to outweigh heritage harm",
+      "detailed_summary": "The conclusions section identifies four public benefits: securing the long-term viable use of the building, funding urgent structural repairs, providing affordable housing, and improving public access. The consultant assesses these as collectively outweighing the identified less than substantial harm under NPPF paragraph 208.",
+      "citation": { "para_ref": "Conclusions", "quote": "collectively outweighing the identified less than substantial harm" },
+      "relevant_chunk_indices": [0, 2]
+    }
+  ]
+}
+
+citation rules:
+- para_ref: the paragraph number, section heading, page number, or table reference where the point appears — use the most specific reference available (e.g. "Para 6.4", "Section 7.3", "p.24", "Table 3", "Conclusions") — null if none found
+- quote: a verbatim excerpt from the document, max 150 characters, capturing the key phrase that carries the point — must be exact text from the document
+
+If no relevant points are found, return points as an empty array but still provide the summary and coverage.`;
+  }
+
+  // ── Appeals mode (original) ────────────────────────────────────────────────
+
   const docInstruction = DOC_TYPE_INSTRUCTIONS[documentType] || DOC_TYPE_INSTRUCTIONS['Other'];
 
   const directionInstruction = documentDirection === 'for'
     ? 'This document SUPPORTS the proposal. Unless a point clearly articulates an objection or problem, default to tagging it as "argument_for".'
     : 'This document is AGAINST the proposal (e.g. officer report, refusal notice, objection). Unless a point clearly supports the appellant, default to tagging it as "argument_against".';
-
-  const issues = targetIssues.length > 0 ? targetIssues : allIssues;
 
   const issueList = issues.map(issue => {
     const against = issue.argument_against ? `\n    Current against: ${issue.argument_against.slice(0, 400)}` : '';
@@ -979,14 +1159,6 @@ export function buildExtractPointsPrompt({ text, allIssues, targetIssues, docume
     if (issue.argument_for)     parts.push(`For: ${issue.argument_for.slice(0, 200)}`);
     return parts.length ? `${issue.label}: ${parts.join(' | ')}` : null;
   }).filter(Boolean).join('\n');
-
-  const userNotesSection = userNotes
-    ? `\n\n⚑ USER GUIDANCE (treat this as high priority context — it overrides your own judgement where it conflicts):\n${userNotes}\n`
-    : '';
-
-  const targetNote = targetIssues.length > 0
-    ? `The user has indicated this document is specifically relevant to: ${targetIssues.map(i => i.label).join(', ')}. Focus extraction on these issues first, but still surface any other relevant points.`
-    : `No specific issues were flagged — review against all issues and use your judgement.`;
 
   return `You are a planning appeal consultant helping to build the argument structure for a planning appeal. Your job is to read a document and extract points that could strengthen or inform the working argument.
 ${userNotesSection}
@@ -1002,17 +1174,20 @@ ${issueList}
 Full working argument context (all issues, for background):
 ${fullContext || 'No notes yet.'}
 
-Document:
+Document (shown as numbered chunks — note the chunk index for each point you extract):
 <document>
-${text.slice(0, 10000)}
+${docBlock}
 </document>
 
 Instructions:
+- Chunks marked HIGH VALUE SECTION contain conclusions, summaries or recommendations — these carry the most weight; extract all relevant points from them before moving to regular chunks
 - Extract every point from the document that could be useful to the argument, including things that fill gaps in the current notes
 - Do NOT repeat points already captured in the current working notes above
 - Map each point to the most relevant issue id, or null if it is general
 - Tag each point as "argument_against" (articulates the opposing position) or "argument_for" (supports the appeal)
-- Write each point as a concise, directly usable note (1–3 sentences max)
+- For each point, write a short headline (max 15 words) and a fuller detailed_summary (2–4 sentences with any technical detail, measurements, or specific findings)
+- For every point, record the citation: the most specific paragraph/section/page reference available, and a verbatim quote (max 150 chars) of the key phrase
+- Record which chunk index or indices contain the source evidence for each point
 - If the user guidance above directs you to specific themes or paragraphs, prioritise those
 
 Respond ONLY with valid JSON in this exact shape — no markdown, no explanation:
@@ -1022,21 +1197,38 @@ Respond ONLY with valid JSON in this exact shape — no markdown, no explanation
     { "issue_id": 42, "assessment": "one sentence on how this document bears on this issue" }
   ],
   "points": [
-    { "track_id": 42, "field": "argument_against", "point": "The officer found that..." },
-    { "track_id": 42, "field": "argument_for", "point": "Paragraph 6.4 acknowledges that..." },
-    { "track_id": null, "field": "argument_for", "point": "The committee noted a general presumption in favour..." }
+    {
+      "track_id": 42,
+      "field": "argument_against",
+      "headline": "Officer found overlooking impact unacceptable",
+      "detailed_summary": "The officer's report finds that the proposed first-floor rear window would result in direct views into the neighbouring garden at No. 14, reducing residential amenity in a manner contrary to Policy DM10. The report notes a separation distance of only 8m, well below the 21m guideline.",
+      "citation": { "para_ref": "Para 5.12", "quote": "direct views into the neighbouring garden at No. 14, reducing residential amenity" },
+      "relevant_chunk_indices": [0]
+    },
+    {
+      "track_id": 42,
+      "field": "argument_for",
+      "headline": "Obscure glazing offered as mitigation",
+      "detailed_summary": "Paragraph 6.4 of the officer report acknowledges that the applicant offered obscure glazing as a condition, which the officer accepted would resolve the overlooking concern if secured by condition.",
+      "citation": { "para_ref": "Para 6.4", "quote": "the officer accepted would resolve the overlooking concern if secured by condition" },
+      "relevant_chunk_indices": [0, 1]
+    }
   ]
 }
+
+citation rules:
+- para_ref: the paragraph number, section heading, page number, or table reference where the point appears — use the most specific reference available (e.g. "Para 6.4", "Section 7.3", "p.24", "Table 3") — null if none found
+- quote: a verbatim excerpt from the document, max 150 characters, capturing the key phrase that carries the point — must be exact text from the document
 
 If no relevant points are found, return points as an empty array but still provide the summary and coverage.`;
 }
 
-export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, customPrompt }) {
-  const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes });
+export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], customPrompt }) {
+  const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies });
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
-    max_tokens: 3000,
+    max_tokens: 4000,
     messages: [{ role: 'user', content: prompt }]
   });
 
@@ -1045,11 +1237,24 @@ export async function extractPointsFromDocument({ text, allIssues, targetIssues,
   console.log('[extractPointsFromDocument] raw response preview:', raw.slice(0, 300));
 
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  let parsed;
   try {
-    return JSON.parse(cleaned);
+    parsed = JSON.parse(cleaned);
   } catch (parseErr) {
     console.error('[extractPointsFromDocument] JSON.parse failed. cleaned length:', cleaned.length);
     console.error('[extractPointsFromDocument] cleaned preview:', cleaned.slice(0, 500));
     throw new Error(`LLM returned unparseable response: ${parseErr.message}`);
   }
+
+  // Normalise points to the new shape — handles old custom prompts that still return `point`
+  return {
+    ...parsed,
+    points: (parsed.points ?? []).map(p => ({
+      track_id:               p.track_id ?? null,
+      field:                  p.field,
+      headline:               p.headline ?? p.point ?? '',
+      detailed_summary:       p.detailed_summary ?? null,
+      relevant_chunk_indices: p.relevant_chunk_indices ?? []
+    }))
+  };
 }

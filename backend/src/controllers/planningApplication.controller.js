@@ -4,15 +4,37 @@
  */
 
 import { pool } from '../db.js';
-import { parseFile } from '../services/parser.service.js';
+import { parseFile, chunkText } from '../services/parser.service.js';
 import {
   extractPointsFromDocument,
   buildExtractPointsTemplate,
+  buildDocumentBlock,
+  buildIssueContext,
   generateAppealDraft,
   generateDraftSection
 } from '../services/llm.service.js';
 
 const SCHEMA = 'planning_applications';
+
+const HIGH_VALUE_PATTERN = /^(conclusions?|executive summary|summary(?: and conclusions)?|recommendations|key findings|overall assessment)\s*$/im;
+
+function buildChunkMeta(rawText, chunks) {
+  let searchFrom = 0;
+  return chunks.map((text, index) => {
+    const trimmed = text.trim();
+    const start = rawText.indexOf(trimmed, searchFrom);
+    const char_start = start === -1 ? searchFrom : start;
+    const char_end = char_start + trimmed.length;
+    searchFrom = char_end;
+    return {
+      index,
+      char_start,
+      char_end,
+      text: trimmed,
+      is_high_value: HIGH_VALUE_PATTERN.test(trimmed.slice(0, 200))
+    };
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Policy-track relevance
@@ -201,7 +223,9 @@ export async function analyseDocument(req, res) {
 
     const { rows: allIssues } = await pool.query(
       `SELECT pit.id, pit.label, pit.discipline,
-              ain.argument_against, ain.argument_for
+              ain.argument_against, ain.argument_for,
+              ain.policy_national, ain.policy_local, ain.policy_neighbourhood,
+              ain.policy_supplementary, ain.policy_other
        FROM admin_console.project_issue_tracks pit
        LEFT JOIN planning_applications.issue_notes ain
          ON ain.track_id = pit.id AND ain.project_id = $1
@@ -214,6 +238,23 @@ export async function analyseDocument(req, res) {
       ? allIssues.filter(i => relevantTrackIds.includes(i.id))
       : [];
 
+    // Load linked policy full text for the target tracks so the prompt can assess compliance
+    let linkedPolicies = [];
+    if (targetIssues.length > 0) {
+      const trackIds = targetIssues.map(i => i.id);
+      const { rows: policyRows } = await pool.query(
+        `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
+                pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy,
+                ptr.track_id
+         FROM public.project_policies pp
+         JOIN planning_applications.policy_track_relevance ptr ON ptr.policy_id = pp.id
+         WHERE ptr.track_id = ANY($1::int[])
+         ORDER BY pp.policy_type, pp.policy_reference`,
+        [trackIds]
+      );
+      linkedPolicies = policyRows;
+    }
+
     const { rows: templateRows } = await pool.query(
       `SELECT prompt_text FROM planning_applications.prompt_settings
        WHERE project_id = $1 AND prompt_key = 'extract_points'`,
@@ -223,23 +264,24 @@ export async function analyseDocument(req, res) {
 
     if (preview) {
       const template = savedTemplate
-        ?? buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes });
+        ?? buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies });
       return res.json({ template });
     }
 
     let resolvedPrompt = null;
     if (customPrompt) {
-      resolvedPrompt = customPrompt.replace('{{DOCUMENT}}', text.slice(0, 10000));
+      resolvedPrompt = customPrompt.replace('{{DOCUMENT}}', buildDocumentBlock(text));
     } else if (savedTemplate) {
-      resolvedPrompt = savedTemplate.replace('{{DOCUMENT}}', text.slice(0, 10000));
+      resolvedPrompt = savedTemplate.replace('{{DOCUMENT}}', buildDocumentBlock(text));
     }
 
     const result = await extractPointsFromDocument({
       text, allIssues, targetIssues, documentType, documentDirection, userNotes,
-      customPrompt: resolvedPrompt
+      linkedPolicies, customPrompt: resolvedPrompt
     });
 
-    res.json(result);
+    const chunks = buildChunkMeta(text, chunkText(text));
+    res.json({ ...result, chunks });
   } catch (err) {
     console.error('pa.analyseDocument error:', err.message);
     res.status(500).json({ error: err.message });
@@ -299,6 +341,85 @@ export async function deletePromptTemplate(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Argument points
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getArgumentPoints(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT ap.id, ap.track_id, ap.document_log_id, ap.field,
+              ap.headline, ap.detailed_summary, ap.accepted, ap.sort_order, ap.created_at,
+              dl.title AS source_doc_title,
+              json_agg(
+                json_build_object(
+                  'id', ape.id,
+                  'span_id', ape.span_id,
+                  'quote_snapshot', ape.quote_snapshot,
+                  'relevance_note', ape.relevance_note
+                ) ORDER BY ape.id
+              ) FILTER (WHERE ape.id IS NOT NULL) AS evidence
+       FROM planning_applications.argument_points ap
+       LEFT JOIN planning_applications.argument_point_evidence ape ON ape.argument_point_id = ap.id
+       LEFT JOIN planning_applications.document_log dl ON dl.id = ap.document_log_id
+       WHERE ap.project_id = $1 AND ap.accepted = TRUE
+       GROUP BY ap.id, dl.title
+       ORDER BY ap.track_id, ap.sort_order, ap.id`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('pa.getArgumentPoints error:', err);
+    res.status(500).json({ error: 'Failed to fetch argument points' });
+  }
+}
+
+export async function createArgumentPoint(req, res) {
+  const { projectId } = req.params;
+  const { track_id, document_log_id, field, headline, detailed_summary, citation, relevant_chunk_indices } = req.body;
+  if (!track_id || !field || !headline?.trim()) {
+    return res.status(400).json({ error: 'track_id, field, and headline are required' });
+  }
+  try {
+    const { rows: pointRows } = await pool.query(
+      `INSERT INTO planning_applications.argument_points
+         (project_id, track_id, document_log_id, field, headline, detailed_summary, accepted)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+       RETURNING *`,
+      [projectId, track_id, document_log_id ?? null, field, headline.trim(), detailed_summary ?? null]
+    );
+    const point = pointRows[0];
+
+    // Link evidence spans. Use the LLM-extracted citation quote as quote_snapshot when
+    // available (precise verbatim excerpt); fall back to the full chunk text.
+    // citation.para_ref is stored in relevance_note for display in citations.
+    const chunkIndices = Array.isArray(relevant_chunk_indices) ? relevant_chunk_indices : [];
+    if (chunkIndices.length > 0 && document_log_id) {
+      const { rows: spanRows } = await pool.query(
+        `SELECT id, chunk_index, text FROM planning_applications.document_text_spans
+         WHERE document_log_id = $1 AND chunk_index = ANY($2::int[])`,
+        [document_log_id, chunkIndices]
+      );
+      const citationQuote = citation?.quote?.trim() || null;
+      const paraRef = citation?.para_ref?.trim() || null;
+      await Promise.all(spanRows.map(span =>
+        pool.query(
+          `INSERT INTO planning_applications.argument_point_evidence
+             (argument_point_id, span_id, quote_snapshot, relevance_note)
+           VALUES ($1, $2, $3, $4)`,
+          [point.id, span.id, citationQuote ?? span.text, paraRef]
+        )
+      ));
+    }
+
+    res.status(201).json(point);
+  } catch (err) {
+    console.error('pa.createArgumentPoint error:', err);
+    res.status(500).json({ error: 'Failed to create argument point' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Document log
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -321,7 +442,7 @@ export async function getDocumentLog(req, res) {
 
 export async function createDocumentLogEntry(req, res) {
   const { projectId } = req.params;
-  const { title, code, document_summary, argument_points } = req.body;
+  const { title, code, document_summary, argument_points, chunks } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   try {
     const { rows } = await pool.query(
@@ -332,7 +453,20 @@ export async function createDocumentLogEntry(req, res) {
       [projectId, title.trim(), code?.trim() || null,
        document_summary?.trim() || null, JSON.stringify(argument_points ?? [])]
     );
-    res.status(201).json(rows[0]);
+    const entry = rows[0];
+
+    if (Array.isArray(chunks) && chunks.length > 0) {
+      await Promise.all(chunks.map(c =>
+        pool.query(
+          `INSERT INTO planning_applications.document_text_spans
+             (document_log_id, project_id, chunk_index, char_start, char_end, text, is_high_value)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [entry.id, projectId, c.index, c.char_start, c.char_end, c.text, c.is_high_value ?? false]
+        )
+      ));
+    }
+
+    res.status(201).json(entry);
   } catch (err) {
     console.error('pa.createDocumentLogEntry error:', err);
     res.status(500).json({ error: 'Failed to create log entry' });
@@ -501,6 +635,32 @@ export async function saveDraft(req, res) {
   }
 }
 
+async function fetchEvidenceByTrack(projectId) {
+  const { rows } = await pool.query(
+    `SELECT ap.track_id, ap.headline, ap.detailed_summary,
+            ape.quote_snapshot, ape.relevance_note,
+            dl.title AS source_doc_title
+     FROM planning_applications.argument_points ap
+     LEFT JOIN planning_applications.argument_point_evidence ape ON ape.argument_point_id = ap.id
+     LEFT JOIN planning_applications.document_log dl ON dl.id = ap.document_log_id
+     WHERE ap.project_id = $1 AND ap.accepted = TRUE
+     ORDER BY ap.track_id, ap.sort_order, ap.id`,
+    [projectId]
+  );
+  const map = {};
+  for (const row of rows) {
+    if (!map[row.track_id]) map[row.track_id] = [];
+    map[row.track_id].push({
+      headline:        row.headline,
+      detailed_summary: row.detailed_summary,
+      quote_snapshot:  row.quote_snapshot,
+      relevance_note:  row.relevance_note,
+      source_doc_title: row.source_doc_title
+    });
+  }
+  return map;
+}
+
 export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
   try {
@@ -514,28 +674,31 @@ export async function generateDraft(req, res) {
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
 
-    const { rows: issues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline,
-              ain.argument_against, ain.argument_for
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN planning_applications.issue_notes ain
-         ON ain.track_id = pit.id AND ain.project_id = $1
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
-
-    const { rows: sections } = await pool.query(
-      `SELECT * FROM planning_applications.draft_sections
-       WHERE draft_type_id = $1 ORDER BY sort_order, id`,
-      [typeId]
-    );
+    const [{ rows: issues }, { rows: sections }, evidenceByTrack] = await Promise.all([
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline,
+                ain.argument_against, ain.argument_for
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN planning_applications.issue_notes ain
+           ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT * FROM planning_applications.draft_sections
+         WHERE draft_type_id = $1 ORDER BY sort_order, id`,
+        [typeId]
+      ),
+      fetchEvidenceByTrack(projectId)
+    ]);
 
     const contentHtml = await generateAppealDraft({
       projectName: projectRows[0].project_name,
       draftTypeName: typeRows[0].name,
       sections,
-      issues
+      issues,
+      evidenceByTrack
     });
 
     const { rows } = await pool.query(
@@ -573,24 +736,21 @@ export async function generateSection(req, res) {
     );
     if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
 
-    const { rows: issues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline,
-              ain.argument_against, ain.argument_for
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN planning_applications.issue_notes ain
-         ON ain.track_id = pit.id AND ain.project_id = $1
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
+    const [{ rows: issues }, evidenceByTrack] = await Promise.all([
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline,
+                ain.argument_against, ain.argument_for
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN planning_applications.issue_notes ain
+           ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      ),
+      fetchEvidenceByTrack(projectId)
+    ]);
 
-    const issueContext = issues.map(issue => {
-      const lines = [`## ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}`];
-      if (issue.argument_against) lines.push(`Opposing position:\n${issue.argument_against}`);
-      if (issue.argument_for)     lines.push(`Our case:\n${issue.argument_for}`);
-      if (!issue.argument_against && !issue.argument_for) lines.push('(No notes yet.)');
-      return lines.join('\n');
-    }).join('\n\n---\n\n');
+    const issueContext = buildIssueContext(issues, evidenceByTrack);
 
     const html = await generateDraftSection({
       section: sectionRows[0],

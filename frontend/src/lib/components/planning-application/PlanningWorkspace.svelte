@@ -1,10 +1,10 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance } from '$lib/api/planningApplication.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { initNotes } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry } from '$lib/stores/planning-log.js';
-  import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/planning-analysis.js';
+  import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, argumentPointsByTrack, initAnalysis, initArgumentPoints, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/planning-analysis.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/planning-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
@@ -58,16 +58,18 @@
     loading = true;
     loadError = null;
     try {
-      const [issues, notes, log, policies, relevance] = await Promise.all([
+      const [issues, notes, log, policies, relevance, argPoints] = await Promise.all([
         getKeyIssues(project.id),
         getIssueNotes(project.id),
         getDocumentLog(project.id),
         getPolicies(project.id),
-        getPolicyTrackRelevance(project.id)
+        getPolicyTrackRelevance(project.id),
+        getArgumentPoints(project.id)
       ]);
       keyIssues = issues;
       projectPolicies = policies;
       policyTrackRelevance = relevance;
+      initArgumentPoints(argPoints);
       initAnalysis(project.id);
       initDrafts(project.id);
       initNotes(project.id, notes);
@@ -188,58 +190,58 @@
       {/if}
     </div>
 
-  {:else if activeTab === 'policy' || activeTab === 'argument'}
-    <!-- ── Tab 2: Policy / Tab 3: Argument Structure ── -->
-    <div class="argument-body">
-
-      <!-- Left panel: switches by tab -->
-      <div class="argument-panel">
-        {#if activeTab === 'policy'}
-          {#if keyIssues.length === 0}
-            <div class="empty-state">
-              <i class="las la-list-alt"></i>
-              <p>No key issues found. Add them in the Key Issues tab first.</p>
-            </div>
-          {:else}
-            <div class="argument-list">
-              {#each keyIssues as issue (issue.id)}
-                {@const risk = riskColours[issue.last_known_risk_level]}
-                <div class="argument-section">
-                  <div class="argument-heading">
-                    <div class="argument-title-row">
-                      {#if issue.discipline}
-                        <span class="discipline-tag">{issue.discipline.replace(/_/g, ' ')}</span>
-                      {/if}
-                      <h2 class="argument-issue-title">{issue.label}</h2>
-                      {#if issue.last_known_risk_level}
-                        <span class="risk-chip" style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}">
-                          {issue.last_known_risk_level.replace(/_/g, ' ')}
-                        </span>
-                      {/if}
-                    </div>
-                  </div>
-                  <PolicyTierNotes
-  {issue}
-  projectId={project.id}
-  policies={projectPolicies}
-  relevantPolicyIds={policyTrackRelevance[issue.id] ?? []}
-  on:relevancechange={(e) => {
-    const { policyId, linked } = e.detail;
-    policyTrackRelevance = {
-      ...policyTrackRelevance,
-      [issue.id]: linked
-        ? [...(policyTrackRelevance[issue.id] ?? []), policyId]
-        : (policyTrackRelevance[issue.id] ?? []).filter(id => id !== policyId)
-    };
-  }}
-/>
+  {:else if activeTab === 'policy'}
+    <!-- ── Tab 2: Policy ── -->
+    <div class="tab-body">
+      {#if keyIssues.length === 0}
+        <div class="empty-state">
+          <i class="las la-list-alt"></i>
+          <p>No key issues found. Add them in the Key Issues tab first.</p>
+        </div>
+      {:else}
+        <div class="argument-list">
+          {#each keyIssues as issue (issue.id)}
+            {@const risk = riskColours[issue.last_known_risk_level]}
+            <div class="argument-section">
+              <div class="argument-heading">
+                <div class="argument-title-row">
+                  {#if issue.discipline}
+                    <span class="discipline-tag">{issue.discipline.replace(/_/g, ' ')}</span>
+                  {/if}
+                  <h2 class="argument-issue-title">{issue.label}</h2>
+                  {#if issue.last_known_risk_level}
+                    <span class="risk-chip" style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}">
+                      {issue.last_known_risk_level.replace(/_/g, ' ')}
+                    </span>
+                  {/if}
                 </div>
-              {/each}
+              </div>
+              <PolicyTierNotes
+                {issue}
+                projectId={project.id}
+                policies={projectPolicies}
+                relevantPolicyIds={policyTrackRelevance[issue.id] ?? []}
+                on:relevancechange={(e) => {
+                  const { policyId, linked } = e.detail;
+                  policyTrackRelevance = {
+                    ...policyTrackRelevance,
+                    [issue.id]: linked
+                      ? [...(policyTrackRelevance[issue.id] ?? []), policyId]
+                      : (policyTrackRelevance[issue.id] ?? []).filter(id => id !== policyId)
+                  };
+                }}
+              />
             </div>
-          {/if}
-        {:else}
-          <ArgumentStructurePanel {keyIssues} />
-        {/if}
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+  {:else if activeTab === 'argument'}
+    <!-- ── Tab 3: Argument Structure ── -->
+    <div class="argument-body">
+      <div class="argument-panel">
+        <ArgumentStructurePanel {keyIssues} {projectPolicies} {policyTrackRelevance} argumentPointsByTrack={$argumentPointsByTrack} />
       </div>
 
       <!-- Right: document upload panel -->
@@ -317,7 +319,13 @@
                             </button>
                           </div>
                         </div>
-                        <p class="result-point">{point.point}</p>
+                        <p class="result-point">{point.headline ?? point.point}</p>
+                        {#if point.citation?.quote || point.citation?.para_ref}
+                          <div class="result-citation">
+                            {#if point.citation.quote}<span class="result-citation-quote">"{point.citation.quote}"</span>{/if}
+                            {#if point.citation.para_ref}<span class="result-citation-ref">{point.citation.para_ref}</span>{/if}
+                          </div>
+                        {/if}
                       </div>
                     {/each}
                   </div>
@@ -1214,6 +1222,31 @@
     font-size: 0.8125rem;
     color: #374151;
     line-height: 1.5;
+  }
+
+  .result-citation {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.375rem 0.5rem;
+    background: #f8fafc;
+    border-radius: 4px;
+    border-left: 2px solid #e2e8f0;
+  }
+
+  .result-citation-quote {
+    font-size: 0.75rem;
+    color: #475569;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  .result-citation-ref {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
 
   .result-actions { display: flex; gap: 0.4rem; }

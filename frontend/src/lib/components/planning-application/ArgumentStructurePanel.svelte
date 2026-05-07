@@ -2,6 +2,30 @@
   import { issueNotes, noteStatus, handleNoteInput } from '$lib/stores/planning-notes.js';
 
   export let keyIssues = [];
+  export let projectPolicies = [];
+  export let policyTrackRelevance = {};
+  export let argumentPointsByTrack = {};
+
+  const tierLabels = {
+    national:      'National',
+    local:         'Local',
+    neighbourhood: 'Neighbourhood',
+    supplementary: 'Supplementary',
+    other:         'Other'
+  };
+
+  const tierColours = {
+    national:      { bg: '#dbeafe', colour: '#1d4ed8' },
+    local:         { bg: '#ede9fe', colour: '#6d28d9' },
+    neighbourhood: { bg: '#dcfce7', colour: '#15803d' },
+    supplementary: { bg: '#fef9c3', colour: '#a16207' },
+    other:         { bg: '#f1f5f9', colour: '#475569' }
+  };
+
+  function linkedPolicies(issueId) {
+    const ids = policyTrackRelevance[issueId] ?? [];
+    return projectPolicies.filter(p => ids.includes(p.id));
+  }
 
   const riskColours = {
     showstopper:         { bg: '#fee2e2', colour: '#991b1b' },
@@ -36,6 +60,8 @@
   <div class="argument-list">
     {#each keyIssues as issue (issue.id)}
       {@const risk = riskColours[issue.last_known_risk_level]}
+      {@const linked = linkedPolicies(issue.id)}
+      {@const points = argumentPointsByTrack[issue.id] ?? []}
       <div class="argument-section">
         <div class="argument-heading">
           <div class="argument-title-row">
@@ -56,14 +82,56 @@
           {/if}
         </div>
 
+        {#if linked.length > 0}
+          <div class="linked-policies">
+            <span class="linked-policies-label">Linked policies</span>
+            <div class="linked-policy-list">
+              {#each linked as policy}
+                {@const tier = tierColours[policy.policy_type] ?? tierColours.other}
+                <div class="linked-policy-row">
+                  <span class="tier-chip" style="background:{tier.bg}; color:{tier.colour}">
+                    {tierLabels[policy.policy_type] ?? policy.policy_type}
+                  </span>
+                  <span class="policy-ref">{policy.policy_reference}</span>
+                  {#if policy.policy_name}
+                    <span class="policy-name">{policy.policy_name}</span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if points.length > 0}
+          <div class="evidence-block">
+            <span class="evidence-label">Evidence ({points.length})</span>
+            {#each points as pt}
+              {@const ev = pt.evidence?.[0]}
+              <div class="evidence-row">
+                <div class="evidence-row-top">
+                  <span class="evidence-headline">{pt.headline}</span>
+                </div>
+                <div class="evidence-citation">
+                  {#if ev?.quote_snapshot}
+                    <span class="evidence-quote">"{ev.quote_snapshot}"</span>
+                  {/if}
+                  <span class="evidence-meta">
+                    {#if ev?.relevance_note}{ev.relevance_note}{/if}{#if ev?.relevance_note && pt.source_doc_title} · {/if}{#if pt.source_doc_title}{pt.source_doc_title}{/if}
+                  </span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
         <div class="note-field-group">
           <label class="note-label">Policy Assessment</label>
           <textarea
             class="notes-field"
             placeholder="Describe how the proposal is policy compliant on this issue..."
-            value={$issueNotes[issue.id]?.policy_assessment ?? ''}
-            use:autoresize={$issueNotes[issue.id]?.policy_assessment}
-            on:input={(e) => handleNoteInput(issue.id, 'policy_assessment', e.target.value)}
+            value={$issueNotes[issue.id]?.argument_for ?? ''}
+            use:autoresize={$issueNotes[issue.id]?.argument_for}
+            on:input={(e) => handleNoteInput(issue.id, 'argument_for', e.target.value)}
           ></textarea>
         </div>
       </div>
@@ -151,6 +219,121 @@
 
   .note-status.saving { color: #94a3b8; }
   .note-status.saved  { color: #16a34a; }
+
+  .linked-policies {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.625rem 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+
+  .linked-policies-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+  }
+
+  .linked-policy-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .linked-policy-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .tier-chip {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .policy-ref {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #1e293b;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .policy-name {
+    font-size: 0.8rem;
+    color: #475569;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .evidence-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.625rem 0.75rem;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+  }
+
+  .evidence-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #15803d;
+  }
+
+  .evidence-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.375rem 0;
+    border-top: 1px solid #dcfce7;
+  }
+
+  .evidence-row:first-of-type { border-top: none; padding-top: 0; }
+
+  .evidence-row-top { display: flex; align-items: flex-start; gap: 0.5rem; }
+
+  .evidence-headline {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #1e293b;
+    line-height: 1.4;
+  }
+
+  .evidence-citation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.375rem;
+  }
+
+  .evidence-quote {
+    font-size: 0.75rem;
+    color: #475569;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  .evidence-meta {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
 
   .note-field-group {
     display: flex;

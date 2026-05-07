@@ -198,3 +198,21 @@ export async function createDocumentLogEntry(projectId, data) {
   if (!res.ok) throw new Error('Failed to create log entry');
   return res.json();
 }
+
+// ── Argument points ───────────────────────────────────────────────────────────
+
+export async function getArgumentPoints(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/argument-points`);
+  if (!res.ok) throw new Error('Failed to fetch argument points');
+  return res.json();
+}
+
+export async function createArgumentPoint(projectId, data) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/argument-points`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to create argument point');
+  return res.json();
+}

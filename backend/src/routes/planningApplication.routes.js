@@ -26,7 +26,9 @@ import {
   deleteSection,
   reorderSections,
   getDocumentLog,
-  createDocumentLogEntry
+  createDocumentLogEntry,
+  getArgumentPoints,
+  createArgumentPoint
 } from '../controllers/planningApplication.controller.js';
 
 const router = express.Router();
@@ -80,5 +82,9 @@ router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', 
 // Document log
 router.get('/projects/:projectId/document-log', getDocumentLog);
 router.post('/projects/:projectId/document-log', createDocumentLogEntry);
+
+// Argument points
+router.get('/projects/:projectId/argument-points', getArgumentPoints);
+router.post('/projects/:projectId/argument-points', createArgumentPoint);
 
 export default router;

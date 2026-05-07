@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate } from '$lib/api/planningApplication.js';
+import { analyseDocument, getPromptTemplate, savePromptTemplate, deletePromptTemplate, createArgumentPoint } from '$lib/api/planningApplication.js';
 import { appendToNote } from '$lib/stores/planning-notes.js';
 
 // Upload / input state
@@ -12,6 +12,19 @@ export const selectedTrackIds = writable([]);
 export const dragOver = writable(false);
 export const pasteText = writable('');
 
+// Accepted argument points per track — kept as a store so it can be refreshed after log save
+export const argumentPointsByTrack = writable({});
+
+export function initArgumentPoints(points) {
+  argumentPointsByTrack.set(
+    points.reduce((acc, pt) => {
+      if (!acc[pt.track_id]) acc[pt.track_id] = [];
+      acc[pt.track_id].push(pt);
+      return acc;
+    }, {})
+  );
+}
+
 // Analysis state: 'idle' | 'loading' | 'results'
 export const analysisState = writable('idle');
 export const analysisError = writable(null);
@@ -19,6 +32,7 @@ export const analysisSummary = writable('');
 export const analysisCoverage = writable([]);
 export const extractedPoints = writable([]);
 export const acceptedPoints = writable([]);
+export const analysisChunks = writable([]);
 
 export const activePoints = derived(extractedPoints, $pts => $pts.filter(p => !p.dismissed));
 
@@ -87,12 +101,21 @@ export function acceptPoint(idx, keyIssues) {
   const field = point.field;
 
   if (trackId !== null) {
-    appendToNote(trackId, field, point.point);
+    appendToNote(trackId, 'argument_for', point.headline);
   }
   const issueLabel = trackId !== null
     ? (keyIssues.find(i => String(i.id) === String(trackId))?.label ?? 'General')
     : 'General';
-  acceptedPoints.update(pts => [...pts, { track_id: trackId, issue_label: issueLabel, field, point: point.point }]);
+  acceptedPoints.update(pts => [...pts, {
+    track_id: trackId,
+    issue_label: issueLabel,
+    field,
+    point: point.headline,
+    headline: point.headline,
+    detailed_summary: point.detailed_summary ?? null,
+    citation: point.citation ?? null,
+    relevant_chunk_indices: point.relevant_chunk_indices ?? []
+  }]);
   extractedPoints.update(pts => pts.map((p, i) => i === idx ? { ...p, dismissed: true } : p));
 }
 
@@ -155,6 +178,7 @@ export async function runAnalysis(customPrompt = null) {
     const result = Array.isArray(raw) ? { summary: '', coverage: [], points: raw } : raw;
     analysisSummary.set(result.summary ?? '');
     analysisCoverage.set(result.coverage ?? []);
+    analysisChunks.set(result.chunks ?? []);
     extractedPoints.set((result.points ?? []).map(p => ({ ...p, dismissed: false })));
     console.log('Analysis result:', result);
     analysisState.set('results');
@@ -173,6 +197,7 @@ export function resetAnalysis() {
   analysisState.set('idle');
   analysisSummary.set('');
   analysisCoverage.set([]);
+  analysisChunks.set([]);
   extractedPoints.set([]);
   acceptedPoints.set([]);
   selectedFile.set(null);

@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
-import { createDocumentLogEntry } from '$lib/api/planningApplication.js';
+import { createDocumentLogEntry, createArgumentPoint, getArgumentPoints } from '$lib/api/planningApplication.js';
+import { analysisChunks, initArgumentPoints } from '$lib/stores/planning-analysis.js';
 
 export const documentLog = writable([]);
 export const logModalOpen = writable(false);
@@ -17,7 +18,15 @@ export function openLogModal(analysisSummary, acceptedPoints) {
   logTitle.set('');
   logCode.set('');
   logSummary.set(analysisSummary);
-  logPoints.set(acceptedPoints.map((p, i) => ({ id: i, ...p, text: p.point })));
+  logPoints.set(acceptedPoints.map((p, i) => ({
+    id: i,
+    ...p,
+    text: p.headline ?? p.point,
+    headline: p.headline ?? p.point,
+    detailed_summary: p.detailed_summary ?? null,
+    citation: p.citation ?? null,
+    relevant_chunk_indices: p.relevant_chunk_indices ?? []
+  })));
   logModalOpen.set(true);
 }
 
@@ -38,10 +47,30 @@ export async function saveLogEntry(projectId) {
         issue_label: p.issue_label,
         field: p.field,
         point: p.text
-      }))
+      })),
+      chunks: get(analysisChunks)
     });
     documentLog.update(log => [entry, ...log]);
+
+    // Create structured argument points now that we have the document_log_id.
+    // Fire-and-forget — failures don't block the log save.
+    const points = get(logPoints).filter(p => p.track_id !== null && p.track_id !== undefined);
+    for (const p of points) {
+      createArgumentPoint(projectId, {
+        track_id: p.track_id,
+        document_log_id: entry.id,
+        field: p.field,
+        headline: p.headline ?? p.text,
+        detailed_summary: p.detailed_summary ?? null,
+        citation: p.citation ?? null,
+        relevant_chunk_indices: p.relevant_chunk_indices ?? []
+      }).catch(err => console.warn('Failed to create argument point:', err));
+    }
+
     logModalOpen.set(false);
+
+    // Refresh argument points store so the Argument Structure panel shows new citations
+    getArgumentPoints(projectId).then(initArgumentPoints).catch(() => {});
   } catch (err) {
     console.error('Failed to save log entry:', err);
   } finally {
