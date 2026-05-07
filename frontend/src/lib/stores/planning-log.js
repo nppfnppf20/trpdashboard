@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { createDocumentLogEntry, createArgumentPoint, getArgumentPoints } from '$lib/api/planningApplication.js';
 import { analysisChunks, initArgumentPoints } from '$lib/stores/planning-analysis.js';
+import { issueNotes, handleNoteInput } from '$lib/stores/planning-notes.js';
 
 export const documentLog = writable([]);
 export const logModalOpen = writable(false);
@@ -67,9 +68,22 @@ export async function saveLogEntry(projectId) {
       }).catch(err => console.warn('Failed to create argument point:', err));
     }
 
+    // Backfill document title into the argument_for notes we already appended
+    const notes = get(issueNotes);
+    for (const p of get(logPoints)) {
+      if (p.track_id == null) continue;
+      const paraRef = p.citation?.para_ref;
+      const oldLine = `${p.headline}${paraRef ? ` (${paraRef})` : ''}`;
+      const newLine = `${p.headline}${paraRef ? ` (${paraRef} — ${entry.title})` : ` (${entry.title})`}`;
+      const current = get(issueNotes)[p.track_id]?.argument_for ?? '';
+      if (current.includes(oldLine)) {
+        handleNoteInput(p.track_id, 'argument_for', current.replace(oldLine, newLine));
+      }
+    }
+
     logModalOpen.set(false);
 
-    // Refresh argument points store so the Argument Structure panel shows new citations
+    // Refresh argument points store so the Argument Structure panel shows new evidence
     getArgumentPoints(projectId).then(initArgumentPoints).catch(() => {});
   } catch (err) {
     console.error('Failed to save log entry:', err);

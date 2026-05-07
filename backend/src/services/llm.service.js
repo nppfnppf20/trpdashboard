@@ -1254,6 +1254,7 @@ export async function extractPointsFromDocument({ text, allIssues, targetIssues,
       field:                  p.field,
       headline:               p.headline ?? p.point ?? '',
       detailed_summary:       p.detailed_summary ?? null,
+      citation:               p.citation ?? null,
       relevant_chunk_indices: p.relevant_chunk_indices ?? []
     }))
   };

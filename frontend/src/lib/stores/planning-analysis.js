@@ -101,7 +101,8 @@ export function acceptPoint(idx, keyIssues) {
   const field = point.field;
 
   if (trackId !== null) {
-    appendToNote(trackId, 'argument_for', point.headline);
+    const paraRef = point.citation?.para_ref ? ` (${point.citation.para_ref})` : '';
+    appendToNote(trackId, 'argument_for', `${point.headline}${paraRef}`);
   }
   const issueLabel = trackId !== null
     ? (keyIssues.find(i => String(i.id) === String(trackId))?.label ?? 'General')
