@@ -12,7 +12,10 @@ import {
   buildIssueContext,
   generateAppealDraft,
   generateDraftSection,
-  generatePlanningStatementAssessment
+  generatePlanningStatementAssessment,
+  generatePlanningStatementSection,
+  summariseDocument,
+  getDefaultSummaryPrompt
 } from '../services/llm.service.js';
 
 const SCHEMA = 'planning_applications';
@@ -441,6 +444,50 @@ export async function getDocumentLog(req, res) {
   }
 }
 
+export async function deleteDocumentLogEntry(req, res) {
+  const { entryId } = req.params;
+  try {
+    await pool.query(
+      `UPDATE planning_applications.argument_points SET document_log_id = NULL WHERE document_log_id = $1`,
+      [entryId]
+    );
+    await pool.query(
+      `DELETE FROM planning_applications.document_text_spans WHERE document_log_id = $1`,
+      [entryId]
+    );
+    const { rows } = await pool.query(
+      `DELETE FROM planning_applications.document_log WHERE id = $1 RETURNING id`,
+      [entryId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Log entry not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('pa.deleteDocumentLogEntry error:', err);
+    res.status(500).json({ error: 'Failed to delete log entry' });
+  }
+}
+
+export async function updateDocumentLogEntry(req, res) {
+  const { entryId } = req.params;
+  const { title, code, document_summary, argument_points } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.document_log
+       SET title = $1, code = $2, document_summary = $3, argument_points = $4
+       WHERE id = $5
+       RETURNING *`,
+      [title.trim(), code?.trim() || null, document_summary?.trim() || null,
+       JSON.stringify(argument_points ?? []), entryId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Log entry not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('pa.updateDocumentLogEntry error:', err);
+    res.status(500).json({ error: 'Failed to update log entry' });
+  }
+}
+
 export async function createDocumentLogEntry(req, res) {
   const { projectId } = req.params;
   const { title, code, document_summary, argument_points, chunks } = req.body;
@@ -681,6 +728,99 @@ async function fetchLinkedPoliciesByTrack(projectId) {
   return map;
 }
 
+function stripHtml(html) {
+  if (!html) return '';
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function resolvePlanningStatementVariables(projectId) {
+  const { rows: [project] } = await pool.query(
+    `SELECT project_name, client, local_planning_authority, address, development_description
+     FROM public.projects WHERE id = $1`, [projectId]
+  );
+  if (!project) return {};
+
+  const { rows: summaries } = await pool.query(
+    `SELECT doc_type, summary_html FROM planning_applications.document_summaries
+     WHERE project_id = $1 ORDER BY created_at DESC`, [projectId]
+  );
+  const summaryByType = {};
+  for (const s of summaries) {
+    if (!summaryByType[s.doc_type]) summaryByType[s.doc_type] = s.summary_html;
+  }
+
+  const { rows: docLog } = await pool.query(
+    `SELECT title, code FROM planning_applications.document_log
+     WHERE project_id = $1 ORDER BY logged_at ASC`, [projectId]
+  );
+
+  const { rows: history } = await pool.query(
+    `SELECT app_reference, description, decision, decision_date, notes
+     FROM planning_applications.planning_history
+     WHERE project_id = $1 ORDER BY sort_order, id`, [projectId]
+  );
+
+  const { rows: policies } = await pool.query(
+    `SELECT policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, is_key_policy
+     FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, policy_reference`, [projectId]
+  );
+
+  const lpaArr = project.local_planning_authority;
+  const lpaName = Array.isArray(lpaArr) && lpaArr.length
+    ? lpaArr.join(' / ')
+    : (typeof lpaArr === 'string' && lpaArr ? lpaArr : '[LPA Name]');
+
+  const documentList = docLog.length
+    ? docLog.map(d => `- ${d.title}${d.code ? ` (Ref: ${d.code})` : ''}`).join('\n')
+    : '[No documents logged]';
+
+  const planningHistoryText = history.length
+    ? history.map(h => {
+        const parts = [h.description];
+        if (h.app_reference) parts.unshift(`Ref: ${h.app_reference}`);
+        if (h.decision) parts.push(`Decision: ${h.decision}`);
+        if (h.decision_date) {
+          const d = new Date(h.decision_date);
+          parts.push(`Date: ${d.toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}`);
+        }
+        if (h.notes) parts.push(h.notes);
+        return parts.join(' — ');
+      }).join('\n\n')
+    : '';
+
+  const formatPolicyList = (pols) => pols.map(p => {
+    const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+    const key = p.is_key_policy ? ' [KEY POLICY]' : '';
+    const wording = p.policy_text?.trim() ? `\n  Policy wording: "${p.policy_text.trim().slice(0, 500)}"` : '';
+    const context = p.relevant_supporting_text?.trim() ? `\n  Context: ${p.relevant_supporting_text.trim().slice(0, 400)}` : '';
+    return `- ${ref}${p.policy_name}${key}${wording}${context}`;
+  }).join('\n');
+
+  const localPolicies = policies.filter(p => p.policy_type === 'local');
+  const nationalPolicies = policies.filter(p => p.policy_type === 'national');
+  const otherPolicies = policies.filter(p => !['local', 'national'].includes(p.policy_type));
+
+  return {
+    PROJECT_NAME:            project.project_name ?? '[Project Name]',
+    APPLICANT_NAME:          project.client ?? '[Applicant Name]',
+    LPA_NAME:                lpaName,
+    SITE_ADDRESS:            project.address ?? '[Site Address]',
+    DEVELOPMENT_DESCRIPTION: project.development_description ?? '[Development Description]',
+    ABOUT_APPLICANT:         stripHtml(summaryByType.about_applicant),
+    PROPOSED_DEVELOPMENT:    stripHtml(summaryByType.proposed_development),
+    DOCUMENT_LIST:           documentList,
+    SITE_SURROUNDINGS:       stripHtml(summaryByType.site_surroundings),
+    PLANNING_HISTORY:        planningHistoryText,
+    PRE_APP_SUMMARY:         stripHtml(summaryByType.pre_app),
+    EIA_SUMMARY:             stripHtml(summaryByType.eia_response),
+    SCI_SUMMARY:             stripHtml(summaryByType.sci),
+    LOCAL_POLICIES:          formatPolicyList(localPolicies),
+    NATIONAL_POLICIES:       formatPolicyList(nationalPolicies),
+    OTHER_POLICIES:          formatPolicyList(otherPolicies),
+    FULL_STATEMENT:          '',
+  };
+}
+
 export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
   try {
@@ -716,10 +856,52 @@ export async function generateDraft(req, res) {
       fetchLinkedPoliciesByTrack(projectId)
     ]);
 
-    const isPlanningApp = Object.keys(linkedPoliciesByTrack).length > 0;
-
+    const hasTemplatedSections = sections.some(s => s.generation_prompt?.includes('{{'));
     let contentHtml;
-    if (isPlanningApp) {
+
+    if (hasTemplatedSections) {
+      const variables = await resolvePlanningStatementVariables(projectId);
+      const issueContext = buildIssueContext(issues, evidenceByTrack);
+
+      const normalSections = sections.filter(s => !s.runs_last);
+      const lastSections = sections.filter(s => s.runs_last);
+      const sectionHtmlMap = new Map();
+
+      for (const section of normalSections) {
+        console.log(`[generateDraft] generating section: ${section.name}`);
+        let html;
+        if (section.slug === 'planning_assessment') {
+          html = await generatePlanningStatementAssessment({
+            projectName: projectRows[0].project_name,
+            section, issues, linkedPoliciesByTrack, evidenceByTrack
+          });
+        } else if (section.generation_prompt?.includes('{{')) {
+          html = await generatePlanningStatementSection({ section, variables });
+        } else {
+          html = await generateDraftSection({
+            section,
+            projectName: projectRows[0].project_name,
+            draftTypeName: typeRows[0].name,
+            issueContext
+          });
+        }
+        sectionHtmlMap.set(section.id, html);
+      }
+
+      if (lastSections.length > 0) {
+        const assembledHtml = normalSections.map(s => sectionHtmlMap.get(s.id)).join('\n\n');
+        const fullStatementText = stripHtml(assembledHtml);
+        const runsLastVariables = { ...variables, FULL_STATEMENT: fullStatementText };
+        for (const section of lastSections) {
+          console.log(`[generateDraft] generating runs_last section: ${section.name}`);
+          const html = await generatePlanningStatementSection({ section, variables: runsLastVariables });
+          sectionHtmlMap.set(section.id, html);
+        }
+      }
+
+      contentHtml = sections.map(s => sectionHtmlMap.get(s.id)).filter(Boolean).join('\n\n');
+
+    } else if (Object.keys(linkedPoliciesByTrack).length > 0) {
       const issueContext = buildIssueContext(issues, evidenceByTrack);
       const sectionParts = [];
       for (const section of sections) {
@@ -727,10 +909,7 @@ export async function generateDraft(req, res) {
         if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section,
-            issues,
-            linkedPoliciesByTrack,
-            evidenceByTrack
+            section, issues, linkedPoliciesByTrack, evidenceByTrack
           });
         } else {
           html = await generateDraftSection({
@@ -743,6 +922,7 @@ export async function generateDraft(req, res) {
         sectionParts.push(html);
       }
       contentHtml = sectionParts.join('\n\n');
+
     } else {
       contentHtml = await generateAppealDraft({
         projectName: projectRows[0].project_name,
@@ -769,6 +949,136 @@ export async function generateDraft(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Document summaries
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getDocumentSummaries(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, project_id, title, document_ref, file_name, doc_type, summary_html, created_at
+       FROM planning_applications.document_summaries
+       WHERE project_id = $1 ORDER BY created_at DESC`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('pa.getDocumentSummaries error:', err);
+    res.status(500).json({ error: 'Failed to fetch document summaries' });
+  }
+}
+
+export async function generateDocumentSummary(req, res) {
+  try {
+    const { projectId } = req.params;
+    const docType = req.body.doc_type || 'other';
+
+    let text;
+    let fileName;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+      fileName = req.file.originalname;
+    } else if (req.body.text) {
+      text = req.body.text;
+      fileName = req.body.file_name || null;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    // Load custom prompt if saved for this doc type
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_template FROM planning_applications.doc_type_prompts WHERE doc_type = $1`,
+      [docType]
+    );
+    const customPrompt = promptRows[0]?.prompt_template ?? null;
+
+    const summaryHtml = await summariseDocument(text, fileName, docType, customPrompt);
+    res.json({ summary_html: summaryHtml, file_name: fileName });
+  } catch (err) {
+    console.error('pa.generateDocumentSummary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function saveDocumentSummary(req, res) {
+  const { projectId } = req.params;
+  const { title, document_ref, file_name, doc_type, summary_html } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  if (!summary_html?.trim()) return res.status(400).json({ error: 'summary_html is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.document_summaries
+         (project_id, title, document_ref, file_name, doc_type, summary_html)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [projectId, title.trim(), document_ref?.trim() || null, file_name || null, doc_type || null, summary_html.trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('pa.saveDocumentSummary error:', err);
+    res.status(500).json({ error: 'Failed to save document summary' });
+  }
+}
+
+export async function deleteDocumentSummary(req, res) {
+  const { summaryId } = req.params;
+  try {
+    await pool.query(`DELETE FROM planning_applications.document_summaries WHERE id = $1`, [summaryId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('pa.deleteDocumentSummary error:', err);
+    res.status(500).json({ error: 'Failed to delete document summary' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Doc type prompts
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getDocTypePrompt(req, res) {
+  const { docType } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT prompt_template FROM planning_applications.doc_type_prompts WHERE doc_type = $1`,
+      [docType]
+    );
+    const saved = rows[0]?.prompt_template ?? null;
+    res.json({ prompt: saved ?? getDefaultSummaryPrompt(docType), is_custom: !!saved });
+  } catch (err) {
+    console.error('pa.getDocTypePrompt error:', err);
+    res.status(500).json({ error: 'Failed to fetch prompt' });
+  }
+}
+
+export async function saveDocTypePrompt(req, res) {
+  const { docType } = req.params;
+  const { prompt } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  try {
+    await pool.query(
+      `INSERT INTO planning_applications.doc_type_prompts (doc_type, prompt_template, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (doc_type) DO UPDATE SET prompt_template = $2, updated_at = NOW()`,
+      [docType, prompt.trim()]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('pa.saveDocTypePrompt error:', err);
+    res.status(500).json({ error: 'Failed to save prompt' });
+  }
+}
+
+export async function deleteDocTypePrompt(req, res) {
+  const { docType } = req.params;
+  try {
+    await pool.query(`DELETE FROM planning_applications.doc_type_prompts WHERE doc_type = $1`, [docType]);
+    res.json({ prompt: getDefaultSummaryPrompt(docType), is_custom: false });
+  } catch (err) {
+    console.error('pa.deleteDocTypePrompt error:', err);
+    res.status(500).json({ error: 'Failed to reset prompt' });
+  }
+}
+
 export async function generateSection(req, res) {
   const { projectId, typeId, sectionId } = req.params;
   try {
@@ -787,37 +1097,60 @@ export async function generateSection(req, res) {
       [sectionId, typeId]
     );
     if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
-
-    const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
-      pool.query(
-        `SELECT pit.id, pit.label, pit.discipline,
-                ain.argument_against, ain.argument_for,
-                ain.policy_national, ain.policy_local, ain.policy_neighbourhood,
-                ain.policy_supplementary, ain.policy_other
-         FROM admin_console.project_issue_tracks pit
-         LEFT JOIN planning_applications.issue_notes ain
-           ON ain.track_id = pit.id AND ain.project_id = $1
-         WHERE pit.project_id = $1 AND pit.is_active = TRUE
-         ORDER BY pit.sort_order, pit.id`,
-        [projectId]
-      ),
-      fetchEvidenceByTrack(projectId),
-      fetchLinkedPoliciesByTrack(projectId)
-    ]);
-
-    const isPlanningApp = Object.keys(linkedPoliciesByTrack).length > 0;
     const section = sectionRows[0];
 
     let html;
-    if (isPlanningApp && section.slug === 'planning_assessment') {
+
+    if (section.slug === 'planning_assessment') {
+      const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
+        pool.query(
+          `SELECT pit.id, pit.label, pit.discipline,
+                  ain.argument_against, ain.argument_for,
+                  ain.policy_national, ain.policy_local, ain.policy_neighbourhood,
+                  ain.policy_supplementary, ain.policy_other
+           FROM admin_console.project_issue_tracks pit
+           LEFT JOIN planning_applications.issue_notes ain
+             ON ain.track_id = pit.id AND ain.project_id = $1
+           WHERE pit.project_id = $1 AND pit.is_active = TRUE
+           ORDER BY pit.sort_order, pit.id`,
+          [projectId]
+        ),
+        fetchEvidenceByTrack(projectId),
+        fetchLinkedPoliciesByTrack(projectId)
+      ]);
       html = await generatePlanningStatementAssessment({
         projectName: projectRows[0].project_name,
-        section,
-        issues,
-        linkedPoliciesByTrack,
-        evidenceByTrack
+        section, issues, linkedPoliciesByTrack, evidenceByTrack
       });
+
+    } else if (section.generation_prompt?.includes('{{')) {
+      const variables = await resolvePlanningStatementVariables(projectId);
+      if (section.runs_last) {
+        const { rows: draftRows } = await pool.query(
+          `SELECT content_html FROM planning_applications.drafts
+           WHERE project_id = $1 AND draft_type_id = $2`,
+          [projectId, typeId]
+        );
+        variables.FULL_STATEMENT = stripHtml(draftRows[0]?.content_html ?? '');
+      }
+      html = await generatePlanningStatementSection({ section, variables });
+
     } else {
+      const [{ rows: issues }, evidenceByTrack] = await Promise.all([
+        pool.query(
+          `SELECT pit.id, pit.label, pit.discipline,
+                  ain.argument_against, ain.argument_for,
+                  ain.policy_national, ain.policy_local, ain.policy_neighbourhood,
+                  ain.policy_supplementary, ain.policy_other
+           FROM admin_console.project_issue_tracks pit
+           LEFT JOIN planning_applications.issue_notes ain
+             ON ain.track_id = pit.id AND ain.project_id = $1
+           WHERE pit.project_id = $1 AND pit.is_active = TRUE
+           ORDER BY pit.sort_order, pit.id`,
+          [projectId]
+        ),
+        fetchEvidenceByTrack(projectId)
+      ]);
       const issueContext = buildIssueContext(issues, evidenceByTrack);
       html = await generateDraftSection({
         section,
@@ -827,7 +1160,7 @@ export async function generateSection(req, res) {
       });
     }
 
-    res.json({ html, section_id: sectionRows[0].id, section_name: sectionRows[0].name });
+    res.json({ html, section_id: section.id, section_name: section.name });
   } catch (err) {
     console.error('pa.generateSection error:', err);
     res.status(500).json({ error: err.message });

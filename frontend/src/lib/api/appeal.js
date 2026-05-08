@@ -236,6 +236,22 @@ export async function createDocumentLogEntry(projectId, { title, code, document_
   return res.json();
 }
 
+export async function updateDocumentLogEntry(entryId, data) {
+  const res = await authFetch(`/api/appeal/document-log/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to update log entry');
+  return res.json();
+}
+
+export async function deleteDocumentLogEntry(entryId) {
+  const res = await authFetch(`/api/appeal/document-log/${entryId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete log entry');
+  return res.json();
+}
+
 export async function getArgumentPoints(projectId) {
   const res = await authFetch(`/api/planning-application/projects/${projectId}/argument-points`);
   if (!res.ok) throw new Error('Failed to fetch argument points');

@@ -1369,6 +1369,92 @@ FORMAT RULES (mandatory):
   return parts.join('\n\n');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Planning Statement — template-based section generation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generate a planning statement section by resolving {{VARIABLE}} placeholders
+ * in the section's generation_prompt and calling Claude.
+ *
+ * @param {{ section: object, variables: Record<string, string> }} params
+ * @returns {Promise<string>}  HTML string
+ */
+export async function generatePlanningStatementSection({ section, variables }) {
+  let prompt = section.generation_prompt ?? '';
+  for (const [key, value] of Object.entries(variables)) {
+    prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value ?? '');
+  }
+
+  const exampleBlock = section.example_text?.trim()
+    ? `The following example shows the target tone and structure. Match the style — do NOT use any content from it:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)}\n</example>\n\n`
+    : '';
+
+  const fullPrompt = exampleBlock + prompt;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4096,
+    system: 'You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.',
+    messages: [{ role: 'user', content: fullPrompt }]
+  });
+
+  const raw = response.content[0].text.trim();
+  return raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document summarisation
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DEFAULT_SUMMARY_PROMPTS = {
+  pre_app: `You are a planning consultant. Summarise this pre-application response from the Local Planning Authority.
+Structure your summary with these headings: Overview of Proposal Assessed, Key Concerns Raised, Aspects Supported or Not Objected To, Recommended Changes or Conditions.
+Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+
+  eia_response: `You are a planning consultant. Summarise this EIA Scoping Opinion or Environmental Statement response.
+Structure your summary with these headings: Topics Scoped In and Out, Key Technical Concerns or Requirements, Methodology Recommendations, Overarching Comments.
+Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+
+  sci: `You are a planning consultant. Summarise this Statement of Community Involvement or consultation document.
+Structure your summary with these headings: Consultation Methods and Timeline, Key Themes from Community Feedback, Objections and Concerns Raised, Support Received, How Feedback Has Been Addressed.
+Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+
+  site_surroundings: `You are a planning consultant. Summarise this Site and Surroundings document.
+Structure your summary with these headings: Site Description and Key Characteristics, Surrounding Context and Land Uses, Planning Constraints and Designations, Access and Infrastructure, Development Opportunities and Constraints.
+Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+
+  about_applicant: `You are a planning consultant. This document contains the applicant's standard 'About the Applicant' text for use in a Planning Statement.
+Format this content clearly for inclusion in the statement. Preserve the original wording exactly — do not paraphrase, shorten, or alter the substance.
+Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+
+  proposed_development: `You are a planning consultant. Summarise this Proposed Development description for inclusion in a Planning Statement.
+Structure your summary to cover: the formal description of development, the main components of the proposal, key technical figures or specifications, and any design or sustainability principles.
+Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+
+  other: `You are a planning consultant. Provide a structured summary of this document.
+Structure your summary with these headings: Purpose and Scope, Key Findings or Conclusions, Relevance to the Planning Application, Material Considerations Raised.
+Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`
+};
+
+export function getDefaultSummaryPrompt(docType) {
+  return DEFAULT_SUMMARY_PROMPTS[docType] ?? DEFAULT_SUMMARY_PROMPTS.other;
+}
+
+export async function summariseDocument(text, fileName, docType, customPrompt = null) {
+  const systemPrompt = customPrompt ?? getDefaultSummaryPrompt(docType);
+  const userPrompt = `Document: ${fileName || 'Untitled'}\n\n${text.slice(0, 80000)}`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4000,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  });
+
+  return response.content[0].text.trim();
+}
+
 export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {}, customPrompt }) {
   const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, argumentPoints });
 

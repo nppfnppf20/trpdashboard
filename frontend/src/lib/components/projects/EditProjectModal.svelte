@@ -47,6 +47,7 @@
     sub_sectors: [],
     designations_on_site: '',
     relevant_nearby_designations: '',
+    development_description: '',
     status: '',
     case_officer_name: '',
     case_officer_email: '',
@@ -180,6 +181,7 @@
         sub_sectors: project.sub_sectors || [],
         designations_on_site: project.designations_on_site || '',
         relevant_nearby_designations: project.relevant_nearby_designations || '',
+        development_description: project.development_description || '',
         status: project.status || '',
         case_officer_name: project.case_officer_name || '',
         case_officer_email: project.case_officer_email || '',
@@ -333,7 +335,7 @@
       project_lead: '', project_manager: '', project_director: '',
       address: '', polygon_geojson: null, area: '', client: '',
       client_spv_name: '', sectors: [], sub_sectors: [],
-      designations_on_site: '', relevant_nearby_designations: '', status: '',
+      designations_on_site: '', relevant_nearby_designations: '', development_description: '', status: '',
       case_officer_name: '', case_officer_email: '', case_officer_phone_number: '',
       lpa_reference: '', submission_date: '', validation_date: '',
       lpa_consultation_end_date: '', committee_date: '', target_determination_date: '',
@@ -544,6 +546,12 @@
                   <div class="form-group form-group--full">
                     <label for="relevant_nearby_designations">Relevant Nearby Designations</label>
                     <textarea id="relevant_nearby_designations" bind:value={formData.relevant_nearby_designations} rows="2"></textarea>
+                  </div>
+
+                  <div class="form-group form-group--full">
+                    <label for="development_description">Description of Development</label>
+                    <textarea id="development_description" bind:value={formData.development_description} rows="3"
+                      placeholder="Enter the formal description of development as it will appear in the planning application..."></textarea>
                   </div>
                 </div>
 

@@ -109,8 +109,8 @@
     }
   }
 
-  const TYPE_LABELS = { national: 'National', local: 'Local', neighbourhood: 'Neighbourhood' };
-  const TYPE_COLOURS = { national: '#3b82f6', local: '#10b981', neighbourhood: '#f59e0b' };
+  const TYPE_LABELS = { national: 'National', local: 'Local', neighbourhood: 'Neighbourhood', supplementary: 'Supplementary', other: 'Other' };
+  const TYPE_COLOURS = { national: '#3b82f6', local: '#10b981', neighbourhood: '#f59e0b', supplementary: '#8b5cf6', other: '#64748b' };
 </script>
 
 <div class="policy-tab">
@@ -151,6 +151,8 @@
               <option value="national">National</option>
               <option value="local">Local</option>
               <option value="neighbourhood">Neighbourhood</option>
+              <option value="supplementary">Supplementary</option>
+              <option value="other">Other</option>
             </select>
           </div>
         </div>

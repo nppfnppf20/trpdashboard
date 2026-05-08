@@ -27,8 +27,17 @@ import {
   reorderSections,
   getDocumentLog,
   createDocumentLogEntry,
+  deleteDocumentLogEntry,
+  updateDocumentLogEntry,
   getArgumentPoints,
-  createArgumentPoint
+  createArgumentPoint,
+  getDocumentSummaries,
+  generateDocumentSummary,
+  saveDocumentSummary,
+  deleteDocumentSummary,
+  getDocTypePrompt,
+  saveDocTypePrompt,
+  deleteDocTypePrompt
 } from '../controllers/planningApplication.controller.js';
 
 const router = express.Router();
@@ -82,9 +91,22 @@ router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', 
 // Document log
 router.get('/projects/:projectId/document-log', getDocumentLog);
 router.post('/projects/:projectId/document-log', createDocumentLogEntry);
+router.patch('/document-log/:entryId', updateDocumentLogEntry);
+router.delete('/document-log/:entryId', deleteDocumentLogEntry);
 
 // Argument points
 router.get('/projects/:projectId/argument-points', getArgumentPoints);
 router.post('/projects/:projectId/argument-points', createArgumentPoint);
+
+// Document summaries
+router.get('/projects/:projectId/document-summaries', getDocumentSummaries);
+router.post('/projects/:projectId/document-summaries/generate', upload.single('file'), generateDocumentSummary);
+router.post('/projects/:projectId/document-summaries', saveDocumentSummary);
+router.delete('/document-summaries/:summaryId', deleteDocumentSummary);
+
+// Doc type prompts
+router.get('/doc-type-prompts/:docType', getDocTypePrompt);
+router.put('/doc-type-prompts/:docType', saveDocTypePrompt);
+router.delete('/doc-type-prompts/:docType', deleteDocTypePrompt);
 
 export default router;

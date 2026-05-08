@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getArgumentPoints } from '$lib/api/appeal.js';
   import { issueNotes, noteStatus, initNotes, handleNoteInput } from '$lib/stores/appeal-notes.js';
-  import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry } from '$lib/stores/appeal-log.js';
+  import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/appeal-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/appeal-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
@@ -535,7 +535,11 @@
                   <span class="log-card-title">{entry.title}</span>
                   {#if entry.code}<span class="log-card-code">{entry.code}</span>{/if}
                 </div>
-                <span class="log-card-date">{new Date(entry.logged_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                <div class="log-card-header-right">
+                  <span class="log-card-date">{new Date(entry.logged_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  <button class="log-action-btn" title="Edit" on:click={() => openEditModal(entry)}><i class="las la-pen"></i></button>
+                  <button class="log-action-btn log-action-delete" title="Delete" on:click={() => { if (confirm('Delete this log entry?')) deleteEntry(entry.id); }}><i class="las la-trash"></i></button>
+                </div>
               </div>
               {#if entry.document_summary}
                 <p class="log-card-summary">{entry.document_summary}</p>
@@ -680,6 +684,66 @@
           <button class="modal-cancel" on:click={() => $logModalOpen = false}>Cancel</button>
           <button class="modal-run" disabled={!$logTitle.trim() || $logSaving} on:click={() => saveLogEntry(project.id)}>
             {$logSaving ? 'Saving...' : 'Save to log'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Edit log entry modal -->
+{#if $editModalOpen}
+  <div class="modal-overlay" on:click|self={() => $editModalOpen = false} role="dialog" aria-modal="true">
+    <div class="modal modal-log">
+      <div class="modal-header">
+        <span class="modal-title">Edit Log Entry</span>
+        <button class="modal-close" on:click={() => $editModalOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body log-modal-body">
+        <div class="log-form">
+          <div class="log-form-row">
+            <div class="log-form-field">
+              <label class="section-field-label">Document title <span style="color:#ef4444">*</span></label>
+              <input class="add-section-input" type="text" bind:value={$editTitle} placeholder="e.g. Officer Report — Land at Station Road" />
+            </div>
+            <div class="log-form-field log-form-field-sm">
+              <label class="section-field-label">Reference / code</label>
+              <input class="add-section-input" type="text" bind:value={$editCode} placeholder="e.g. CD/1.2" />
+            </div>
+          </div>
+
+          <div class="log-form-field">
+            <label class="section-field-label">Document summary</label>
+            <textarea class="prompt-editor" style="min-height:80px;resize:vertical" bind:value={$editSummary}></textarea>
+          </div>
+
+          {#if $editPoints.length > 0}
+            <div class="log-form-field">
+              <label class="section-field-label">Arguments ({$editPoints.length})</label>
+              <div class="log-points-editor">
+                {#each $editPoints as ep, i (ep.id)}
+                  <div class="log-point-edit">
+                    <div class="log-point-edit-header">
+                      <span class="result-field-tag" class:against={ep.field === 'argument_against'} class:for={ep.field === 'argument_for'}>
+                        {ep.field === 'argument_against' ? 'Against' : 'For'}
+                      </span>
+                      <span class="log-point-issue">{ep.issue_label}</span>
+                      <button class="section-delete-btn" style="margin-left:auto" on:click={() => removeEditPoint(ep.id)} title="Remove"><i class="las la-times"></i></button>
+                    </div>
+                    <textarea class="notes-field" style="min-height:60px" bind:value={$editPoints[i].point} use:autoresize={$editPoints[i].point}></textarea>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left"></div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={() => $editModalOpen = false}>Cancel</button>
+          <button class="modal-run" disabled={!$editTitle.trim() || $editSaving} on:click={saveEditEntry}>
+            {$editSaving ? 'Saving...' : 'Save changes'}
           </button>
         </div>
       </div>
@@ -2304,7 +2368,32 @@
     padding: 0.15rem 0.5rem;
     border-radius: 4px;
   }
+  .log-card-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex-shrink: 0;
+  }
+
   .log-card-date { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+
+  .log-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.625rem;
+    height: 1.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    background: white;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .log-action-btn:hover { background: #f1f5f9; color: #374151; border-color: #cbd5e1; }
+  .log-action-btn.log-action-delete:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
 
   .log-card-summary {
     margin: 0;

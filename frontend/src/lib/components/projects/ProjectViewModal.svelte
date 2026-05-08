@@ -7,6 +7,7 @@
   import SimilarSchemesTab from '$lib/components/projects/SimilarSchemesTab.svelte';
   import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
   import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
+  import ProjectDocsTab from '$lib/components/projects/ProjectDocsTab.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
 
@@ -529,6 +530,12 @@
           on:click={() => activeTab = 'conflict'}
         >
           Nearby Renewables Check
+        </button>
+        <button
+          class="tab-button {activeTab === 'project_docs' ? 'active' : ''}"
+          on:click={() => activeTab = 'project_docs'}
+        >
+          Project Docs
         </button>
       </div>
 
@@ -1349,6 +1356,8 @@
             <SimilarSchemesTab project={projectData} />
           {:else if activeTab === 'lpa_decision_analysis'}
             <LpaDecisionAnalysisTab project={projectData} />
+          {:else if activeTab === 'project_docs'}
+            <ProjectDocsTab project={projectData} />
           {/if}
         {/if}
       </div>

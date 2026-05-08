@@ -376,7 +376,6 @@
           </button>
         </div>
       </div>
-    </div>
 
       <!-- Appeal Drafting Card -->
       <div class="tool-card" on:click={navigateToAppeal} on:keydown={(e) => e.key === 'Enter' && navigateToAppeal()} role="button" tabindex="0">
@@ -459,6 +458,7 @@
           </button>
         </div>
       </div>
+    </div>
 
     <!-- Footer Info -->
     <div class="home-footer">

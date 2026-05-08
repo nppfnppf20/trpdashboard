@@ -465,6 +465,42 @@ export async function createDocumentLogEntry(req, res) {
   }
 }
 
+export async function deleteDocumentLogEntry(req, res) {
+  const { entryId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM appeals.appeal_document_log WHERE id = $1 RETURNING id`,
+      [entryId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Log entry not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('appeal.deleteDocumentLogEntry error:', err);
+    res.status(500).json({ error: 'Failed to delete log entry' });
+  }
+}
+
+export async function updateDocumentLogEntry(req, res) {
+  const { entryId } = req.params;
+  const { title, code, document_summary, argument_points } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE appeals.appeal_document_log
+       SET title = $1, code = $2, document_summary = $3, argument_points = $4
+       WHERE id = $5
+       RETURNING *`,
+      [title.trim(), code?.trim() || null, document_summary?.trim() || null,
+       JSON.stringify(argument_points ?? []), entryId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Log entry not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('appeal.updateDocumentLogEntry error:', err);
+    res.status(500).json({ error: 'Failed to update log entry' });
+  }
+}
+
 export async function updateDocumentStatus(req, res) {
   const { docId } = req.params;
   const { review_status } = req.body;

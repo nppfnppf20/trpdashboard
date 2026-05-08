@@ -199,6 +199,22 @@ export async function createDocumentLogEntry(projectId, data) {
   return res.json();
 }
 
+export async function updateDocumentLogEntry(entryId, data) {
+  const res = await authFetch(`${BASE}/document-log/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to update log entry');
+  return res.json();
+}
+
+export async function deleteDocumentLogEntry(entryId) {
+  const res = await authFetch(`${BASE}/document-log/${entryId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete log entry');
+  return res.json();
+}
+
 // ── Argument points ───────────────────────────────────────────────────────────
 
 export async function getArgumentPoints(projectId) {
