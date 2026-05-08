@@ -32,9 +32,34 @@
     };
   }
 
+  const VARIABLE_SOURCES = {
+    PROJECT_NAME:            { label: 'Project name',              source: 'projects.project_name' },
+    APPLICANT_NAME:          { label: 'Applicant name',            source: 'projects.client' },
+    LPA_NAME:                { label: 'LPA name',                  source: 'projects.local_planning_authority' },
+    SITE_ADDRESS:            { label: 'Site address',              source: 'projects.address' },
+    DEVELOPMENT_DESCRIPTION: { label: 'Description of development', source: 'projects.development_description' },
+    ABOUT_APPLICANT:         { label: 'About the applicant',       source: 'document_summaries — doc_type: about_applicant' },
+    PROPOSED_DEVELOPMENT:    { label: 'Proposed development',      source: 'document_summaries — doc_type: proposed_development' },
+    DOCUMENT_LIST:           { label: 'Document list',             source: 'document_log (all entries)' },
+    SITE_SURROUNDINGS:       { label: 'Site & surroundings',       source: 'document_summaries — doc_type: site_surroundings' },
+    PLANNING_HISTORY:        { label: 'Planning history',          source: 'planning_history table' },
+    PRE_APP_SUMMARY:         { label: 'Pre-app summary',           source: 'document_summaries — doc_type: pre_app' },
+    EIA_SUMMARY:             { label: 'EIA summary',               source: 'document_summaries — doc_type: eia_response' },
+    SCI_SUMMARY:             { label: 'SCI summary',               source: 'document_summaries — doc_type: sci' },
+    LOCAL_POLICIES:          { label: 'Local policies',            source: 'project_policies — policy_type: local' },
+    NATIONAL_POLICIES:       { label: 'National policies',         source: 'project_policies — policy_type: national' },
+    OTHER_POLICIES:          { label: 'Other policies',            source: 'project_policies — other types' },
+    FULL_STATEMENT:          { label: 'Full statement',            source: 'Assembled HTML of all sections (runs_last sections only)' },
+  };
+
+  $: detectedVars = [...new Set(($sectionPromptText || '').match(/\{\{([A-Z_]+)\}\}/g) || [])]
+    .map(match => {
+      const key = match.slice(2, -2);
+      const info = VARIABLE_SOURCES[key];
+      return { key, label: info?.label ?? key, source: info?.source ?? 'unknown source' };
+    });
+
   let fileInput;
-
-
 
   let draftEditor;
   let sectionExampleEditor;
@@ -751,6 +776,22 @@
                     <div class="section-expand">
                       <label class="section-field-label">Generation prompt <span class="form-label-hint">(leave blank for default)</span></label>
                       <textarea class="prompt-editor section-prompt" bind:value={$sectionPromptText} use:autoresize={$sectionPromptText}></textarea>
+
+                      {#if detectedVars.length > 0}
+                        <div class="section-vars-panel">
+                          <span class="section-vars-title">Variables in this prompt</span>
+                          <div class="section-vars-list">
+                            {#each detectedVars as v}
+                              <div class="section-var-row">
+                                <code class="section-var-key">{'{{'}{v.key}{'}}'}</code>
+                                <span class="section-var-label">{v.label}</span>
+                                <span class="section-var-source">{v.source}</span>
+                              </div>
+                            {/each}
+                          </div>
+                        </div>
+                      {/if}
+
                       <div class="section-expand-actions">
                         <button class="section-example-btn" on:click={() => openSectionExampleModal(section.id)}>
                           <i class="las la-file-alt"></i> Edit style example
@@ -2176,6 +2217,57 @@
     min-height: 80px;
     resize: none;
     overflow: hidden;
+  }
+
+  .section-vars-panel {
+    margin: 0.75rem 0 0;
+    padding: 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+  }
+
+  .section-vars-title {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+    margin-bottom: 0.5rem;
+  }
+
+  .section-vars-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .section-var-row {
+    display: grid;
+    grid-template-columns: 13rem 11rem 1fr;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .section-var-key {
+    font-family: monospace;
+    font-size: 0.7rem;
+    color: #7c3aed;
+    background: #ede9fe;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+  }
+
+  .section-var-label {
+    color: #1e293b;
+    font-weight: 500;
+  }
+
+  .section-var-source {
+    color: #64748b;
   }
 
   .section-expand-actions {
