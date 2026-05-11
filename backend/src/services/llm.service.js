@@ -1015,8 +1015,8 @@ export function buildDocumentBlock(text, maxChunks = 4) {
  * for the actual document text. Used when saving/loading editable templates.
  * Issue list and context are baked in fresh at call time.
  */
-export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {} }) {
-  return buildExtractPointsPrompt({ documentBlock: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, argumentPoints });
+export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {} }) {
+  return buildExtractPointsPrompt({ documentBlock: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, existingPointsByTrack });
 }
 
 /**
@@ -1025,7 +1025,7 @@ export function buildExtractPointsTemplate({ allIssues, targetIssues, documentTy
  * Pass either `text` (raw document text, will be formatted as indexed chunks)
  * or `documentBlock` (pre-formatted string, used by buildExtractPointsTemplate).
  */
-export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {} }) {
+export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {} }) {
   const docBlock = documentBlock ?? buildDocumentBlock(text);
   const issues = targetIssues.length > 0 ? targetIssues : allIssues;
   const isPlanningApp = linkedPolicies.length > 0;
@@ -1072,7 +1072,12 @@ export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targe
         issue.policy_neighbourhood && `    Neighbourhood policy notes: ${issue.policy_neighbourhood.slice(0, 300)}`,
         issue.policy_supplementary && `    Supplementary notes: ${issue.policy_supplementary.slice(0, 300)}`,
       ].filter(Boolean).join('\n');
-      return `- id:${issue.id} | ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}${tierNotes ? '\n' + tierNotes : ''}`;
+      const existing = existingPointsByTrack[issue.id] ?? [];
+      const existingBlock = existing.length
+        ? `\n    Existing argument points (already accepted from prior documents):\n` +
+          existing.map(p => `      • ${p.headline}${p.source ? ` [${p.source}]` : ''}`).join('\n')
+        : '';
+      return `- id:${issue.id} | ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}${tierNotes ? '\n' + tierNotes : ''}${existingBlock}`;
     }).join('\n');
 
     const tierFieldList = tierOrder.map(t => `"${tierFields[t]}" → ${tierLabels[t]} points`).join(', ');
@@ -1099,7 +1104,8 @@ Instructions:
 - Chunks marked HIGH VALUE SECTION contain conclusions, summaries or recommendations — read these first and extract all relevant compliance evidence from them
 - For each point, identify which linked policy it most directly addresses and use that policy's tier as the field value
 - Field values must be one of: ${tierFieldList}, or "argument_for" for generally supportive points not tied to a specific policy tier
-- Do NOT repeat points already covered in the existing policy notes shown above
+- The existing argument points shown above are already accepted — do not extract the exact same point from the same source. However, if THIS document provides independent or additional evidence for the same conclusion (reinforcing evidence), extract it as a new point — note what the new evidence adds
+- Focus on filling genuine gaps in the argument structure where no evidence exists yet
 - Map each point to the most relevant issue id, or null if general
 - Write a short headline (max 15 words) and a detailed_summary (2–4 sentences including the specific technical finding, figure, or assessment that supports compliance)
 - For every point, record the citation: the most specific paragraph/section/page reference available, and a verbatim quote (max 150 chars) of the key phrase
@@ -1312,14 +1318,33 @@ function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = []) {
  * @param {Record<number, Array>} params.evidenceByTrack  track_id → evidence rows
  * @returns {Promise<string>}  stitched HTML
  */
+export const PLANNING_ASSESSMENT_DEFAULT_PROMPT = `You are a planning consultant drafting the "{{SECTION_NAME}}" section of a Planning Statement for the project "{{PROJECT_NAME}}". Output HTML only — no markdown.
+
+{{EXAMPLE_BLOCK}}CONTENT INSTRUCTIONS:
+Write a Planning Assessment sub-section for the issue "{{ISSUE_LABEL}}"{{ISSUE_DISCIPLINE}}.
+
+Structure the sub-section as follows:
+1. Policy framework — state the relevant policies. For any policy marked [KEY POLICY], paraphrase what it requires in a sentence or two — do not use quotation marks or present any wording as a direct quote. For non-key policies, summarise what they require in a single sentence.
+2. Assessment — explain in professional planning language how the proposal is compliant with each policy. Draw on the assessment notes and supporting evidence provided below. Where expert evidence supports compliance, reference it specifically (e.g. "The Heritage Statement concludes that...").
+3. Conclusion — end the sub-section with a single concluding paragraph. If the proposal is compliant, state: "The proposals are therefore considered to comply with {{POLICY_REFS}}." If compliance is subject to conditions or mitigation mentioned in the assessment, say instead: "Subject to [the conditions/mitigation described above], the proposals are considered to comply with {{POLICY_REFS}}."
+
+Issue context (policy framework, assessment notes, and evidence):
+{{ISSUE_CONTEXT}}
+
+FORMAT RULES (mandatory):
+- Begin with <h3>{{ISSUE_LABEL}}</h3>
+- Every paragraph must be wrapped in <p>...</p>
+- Bold policy names and references with <strong>...</strong>
+- Do not use **, *, #, ---, or any other markdown characters
+- Do not add placeholder text — write the full sub-section from the material provided
+- If assessment notes are sparse, produce a professional assessment drawing from the policy wording and evidence`;
+
 export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary }) {
   const exampleBlock = section.example_text?.trim()
     ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
     : '';
 
-  const additionalInstructions = section.generation_prompt?.trim()
-    ? `\nADDITIONAL INSTRUCTIONS:\n${section.generation_prompt.trim()}\n`
-    : '';
+  const customPromptTemplate = section.generation_prompt?.trim() || null;
 
   const briefingBlock = briefingSummary?.trim()
     ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
@@ -1332,52 +1357,54 @@ export async function generatePlanningStatementAssessment({ projectName, section
   for (const issue of issues) {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
     const evidence = evidenceByTrack[issue.id] ?? [];
-
     if (!linkedPolicies.length && !issue.argument_for?.trim() && !evidence.length) continue;
-
-    const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence);
-
-    const allPolicyRefs = linkedPolicies
-      .filter(p => p.policy_reference)
-      .map(p => p.policy_reference);
-    const policyRefList = allPolicyRefs.length ? allPolicyRefs.join(', ') : 'the relevant policies';
-
-    const prompt = `You are a planning consultant drafting the "${section.name}" section of a Planning Statement for the project "${projectName}". Output HTML only — no markdown.
-
-${exampleBlock}CONTENT INSTRUCTIONS:
-Write a Planning Assessment sub-section for the issue "${issue.label}"${issue.discipline ? ` (${issue.discipline})` : ''}.
-
-Structure the sub-section as follows:
-1. Policy framework — state the relevant policies. For any policy marked [KEY POLICY], quote the policy wording verbatim within the running text (e.g. "Policy X states that '...'"). For non-key policies, summarise what they require in a sentence.
-2. Assessment — explain in professional planning language how the proposal is compliant with each policy. Draw on the assessment notes and supporting evidence provided below. Where expert evidence supports compliance, reference it specifically (e.g. "The Heritage Statement concludes that...").
-3. Conclusion — end the sub-section with a single concluding paragraph. If the proposal is compliant, state: "The proposals are therefore considered to comply with ${policyRefList}." If compliance is subject to conditions or mitigation mentioned in the assessment, say instead: "Subject to [the conditions/mitigation described above], the proposals are considered to comply with ${policyRefList}."
-${additionalInstructions}
-Issue context (policy framework, assessment notes, and evidence):
-${issueContext}
-
-FORMAT RULES (mandatory):
-- Begin with <h3>${issue.label}</h3>
-- Every paragraph must be wrapped in <p>...</p>
-- Bold policy names and references with <strong>...</strong>
-- Do not use **, *, #, ---, or any other markdown characters
-- Do not add placeholder text — write the full sub-section from the material provided
-- If assessment notes are sparse, produce a professional assessment drawing from the policy wording and evidence`;
-
     console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
-
-    const response = await client.messages.create({
-      model: MODEL_SONNET,
-      max_tokens: 2000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    const raw = response.content[0].text.trim()
-      .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
-    parts.push(`<div class="llm-generated">${raw}</div>`);
+    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, briefingSummary });
+    parts.push(html);
   }
 
   return parts.join('\n\n');
+}
+
+export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, briefingSummary }) {
+  const exampleBlock = section.example_text?.trim()
+    ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
+    : '';
+
+  const customPromptTemplate = section.generation_prompt?.trim() || null;
+
+  const briefingBlock = briefingSummary?.trim()
+    ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
+    : '';
+
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${briefingBlock}`;
+
+  const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence);
+
+  const allPolicyRefs = linkedPolicies
+    .filter(p => p.policy_reference)
+    .map(p => p.policy_reference);
+  const policyRefList = allPolicyRefs.length ? allPolicyRefs.join(', ') : 'the relevant policies';
+
+  const prompt = (customPromptTemplate ?? PLANNING_ASSESSMENT_DEFAULT_PROMPT)
+    .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
+    .replace(/\{\{SECTION_NAME\}\}/g, section.name)
+    .replace(/\{\{ISSUE_LABEL\}\}/g, issue.label)
+    .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issue.discipline ? ` (${issue.discipline})` : '')
+    .replace(/\{\{POLICY_REFS\}\}/g, policyRefList)
+    .replace(/\{\{ISSUE_CONTEXT\}\}/g, issueContext)
+    .replace(/\{\{EXAMPLE_BLOCK\}\}/g, exampleBlock);
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 2000,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim()
+    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  return `<div class="llm-generated">${raw}</div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1676,8 +1703,8 @@ Return ONLY a valid JSON array with no preamble, explanation, or code fences. If
   }
 }
 
-export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {}, customPrompt }) {
-  const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, argumentPoints });
+export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {}, customPrompt }) {
+  const prompt = customPrompt ?? buildExtractPointsPrompt({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, existingPointsByTrack });
 
   const response = await client.messages.create({
     model: MODEL_SONNET,

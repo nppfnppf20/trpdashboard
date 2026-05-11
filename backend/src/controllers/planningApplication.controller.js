@@ -13,11 +13,13 @@ import {
   generateAppealDraft,
   generateDraftSection,
   generatePlanningStatementAssessment,
+  generateSingleAssessmentIssue,
   generatePlanningStatementSection,
   generateFromTemplate,
   summariseDocument,
   getDefaultSummaryPrompt,
-  suggestTranscriptUpdates
+  suggestTranscriptUpdates,
+  PLANNING_ASSESSMENT_DEFAULT_PROMPT
 } from '../services/llm.service.js';
 
 const SCHEMA = 'planning_applications';
@@ -261,6 +263,21 @@ export async function analyseDocument(req, res) {
       linkedPolicies = policyRows;
     }
 
+    // Load existing accepted argument points so the LLM knows the current argument structure
+    const { rows: existingPoints } = await pool.query(
+      `SELECT ap.track_id, ap.headline, dl.title AS source_doc_title
+       FROM planning_applications.argument_points ap
+       LEFT JOIN planning_applications.document_log dl ON dl.id = ap.document_log_id
+       WHERE ap.project_id = $1 AND ap.accepted = TRUE
+       ORDER BY ap.track_id, ap.sort_order, ap.id`,
+      [projectId]
+    );
+    const existingPointsByTrack = {};
+    for (const row of existingPoints) {
+      if (!existingPointsByTrack[row.track_id]) existingPointsByTrack[row.track_id] = [];
+      existingPointsByTrack[row.track_id].push({ headline: row.headline, source: row.source_doc_title });
+    }
+
     const { rows: templateRows } = await pool.query(
       `SELECT prompt_text FROM planning_applications.prompt_settings
        WHERE project_id = $1 AND prompt_key = 'extract_points'`,
@@ -270,7 +287,7 @@ export async function analyseDocument(req, res) {
 
     if (preview) {
       const template = savedTemplate
-        ?? buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies });
+        ?? buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, existingPointsByTrack });
       return res.json({ template });
     }
 
@@ -283,7 +300,7 @@ export async function analyseDocument(req, res) {
 
     const result = await extractPointsFromDocument({
       text, allIssues, targetIssues, documentType, documentDirection, userNotes,
-      linkedPolicies, customPrompt: resolvedPrompt
+      linkedPolicies, existingPointsByTrack, customPrompt: resolvedPrompt
     });
 
     const chunks = buildChunkMeta(text, chunkText(text));
@@ -1280,6 +1297,102 @@ export async function generateSection(req, res) {
     res.json({ html, section_id: section.id, section_name: section.name });
   } catch (err) {
     console.error('pa.generateSection error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getAssessmentIssues(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline
+       FROM admin_console.project_issue_tracks pit
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getAssessmentIssues error:', err);
+    res.status(500).json({ error: 'Failed to fetch assessment issues' });
+  }
+}
+
+export async function generateAssessmentIssue(req, res) {
+  const { projectId, typeId, sectionId, trackId } = req.params;
+  try {
+    const [{ rows: projectRows }, { rows: sectionRows }, { rows: issueRows }, evidenceByTrack, linkedPoliciesByTrack, { rows: bsRows }] = await Promise.all([
+      pool.query(`SELECT project_name FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(`SELECT * FROM planning_applications.draft_sections WHERE id = $1`, [sectionId]),
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline,
+                ain.argument_against, ain.argument_for,
+                ain.policy_national, ain.policy_local, ain.policy_neighbourhood,
+                ain.policy_supplementary, ain.policy_other
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN planning_applications.issue_notes ain
+           ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.id = $2`,
+        [projectId, trackId]
+      ),
+      fetchEvidenceByTrack(projectId),
+      fetchLinkedPoliciesByTrack(projectId),
+      pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      )
+    ]);
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+    if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
+    if (!issueRows.length) return res.status(404).json({ error: 'Issue not found' });
+
+    const issue = issueRows[0];
+    const html = await generateSingleAssessmentIssue({
+      projectName: projectRows[0].project_name,
+      section: sectionRows[0],
+      issue,
+      linkedPolicies: linkedPoliciesByTrack[issue.id] ?? [],
+      evidence: evidenceByTrack[issue.id] ?? [],
+      briefingSummary: bsRows[0]?.summary_html ?? null
+    });
+    res.json({ html });
+  } catch (err) {
+    console.error('generateAssessmentIssue error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate assessment issue' });
+  }
+}
+
+export async function getSectionPrompt(req, res) {
+  const { sectionId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT slug, generation_prompt FROM planning_applications.draft_sections WHERE id = $1`,
+      [sectionId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Section not found' });
+    const section = rows[0];
+    const isCustom = !!section.generation_prompt?.trim();
+    const prompt = isCustom
+      ? section.generation_prompt
+      : section.slug === 'planning_assessment' ? PLANNING_ASSESSMENT_DEFAULT_PROMPT : '';
+    res.json({ prompt, is_custom: isCustom });
+  } catch (err) {
+    console.error('pa.getSectionPrompt error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function resetSectionPrompt(req, res) {
+  const { sectionId } = req.params;
+  try {
+    await pool.query(
+      `UPDATE planning_applications.draft_sections SET generation_prompt = NULL WHERE id = $1`,
+      [sectionId]
+    );
+    res.json({ prompt: PLANNING_ASSESSMENT_DEFAULT_PROMPT, is_custom: false });
+  } catch (err) {
+    console.error('pa.resetSectionPrompt error:', err);
     res.status(500).json({ error: err.message });
   }
 }

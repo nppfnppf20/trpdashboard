@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { tick } from 'svelte';
-import { getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections } from '$lib/api/planningApplication.js';
+import { getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections, getSectionPrompt, resetSectionPrompt, getAssessmentIssues, generateAssessmentIssue } from '$lib/api/planningApplication.js';
 
 // Editor component refs — set from the template via setDraftEditor / setSectionExampleEditor
 let _draftEditor;
@@ -39,8 +39,10 @@ export const sectionGenerating = writable(null);
 export const sectionExpandedId = writable(null);
 export const sectionPromptId = writable(null);
 export const sectionPromptText = writable('');
+export const sectionPromptIsCustom = writable(false);
 export const sectionPromptSaving = writable(false);
 export const sectionPromptSaved = writable(false);
+export const sectionPromptResetting = writable(false);
 export const sectionTemplateText = writable('');
 export const sectionTemplateSaving = writable(false);
 export const sectionTemplateSaved = writable(false);
@@ -175,17 +177,45 @@ export async function moveSectionDown(idx) {
   }
 }
 
-export function toggleSectionExpand(sectionId) {
+export async function toggleSectionExpand(sectionId) {
   if (get(sectionExpandedId) === sectionId) {
     sectionExpandedId.set(null);
   } else {
     sectionExpandedId.set(sectionId);
     sectionPromptId.set(sectionId);
     const s = get(sections).find(sec => sec.id === sectionId);
-    sectionPromptText.set(s?.generation_prompt ?? '');
     sectionTemplateText.set(s?.template_html ?? '');
     sectionPromptSaved.set(false);
     sectionTemplateSaved.set(false);
+
+    if (s?.slug === 'planning_assessment') {
+      sectionPromptText.set('');
+      sectionPromptIsCustom.set(false);
+      try {
+        const data = await getSectionPrompt(sectionId);
+        sectionPromptText.set(data.prompt);
+        sectionPromptIsCustom.set(data.is_custom);
+      } catch (err) {
+        console.error('Failed to load section prompt:', err);
+      }
+    } else {
+      sectionPromptText.set(s?.generation_prompt ?? '');
+      sectionPromptIsCustom.set(false);
+    }
+  }
+}
+
+export async function handleResetSectionPrompt(sectionId) {
+  sectionPromptResetting.set(true);
+  try {
+    const data = await resetSectionPrompt(sectionId);
+    sectionPromptText.set(data.prompt);
+    sectionPromptIsCustom.set(false);
+    sections.update(ss => ss.map(s => s.id === sectionId ? { ...s, generation_prompt: null } : s));
+  } catch (err) {
+    console.error('Failed to reset section prompt:', err);
+  } finally {
+    sectionPromptResetting.set(false);
   }
 }
 
@@ -194,6 +224,7 @@ export async function handleSaveSectionPrompt(sectionId) {
   try {
     const updated = await updateSection(sectionId, { generation_prompt: get(sectionPromptText) });
     sections.update(ss => ss.map(s => s.id === sectionId ? { ...s, ...updated } : s));
+    sectionPromptIsCustom.set(true);
     sectionPromptSaved.set(true);
     setTimeout(() => sectionPromptSaved.set(false), 2500);
   } catch (err) {
@@ -280,6 +311,74 @@ export async function toggleCardExpand(typeId) {
 
 export function invalidateCardSections(typeId) {
   cardSections.update(s => { const copy = { ...s }; delete copy[typeId]; return copy; });
+}
+
+// ── Per-issue assessment generation ──
+
+export const assessmentIssues = writable([]);
+export const assessmentIssuesLoading = writable(false);
+export const issueGenerating = writable(null); // trackId
+
+export async function loadAssessmentIssues() {
+  assessmentIssuesLoading.set(true);
+  try {
+    assessmentIssues.set(await getAssessmentIssues(_projectId));
+  } catch (err) {
+    console.error('Failed to load assessment issues:', err);
+  } finally {
+    assessmentIssuesLoading.set(false);
+  }
+}
+
+function patchIssueInDraft(draftHtml, issueLabel, newIssueHtml) {
+  if (!draftHtml) return newIssueHtml;
+  const escaped = issueLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const h3Pattern = new RegExp(`<h3>[^<]*${escaped}[^<]*<\\/h3>`, 'i');
+
+  // Walk each llm-generated block individually so we never match across block boundaries
+  const OPEN = '<div class="llm-generated">';
+  const CLOSE = '</div>';
+  let searchFrom = 0;
+  while (true) {
+    const openIdx = draftHtml.indexOf(OPEN, searchFrom);
+    if (openIdx === -1) break;
+    const closeIdx = draftHtml.indexOf(CLOSE, openIdx + OPEN.length);
+    if (closeIdx === -1) break;
+    const block = draftHtml.slice(openIdx, closeIdx + CLOSE.length);
+    if (h3Pattern.test(block)) {
+      return draftHtml.slice(0, openIdx) + newIssueHtml + draftHtml.slice(closeIdx + CLOSE.length);
+    }
+    searchFrom = closeIdx + CLOSE.length;
+  }
+
+  // No existing block found — insert after the Planning Assessment h2
+  const h2Match = /<h2>[^<]*[Pp]lanning\s+[Aa]ssessment[^<]*<\/h2>/.exec(draftHtml);
+  if (h2Match) {
+    const insertAt = h2Match.index + h2Match[0].length;
+    return draftHtml.slice(0, insertAt) + '\n\n' + newIssueHtml + draftHtml.slice(insertAt);
+  }
+
+  return draftHtml + '\n\n' + newIssueHtml;
+}
+
+export async function handleGenerateAssessmentIssue(typeId, sectionId, trackId, issueLabel) {
+  issueGenerating.set(trackId);
+  try {
+    const { html } = await generateAssessmentIssue(_projectId, typeId, sectionId, trackId);
+    const currentHtml = get(drafts)[typeId]?.content_html ?? '';
+    const patched = patchIssueInDraft(currentHtml, issueLabel, html);
+    const saved = await saveDraft(_projectId, typeId, patched);
+    drafts.update(d => ({ ...d, [typeId]: saved }));
+    if (get(activeDraftTypeId) === typeId) {
+      draftEditorHtml.set(patched);
+      _draftEditor?.setHTML(patched);
+    }
+  } catch (err) {
+    console.error('Generate assessment issue failed:', err);
+    alert(`Failed to generate: ${err.message}`);
+  } finally {
+    issueGenerating.set(null);
+  }
 }
 
 export async function handleGenerateSection(sectionId, explicitTypeId = null) {

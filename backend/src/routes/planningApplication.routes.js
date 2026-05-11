@@ -37,6 +37,10 @@ import {
   replaceDocumentSummary,
   deleteDocumentSummary,
   suggestDocumentUpdates,
+  getSectionPrompt,
+  resetSectionPrompt,
+  getAssessmentIssues,
+  generateAssessmentIssue,
   getDocTypePrompt,
   saveDocTypePrompt,
   deleteDocTypePrompt
@@ -84,11 +88,15 @@ router.get('/draft-types/:typeId/sections', getSections);
 router.post('/draft-types/:typeId/sections', createSection);
 router.patch('/sections/:sectionId', updateSection);
 router.delete('/sections/:sectionId', deleteSection);
+router.get('/sections/:sectionId/prompt', getSectionPrompt);
+router.delete('/sections/:sectionId/prompt', resetSectionPrompt);
 router.put('/draft-types/:typeId/sections/reorder', reorderSections);
 router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
+router.get('/projects/:projectId/assessment-issues', getAssessmentIssues);
+router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/issues/:trackId/generate', generateAssessmentIssue);
 
 // Document log
 router.get('/projects/:projectId/document-log', getDocumentLog);

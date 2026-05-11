@@ -5,7 +5,7 @@
   import { initNotes } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, argumentPointsByTrack, initAnalysis, initArgumentPoints, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/planning-analysis.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, toggleCardExpand } from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue } from '$lib/stores/planning-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
@@ -117,7 +117,7 @@
       loading = false;
     }
     // Run independently — draft failures must not block the rest of the workspace
-    await loadDraftTypes();
+    await Promise.all([loadDraftTypes(), loadAssessmentIssues()]);
   }
 
 
@@ -600,13 +600,34 @@
                           <button
                             class="section-generate-btn"
                             disabled={$sectionGenerating === section.id}
-                            title="Generate this section"
+                            title="Generate entire section"
                             on:click={() => handleGenerateSection(section.id, type.id)}
                           >
                             {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
                           </button>
                         </div>
                       </div>
+                      {#if section.slug === 'planning_assessment' && $assessmentIssues.length > 0}
+                        <div class="assessment-issues-list">
+                          {#if $assessmentIssuesLoading}
+                            <div class="draft-inline-loading"><div class="mini-spinner"></div><span>Loading issues...</span></div>
+                          {:else}
+                            {#each $assessmentIssues as issue (issue.id)}
+                              <div class="assessment-issue-row">
+                                <span class="assessment-issue-label">{issue.label}{issue.discipline ? ` — ${issue.discipline}` : ''}</span>
+                                <button
+                                  class="issue-generate-btn"
+                                  disabled={$issueGenerating === issue.id}
+                                  title="Regenerate this issue only"
+                                  on:click={() => handleGenerateAssessmentIssue(type.id, section.id, issue.id, issue.label)}
+                                >
+                                  {#if $issueGenerating === issue.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
+                                </button>
+                              </div>
+                            {/each}
+                          {/if}
+                        </div>
+                      {/if}
                     {/each}
                   {/if}
                   <button class="draft-setting-btn draft-configure-btn" on:click={() => openSectionsModal(type.id)}>
@@ -836,8 +857,33 @@
                       <!-- Prompt block (used when no template) -->
                       <div class="section-block" class:section-block--dimmed={!!$sectionTemplateText}>
                         <label class="section-field-label">Generation prompt
-                          <span class="form-label-hint">{$sectionTemplateText ? '— ignored when template is set' : '— used when no template'}</span>
+                          <span class="form-label-hint">
+                            {#if section.slug === 'planning_assessment'}
+                              — replaces the default assessment prompt when set
+                            {:else if $sectionTemplateText}
+                              — ignored when template is set
+                            {:else}
+                              — used when no template
+                            {/if}
+                          </span>
                         </label>
+
+                        {#if section.slug === 'planning_assessment'}
+                          <div class="assessment-vars-hint">
+                            <span class="assessment-vars-title">Available variables (substituted per issue)</span>
+                            <div class="assessment-vars-list">
+                              <code>{'{{ISSUE_LABEL}}'}</code>
+                              <code>{'{{ISSUE_DISCIPLINE}}'}</code>
+                              <code>{'{{POLICY_REFS}}'}</code>
+                              <code>{'{{ISSUE_CONTEXT}}'}</code>
+                              <code>{'{{PROJECT_NAME}}'}</code>
+                              <code>{'{{SECTION_NAME}}'}</code>
+                              <code>{'{{EXAMPLE_BLOCK}}'}</code>
+                            </div>
+                            <p class="assessment-vars-note">If left blank, the default structured prompt is used.</p>
+                          </div>
+                        {/if}
+
                         <textarea class="prompt-editor section-prompt" bind:value={$sectionPromptText} use:autoresize={$sectionPromptText}></textarea>
 
                         {#if detectedVars.length > 0}
@@ -861,6 +907,16 @@
                         {/if}
 
                         <div class="section-expand-actions">
+                          {#if section.slug === 'planning_assessment'}
+                            {#if $sectionPromptIsCustom}
+                              <span class="prompt-custom-badge">Custom prompt</span>
+                              <button class="btn-reset-prompt" disabled={$sectionPromptResetting} on:click={() => handleResetSectionPrompt(section.id)}>
+                                {$sectionPromptResetting ? 'Resetting…' : 'Reset to default'}
+                              </button>
+                            {:else}
+                              <span class="prompt-default-badge">Default prompt</span>
+                            {/if}
+                          {/if}
                           <button class="section-example-btn" on:click={() => openSectionExampleModal(section.id)}>
                             <i class="las la-file-alt"></i> Edit style example
                           </button>
@@ -1814,6 +1870,52 @@
 
   .draft-inline-section-actions { display: flex; gap: 0.375rem; align-items: center; }
 
+  .assessment-issues-list {
+    margin: 0.125rem 0 0.25rem 1rem;
+    border-left: 2px solid #e9d5ff;
+    padding-left: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .assessment-issue-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: #faf5ff;
+  }
+
+  .assessment-issue-label {
+    flex: 1;
+    font-size: 0.75rem;
+    color: #6b21a8;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .issue-generate-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid #d8b4fe;
+    border-radius: 4px;
+    background: white;
+    color: #7c3aed;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .issue-generate-btn:hover:not(:disabled) { background: #f5f3ff; border-color: #a855f7; }
+  .issue-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
   .draft-configure-btn {
     margin-top: 0.25rem;
     align-self: flex-start;
@@ -2287,6 +2389,62 @@
     min-height: 80px;
     resize: none;
     overflow: hidden;
+  }
+
+  .prompt-custom-badge {
+    font-size: 0.72rem; font-weight: 600;
+    background: #f3e8ff; color: #7e22ce;
+    padding: 0.2rem 0.5rem; border-radius: 20px;
+  }
+  .prompt-default-badge {
+    font-size: 0.72rem; font-weight: 600;
+    background: #f1f5f9; color: #64748b;
+    padding: 0.2rem 0.5rem; border-radius: 20px;
+  }
+  .btn-reset-prompt {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #d1d5db; background: white;
+    border-radius: 5px; font-size: 0.78rem;
+    font-family: inherit; color: #64748b; cursor: pointer;
+  }
+  .btn-reset-prompt:hover:not(:disabled) { background: #f8fafc; border-color: #9333ea; color: #7e22ce; }
+  .btn-reset-prompt:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .assessment-vars-hint {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 0.375rem;
+  }
+  .assessment-vars-title {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #16a34a;
+    margin-bottom: 0.5rem;
+  }
+  .assessment-vars-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+  }
+  .assessment-vars-list code {
+    font-size: 0.72rem;
+    background: white;
+    border: 1px solid #bbf7d0;
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+    color: #15803d;
+    font-family: monospace;
+  }
+  .assessment-vars-note {
+    margin: 0;
+    font-size: 0.72rem;
+    color: #64748b;
   }
 
   .section-vars-panel {

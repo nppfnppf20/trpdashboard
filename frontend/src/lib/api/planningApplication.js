@@ -141,6 +141,18 @@ export async function deleteSection(sectionId) {
   return res.json();
 }
 
+export async function getSectionPrompt(sectionId) {
+  const res = await authFetch(`${BASE}/sections/${sectionId}/prompt`);
+  if (!res.ok) throw new Error('Failed to fetch section prompt');
+  return res.json(); // { prompt, is_custom }
+}
+
+export async function resetSectionPrompt(sectionId) {
+  const res = await authFetch(`${BASE}/sections/${sectionId}/prompt`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to reset section prompt');
+  return res.json(); // { prompt, is_custom: false }
+}
+
 export async function reorderSections(typeId, order) {
   const res = await authFetch(`${BASE}/draft-types/${typeId}/sections/reorder`, {
     method: 'PUT',
@@ -183,6 +195,21 @@ export async function generateDraftSection(projectId, typeId, sectionId) {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to generate section');
+  }
+  return res.json();
+}
+
+export async function getAssessmentIssues(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/assessment-issues`);
+  if (!res.ok) throw new Error('Failed to fetch assessment issues');
+  return res.json();
+}
+
+export async function generateAssessmentIssue(projectId, typeId, sectionId, trackId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/sections/${sectionId}/issues/${trackId}/generate`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to generate assessment issue');
   }
   return res.json();
 }
