@@ -3,7 +3,7 @@
   import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { initNotes } from '$lib/stores/planning-notes.js';
-  import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
+  import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, argumentPointsByTrack, initAnalysis, initArgumentPoints, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/planning-analysis.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, toggleCardExpand } from '$lib/stores/planning-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
@@ -48,9 +48,15 @@
     PRE_APP_SUMMARY:         { label: 'Pre-app summary',            source: 'document_summaries — doc_type: pre_app',               programmatic: true },
     EIA_SUMMARY:             { label: 'EIA summary',                source: 'document_summaries — doc_type: eia_response',          programmatic: true },
     SCI_SUMMARY:             { label: 'SCI summary',                source: 'document_summaries — doc_type: sci',                   programmatic: true },
-    LOCAL_POLICIES:          { label: 'Local policies (HTML)',       source: 'project_policies — local, verbatim listing',           programmatic: true },
-    NATIONAL_POLICIES:       { label: 'National policies (HTML)',   source: 'project_policies — national, verbatim listing',        programmatic: true },
-    OTHER_POLICIES:          { label: 'Other policies (HTML)',      source: 'project_policies — other types, verbatim listing',     programmatic: true },
+    LOCAL_POLICIES:             { label: 'Local policies (HTML)',       source: 'project_policies — local, verbatim listing',           programmatic: true },
+    NATIONAL_POLICIES:          { label: 'National policies (HTML)',   source: 'project_policies — national, verbatim listing',        programmatic: true },
+    OTHER_POLICIES:             { label: 'Other policies (HTML)',      source: 'project_policies — other types, verbatim listing',     programmatic: true },
+    LOCAL_POLICY_NAMES:         { label: 'Local policy names',         source: 'project_policies — local, ref + name list only',       programmatic: true },
+    SUPPLEMENTARY_POLICY_NAMES: { label: 'Supplementary policy names', source: 'project_policies — supplementary, ref + name list',    programmatic: true },
+    SITE_SURROUNDINGS_HTML:     { label: 'Site & surroundings (HTML)', source: 'document_summaries — doc_type: site_surroundings, raw HTML', programmatic: true },
+    PLANNING_HISTORY_TABLE:     { label: 'Planning history table',     source: 'planning_history table, rendered as HTML table',       programmatic: true },
+    DOCUMENT_LIST_DOCS:         { label: 'Document list',              source: 'document_log — item_type: document, as bullet list',   programmatic: true },
+    DOCUMENT_LIST_DRAWINGS:     { label: 'Drawings list',              source: 'document_log — item_type: drawing, as bullet list',    programmatic: true },
     LOCAL_POLICIES_CONTEXT:  { label: 'Local policies (context)',   source: 'project_policies — local, refs + notes for LLM',       programmatic: false },
     NATIONAL_POLICIES_CONTEXT: { label: 'National policies (context)', source: 'project_policies — national, refs + notes for LLM', programmatic: false },
     OTHER_POLICIES_CONTEXT:  { label: 'Other policies (context)',   source: 'project_policies — other, refs + notes for LLM',       programmatic: false },
@@ -636,6 +642,20 @@
               <input class="add-section-input" type="text" bind:value={$logCode} placeholder="e.g. CD/1.2" />
             </div>
           </div>
+          <div class="log-form-row">
+            <div class="log-form-field log-form-field-sm">
+              <label class="section-field-label">Type</label>
+              <select class="template-select" bind:value={$logItemType}>
+                <option value="document">Document</option>
+                <option value="drawing">Drawing</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="log-form-field">
+              <label class="section-field-label">Prepared by</label>
+              <input class="add-section-input" type="text" bind:value={$logPreparedBy} placeholder="e.g. Third Revolution Projects Ltd" />
+            </div>
+          </div>
 
           {#if $logSummary}
             <div class="log-form-field">
@@ -698,6 +718,20 @@
             <div class="log-form-field log-form-field-sm">
               <label class="section-field-label">Reference / code</label>
               <input class="add-section-input" type="text" bind:value={$editCode} placeholder="e.g. CD/1.2" />
+            </div>
+          </div>
+          <div class="log-form-row">
+            <div class="log-form-field log-form-field-sm">
+              <label class="section-field-label">Type</label>
+              <select class="template-select" bind:value={$editItemType}>
+                <option value="document">Document</option>
+                <option value="drawing">Drawing</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="log-form-field">
+              <label class="section-field-label">Prepared by</label>
+              <input class="add-section-input" type="text" bind:value={$editPreparedBy} placeholder="e.g. Third Revolution Projects Ltd" />
             </div>
           </div>
 

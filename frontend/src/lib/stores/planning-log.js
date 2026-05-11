@@ -7,6 +7,8 @@ export const documentLog = writable([]);
 export const logModalOpen = writable(false);
 export const logTitle = writable('');
 export const logCode = writable('');
+export const logItemType = writable('document');
+export const logPreparedBy = writable('');
 export const logSummary = writable('');
 export const logPoints = writable([]);
 export const logSaving = writable(false);
@@ -16,6 +18,8 @@ export const editModalOpen = writable(false);
 export const editEntryId = writable(null);
 export const editTitle = writable('');
 export const editCode = writable('');
+export const editItemType = writable('document');
+export const editPreparedBy = writable('');
 export const editSummary = writable('');
 export const editPoints = writable([]);
 export const editSaving = writable(false);
@@ -27,6 +31,8 @@ export function initLog(initialLog = []) {
 export function openLogModal(analysisSummary, acceptedPoints) {
   logTitle.set('');
   logCode.set('');
+  logItemType.set('document');
+  logPreparedBy.set('');
   logSummary.set(analysisSummary);
   logPoints.set(acceptedPoints.map((p, i) => ({
     id: i,
@@ -48,6 +54,8 @@ export function openEditModal(entry) {
   editEntryId.set(entry.id);
   editTitle.set(entry.title);
   editCode.set(entry.code ?? '');
+  editItemType.set(entry.item_type ?? 'document');
+  editPreparedBy.set(entry.prepared_by ?? '');
   editSummary.set(entry.document_summary ?? '');
   editPoints.set((entry.argument_points ?? []).map((p, i) => ({ ...p, id: i })));
   editModalOpen.set(true);
@@ -65,6 +73,8 @@ export async function saveEditEntry() {
     const updated = await updateDocumentLogEntry(id, {
       title: get(editTitle),
       code: get(editCode),
+      item_type: get(editItemType),
+      prepared_by: get(editPreparedBy),
       document_summary: get(editSummary),
       argument_points: get(editPoints).map(({ id: _id, ...p }) => p)
     });
@@ -93,6 +103,8 @@ export async function saveLogEntry(projectId) {
     const entry = await createDocumentLogEntry(projectId, {
       title: get(logTitle),
       code: get(logCode),
+      item_type: get(logItemType),
+      prepared_by: get(logPreparedBy),
       document_summary: get(logSummary),
       argument_points: get(logPoints).map(p => ({
         track_id: p.track_id,

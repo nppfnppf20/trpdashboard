@@ -1386,6 +1386,9 @@ const PLANNING_STATEMENT_OUTPUT_VARS = new Set([
   'PROJECT_NAME', 'APPLICANT_NAME', 'LPA_NAME', 'SITE_ADDRESS', 'DEVELOPMENT_DESCRIPTION',
   'ABOUT_APPLICANT', 'PRE_APP_SUMMARY', 'EIA_SUMMARY', 'SCI_SUMMARY',
   'NATIONAL_POLICIES', 'LOCAL_POLICIES', 'OTHER_POLICIES',
+  'LOCAL_POLICY_NAMES', 'SUPPLEMENTARY_POLICY_NAMES',
+  'SITE_SURROUNDINGS_HTML', 'PLANNING_HISTORY_TABLE',
+  'DOCUMENT_LIST_DOCS', 'DOCUMENT_LIST_DRAWINGS',
 ]);
 
 const OUTPUT_VAR_PLACEHOLDER_LABELS = {
@@ -1393,9 +1396,15 @@ const OUTPUT_VAR_PLACEHOLDER_LABELS = {
   PRE_APP_SUMMARY:   'Pre-Application Response Summary',
   EIA_SUMMARY:       'EIA / Environmental Statement Summary',
   SCI_SUMMARY:       'Statement of Community Involvement Summary',
-  NATIONAL_POLICIES: 'National Policies',
-  LOCAL_POLICIES:    'Local Development Plan Policies',
-  OTHER_POLICIES:    'Other Material Policies',
+  NATIONAL_POLICIES:          'National Policies',
+  LOCAL_POLICIES:             'Local Development Plan Policies',
+  OTHER_POLICIES:             'Other Material Policies',
+  LOCAL_POLICY_NAMES:         'Local Policy Names',
+  SUPPLEMENTARY_POLICY_NAMES: 'Supplementary Policy Names',
+  SITE_SURROUNDINGS_HTML:     'Site and Surroundings',
+  PLANNING_HISTORY_TABLE:     'Planning History Table',
+  DOCUMENT_LIST_DOCS:         'Document List',
+  DOCUMENT_LIST_DRAWINGS:     'Drawings List',
 };
 
 export async function generatePlanningStatementSection({ section, variables, sectionNumber }) {
@@ -1514,9 +1523,15 @@ export async function generateFromTemplate({ section, variables }) {
       PRE_APP_SUMMARY: 'Pre-Application Response Summary',
       EIA_SUMMARY:     'EIA / Environmental Statement Summary',
       SCI_SUMMARY:     'Statement of Community Involvement Summary',
-      NATIONAL_POLICIES: 'National Policies',
-      LOCAL_POLICIES:    'Local Development Plan Policies',
-      OTHER_POLICIES:    'Other Material Policies',
+      NATIONAL_POLICIES:          'National Policies',
+      LOCAL_POLICIES:             'Local Development Plan Policies',
+      OTHER_POLICIES:             'Other Material Policies',
+      LOCAL_POLICY_NAMES:         'Local Policy Names',
+      SUPPLEMENTARY_POLICY_NAMES: 'Supplementary Policy Names',
+      SITE_SURROUNDINGS_HTML:     'Site and Surroundings',
+      PLANNING_HISTORY_TABLE:     'Planning History Table',
+      DOCUMENT_LIST_DOCS:         'Document List',
+      DOCUMENT_LIST_DRAWINGS:     'Drawings List',
     };
     return labels[key] ?? key.replace(/_/g, ' ').toLowerCase();
   };

@@ -432,7 +432,7 @@ export async function getDocumentLog(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, project_id, title, code, document_summary, argument_points, logged_at
+      `SELECT id, project_id, title, code, item_type, prepared_by, document_summary, argument_points, logged_at
        FROM planning_applications.document_log
        WHERE project_id = $1
        ORDER BY logged_at DESC`,
@@ -470,16 +470,16 @@ export async function deleteDocumentLogEntry(req, res) {
 
 export async function updateDocumentLogEntry(req, res) {
   const { entryId } = req.params;
-  const { title, code, document_summary, argument_points } = req.body;
+  const { title, code, item_type, prepared_by, document_summary, argument_points } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.document_log
-       SET title = $1, code = $2, document_summary = $3, argument_points = $4
-       WHERE id = $5
+       SET title = $1, code = $2, item_type = $3, prepared_by = $4, document_summary = $5, argument_points = $6
+       WHERE id = $7
        RETURNING *`,
-      [title.trim(), code?.trim() || null, document_summary?.trim() || null,
-       JSON.stringify(argument_points ?? []), entryId]
+      [title.trim(), code?.trim() || null, item_type ?? 'document', prepared_by?.trim() || null,
+       document_summary?.trim() || null, JSON.stringify(argument_points ?? []), entryId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Log entry not found' });
     res.json(rows[0]);
@@ -491,16 +491,16 @@ export async function updateDocumentLogEntry(req, res) {
 
 export async function createDocumentLogEntry(req, res) {
   const { projectId } = req.params;
-  const { title, code, document_summary, argument_points, chunks } = req.body;
+  const { title, code, item_type, prepared_by, document_summary, argument_points, chunks } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.document_log
-         (project_id, title, code, document_summary, argument_points)
-       VALUES ($1, $2, $3, $4, $5)
+         (project_id, title, code, item_type, prepared_by, document_summary, argument_points)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [projectId, title.trim(), code?.trim() || null,
-       document_summary?.trim() || null, JSON.stringify(argument_points ?? [])]
+      [projectId, title.trim(), code?.trim() || null, item_type ?? 'document',
+       prepared_by?.trim() || null, document_summary?.trim() || null, JSON.stringify(argument_points ?? [])]
     );
     const entry = rows[0];
 
@@ -753,7 +753,7 @@ async function resolvePlanningStatementVariables(projectId) {
   }
 
   const { rows: docLog } = await pool.query(
-    `SELECT title, code FROM planning_applications.document_log
+    `SELECT title, code, item_type, prepared_by FROM planning_applications.document_log
      WHERE project_id = $1 ORDER BY logged_at ASC`, [projectId]
   );
 
@@ -777,6 +777,18 @@ async function resolvePlanningStatementVariables(projectId) {
     ? docLog.map(d => `- ${d.title}${d.code ? ` (Ref: ${d.code})` : ''}`).join('\n')
     : '[No documents logged]';
 
+  const formatDocListHtml = (items) => {
+    if (!items.length) return '';
+    return `<ul>\n${items.map(d => {
+      const by = d.prepared_by?.trim() ? ` prepared by ${d.prepared_by.trim()}` : '';
+      const code = d.code ? ` (${d.code})` : '';
+      return `<li>${d.title}${by}${code}</li>`;
+    }).join('\n')}\n</ul>`;
+  };
+
+  const logDocuments = docLog.filter(d => d.item_type === 'document');
+  const logDrawings  = docLog.filter(d => d.item_type === 'drawing');
+
   const planningHistoryText = history.length
     ? history.map(h => {
         const parts = [h.description];
@@ -790,6 +802,24 @@ async function resolvePlanningStatementVariables(projectId) {
         return parts.join(' — ');
       }).join('\n\n')
     : '';
+
+  const planningHistoryTable = history.length
+    ? `<table>
+<thead><tr><th>Reference</th><th>Description</th><th>Decision</th><th>Date</th><th>Notes</th></tr></thead>
+<tbody>
+${history.map(h => {
+  const ref = h.app_reference ?? '—';
+  const desc = h.description ?? '—';
+  const decision = h.decision ?? '—';
+  const date = h.decision_date
+    ? new Date(h.decision_date).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
+    : '—';
+  const notes = h.notes ?? '—';
+  return `<tr><td>${ref}</td><td>${desc}</td><td>${decision}</td><td>${date}</td><td>${notes}</td></tr>`;
+}).join('\n')}
+</tbody>
+</table>`
+    : '<p>No relevant planning history.</p>';
 
   // HTML block for programmatic injection — all policies listed, key policies with verbatim text
   const formatPolicyListHtml = (pols) => {
@@ -815,8 +845,19 @@ async function resolvePlanningStatementVariables(projectId) {
     return `- ${ref}${p.policy_name}${key}${context}`;
   }).join('\n');
 
+  // Just ref + name as a bullet list — no verbatim text
+  const formatPolicyNamesHtml = (pols) => {
+    if (!pols.length) return '';
+    const items = pols.map(p => {
+      const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+      return `<li>${ref}${p.policy_name}</li>`;
+    }).join('\n');
+    return `<ul>\n${items}\n</ul>`;
+  };
+
   const localPolicies = policies.filter(p => p.policy_type === 'local');
   const nationalPolicies = policies.filter(p => p.policy_type === 'national');
+  const supplementaryPolicies = policies.filter(p => p.policy_type === 'supplementary');
   const otherPolicies = policies.filter(p => !['local', 'national'].includes(p.policy_type));
 
   return {
@@ -828,14 +869,20 @@ async function resolvePlanningStatementVariables(projectId) {
     ABOUT_APPLICANT:           summaryByType.about_applicant ?? '',
     PROPOSED_DEVELOPMENT:      stripHtml(summaryByType.proposed_development),
     DOCUMENT_LIST:             documentList,
+    DOCUMENT_LIST_DOCS:        formatDocListHtml(logDocuments),
+    DOCUMENT_LIST_DRAWINGS:    formatDocListHtml(logDrawings),
     SITE_SURROUNDINGS:         stripHtml(summaryByType.site_surroundings),
+    SITE_SURROUNDINGS_HTML:    summaryByType.site_surroundings ?? '',
     PLANNING_HISTORY:          planningHistoryText,
+    PLANNING_HISTORY_TABLE:    planningHistoryTable,
     PRE_APP_SUMMARY:           summaryByType.pre_app ?? '',
     EIA_SUMMARY:               summaryByType.eia_response ?? '',
     SCI_SUMMARY:               summaryByType.sci ?? '',
     LOCAL_POLICIES:            formatPolicyListHtml(localPolicies),
     NATIONAL_POLICIES:         formatPolicyListHtml(nationalPolicies),
     OTHER_POLICIES:            formatPolicyListHtml(otherPolicies),
+    LOCAL_POLICY_NAMES:        formatPolicyNamesHtml(localPolicies),
+    SUPPLEMENTARY_POLICY_NAMES: formatPolicyNamesHtml(supplementaryPolicies),
     LOCAL_POLICIES_CONTEXT:    formatPolicyContext(localPolicies),
     NATIONAL_POLICIES_CONTEXT: formatPolicyContext(nationalPolicies),
     OTHER_POLICIES_CONTEXT:    formatPolicyContext(otherPolicies),
@@ -878,7 +925,7 @@ export async function generateDraft(req, res) {
       fetchLinkedPoliciesByTrack(projectId)
     ]);
 
-    const hasTemplatedSections = sections.some(s => s.generation_prompt?.includes('{{'));
+    const hasTemplatedSections = sections.some(s => s.generation_prompt?.includes('{{') || !!s.template_html);
     let contentHtml;
 
     if (hasTemplatedSections) {
@@ -918,7 +965,9 @@ export async function generateDraft(req, res) {
         const runsLastVariables = { ...variables, FULL_STATEMENT: fullStatementText };
         for (const section of lastSections) {
           console.log(`[generateDraft] generating runs_last section: ${section.name}`);
-          const html = await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.sort_order });
+          const html = section.template_html
+            ? await generateFromTemplate({ section, variables: runsLastVariables })
+            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.sort_order });
           sectionHtmlMap.set(section.id, html);
         }
       }
