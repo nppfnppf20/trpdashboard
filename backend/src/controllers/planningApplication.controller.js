@@ -860,7 +860,7 @@ ${history.map(h => {
   const supplementaryPolicies = policies.filter(p => p.policy_type === 'supplementary');
   const otherPolicies = policies.filter(p => !['local', 'national'].includes(p.policy_type));
 
-  return {
+  const variables = {
     PROJECT_NAME:              project.project_name ?? '[Project Name]',
     APPLICANT_NAME:            project.client ?? '[Applicant Name]',
     LPA_NAME:                  lpaName,
@@ -868,6 +868,7 @@ ${history.map(h => {
     DEVELOPMENT_DESCRIPTION:   project.development_description ?? '[Development Description]',
     ABOUT_APPLICANT:           summaryByType.about_applicant ?? '',
     PROPOSED_DEVELOPMENT:      stripHtml(summaryByType.proposed_development),
+    PROPOSED_DEVELOPMENT_HTML: summaryByType.proposed_development ?? '',
     DOCUMENT_LIST:             documentList,
     DOCUMENT_LIST_DOCS:        formatDocListHtml(logDocuments),
     DOCUMENT_LIST_DRAWINGS:    formatDocListHtml(logDrawings),
@@ -888,6 +889,8 @@ ${history.map(h => {
     OTHER_POLICIES_CONTEXT:    formatPolicyContext(otherPolicies),
     FULL_STATEMENT:            '',
   };
+
+  return { variables, briefingSummary: summaryByType.briefing_transcript ?? null };
 }
 
 export async function generateDraft(req, res) {
@@ -929,7 +932,7 @@ export async function generateDraft(req, res) {
     let contentHtml;
 
     if (hasTemplatedSections) {
-      const variables = await resolvePlanningStatementVariables(projectId);
+      const { variables, briefingSummary } = await resolvePlanningStatementVariables(projectId);
       const issueContext = buildIssueContext(issues, evidenceByTrack);
 
       const normalSections = sections.filter(s => !s.runs_last);
@@ -940,14 +943,14 @@ export async function generateDraft(req, res) {
         console.log(`[generateDraft] generating section: ${section.name}`);
         let html;
         if (section.template_html) {
-          html = await generateFromTemplate({ section, variables });
+          html = await generateFromTemplate({ section, variables, briefingSummary });
         } else if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
             section, issues, linkedPoliciesByTrack, evidenceByTrack
           });
         } else if (section.generation_prompt?.includes('{{')) {
-          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.sort_order });
+          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.sort_order, briefingSummary });
         } else {
           html = await generateDraftSection({
             section,
@@ -966,8 +969,8 @@ export async function generateDraft(req, res) {
         for (const section of lastSections) {
           console.log(`[generateDraft] generating runs_last section: ${section.name}`);
           const html = section.template_html
-            ? await generateFromTemplate({ section, variables: runsLastVariables })
-            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.sort_order });
+            ? await generateFromTemplate({ section, variables: runsLastVariables, briefingSummary })
+            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.sort_order, briefingSummary });
           sectionHtmlMap.set(section.id, html);
         }
       }
@@ -1175,8 +1178,8 @@ export async function generateSection(req, res) {
     let html;
 
     if (section.template_html) {
-      const variables = await resolvePlanningStatementVariables(projectId);
-      html = await generateFromTemplate({ section, variables });
+      const { variables, briefingSummary } = await resolvePlanningStatementVariables(projectId);
+      html = await generateFromTemplate({ section, variables, briefingSummary });
 
     } else if (section.slug === 'planning_assessment') {
       const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
@@ -1201,7 +1204,7 @@ export async function generateSection(req, res) {
       });
 
     } else if (section.generation_prompt?.includes('{{')) {
-      const variables = await resolvePlanningStatementVariables(projectId);
+      const { variables, briefingSummary } = await resolvePlanningStatementVariables(projectId);
       if (section.runs_last) {
         const { rows: draftRows } = await pool.query(
           `SELECT content_html FROM planning_applications.drafts
@@ -1210,7 +1213,7 @@ export async function generateSection(req, res) {
         );
         variables.FULL_STATEMENT = stripHtml(draftRows[0]?.content_html ?? '');
       }
-      html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.sort_order });
+      html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.sort_order, briefingSummary });
 
     } else {
       const [{ rows: issues }, evidenceByTrack] = await Promise.all([

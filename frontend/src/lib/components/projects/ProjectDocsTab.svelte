@@ -14,23 +14,25 @@
   $: projectId = project?.id;
 
   const DOC_TYPES = [
-    { value: 'about_applicant',    label: 'About the Applicant' },
+    { value: 'about_applicant',      label: 'About the Applicant' },
     { value: 'proposed_development', label: 'Proposed Development' },
-    { value: 'pre_app',            label: 'Pre-app Response' },
-    { value: 'eia_response',       label: 'EIA Response' },
-    { value: 'sci',                label: 'SCI' },
-    { value: 'site_surroundings',  label: 'Site and Surroundings' },
-    { value: 'other',              label: 'Other' }
+    { value: 'pre_app',              label: 'Pre-app Response' },
+    { value: 'eia_response',         label: 'EIA Response' },
+    { value: 'sci',                  label: 'SCI' },
+    { value: 'site_surroundings',    label: 'Site and Surroundings' },
+    { value: 'briefing_transcript',  label: 'Briefing Transcript' },
+    { value: 'other',                label: 'Other' }
   ];
 
   const TYPE_COLOURS = {
-    about_applicant:    '#0ea5e9',
+    about_applicant:     '#0ea5e9',
     proposed_development: '#6366f1',
-    pre_app:            '#3b82f6',
-    eia_response:       '#10b981',
-    sci:                '#f59e0b',
-    site_surroundings:  '#8b5cf6',
-    other:              '#64748b'
+    pre_app:             '#3b82f6',
+    eia_response:        '#10b981',
+    sci:                 '#f59e0b',
+    site_surroundings:   '#8b5cf6',
+    briefing_transcript: '#f43f5e',
+    other:               '#64748b'
   };
 
   // List state

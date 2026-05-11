@@ -55,6 +55,7 @@
     SUPPLEMENTARY_POLICY_NAMES: { label: 'Supplementary policy names', source: 'project_policies — supplementary, ref + name list',    programmatic: true },
     SITE_SURROUNDINGS_HTML:     { label: 'Site & surroundings (HTML)', source: 'document_summaries — doc_type: site_surroundings, raw HTML', programmatic: true },
     PLANNING_HISTORY_TABLE:     { label: 'Planning history table',     source: 'planning_history table, rendered as HTML table',       programmatic: true },
+    PROPOSED_DEVELOPMENT_HTML:  { label: 'Proposed development (HTML)', source: 'document_summaries — doc_type: proposed_development, raw HTML', programmatic: true },
     DOCUMENT_LIST_DOCS:         { label: 'Document list',              source: 'document_log — item_type: document, as bullet list',   programmatic: true },
     DOCUMENT_LIST_DRAWINGS:     { label: 'Drawings list',              source: 'document_log — item_type: drawing, as bullet list',    programmatic: true },
     LOCAL_POLICIES_CONTEXT:  { label: 'Local policies (context)',   source: 'project_policies — local, refs + notes for LLM',       programmatic: false },

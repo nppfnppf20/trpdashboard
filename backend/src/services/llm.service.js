@@ -1387,7 +1387,7 @@ const PLANNING_STATEMENT_OUTPUT_VARS = new Set([
   'ABOUT_APPLICANT', 'PRE_APP_SUMMARY', 'EIA_SUMMARY', 'SCI_SUMMARY',
   'NATIONAL_POLICIES', 'LOCAL_POLICIES', 'OTHER_POLICIES',
   'LOCAL_POLICY_NAMES', 'SUPPLEMENTARY_POLICY_NAMES',
-  'SITE_SURROUNDINGS_HTML', 'PLANNING_HISTORY_TABLE',
+  'PROPOSED_DEVELOPMENT_HTML', 'SITE_SURROUNDINGS_HTML', 'PLANNING_HISTORY_TABLE',
   'DOCUMENT_LIST_DOCS', 'DOCUMENT_LIST_DRAWINGS',
 ]);
 
@@ -1401,13 +1401,14 @@ const OUTPUT_VAR_PLACEHOLDER_LABELS = {
   OTHER_POLICIES:             'Other Material Policies',
   LOCAL_POLICY_NAMES:         'Local Policy Names',
   SUPPLEMENTARY_POLICY_NAMES: 'Supplementary Policy Names',
+  PROPOSED_DEVELOPMENT_HTML:  'Proposed Development',
   SITE_SURROUNDINGS_HTML:     'Site and Surroundings',
   PLANNING_HISTORY_TABLE:     'Planning History Table',
   DOCUMENT_LIST_DOCS:         'Document List',
   DOCUMENT_LIST_DRAWINGS:     'Drawings List',
 };
 
-export async function generatePlanningStatementSection({ section, variables, sectionNumber }) {
+export async function generatePlanningStatementSection({ section, variables, sectionNumber, briefingSummary }) {
   let prompt = section.generation_prompt ?? '';
 
   // Substitute only input vars (content Claude synthesises from).
@@ -1447,10 +1448,14 @@ export async function generatePlanningStatementSection({ section, variables, sec
 
   const fullPrompt = outputVarInstruction + numberingInstruction + exampleBlock + prompt;
 
+  const briefingBlock = briefingSummary?.trim()
+    ? `\n\nBriefing context (use this to inform strategic direction, framing, and planning arguments — do not reproduce it verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
+    : '';
+
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4096,
-    system: 'You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.',
+    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${briefingBlock}`,
     messages: [{ role: 'user', content: fullPrompt }]
   });
 
@@ -1478,7 +1483,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
 //   [Placeholder text]      — left as-is for manual editing
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function generateLlmSlot({ instruction, variables }) {
+async function generateLlmSlot({ instruction, variables, briefingSummary }) {
   const contextLines = [
     variables.PROJECT_NAME            && `Project: ${variables.PROJECT_NAME}`,
     variables.APPLICANT_NAME          && `Applicant: ${variables.APPLICANT_NAME}`,
@@ -1487,10 +1492,14 @@ async function generateLlmSlot({ instruction, variables }) {
     variables.DEVELOPMENT_DESCRIPTION && `Development: ${variables.DEVELOPMENT_DESCRIPTION}`,
   ].filter(Boolean).join('\n');
 
+  const briefingBlock = briefingSummary?.trim()
+    ? `\n\nBriefing context (use this to inform strategic direction, framing, and planning arguments — do not reproduce it verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
+    : '';
+
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 600,
-    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks`,
+    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${briefingBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks`,
     messages: [{ role: 'user', content: instruction }]
   });
 
@@ -1498,7 +1507,7 @@ async function generateLlmSlot({ instruction, variables }) {
     .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
 }
 
-export async function generateFromTemplate({ section, variables }) {
+export async function generateFromTemplate({ section, variables, briefingSummary }) {
   let output = section.template_html;
 
   // 1. Fill {{LLM:slug}}instruction{{/LLM}} slots
@@ -1512,7 +1521,7 @@ export async function generateFromTemplate({ section, variables }) {
         instruction = instruction.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
       }
     }
-    const slotHtml = await generateLlmSlot({ instruction, variables });
+    const slotHtml = await generateLlmSlot({ instruction, variables, briefingSummary });
     output = output.replace(fullMatch, slotHtml);
   }
 
@@ -1528,6 +1537,7 @@ export async function generateFromTemplate({ section, variables }) {
       OTHER_POLICIES:             'Other Material Policies',
       LOCAL_POLICY_NAMES:         'Local Policy Names',
       SUPPLEMENTARY_POLICY_NAMES: 'Supplementary Policy Names',
+      PROPOSED_DEVELOPMENT_HTML:  'Proposed Development',
       SITE_SURROUNDINGS_HTML:     'Site and Surroundings',
       PLANNING_HISTORY_TABLE:     'Planning History Table',
       DOCUMENT_LIST_DOCS:         'Document List',
@@ -1574,6 +1584,20 @@ Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
 
   proposed_development: `You are a planning consultant. Summarise this Proposed Development description for inclusion in a Planning Statement.
 Structure your summary to cover: the formal description of development, the main components of the proposal, key technical figures or specifications, and any design or sustainability principles.
+Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+
+  briefing_transcript: `You are a senior planning consultant. You have been given a transcript of a project briefing or client meeting relating to a planning application.
+
+Produce a detailed structured summary of this transcript for use as context when drafting a Planning Statement. Your summary should capture:
+
+1. **Proposed Development** — what is being proposed, at what scale, and with what key components, as described in the briefing (not just formal figures — include the strategic framing of what this project is)
+2. **Planning Strategy** — the overall planning angle, how the case is being framed, and the key arguments the consultant or applicant intends to make
+3. **Planning Benefits** — the material planning benefits identified or discussed
+4. **Policy Positioning** — how the proposal is positioned against key national or local policies, any policy conflicts acknowledged and how they are addressed
+5. **Constraints and Sensitivities** — known issues, objections, or sensitivities and the approach to addressing them
+6. **Specific Instructions or Directions** — any explicit instructions about tone, emphasis, sections to prioritise, or approaches to avoid
+
+Be comprehensive. This summary will be used as background context by an AI when drafting all sections of a Planning Statement — do not compress or omit nuance.
 Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
 
   other: `You are a planning consultant. Provide a structured summary of this document.
