@@ -5,7 +5,7 @@
   import { initNotes } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, argumentPointsByTrack, initAnalysis, initArgumentPoints, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/planning-analysis.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, toggleCardExpand } from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, toggleCardExpand } from '$lib/stores/planning-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
@@ -32,31 +32,36 @@
     };
   }
 
+  // programmatic: true = substituted AFTER generation (never seen by LLM — hallucination-safe)
+  // programmatic: false = substituted into prompt before sending (LLM synthesises from this content)
   const VARIABLE_SOURCES = {
-    PROJECT_NAME:            { label: 'Project name',              source: 'projects.project_name' },
-    APPLICANT_NAME:          { label: 'Applicant name',            source: 'projects.client' },
-    LPA_NAME:                { label: 'LPA name',                  source: 'projects.local_planning_authority' },
-    SITE_ADDRESS:            { label: 'Site address',              source: 'projects.address' },
-    DEVELOPMENT_DESCRIPTION: { label: 'Description of development', source: 'projects.development_description' },
-    ABOUT_APPLICANT:         { label: 'About the applicant',       source: 'document_summaries — doc_type: about_applicant' },
-    PROPOSED_DEVELOPMENT:    { label: 'Proposed development',      source: 'document_summaries — doc_type: proposed_development' },
-    DOCUMENT_LIST:           { label: 'Document list',             source: 'document_log (all entries)' },
-    SITE_SURROUNDINGS:       { label: 'Site & surroundings',       source: 'document_summaries — doc_type: site_surroundings' },
-    PLANNING_HISTORY:        { label: 'Planning history',          source: 'planning_history table' },
-    PRE_APP_SUMMARY:         { label: 'Pre-app summary',           source: 'document_summaries — doc_type: pre_app' },
-    EIA_SUMMARY:             { label: 'EIA summary',               source: 'document_summaries — doc_type: eia_response' },
-    SCI_SUMMARY:             { label: 'SCI summary',               source: 'document_summaries — doc_type: sci' },
-    LOCAL_POLICIES:          { label: 'Local policies',            source: 'project_policies — policy_type: local' },
-    NATIONAL_POLICIES:       { label: 'National policies',         source: 'project_policies — policy_type: national' },
-    OTHER_POLICIES:          { label: 'Other policies',            source: 'project_policies — other types' },
-    FULL_STATEMENT:          { label: 'Full statement',            source: 'Assembled HTML of all sections (runs_last sections only)' },
+    PROJECT_NAME:            { label: 'Project name',               source: 'projects.project_name',                                programmatic: true },
+    APPLICANT_NAME:          { label: 'Applicant name',             source: 'projects.client',                                      programmatic: true },
+    LPA_NAME:                { label: 'LPA name',                   source: 'projects.local_planning_authority',                    programmatic: true },
+    SITE_ADDRESS:            { label: 'Site address',               source: 'projects.address',                                     programmatic: true },
+    DEVELOPMENT_DESCRIPTION: { label: 'Description of development', source: 'projects.development_description',                    programmatic: true },
+    ABOUT_APPLICANT:         { label: 'About the applicant',        source: 'document_summaries — doc_type: about_applicant',       programmatic: true },
+    PROPOSED_DEVELOPMENT:    { label: 'Proposed development',       source: 'document_summaries — doc_type: proposed_development',  programmatic: false },
+    DOCUMENT_LIST:           { label: 'Document list',              source: 'document_log (all entries)',                           programmatic: false },
+    SITE_SURROUNDINGS:       { label: 'Site & surroundings',        source: 'document_summaries — doc_type: site_surroundings',     programmatic: false },
+    PLANNING_HISTORY:        { label: 'Planning history',           source: 'planning_history table',                               programmatic: false },
+    PRE_APP_SUMMARY:         { label: 'Pre-app summary',            source: 'document_summaries — doc_type: pre_app',               programmatic: true },
+    EIA_SUMMARY:             { label: 'EIA summary',                source: 'document_summaries — doc_type: eia_response',          programmatic: true },
+    SCI_SUMMARY:             { label: 'SCI summary',                source: 'document_summaries — doc_type: sci',                   programmatic: true },
+    LOCAL_POLICIES:          { label: 'Local policies (HTML)',       source: 'project_policies — local, verbatim listing',           programmatic: true },
+    NATIONAL_POLICIES:       { label: 'National policies (HTML)',   source: 'project_policies — national, verbatim listing',        programmatic: true },
+    OTHER_POLICIES:          { label: 'Other policies (HTML)',      source: 'project_policies — other types, verbatim listing',     programmatic: true },
+    LOCAL_POLICIES_CONTEXT:  { label: 'Local policies (context)',   source: 'project_policies — local, refs + notes for LLM',       programmatic: false },
+    NATIONAL_POLICIES_CONTEXT: { label: 'National policies (context)', source: 'project_policies — national, refs + notes for LLM', programmatic: false },
+    OTHER_POLICIES_CONTEXT:  { label: 'Other policies (context)',   source: 'project_policies — other, refs + notes for LLM',       programmatic: false },
+    FULL_STATEMENT:          { label: 'Full statement',             source: 'Assembled HTML of all sections (runs_last only)',       programmatic: false },
   };
 
   $: detectedVars = [...new Set(($sectionPromptText || '').match(/\{\{([A-Z_]+)\}\}/g) || [])]
     .map(match => {
       const key = match.slice(2, -2);
       const info = VARIABLE_SOURCES[key];
-      return { key, label: info?.label ?? key, source: info?.source ?? 'unknown source' };
+      return { key, label: info?.label ?? key, source: info?.source ?? 'unknown source', programmatic: info?.programmatic ?? false };
     });
 
   let fileInput;
@@ -774,32 +779,62 @@
 
                   {#if $sectionExpandedId === section.id}
                     <div class="section-expand">
-                      <label class="section-field-label">Generation prompt <span class="form-label-hint">(leave blank for default)</span></label>
-                      <textarea class="prompt-editor section-prompt" bind:value={$sectionPromptText} use:autoresize={$sectionPromptText}></textarea>
 
-                      {#if detectedVars.length > 0}
-                        <div class="section-vars-panel">
-                          <span class="section-vars-title">Variables in this prompt</span>
-                          <div class="section-vars-list">
-                            {#each detectedVars as v}
-                              <div class="section-var-row">
-                                <code class="section-var-key">{'{{'}{v.key}{'}}'}</code>
-                                <span class="section-var-label">{v.label}</span>
-                                <span class="section-var-source">{v.source}</span>
-                              </div>
-                            {/each}
-                          </div>
+                      <!-- Template block -->
+                      <div class="section-block">
+                        <div class="section-block-header">
+                          <label class="section-field-label">Template
+                            <span class="form-label-hint">— fixed structure with <code>{'{{VARIABLE}}'}</code>, <code>{'{{LLM:slug}}'}</code>…<code>{'{{/LLM}}'}</code> and <code>[Placeholder]</code> markers</span>
+                          </label>
+                          {#if $sectionTemplateText}
+                            <span class="section-mode-badge section-mode-badge--template">Template active</span>
+                          {/if}
                         </div>
-                      {/if}
-
-                      <div class="section-expand-actions">
-                        <button class="section-example-btn" on:click={() => openSectionExampleModal(section.id)}>
-                          <i class="las la-file-alt"></i> Edit style example
-                        </button>
-                        <button class="modal-save" disabled={$sectionPromptSaving} on:click={() => handleSaveSectionPrompt(section.id)}>
-                          {#if $sectionPromptSaving}Saving...{:else if $sectionPromptSaved}<i class="las la-check"></i> Saved{:else}Save prompt{/if}
-                        </button>
+                        <textarea class="prompt-editor section-prompt section-template" bind:value={$sectionTemplateText} use:autoresize={$sectionTemplateText} placeholder="Paste template HTML here..."></textarea>
+                        <div class="section-expand-actions">
+                          <button class="modal-save" disabled={$sectionTemplateSaving} on:click={() => handleSaveSectionTemplate(section.id)}>
+                            {#if $sectionTemplateSaving}Saving...{:else if $sectionTemplateSaved}<i class="las la-check"></i> Saved{:else}Save template{/if}
+                          </button>
+                        </div>
                       </div>
+
+                      <!-- Prompt block (used when no template) -->
+                      <div class="section-block" class:section-block--dimmed={!!$sectionTemplateText}>
+                        <label class="section-field-label">Generation prompt
+                          <span class="form-label-hint">{$sectionTemplateText ? '— ignored when template is set' : '— used when no template'}</span>
+                        </label>
+                        <textarea class="prompt-editor section-prompt" bind:value={$sectionPromptText} use:autoresize={$sectionPromptText}></textarea>
+
+                        {#if detectedVars.length > 0}
+                          <div class="section-vars-panel">
+                            <span class="section-vars-title">Variables in this prompt</span>
+                            <div class="section-vars-list">
+                              {#each detectedVars as v}
+                                <div class="section-var-row">
+                                  <div class="section-var-key-cell">
+                                    <code class="section-var-key">{'{{'}{v.key}{'}}'}</code>
+                                    <span class="section-var-badge" class:section-var-badge--safe={v.programmatic}>
+                                      {v.programmatic ? 'prog.' : 'llm'}
+                                    </span>
+                                  </div>
+                                  <span class="section-var-label">{v.label}</span>
+                                  <span class="section-var-source">{v.source}</span>
+                                </div>
+                              {/each}
+                            </div>
+                          </div>
+                        {/if}
+
+                        <div class="section-expand-actions">
+                          <button class="section-example-btn" on:click={() => openSectionExampleModal(section.id)}>
+                            <i class="las la-file-alt"></i> Edit style example
+                          </button>
+                          <button class="modal-save" disabled={$sectionPromptSaving} on:click={() => handleSaveSectionPrompt(section.id)}>
+                            {#if $sectionPromptSaving}Saving...{:else if $sectionPromptSaved}<i class="las la-check"></i> Saved{:else}Save prompt{/if}
+                          </button>
+                        </div>
+                      </div>
+
                     </div>
                   {/if}
                 </div>
@@ -2245,10 +2280,17 @@
 
   .section-var-row {
     display: grid;
-    grid-template-columns: 13rem 11rem 1fr;
-    align-items: baseline;
+    grid-template-columns: minmax(0, 16rem) minmax(0, 10rem) minmax(0, 1fr);
+    align-items: center;
     gap: 0.75rem;
     font-size: 0.75rem;
+  }
+
+  .section-var-key-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
   }
 
   .section-var-key {
@@ -2259,15 +2301,81 @@
     padding: 0.1rem 0.4rem;
     border-radius: 0.25rem;
     white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .section-var-label {
     color: #1e293b;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .section-var-source {
     color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .section-var-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+    background: #fef9c3;
+    color: #92400e;
+  }
+
+  .section-var-badge--safe {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .section-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .section-block--dimmed {
+    opacity: 0.5;
+  }
+
+  .section-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .section-mode-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+  }
+
+  .section-mode-badge--template {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .section-template {
+    font-family: monospace;
+    font-size: 0.72rem;
+    min-height: 6rem;
   }
 
   .section-expand-actions {

@@ -1380,27 +1380,156 @@ FORMAT RULES (mandatory):
  * @param {{ section: object, variables: Record<string, string> }} params
  * @returns {Promise<string>}  HTML string
  */
-export async function generatePlanningStatementSection({ section, variables }) {
+// These variables are substituted AFTER generation — Claude writes the token literally
+// and the real value is injected programmatically, guaranteeing no hallucination.
+const PLANNING_STATEMENT_OUTPUT_VARS = new Set([
+  'PROJECT_NAME', 'APPLICANT_NAME', 'LPA_NAME', 'SITE_ADDRESS', 'DEVELOPMENT_DESCRIPTION',
+  'ABOUT_APPLICANT', 'PRE_APP_SUMMARY', 'EIA_SUMMARY', 'SCI_SUMMARY',
+  'NATIONAL_POLICIES', 'LOCAL_POLICIES', 'OTHER_POLICIES',
+]);
+
+const OUTPUT_VAR_PLACEHOLDER_LABELS = {
+  ABOUT_APPLICANT:   'About the Applicant',
+  PRE_APP_SUMMARY:   'Pre-Application Response Summary',
+  EIA_SUMMARY:       'EIA / Environmental Statement Summary',
+  SCI_SUMMARY:       'Statement of Community Involvement Summary',
+  NATIONAL_POLICIES: 'National Policies',
+  LOCAL_POLICIES:    'Local Development Plan Policies',
+  OTHER_POLICIES:    'Other Material Policies',
+};
+
+export async function generatePlanningStatementSection({ section, variables, sectionNumber }) {
   let prompt = section.generation_prompt ?? '';
+
+  // Substitute only input vars (content Claude synthesises from).
+  // Output vars stay as {{TOKEN}} so Claude echoes them into its response.
   for (const [key, value] of Object.entries(variables)) {
-    prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value ?? '');
+    if (!PLANNING_STATEMENT_OUTPUT_VARS.has(key)) {
+      prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value ?? '');
+    }
+  }
+
+  // Instruct Claude to write output-var tokens literally rather than inventing values
+  const outputVarLines = [...PLANNING_STATEMENT_OUTPUT_VARS]
+    .filter(k => variables[k] !== undefined)
+    .map(k => `  {{${k}}}`)
+    .join('\n');
+  const outputVarInstruction = outputVarLines
+    ? `CRITICAL INSTRUCTION: The following placeholders will be filled in programmatically after you write. Write them EXACTLY as shown — including the double curly braces — wherever you would use that value. Never invent or rephrase these values:\n${outputVarLines}\n\n`
+    : '';
+
+  // Section numbering — overrides any numbering in the stored prompt
+  let numberingInstruction = '';
+  if (sectionNumber > 0) {
+    const n = sectionNumber;
+    numberingInstruction = `NUMBERING: This is section ${n} of the Planning Statement. Ignore any section numbers written in the instructions below. Apply this scheme to every heading and paragraph — no exceptions:
+  - Main section heading → ${n}.0  (use <h2>)
+  - Subsection headings → ${n}.1, ${n}.2, ${n}.3 …  (use <h3>, only where the section has genuinely distinct sub-topics)
+  - Paragraphs directly under the ${n}.0 heading → ${n}.0.1, ${n}.0.2, ${n}.0.3 …  (prefix every <p> with the number, e.g. <p>${n}.0.1 Lorem ipsum…</p>)
+  - Paragraphs within subsection ${n}.1 → ${n}.1.1, ${n}.1.2 …  (same pattern)
+  - Every <p> must begin with its paragraph number. Do not write any unnumbered paragraph.\n\n`;
+  } else {
+    numberingInstruction = `NUMBERING: This is a prefatory section (Executive Summary — no section number). Do not add any numeric prefix to the heading or paragraphs.\n\n`;
   }
 
   const exampleBlock = section.example_text?.trim()
     ? `The following example shows the target tone and structure. Match the style — do NOT use any content from it:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)}\n</example>\n\n`
     : '';
 
-  const fullPrompt = exampleBlock + prompt;
+  const fullPrompt = outputVarInstruction + numberingInstruction + exampleBlock + prompt;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4096,
-    system: 'You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.',
+    system: 'You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.',
     messages: [{ role: 'user', content: fullPrompt }]
   });
 
-  const raw = response.content[0].text.trim();
-  return raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  let output = response.content[0].text.trim();
+  output = output.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+
+  // Programmatic substitution of output vars — these are never touched by the LLM
+  for (const key of PLANNING_STATEMENT_OUTPUT_VARS) {
+    const value = variables[key];
+    const replacement = value || (() => {
+      const label = OUTPUT_VAR_PLACEHOLDER_LABELS[key] ?? key;
+      return `<p class="draft-placeholder">[${label} — not yet provided. Upload and summarise the relevant document to populate this section.]</p>`;
+    })();
+    output = output.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), replacement);
+  }
+
+  return output;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Template-based generation
+// Template format:
+//   {{VARIABLE}}            — substituted programmatically from variables map
+//   {{LLM:slug}}...{{/LLM}} — Claude writes this slot; variables available as context
+//   [Placeholder text]      — left as-is for manual editing
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function generateLlmSlot({ instruction, variables }) {
+  const contextLines = [
+    variables.PROJECT_NAME            && `Project: ${variables.PROJECT_NAME}`,
+    variables.APPLICANT_NAME          && `Applicant: ${variables.APPLICANT_NAME}`,
+    variables.LPA_NAME                && `LPA: ${variables.LPA_NAME}`,
+    variables.SITE_ADDRESS            && `Site: ${variables.SITE_ADDRESS}`,
+    variables.DEVELOPMENT_DESCRIPTION && `Development: ${variables.DEVELOPMENT_DESCRIPTION}`,
+  ].filter(Boolean).join('\n');
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 600,
+    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks`,
+    messages: [{ role: 'user', content: instruction }]
+  });
+
+  return response.content[0].text.trim()
+    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+}
+
+export async function generateFromTemplate({ section, variables }) {
+  let output = section.template_html;
+
+  // 1. Fill {{LLM:slug}}instruction{{/LLM}} slots
+  const llmSlotRegex = /\{\{LLM:([^}]+)\}\}([\s\S]*?)\{\{\/LLM\}\}/g;
+  const slots = [...output.matchAll(llmSlotRegex)];
+  for (const [fullMatch, , rawInstruction] of slots) {
+    // Substitute plain-text vars into the instruction so the LLM sees resolved values
+    let instruction = rawInstruction.trim();
+    for (const [key, value] of Object.entries(variables)) {
+      if (value && typeof value === 'string' && !value.includes('<')) {
+        instruction = instruction.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+      }
+    }
+    const slotHtml = await generateLlmSlot({ instruction, variables });
+    output = output.replace(fullMatch, slotHtml);
+  }
+
+  // 2. Substitute all {{VARIABLE}} programmatically
+  const placeholderLabel = (key) => {
+    const labels = {
+      ABOUT_APPLICANT: 'About the Applicant',
+      PRE_APP_SUMMARY: 'Pre-Application Response Summary',
+      EIA_SUMMARY:     'EIA / Environmental Statement Summary',
+      SCI_SUMMARY:     'Statement of Community Involvement Summary',
+      NATIONAL_POLICIES: 'National Policies',
+      LOCAL_POLICIES:    'Local Development Plan Policies',
+      OTHER_POLICIES:    'Other Material Policies',
+    };
+    return labels[key] ?? key.replace(/_/g, ' ').toLowerCase();
+  };
+
+  for (const [key, value] of Object.entries(variables)) {
+    const hasValue = value && String(value).trim();
+    const replacement = hasValue
+      ? String(value)
+      : `<p class="draft-placeholder">[${placeholderLabel(key)} — not yet provided]</p>`;
+    output = output.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), replacement);
+  }
+
+  return output;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

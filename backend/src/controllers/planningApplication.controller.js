@@ -14,6 +14,7 @@ import {
   generateDraftSection,
   generatePlanningStatementAssessment,
   generatePlanningStatementSection,
+  generateFromTemplate,
   summariseDocument,
   getDefaultSummaryPrompt
 } from '../services/llm.service.js';
@@ -543,7 +544,7 @@ export async function getSections(req, res) {
   const { typeId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, draft_type_id, name, slug, description, sort_order, generation_prompt, example_text
+      `SELECT id, draft_type_id, name, slug, description, sort_order, generation_prompt, example_text, template_html
        FROM planning_applications.draft_sections
        WHERE draft_type_id = $1
        ORDER BY sort_order, id`,
@@ -585,7 +586,7 @@ export async function createSection(req, res) {
 
 export async function updateSection(req, res) {
   const { sectionId } = req.params;
-  const { name, description, sort_order, generation_prompt, example_text } = req.body;
+  const { name, description, sort_order, generation_prompt, example_text, template_html } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.draft_sections
@@ -593,11 +594,13 @@ export async function updateSection(req, res) {
            description       = COALESCE($2, description),
            sort_order        = COALESCE($3, sort_order),
            generation_prompt = $4,
-           example_text      = $5
-       WHERE id = $6
+           example_text      = $5,
+           template_html     = $6
+       WHERE id = $7
        RETURNING *`,
       [name ?? null, description ?? null, sort_order ?? null,
-       generation_prompt ?? null, example_text ?? null, sectionId]
+       generation_prompt ?? null, example_text ?? null,
+       template_html !== undefined ? template_html : null, sectionId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Section not found' });
     res.json(rows[0]);
@@ -788,12 +791,28 @@ async function resolvePlanningStatementVariables(projectId) {
       }).join('\n\n')
     : '';
 
-  const formatPolicyList = (pols) => pols.map(p => {
+  // HTML block for programmatic injection — all policies listed, key policies with verbatim text
+  const formatPolicyListHtml = (pols) => {
+    if (!pols.length) return '';
+    const items = pols.map(p => {
+      const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+      const keyBadge = p.is_key_policy ? ' <strong>[Key Policy]</strong>' : '';
+      const verbatim = p.is_key_policy && p.policy_text?.trim()
+        ? `<blockquote><p>${p.policy_text.trim()}</p></blockquote>`
+        : '';
+      return `<li><strong>${ref}${p.policy_name}</strong>${keyBadge}${verbatim}</li>`;
+    }).join('\n');
+    return `<ul>\n${items}\n</ul>`;
+  };
+
+  // Slim text for LLM analysis context — refs, names, and supporting notes only (no verbatim text)
+  const formatPolicyContext = (pols) => pols.map(p => {
     const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
-    const key = p.is_key_policy ? ' [KEY POLICY]' : '';
-    const wording = p.policy_text?.trim() ? `\n  Policy wording: "${p.policy_text.trim().slice(0, 500)}"` : '';
-    const context = p.relevant_supporting_text?.trim() ? `\n  Context: ${p.relevant_supporting_text.trim().slice(0, 400)}` : '';
-    return `- ${ref}${p.policy_name}${key}${wording}${context}`;
+    const key = p.is_key_policy ? ' [Key Policy]' : '';
+    const context = p.relevant_supporting_text?.trim()
+      ? `\n  Context: ${p.relevant_supporting_text.trim().slice(0, 400)}`
+      : '';
+    return `- ${ref}${p.policy_name}${key}${context}`;
   }).join('\n');
 
   const localPolicies = policies.filter(p => p.policy_type === 'local');
@@ -801,23 +820,26 @@ async function resolvePlanningStatementVariables(projectId) {
   const otherPolicies = policies.filter(p => !['local', 'national'].includes(p.policy_type));
 
   return {
-    PROJECT_NAME:            project.project_name ?? '[Project Name]',
-    APPLICANT_NAME:          project.client ?? '[Applicant Name]',
-    LPA_NAME:                lpaName,
-    SITE_ADDRESS:            project.address ?? '[Site Address]',
-    DEVELOPMENT_DESCRIPTION: project.development_description ?? '[Development Description]',
-    ABOUT_APPLICANT:         stripHtml(summaryByType.about_applicant),
-    PROPOSED_DEVELOPMENT:    stripHtml(summaryByType.proposed_development),
-    DOCUMENT_LIST:           documentList,
-    SITE_SURROUNDINGS:       stripHtml(summaryByType.site_surroundings),
-    PLANNING_HISTORY:        planningHistoryText,
-    PRE_APP_SUMMARY:         stripHtml(summaryByType.pre_app),
-    EIA_SUMMARY:             stripHtml(summaryByType.eia_response),
-    SCI_SUMMARY:             stripHtml(summaryByType.sci),
-    LOCAL_POLICIES:          formatPolicyList(localPolicies),
-    NATIONAL_POLICIES:       formatPolicyList(nationalPolicies),
-    OTHER_POLICIES:          formatPolicyList(otherPolicies),
-    FULL_STATEMENT:          '',
+    PROJECT_NAME:              project.project_name ?? '[Project Name]',
+    APPLICANT_NAME:            project.client ?? '[Applicant Name]',
+    LPA_NAME:                  lpaName,
+    SITE_ADDRESS:              project.address ?? '[Site Address]',
+    DEVELOPMENT_DESCRIPTION:   project.development_description ?? '[Development Description]',
+    ABOUT_APPLICANT:           summaryByType.about_applicant ?? '',
+    PROPOSED_DEVELOPMENT:      stripHtml(summaryByType.proposed_development),
+    DOCUMENT_LIST:             documentList,
+    SITE_SURROUNDINGS:         stripHtml(summaryByType.site_surroundings),
+    PLANNING_HISTORY:          planningHistoryText,
+    PRE_APP_SUMMARY:           summaryByType.pre_app ?? '',
+    EIA_SUMMARY:               summaryByType.eia_response ?? '',
+    SCI_SUMMARY:               summaryByType.sci ?? '',
+    LOCAL_POLICIES:            formatPolicyListHtml(localPolicies),
+    NATIONAL_POLICIES:         formatPolicyListHtml(nationalPolicies),
+    OTHER_POLICIES:            formatPolicyListHtml(otherPolicies),
+    LOCAL_POLICIES_CONTEXT:    formatPolicyContext(localPolicies),
+    NATIONAL_POLICIES_CONTEXT: formatPolicyContext(nationalPolicies),
+    OTHER_POLICIES_CONTEXT:    formatPolicyContext(otherPolicies),
+    FULL_STATEMENT:            '',
   };
 }
 
@@ -870,13 +892,15 @@ export async function generateDraft(req, res) {
       for (const section of normalSections) {
         console.log(`[generateDraft] generating section: ${section.name}`);
         let html;
-        if (section.slug === 'planning_assessment') {
+        if (section.template_html) {
+          html = await generateFromTemplate({ section, variables });
+        } else if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
             section, issues, linkedPoliciesByTrack, evidenceByTrack
           });
         } else if (section.generation_prompt?.includes('{{')) {
-          html = await generatePlanningStatementSection({ section, variables });
+          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.sort_order });
         } else {
           html = await generateDraftSection({
             section,
@@ -894,7 +918,7 @@ export async function generateDraft(req, res) {
         const runsLastVariables = { ...variables, FULL_STATEMENT: fullStatementText };
         for (const section of lastSections) {
           console.log(`[generateDraft] generating runs_last section: ${section.name}`);
-          const html = await generatePlanningStatementSection({ section, variables: runsLastVariables });
+          const html = await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.sort_order });
           sectionHtmlMap.set(section.id, html);
         }
       }
@@ -1101,7 +1125,11 @@ export async function generateSection(req, res) {
 
     let html;
 
-    if (section.slug === 'planning_assessment') {
+    if (section.template_html) {
+      const variables = await resolvePlanningStatementVariables(projectId);
+      html = await generateFromTemplate({ section, variables });
+
+    } else if (section.slug === 'planning_assessment') {
       const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
         pool.query(
           `SELECT pit.id, pit.label, pit.discipline,
@@ -1133,7 +1161,7 @@ export async function generateSection(req, res) {
         );
         variables.FULL_STATEMENT = stripHtml(draftRows[0]?.content_html ?? '');
       }
-      html = await generatePlanningStatementSection({ section, variables });
+      html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.sort_order });
 
     } else {
       const [{ rows: issues }, evidenceByTrack] = await Promise.all([

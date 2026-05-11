@@ -41,6 +41,9 @@ export const sectionPromptId = writable(null);
 export const sectionPromptText = writable('');
 export const sectionPromptSaving = writable(false);
 export const sectionPromptSaved = writable(false);
+export const sectionTemplateText = writable('');
+export const sectionTemplateSaving = writable(false);
+export const sectionTemplateSaved = writable(false);
 export const sectionExampleModalOpen = writable(false);
 export const sectionExampleId = writable(null);
 export const sectionExampleSaving = writable(false);
@@ -180,7 +183,9 @@ export function toggleSectionExpand(sectionId) {
     sectionPromptId.set(sectionId);
     const s = get(sections).find(sec => sec.id === sectionId);
     sectionPromptText.set(s?.generation_prompt ?? '');
+    sectionTemplateText.set(s?.template_html ?? '');
     sectionPromptSaved.set(false);
+    sectionTemplateSaved.set(false);
   }
 }
 
@@ -195,6 +200,20 @@ export async function handleSaveSectionPrompt(sectionId) {
     console.error('Failed to save section prompt:', err);
   } finally {
     sectionPromptSaving.set(false);
+  }
+}
+
+export async function handleSaveSectionTemplate(sectionId) {
+  sectionTemplateSaving.set(true);
+  try {
+    const updated = await updateSection(sectionId, { template_html: get(sectionTemplateText) || null });
+    sections.update(ss => ss.map(s => s.id === sectionId ? { ...s, ...updated } : s));
+    sectionTemplateSaved.set(true);
+    setTimeout(() => sectionTemplateSaved.set(false), 2500);
+  } catch (err) {
+    console.error('Failed to save section template:', err);
+  } finally {
+    sectionTemplateSaving.set(false);
   }
 }
 
@@ -226,8 +245,8 @@ export async function handleSaveSectionExample() {
 function patchSectionInDraft(draftHtml, sectionName, newSectionHtml) {
   if (!draftHtml) return newSectionHtml;
   const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Match <h2>SectionName</h2> through to the next <h2> or end of string
-  const pattern = new RegExp(`<h2>\\s*${escaped}\\s*<\\/h2>[\\s\\S]*?(?=<h2>|$)`, 'i');
+  // Match numbered headings like "2.0 Background" as well as plain "Background"
+  const pattern = new RegExp(`<h2>[^<]*${escaped}[^<]*<\\/h2>[\\s\\S]*?(?=<h2>|$)`, 'i');
   if (pattern.test(draftHtml)) {
     return draftHtml.replace(pattern, newSectionHtml + '\n\n');
   }

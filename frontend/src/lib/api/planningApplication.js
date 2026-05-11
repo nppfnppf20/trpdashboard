@@ -171,13 +171,19 @@ export async function saveDraft(projectId, typeId, contentHtml) {
 
 export async function generateDraft(projectId, typeId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/generate`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to generate draft');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to generate draft');
+  }
   return res.json();
 }
 
 export async function generateDraftSection(projectId, typeId, sectionId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/sections/${sectionId}/generate`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to generate section');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to generate section');
+  }
   return res.json();
 }
 
