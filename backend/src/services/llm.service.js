@@ -1312,10 +1312,20 @@ function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = []) {
  * @param {Record<number, Array>} params.evidenceByTrack  track_id → evidence rows
  * @returns {Promise<string>}  stitched HTML
  */
-export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack }) {
+export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary }) {
   const exampleBlock = section.example_text?.trim()
     ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
     : '';
+
+  const additionalInstructions = section.generation_prompt?.trim()
+    ? `\nADDITIONAL INSTRUCTIONS:\n${section.generation_prompt.trim()}\n`
+    : '';
+
+  const briefingBlock = briefingSummary?.trim()
+    ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
+    : '';
+
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${briefingBlock}`;
 
   const parts = [`<h2>${section.name}</h2>`];
 
@@ -1341,7 +1351,7 @@ Structure the sub-section as follows:
 1. Policy framework — state the relevant policies. For any policy marked [KEY POLICY], quote the policy wording verbatim within the running text (e.g. "Policy X states that '...'"). For non-key policies, summarise what they require in a sentence.
 2. Assessment — explain in professional planning language how the proposal is compliant with each policy. Draw on the assessment notes and supporting evidence provided below. Where expert evidence supports compliance, reference it specifically (e.g. "The Heritage Statement concludes that...").
 3. Conclusion — end the sub-section with a single concluding paragraph. If the proposal is compliant, state: "The proposals are therefore considered to comply with ${policyRefList}." If compliance is subject to conditions or mitigation mentioned in the assessment, say instead: "Subject to [the conditions/mitigation described above], the proposals are considered to comply with ${policyRefList}."
-
+${additionalInstructions}
 Issue context (policy framework, assessment notes, and evidence):
 ${issueContext}
 
@@ -1358,12 +1368,13 @@ FORMAT RULES (mandatory):
     const response = await client.messages.create({
       model: MODEL_SONNET,
       max_tokens: 2000,
-      system: 'You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.',
+      system: systemPrompt,
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const raw = response.content[0].text.trim();
-    parts.push(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+    const raw = response.content[0].text.trim()
+      .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+    parts.push(`<div class="llm-generated">${raw}</div>`);
   }
 
   return parts.join('\n\n');
@@ -1503,8 +1514,9 @@ async function generateLlmSlot({ instruction, variables, briefingSummary }) {
     messages: [{ role: 'user', content: instruction }]
   });
 
-  return response.content[0].text.trim()
+  const html = response.content[0].text.trim()
     .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  return `<div class="llm-generated">${html}</div>`;
 }
 
 export async function generateFromTemplate({ section, variables, briefingSummary }) {
@@ -1621,6 +1633,47 @@ export async function summariseDocument(text, fileName, docType, customPrompt = 
   });
 
   return response.content[0].text.trim();
+}
+
+export async function suggestTranscriptUpdates(text) {
+  const systemPrompt = `You are a planning consultant analysing a briefing transcript to identify content that should update specific project data fields.
+
+For each field listed below, assess whether the transcript contains clear, explicit content that belongs in that field. Only suggest an update if the content is clearly and explicitly present — do not infer, fabricate, or pad. If the transcript does not clearly address a field, omit it from your response.
+
+Fields to assess:
+
+1. field: "about_applicant" | label: "About the Applicant" — Who the applicant/developer is, their background, track record, and what they do. Only suggest if the transcript explicitly describes the applicant organisation.
+
+2. field: "proposed_development" | label: "Proposed Development" — A full description of what is being proposed: components, scale, layout, technical specifications, key design features. Only suggest if the transcript contains a detailed description of the proposal.
+
+3. field: "site_surroundings" | label: "Site and Surroundings" — Description of the site and its surrounding context, land uses, physical characteristics, constraints, designations. Only suggest if the transcript explicitly describes the site.
+
+4. field: "pre_app" | label: "Pre-Application Response" — Any pre-application advice received from the LPA. Only suggest if the transcript explicitly references pre-application advice.
+
+For each field where clear content exists, return a JSON object with:
+- "field": the field identifier exactly as listed above
+- "label": the human-readable label as listed above
+- "suggested_content": the content written as clean HTML using only <p>, <ul>, <li>, <h3> tags — write the actual content, not a summary of what the transcript says
+- "reason": a single sentence explaining what in the transcript justifies this suggestion
+
+Return ONLY a valid JSON array with no preamble, explanation, or code fences. If no fields have clear content, return [].`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4000,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: `Transcript:\n\n${text.slice(0, 80000)}` }]
+  });
+
+  const raw = response.content[0].text.trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    const parsed = JSON.parse(cleaned);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.error('[suggestTranscriptUpdates] Failed to parse JSON:', cleaned.slice(0, 300));
+    return [];
+  }
 }
 
 export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], argumentPoints = {}, customPrompt }) {

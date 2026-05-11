@@ -34,7 +34,9 @@ import {
   getDocumentSummaries,
   generateDocumentSummary,
   saveDocumentSummary,
+  replaceDocumentSummary,
   deleteDocumentSummary,
+  suggestDocumentUpdates,
   getDocTypePrompt,
   saveDocTypePrompt,
   deleteDocTypePrompt
@@ -101,6 +103,8 @@ router.post('/projects/:projectId/argument-points', createArgumentPoint);
 // Document summaries
 router.get('/projects/:projectId/document-summaries', getDocumentSummaries);
 router.post('/projects/:projectId/document-summaries/generate', upload.single('file'), generateDocumentSummary);
+router.post('/projects/:projectId/document-summaries/suggest', suggestDocumentUpdates);
+router.put('/projects/:projectId/document-summaries/by-type', replaceDocumentSummary);
 router.post('/projects/:projectId/document-summaries', saveDocumentSummary);
 router.delete('/document-summaries/:summaryId', deleteDocumentSummary);
 

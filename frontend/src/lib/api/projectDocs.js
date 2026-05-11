@@ -60,6 +60,26 @@ export async function saveDocTypePrompt(docType, prompt) {
   return res.json();
 }
 
+export async function replaceDocumentSummary(projectId, { title, document_ref, file_name, doc_type, summary_html }) {
+  const res = await authFetch(`/api/planning-application/projects/${projectId}/document-summaries/by-type`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, document_ref, file_name, doc_type, summary_html })
+  });
+  if (!res.ok) throw new Error('Failed to replace document summary');
+  return res.json();
+}
+
+export async function suggestDocumentUpdates(projectId, { text }) {
+  const res = await authFetch(`/api/planning-application/projects/${projectId}/document-summaries/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to get suggestions'); }
+  return res.json(); // { suggestions: [...] }
+}
+
 export async function deleteDocTypePrompt(docType) {
   const res = await authFetch(`/api/planning-application/doc-type-prompts/${docType}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to reset prompt');

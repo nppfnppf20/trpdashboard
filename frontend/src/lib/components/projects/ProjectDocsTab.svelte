@@ -4,7 +4,9 @@
     getDocumentSummaries,
     generateDocumentSummary,
     saveDocumentSummary,
+    replaceDocumentSummary,
     deleteDocumentSummary,
+    suggestDocumentUpdates,
     getDocTypePrompt,
     saveDocTypePrompt,
     deleteDocTypePrompt
@@ -69,6 +71,39 @@
   let manualSaving = false;
   let manualError = null;
 
+  // Variable suggestions (briefing transcript only)
+  let suggestions = [];
+  let suggestionsLoading = false;
+  let expandedSuggestions = new Set();
+  let approvedSuggestions = new Set();
+  let rejectedSuggestions = new Set();
+
+  function toggleSuggestion(field) {
+    expandedSuggestions = expandedSuggestions.has(field)
+      ? new Set([...expandedSuggestions].filter(f => f !== field))
+      : new Set([...expandedSuggestions, field]);
+  }
+
+  function rejectSuggestion(field) {
+    rejectedSuggestions = new Set([...rejectedSuggestions, field]);
+  }
+
+  async function approveSuggestion(suggestion) {
+    try {
+      await replaceDocumentSummary(projectId, {
+        title: `${suggestion.label} — from Briefing Transcript`,
+        document_ref: null,
+        file_name: null,
+        doc_type: suggestion.field,
+        summary_html: suggestion.suggested_content
+      });
+      approvedSuggestions = new Set([...approvedSuggestions, suggestion.field]);
+      await load();
+    } catch (err) {
+      alert(`Failed to save suggestion: ${err.message}`);
+    }
+  }
+
   // Prompt modal
   let promptModalOpen = false;
   let promptText = '';
@@ -125,6 +160,12 @@
     summariseError = null;
     summarising = true;
     showResult = false;
+    suggestions = [];
+    approvedSuggestions = new Set();
+    rejectedSuggestions = new Set();
+    expandedSuggestions = new Set();
+
+    let rawText = '';
     try {
       const payload = { docType };
       if (inputTab === 'upload') {
@@ -132,15 +173,30 @@
         payload.file = selectedFile;
       } else {
         if (!pasteText.trim()) { summariseError = 'Please paste some text.'; summarising = false; return; }
+        rawText = pasteText;
         payload.text = pasteText;
         payload.fileName = 'Pasted text';
       }
-      const result = await generateDocumentSummary(projectId, payload);
+
+      const promises = [generateDocumentSummary(projectId, payload)];
+
+      if (docType === 'briefing_transcript' && rawText) {
+        suggestionsLoading = true;
+        promises.push(suggestDocumentUpdates(projectId, { text: rawText }));
+      }
+
+      const [result, suggestResult] = await Promise.all(promises);
       resultSummaryHtml = result.summary_html;
       resultFileName = result.file_name || selectedFile?.name || '';
       showResult = true;
+
+      if (suggestResult) {
+        suggestions = suggestResult.suggestions ?? [];
+        suggestionsLoading = false;
+      }
     } catch (err) {
       summariseError = err.message;
+      suggestionsLoading = false;
     } finally {
       summarising = false;
     }
@@ -372,6 +428,52 @@
           </div>
         </div>
       {/if}
+    </div>
+  {/if}
+
+  <!-- Variable Suggestions (briefing transcript) -->
+  {#if suggestionsLoading || suggestions.length > 0}
+    <div class="suggestions-panel">
+      <div class="suggestions-header">
+        <i class="las la-lightbulb"></i>
+        <span>Suggested field updates from transcript</span>
+        {#if suggestionsLoading}
+          <span class="spinner-sm suggestions-spinner"></span>
+        {/if}
+      </div>
+      {#if suggestions.length === 0 && !suggestionsLoading}
+        <p class="no-suggestions">No field updates were identified in this transcript.</p>
+      {/if}
+      {#each suggestions as s (s.field)}
+        {#if !rejectedSuggestions.has(s.field)}
+          {@const approved = approvedSuggestions.has(s.field)}
+          {@const expanded = expandedSuggestions.has(s.field)}
+          <div class="suggestion-card" class:approved>
+            <div class="suggestion-top">
+              <div class="suggestion-meta">
+                <span class="suggestion-label">{s.label}</span>
+                <span class="suggestion-reason">{s.reason}</span>
+              </div>
+              <div class="suggestion-actions">
+                {#if approved}
+                  <span class="approved-badge"><i class="las la-check-circle"></i> Saved</span>
+                {:else}
+                  <button class="btn-toggle-preview" on:click={() => toggleSuggestion(s.field)}>
+                    {expanded ? 'Hide' : 'Preview'}
+                  </button>
+                  <button class="btn-reject" on:click={() => rejectSuggestion(s.field)}>Reject</button>
+                  <button class="btn-approve" on:click={() => approveSuggestion(s)}>Approve</button>
+                {/if}
+              </div>
+            </div>
+            {#if expanded && !approved}
+              <div class="suggestion-preview">
+                {@html s.suggested_content}
+              </div>
+            {/if}
+          </div>
+        {/if}
+      {/each}
     </div>
   {/if}
 
@@ -823,4 +925,79 @@
   }
   .btn-reset:hover:not(:disabled) { background: #f8fafc; }
   .btn-reset:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Suggestions */
+  .suggestions-panel {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    display: flex; flex-direction: column; gap: 0.75rem;
+  }
+  .suggestions-header {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.85rem; font-weight: 600; color: #92400e;
+  }
+  .suggestions-header i { font-size: 1rem; color: #f59e0b; }
+  .suggestions-spinner { border-top-color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+  .no-suggestions { font-size: 0.82rem; color: #92400e; margin: 0; }
+
+  .suggestion-card {
+    background: white;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 0.875rem 1rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    transition: border-color 0.15s;
+  }
+  .suggestion-card.approved { border-color: #6ee7b7; background: #f0fdf4; }
+
+  .suggestion-top {
+    display: flex; justify-content: space-between;
+    align-items: flex-start; gap: 1rem; flex-wrap: wrap;
+  }
+  .suggestion-meta { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; }
+  .suggestion-label { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
+  .suggestion-reason { font-size: 0.78rem; color: #64748b; }
+
+  .suggestion-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+
+  .btn-toggle-preview {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid #d1d5db; background: white;
+    border-radius: 5px; font-size: 0.78rem;
+    font-family: inherit; color: #475569; cursor: pointer;
+  }
+  .btn-toggle-preview:hover { border-color: #9333ea; color: #7e22ce; }
+
+  .btn-reject {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid #fca5a5; background: white;
+    border-radius: 5px; font-size: 0.78rem;
+    font-family: inherit; color: #dc2626; cursor: pointer;
+  }
+  .btn-reject:hover { background: #fef2f2; }
+
+  .btn-approve {
+    padding: 0.3rem 0.7rem;
+    border: none; background: #9333ea;
+    border-radius: 5px; font-size: 0.78rem;
+    font-family: inherit; color: white; cursor: pointer; font-weight: 500;
+  }
+  .btn-approve:hover { background: #7e22ce; }
+
+  .approved-badge {
+    font-size: 0.78rem; font-weight: 600;
+    color: #059669; display: flex; align-items: center; gap: 0.3rem;
+  }
+
+  .suggestion-preview {
+    border-top: 1px solid #fde68a;
+    padding-top: 0.625rem;
+    font-size: 0.82rem; line-height: 1.6; color: #334155;
+  }
+  .suggestion-preview :global(h3) { font-size: 0.875rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+  .suggestion-preview :global(h3:first-child) { margin-top: 0; }
+  .suggestion-preview :global(p) { margin: 0 0 0.4rem; }
+  .suggestion-preview :global(ul) { margin: 0 0 0.4rem; padding-left: 1.25rem; }
 </style>

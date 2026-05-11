@@ -107,3 +107,16 @@
 .trp-document-content u {
   text-decoration: underline;
 }
+
+/* LLM-generated content indicator */
+.trp-document-content .llm-generated {
+  color: #6b7280;
+  border-left: 2px solid #d1d5db;
+  padding-left: 0.75rem;
+  margin-left: -0.75rem;
+}
+.trp-document-content .llm-generated h2,
+.trp-document-content .llm-generated h3,
+.trp-document-content .llm-generated h4 {
+  color: #4b5563;
+}

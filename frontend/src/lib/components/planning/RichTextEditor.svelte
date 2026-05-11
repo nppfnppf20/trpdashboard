@@ -311,5 +311,15 @@
   .editor-content::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
   }
+
+  :global(.llm-generated) {
+    color: #6b7280 !important;
+    border-left: 2px solid #d1d5db;
+    padding-left: 0.75rem;
+    margin-left: -0.75rem;
+  }
+  :global(.llm-generated *) {
+    color: #6b7280 !important;
+  }
 </style>
 

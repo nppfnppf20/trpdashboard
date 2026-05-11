@@ -16,7 +16,8 @@ import {
   generatePlanningStatementSection,
   generateFromTemplate,
   summariseDocument,
-  getDefaultSummaryPrompt
+  getDefaultSummaryPrompt,
+  suggestTranscriptUpdates
 } from '../services/llm.service.js';
 
 const SCHEMA = 'planning_applications';
@@ -947,7 +948,7 @@ export async function generateDraft(req, res) {
         } else if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary
           });
         } else if (section.generation_prompt?.includes('{{')) {
           html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.sort_order, briefingSummary });
@@ -979,13 +980,19 @@ export async function generateDraft(req, res) {
 
     } else if (Object.keys(linkedPoliciesByTrack).length > 0) {
       const issueContext = buildIssueContext(issues, evidenceByTrack);
+      const { rows: bsRows } = await pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      );
+      const fallbackBriefingSummary = bsRows[0]?.summary_html ?? null;
       const sectionParts = [];
       for (const section of sections) {
         let html;
         if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary: fallbackBriefingSummary
           });
         } else {
           html = await generateDraftSection({
@@ -1096,6 +1103,30 @@ export async function saveDocumentSummary(req, res) {
   }
 }
 
+export async function replaceDocumentSummary(req, res) {
+  const { projectId } = req.params;
+  const { title, document_ref, file_name, doc_type, summary_html } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  if (!summary_html?.trim()) return res.status(400).json({ error: 'summary_html is required' });
+  if (!doc_type) return res.status(400).json({ error: 'doc_type is required' });
+  try {
+    await pool.query(
+      `DELETE FROM planning_applications.document_summaries WHERE project_id = $1 AND doc_type = $2`,
+      [projectId, doc_type]
+    );
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.document_summaries
+         (project_id, title, document_ref, file_name, doc_type, summary_html)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [projectId, title.trim(), document_ref?.trim() || null, file_name || null, doc_type, summary_html.trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('pa.replaceDocumentSummary error:', err);
+    res.status(500).json({ error: 'Failed to replace document summary' });
+  }
+}
+
 export async function deleteDocumentSummary(req, res) {
   const { summaryId } = req.params;
   try {
@@ -1182,7 +1213,7 @@ export async function generateSection(req, res) {
       html = await generateFromTemplate({ section, variables, briefingSummary });
 
     } else if (section.slug === 'planning_assessment') {
-      const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
+      const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack, { rows: bsRows }] = await Promise.all([
         pool.query(
           `SELECT pit.id, pit.label, pit.discipline,
                   ain.argument_against, ain.argument_for,
@@ -1196,11 +1227,17 @@ export async function generateSection(req, res) {
           [projectId]
         ),
         fetchEvidenceByTrack(projectId),
-        fetchLinkedPoliciesByTrack(projectId)
+        fetchLinkedPoliciesByTrack(projectId),
+        pool.query(
+          `SELECT summary_html FROM planning_applications.document_summaries
+           WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+          [projectId]
+        )
       ]);
       html = await generatePlanningStatementAssessment({
         projectName: projectRows[0].project_name,
-        section, issues, linkedPoliciesByTrack, evidenceByTrack
+        section, issues, linkedPoliciesByTrack, evidenceByTrack,
+        briefingSummary: bsRows[0]?.summary_html ?? null
       });
 
     } else if (section.generation_prompt?.includes('{{')) {
@@ -1243,6 +1280,18 @@ export async function generateSection(req, res) {
     res.json({ html, section_id: section.id, section_name: section.name });
   } catch (err) {
     console.error('pa.generateSection error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function suggestDocumentUpdates(req, res) {
+  try {
+    const { text } = req.body;
+    if (!text?.trim()) return res.status(400).json({ error: 'text is required' });
+    const suggestions = await suggestTranscriptUpdates(text);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('pa.suggestDocumentUpdates error:', err);
     res.status(500).json({ error: err.message });
   }
 }
