@@ -138,6 +138,56 @@ export async function deletePromptTemplate(projectId) {
   return res.json();
 }
 
+// ── Argument suggestion ────────────────────────────────────────────────────
+
+export async function suggestArgument(projectId, { file, text, documentType, documentTitle, documentDirection, userNotes, relevantTrackIds, conversation, customPrompt, preview = false }) {
+  const qs = preview ? '?preview=true' : '';
+  if (file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('document_type', documentType);
+    fd.append('document_title', documentTitle || '');
+    if (documentDirection) fd.append('document_direction', documentDirection);
+    if (userNotes) fd.append('user_notes', userNotes);
+    if (relevantTrackIds?.length) fd.append('relevant_track_ids', JSON.stringify(relevantTrackIds));
+    if (conversation?.length) fd.append('conversation', JSON.stringify(conversation));
+    if (customPrompt) fd.append('custom_prompt', customPrompt);
+    const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-argument${qs}`, { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate suggestion'); }
+    return res.json();
+  } else {
+    const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-argument${qs}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, document_type: documentType, document_title: documentTitle || '', document_direction: documentDirection, user_notes: userNotes, relevant_track_ids: relevantTrackIds ?? [], conversation: conversation ?? [], custom_prompt: customPrompt ?? null })
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate suggestion'); }
+    return res.json();
+  }
+}
+
+export async function getSuggestTemplate(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-template`);
+  if (!res.ok) throw new Error('Failed to fetch suggest template');
+  return res.json();
+}
+
+export async function saveSuggestTemplate(projectId, template) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-template`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template })
+  });
+  if (!res.ok) throw new Error('Failed to save suggest template');
+  return res.json();
+}
+
+export async function deleteSuggestTemplate(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-template`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete suggest template');
+  return res.json();
+}
+
 // ── Draft documents ────────────────────────────────────────────────────────
 
 export async function getDraftTypes() {

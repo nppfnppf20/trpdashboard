@@ -4,6 +4,7 @@
   import { issueNotes, noteStatus, initNotes, handleNoteInput } from '$lib/stores/appeal-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/appeal-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
+  import { suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestDirection, suggestUserNotes, suggestTrackIds, suggestState, conversation, suggestError, refinementInput, refinementLoading, acceptLoading, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, runSuggestion, sendRefinement, acceptSuggestion, resetSuggestion, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt, openSuggestionLogModal } from '$lib/stores/appeal-suggestion.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/appeal-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
 
@@ -19,8 +20,10 @@
   ];
 
   let fileInput;
+  let suggestFileInput;
+  let chatEndEl;
 
-
+  $: if ($conversation.length && chatEndEl) setTimeout(() => chatEndEl?.scrollIntoView({ behavior: 'smooth' }), 50);
 
   let draftEditor;
   let sectionExampleEditor;
@@ -56,6 +59,7 @@
       ]);
       keyIssues = issues;
       initAnalysis(project.id);
+      initSuggestion(project.id);
       initDrafts(project.id);
       initNotes(project.id, notes);
       initLog(log);
@@ -289,114 +293,109 @@
         {/if}
       </div>
 
-      <!-- Right: document upload panel -->
+      <!-- Right: argument suggestion panel -->
       <div class="input-panel">
 
-        {#if $analysisState === 'loading'}
+        {#if $suggestState === 'loading'}
           <div class="analysis-loading">
             <div class="spinner"></div>
-            <p>Analysing document...</p>
+            <p>Reading document and building suggestion...</p>
           </div>
 
-        {:else if $analysisState === 'results'}
-          <div class="results-header">
-            <span class="results-title">Analysis</span>
+        {:else if $suggestState === 'chat'}
+          <!-- Chat thread -->
+          <div class="chat-header">
+            <span class="results-title">Argument suggestion</span>
             <div class="results-header-actions">
-              {#if $acceptedPoints.length > 0}
-                <button class="log-btn" on:click={() => openLogModal($analysisSummary, $acceptedPoints)}>
-                  <i class="las la-save"></i> Save to log
+              {#if Object.keys($acceptedIssues).length > 0}
+                <button class="log-btn" on:click={openSuggestionLogModal}>
+                  <i class="las la-save"></i> Log document
                 </button>
               {/if}
-              <button class="reset-btn" on:click={resetAnalysis}><i class="las la-arrow-left"></i> New document</button>
+              <button class="reset-btn" on:click={resetSuggestion}><i class="las la-arrow-left"></i> New document</button>
             </div>
           </div>
 
-          <div class="results-list">
-
-            {#if $analysisSummary}
-              <div class="result-summary">
-                <p>{$analysisSummary}</p>
-              </div>
-            {/if}
-
-            {#if $analysisCoverage.length > 0}
-              <div class="result-group">
-                <div class="result-group-label">Issue coverage</div>
-                {#each $analysisCoverage as cov}
-                  {@const issue = keyIssues.find(i => i.id === cov.issue_id)}
-                  {#if issue}
-                    <div class="coverage-row">
-                      <span class="coverage-issue">{issue.label}</span>
-                      <span class="coverage-text">{cov.assessment}</span>
+          <div class="chat-thread">
+            {#each $conversation as msg, i}
+              {#if msg.role === 'assistant'}
+                {@const isLast = i === $conversation.length - 1 || $conversation.slice(i + 1).every(m => m.role === 'user')}
+                {@const field = $suggestDirection === 'for' ? 'argument_for' : 'argument_against'}
+                <div class="chat-msg assistant">
+                  <div class="chat-prose">{msg.content}</div>
+                  {#if isLast}
+                    <div class="chat-msg-actions">
+                      {#if $suggestTrackIds.length === 1}
+                        {@const issue = keyIssues.find(i => i.id === $suggestTrackIds[0])}
+                        <button
+                          class="accept-btn"
+                          class:accepted={$acceptedIssues[$suggestTrackIds[0]]}
+                          on:click={() => acceptSuggestion($suggestTrackIds[0], field, msg.content, issue?.label ?? '')}
+                        >
+                          {#if $acceptedIssues[$suggestTrackIds[0]]}
+                            <i class="las la-check"></i> Accepted into {issue?.label ?? 'issue'}
+                          {:else}
+                            <i class="las la-check"></i> Accept into {issue?.label ?? 'issue'} ({$suggestDirection === 'for' ? 'for' : 'against'})
+                          {/if}
+                        </button>
+                      {:else}
+                        <div class="accept-multi">
+                          {#each ($suggestTrackIds.length > 0 ? keyIssues.filter(i => $suggestTrackIds.includes(i.id)) : keyIssues) as issue}
+                            <button
+                              class="accept-btn accept-btn-sm"
+                              class:accepted={$acceptedIssues[issue.id]}
+                              on:click={() => acceptSuggestion(issue.id, field, msg.content, issue.label)}
+                            >
+                              {#if $acceptedIssues[issue.id]}
+                                <i class="las la-check"></i> {issue.label}
+                              {:else}
+                                Accept → {issue.label}
+                              {/if}
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
                     </div>
                   {/if}
-                {/each}
+                </div>
+              {:else}
+                <div class="chat-msg user">
+                  <p>{msg.content}</p>
+                </div>
+              {/if}
+            {/each}
+            {#if $refinementLoading}
+              <div class="chat-msg assistant loading-msg">
+                <div class="mini-spinner"></div><span>Revising...</span>
               </div>
             {/if}
-
-            {#if $activePoints.length === 0}
-              <div class="results-empty">
-                <i class="las la-check-circle"></i>
-                <p>{$extractedPoints.length > 0 ? 'All points reviewed.' : 'No specific points extracted — see summary above.'}</p>
-              </div>
-            {:else}
-              <div class="result-group">
-                <div class="result-group-label">Suggested points — tick to add, cross to dismiss</div>
-                {#each Object.entries($pointsByIssue) as [groupKey, points]}
-                  {@const issueLabel = groupKey === '__general__'
-                    ? 'General'
-                    : (keyIssues.find(i => String(i.id) === String(groupKey))?.label ?? 'Unknown')}
-                  <div class="result-subgroup">
-                    <div class="result-subgroup-label">{issueLabel}</div>
-                    {#each points as point}
-                      {@const globalIdx = $extractedPoints.indexOf(point)}
-                      <div class="result-card">
-                        <div class="result-card-top">
-                          <span class="result-field-tag" class:against={point.field === 'argument_against'} class:for={point.field === 'argument_for'}>
-                            {point.field === 'argument_against' ? 'Against' : 'For'}
-                          </span>
-                          <div class="result-actions">
-                            {#if point.detailed_summary}
-                              <button class="result-btn info" title="View detail" on:click={() => toggleExpanded(globalIdx)}>
-                                <i class="las la-info-circle"></i>
-                              </button>
-                            {/if}
-                            <button class="result-btn accept" title="Add to notes" on:click={() => acceptPoint(globalIdx, keyIssues)}>
-                              <i class="las la-check"></i>
-                            </button>
-                            <button class="result-btn dismiss" title="Dismiss" on:click={() => dismissPoint(globalIdx)}>
-                              <i class="las la-times"></i>
-                            </button>
-                          </div>
-                        </div>
-                        <p class="result-point">{point.headline ?? point.point}</p>
-                        {#if expandedPoints[globalIdx] && (point.detailed_summary || point.citation?.quote || point.citation?.para_ref)}
-                          <div class="result-point-detail">
-                            {#if point.detailed_summary}<p>{point.detailed_summary}</p>{/if}
-                            {#if point.citation?.quote || point.citation?.para_ref}
-                              <div class="citation-block">
-                                {#if point.citation.quote}<span class="citation-quote">"{point.citation.quote}"</span>{/if}
-                                {#if point.citation.para_ref}<span class="citation-ref">{point.citation.para_ref}</span>{/if}
-                              </div>
-                            {/if}
-                          </div>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/each}
-              </div>
-            {/if}
-
+            <div bind:this={chatEndEl}></div>
           </div>
 
+          <div class="chat-input-row">
+            <textarea
+              class="chat-input"
+              bind:value={$refinementInput}
+              placeholder="Ask for changes — e.g. 'make the first paragraph more specific to heritage impact'..."
+              rows="2"
+              on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefinement(); } }}
+            ></textarea>
+            <button class="chat-send-btn" disabled={!$refinementInput.trim() || $refinementLoading} on:click={sendRefinement}>
+              <i class="las la-paper-plane"></i>
+            </button>
+          </div>
+
+          {#if $suggestError}
+            <p class="analysis-error">{$suggestError}</p>
+          {/if}
+
         {:else}
-          <!-- Idle: upload / paste -->
+          <!-- Idle: upload / paste form -->
           <div class="input-tabs">
-            <button class="input-tab" class:active={$activeInputTab === 'upload'} on:click={() => $activeInputTab = 'upload'}>
+            <button class="input-tab" class:active={$suggestInputTab === 'upload'} on:click={() => $suggestInputTab = 'upload'}>
               <i class="las la-file-upload"></i> Upload
             </button>
-            <button class="input-tab" class:active={$activeInputTab === 'paste'} on:click={() => $activeInputTab = 'paste'}>
+            <button class="input-tab" class:active={$suggestInputTab === 'paste'} on:click={() => $suggestInputTab = 'paste'}>
               <i class="las la-paste"></i> Paste Text
             </button>
           </div>
@@ -406,18 +405,10 @@
             <div class="form-row">
               <label class="form-label">Document is</label>
               <div class="direction-toggle">
-                <button
-                  class="direction-btn"
-                  class:active={$documentDirection === 'for'}
-                  on:click={() => $documentDirection = 'for'}
-                >
+                <button class="direction-btn" class:active={$suggestDirection === 'for'} on:click={() => $suggestDirection = 'for'}>
                   In favour of appellant's case
                 </button>
-                <button
-                  class="direction-btn"
-                  class:active={$documentDirection === 'against'}
-                  on:click={() => $documentDirection = 'against'}
-                >
+                <button class="direction-btn" class:active={$suggestDirection === 'against'} on:click={() => $suggestDirection = 'against'}>
                   Against appellant's case
                 </button>
               </div>
@@ -425,27 +416,30 @@
 
             <div class="form-row">
               <label class="form-label">Document type</label>
-              <select class="doc-type-select" bind:value={$documentType}>
+              <select class="doc-type-select" bind:value={$suggestDocumentType}>
                 {#each DOC_TYPES as t}<option>{t}</option>{/each}
               </select>
             </div>
 
-            {#if $activeInputTab === 'upload'}
+            <div class="form-row">
+              <label class="form-label">Document title <span class="form-label-hint">(used in prose references)</span></label>
+              <input class="add-section-input" type="text" bind:value={$suggestDocumentTitle} placeholder="e.g. Officer's Report, Land at Station Road" />
+            </div>
+
+            {#if $suggestInputTab === 'upload'}
               <div
                 class="upload-zone"
-                class:drag-over={$dragOver}
-                class:has-file={$selectedFile}
-                on:dragover|preventDefault={() => $dragOver = true}
-                on:dragleave={() => $dragOver = false}
-                on:drop={onDrop}
-                on:click={() => fileInput.click()}
+                class:has-file={$suggestFile}
+                on:dragover|preventDefault
+                on:drop={onSuggestDrop}
+                on:click={() => suggestFileInput.click()}
                 role="button"
                 tabindex="0"
-                on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
+                on:keydown={(e) => e.key === 'Enter' && suggestFileInput.click()}
               >
-                {#if $selectedFile}
+                {#if $suggestFile}
                   <i class="las la-file-alt"></i>
-                  <span>{$selectedFile.name}</span>
+                  <span>{$suggestFile.name}</span>
                   <span class="upload-sub">Click to change</span>
                 {:else}
                   <i class="las la-cloud-upload-alt"></i>
@@ -453,34 +447,34 @@
                   <span class="upload-sub">PDF, TXT or MD · max 20MB</span>
                 {/if}
               </div>
-              <input type="file" accept=".pdf,.txt,.md" bind:this={fileInput} on:change={onFileInputChange} style="display:none" />
+              <input type="file" accept=".pdf,.txt,.md" bind:this={suggestFileInput} on:change={onSuggestFileChange} style="display:none" />
             {:else}
               <textarea
                 class="paste-area"
-                bind:value={$pasteText}
+                bind:value={$suggestPasteText}
                 placeholder="Paste text from a document, report or meeting notes here..."
               ></textarea>
             {/if}
 
             <div class="form-row">
-              <label class="form-label">Your guidance <span class="form-label-hint">(optional — directs what the AI looks for)</span></label>
+              <label class="form-label">Your guidance <span class="form-label-hint">(optional)</span></label>
               <textarea
                 class="user-notes-field"
-                bind:value={$userNotes}
-                placeholder="e.g. Focus on paragraph 5.3 regarding noise, the officer concedes the heritage impact is minor..."
+                bind:value={$suggestUserNotes}
+                placeholder="e.g. Focus on paragraph 5.3, the officer accepts the heritage impact is less than substantial..."
               ></textarea>
             </div>
 
             {#if keyIssues.length > 0}
               <div class="form-row">
-                <label class="form-label">Relevant to <span class="form-label-hint">(leave blank for all issues)</span></label>
+                <label class="form-label">Issues <span class="form-label-hint">(leave blank for all)</span></label>
                 <div class="issue-checks">
                   {#each keyIssues as issue}
                     <label class="issue-check-label">
                       <input
                         type="checkbox"
-                        checked={$selectedTrackIds.includes(issue.id)}
-                        on:change={() => toggleTrack(issue.id)}
+                        checked={$suggestTrackIds.includes(issue.id)}
+                        on:change={() => toggleSuggestTrack(issue.id)}
                       />
                       <span>{issue.label}</span>
                     </label>
@@ -492,23 +486,22 @@
             <div class="analyse-row">
               <button
                 class="analyse-btn"
-                disabled={$activeInputTab === 'upload' ? !$selectedFile : !$pasteText.trim()}
-                on:click={() => runAnalysis()}
+                disabled={$suggestInputTab === 'upload' ? !$suggestFile : !$suggestPasteText.trim()}
+                on:click={runSuggestion}
               >
-                Analyse document
+                <i class="las la-magic"></i> Get suggestion
               </button>
               <button
                 class="prompt-btn"
-                disabled={$activeInputTab === 'upload' ? !$selectedFile : !$pasteText.trim()}
-                on:click={openPromptModal}
+                on:click={openSuggestPromptModal}
                 title="View and edit the prompt before running"
               >
                 <i class="las la-code"></i> Edit prompt
               </button>
             </div>
 
-            {#if $analysisError}
-              <p class="analysis-error">{$analysisError}</p>
+            {#if $suggestError}
+              <p class="analysis-error">{$suggestError}</p>
             {/if}
 
           </div>
@@ -847,6 +840,51 @@
           <button class="modal-cancel" on:click={() => $sectionExampleModalOpen = false}>Cancel</button>
           <button class="modal-save" disabled={$sectionExampleSaving} on:click={handleSaveSectionExample}>
             {#if $sectionExampleSaving}Saving...{:else if $sectionExampleSaved}<i class="las la-check"></i> Saved{:else}Save example{/if}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Suggestion prompt modal -->
+{#if $suggestPromptOpen}
+  <div class="modal-overlay" on:click|self={() => $suggestPromptOpen = false} role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <span class="modal-title">Argument Suggestion Prompt</span>
+          {#if $suggestPromptIsCustom}
+            <span class="prompt-custom-badge">Custom saved</span>
+          {:else}
+            <span class="prompt-default-badge">Default</span>
+          {/if}
+        </div>
+        <button class="modal-close" on:click={() => $suggestPromptOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body">
+        {#if $suggestPromptLoading}
+          <div class="prompt-loading"><div class="spinner"></div><span>Loading prompt...</span></div>
+        {:else}
+          <p class="prompt-hint"><code>&#123;&#123;DOCUMENT&#125;&#125;</code> is replaced with the full document text when running.</p>
+          <textarea class="prompt-editor" bind:value={$suggestPromptText}></textarea>
+        {/if}
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left">
+          {#if $suggestPromptIsCustom}
+            <button class="modal-reset" on:click={resetSuggestPromptToDefault} disabled={$suggestPromptLoading}>
+              Reset to default
+            </button>
+          {/if}
+        </div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={() => $suggestPromptOpen = false}>Cancel</button>
+          <button class="modal-save" disabled={$suggestPromptLoading || $suggestPromptSaving || !$suggestPromptText} on:click={saveSuggestPrompt}>
+            {#if $suggestPromptSaving}Saving...{:else if $suggestPromptSaved}<i class="las la-check"></i> Saved{:else}Save as default{/if}
+          </button>
+          <button class="modal-run" disabled={$suggestPromptLoading || !$suggestPromptText} on:click={runSuggestionWithPrompt}>
+            Run with this prompt
           </button>
         </div>
       </div>
@@ -1234,7 +1272,7 @@
     color: #ef4444;
   }
 
-  .results-header {
+  .results-header, .chat-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1242,6 +1280,139 @@
     border-bottom: 1px solid #e2e8f0;
     flex-shrink: 0;
   }
+
+  /* Chat thread */
+  .chat-thread {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .chat-msg {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 100%;
+  }
+
+  .chat-msg.assistant .chat-prose {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: #1e293b;
+    white-space: pre-wrap;
+  }
+
+  .chat-msg.user {
+    align-items: flex-end;
+  }
+
+  .chat-msg.user p {
+    background: #7c3aed;
+    color: white;
+    border-radius: 8px;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    max-width: 85%;
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .chat-msg.loading-msg {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    color: #64748b;
+    font-size: 0.8125rem;
+    padding: 0.5rem 0;
+  }
+
+  .chat-msg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-top: 0.25rem;
+  }
+
+  .accept-multi {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .accept-btn {
+    padding: 0.4rem 0.875rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1.5px solid #16a34a;
+    background: white;
+    color: #16a34a;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .accept-btn:hover { background: #f0fdf4; }
+
+  .accept-btn.accepted {
+    background: #dcfce7;
+    border-color: #16a34a;
+    color: #15803d;
+    cursor: default;
+  }
+
+  .accept-btn-sm {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.625rem;
+  }
+
+  .chat-input-row {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #e2e8f0;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  .chat-input {
+    flex: 1;
+    resize: none;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .chat-input:focus { border-color: #7c3aed; }
+
+  .chat-send-btn {
+    padding: 0.5rem 0.75rem;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+
+  .chat-send-btn:hover:not(:disabled) { background: #6d28d9; }
+  .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .results-title { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
 

@@ -20,6 +20,10 @@ import {
   getPromptTemplate,
   savePromptTemplate,
   deletePromptTemplate,
+  suggestArgument,
+  getSuggestTemplate,
+  saveSuggestTemplate,
+  deleteSuggestTemplate,
   getDraftTypes,
   getDraft,
   saveDraft,
@@ -63,10 +67,16 @@ router.put('/projects/:projectId/issue-notes/:trackId', upsertIssueNote);
 // Document analysis
 router.post('/projects/:projectId/analyse', upload.single('file'), analyseDocument);
 
-// Prompt template
+// Prompt template (extract-points)
 router.get('/projects/:projectId/prompt-template', getPromptTemplate);
 router.put('/projects/:projectId/prompt-template', savePromptTemplate);
 router.delete('/projects/:projectId/prompt-template', deletePromptTemplate);
+
+// Argument suggestion + prompt template
+router.post('/projects/:projectId/suggest-argument', upload.single('file'), suggestArgument);
+router.get('/projects/:projectId/suggest-template', getSuggestTemplate);
+router.put('/projects/:projectId/suggest-template', saveSuggestTemplate);
+router.delete('/projects/:projectId/suggest-template', deleteSuggestTemplate);
 
 // Argument document
 router.get('/projects/:projectId/argument', getArgument);

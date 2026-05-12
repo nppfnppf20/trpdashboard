@@ -48,8 +48,8 @@ const MODEL_SONNET = 'claude-sonnet-4-6';
 // MAX_CHUNKS      — cap here, warn user that document was truncated
 // REJECT_CHUNKS   — refuse entirely, tell user to paste the relevant section
 // At ~6000 chars/chunk: 8 ≈ 12,500 words | 20 ≈ 31,000 words
-const ANALYSE_CHUNKS = 15;
-const REJECT_CHUNKS  = 30;
+const ANALYSE_CHUNKS = 20;
+const REJECT_CHUNKS  = 35;
 // Alias used internally — kept as ANALYSE_CHUNKS cap
 const MAX_CHUNKS = ANALYSE_CHUNKS;
 
@@ -1823,4 +1823,154 @@ export async function extractPointsFromDocument({ text, allIssues, targetIssues,
       relevant_chunk_indices: p.relevant_chunk_indices ?? []
     }))
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Argument suggestion — prose addition to per-issue working argument
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Full-document block using all ANALYSE_CHUNKS (not the 4-chunk cap used for
+ * point extraction). Conclusions/summaries still floated to the front.
+ */
+export function buildFullDocumentBlock(text) {
+  const allChunks = chunkText(text);
+  const capped = allChunks.slice(0, ANALYSE_CHUNKS);
+
+  const highValueIndices = new Set(
+    capped
+      .map((c, i) => HIGH_VALUE_PATTERN.test(c.trim().slice(0, 200)) ? i : -1)
+      .filter(i => i !== -1)
+  );
+  const regularIndices = capped.map((_, i) => i).filter(i => !highValueIndices.has(i));
+  const ordered = [...highValueIndices, ...regularIndices];
+
+  return ordered.map(i => {
+    const label = highValueIndices.has(i)
+      ? `[Chunk ${i} — HIGH VALUE SECTION: read this first]`
+      : `[Chunk ${i}]`;
+    return `${label}\n${capped[i]}`;
+  }).join('\n\n');
+}
+
+/**
+ * Build the argument suggestion prompt.
+ * Pass `text` for a live run or `documentBlock` (with {{DOCUMENT}} placeholder)
+ * for template preview/editing.
+ */
+export function buildArgumentSuggestionPrompt({
+  text,
+  documentBlock,
+  documentType,
+  documentTitle,
+  documentDirection,
+  issues,          // array of { id, label, argument_for, argument_against }
+  briefingNote,    // string | null
+  refusalReasons,  // array of { title, summary, risk_level, is_key_issue }
+  userNotes        // string | null
+}) {
+  const docBlock = documentBlock ?? buildFullDocumentBlock(text);
+
+  const directionLabel = documentDirection === 'for'
+    ? 'in favour of the appellant\'s case'
+    : 'against the appellant\'s case (e.g. officer report, refusal notice, LPA submission)';
+
+  const briefingSection = briefingNote
+    ? `## Project Briefing Note\nThis is background and strategic context for the project — use it to understand the client's overall position, objectives, and sensitivities. Not every part will be relevant to every issue; draw on it where it informs the argument but do not force it in where it does not apply.\n\n${briefingNote.trim()}`
+    : '## Project Briefing Note\nNo briefing note on file.';
+
+  const refusalSection = refusalReasons?.length
+    ? `## Reasons for Refusal\nThese are the grounds on which planning permission was refused. They define the core issues the appeal must address — use them to understand what the LPA's case rests on and what this document needs to speak to.\n\n` +
+      refusalReasons.map(r => {
+        const risk = r.risk_level ? ` [${r.risk_level.replace(/_/g, ' ')}]` : '';
+        const key  = r.is_key_issue ? ' ★ KEY ISSUE' : '';
+        const body = r.summary?.trim() ? `\n${r.summary.trim()}` : '';
+        return `- ${r.title}${risk}${key}${body}`;
+      }).join('\n')
+    : '';
+
+  const issuesSection = issues.map(issue => {
+    const forText  = issue.argument_for?.trim()      || 'Nothing recorded yet.';
+    const agText   = issue.argument_against?.trim()  || 'Nothing recorded yet.';
+    return `### Issue: ${issue.label} (id:${issue.id})\n**Current argument FOR the appellant:**\n${forText}\n\n**Current argument AGAINST (LPA position):**\n${agText}`;
+  }).join('\n\n---\n\n');
+
+  const userNotesSection = userNotes
+    ? `## User Guidance (high priority — follow this where it conflicts with your judgement)\n${userNotes.trim()}`
+    : '';
+
+  const fieldLabel = documentDirection === 'for' ? 'argument FOR the appellant' : 'argument AGAINST (LPA position)';
+
+  const issueOutputBlock = issues.map(i =>
+    `**Issue: ${i.label}**\n[New sentences or paragraphs to add — or "Nothing to add." if this document does not contribute anything new for this issue]`
+  ).join('\n\n');
+
+  return `You are a planning appeal consultant helping to build the working argument for a planning appeal.
+
+${briefingSection}
+${refusalSection ? '\n' + refusalSection : ''}
+## Issues to Address
+${issuesSection}
+
+${userNotesSection}
+
+## Document Being Reviewed
+Type: ${documentType}
+Title: ${documentTitle || 'Unknown'}
+Direction: This document is ${directionLabel}.
+
+Read the document carefully — conclusions and summaries first, then the supporting detail. Then read the current argument notes for each issue above.
+
+Your task is to suggest **additions only** — new sentences or short paragraphs that this document contributes to the **${fieldLabel}** for each issue. Do not restate, rewrite, or repeat anything already covered in the existing argument. Only output content that is genuinely new: new evidence, findings, technical conclusions, or expert positions that the existing notes do not already capture.
+
+Requirements:
+- Write in flowing prose — brief, note-like but in full sentences and paragraphs
+- Reference the document inline: name it by title, cite paragraph/section numbers where available (e.g. "At paragraph 7.3 of the ${documentTitle || 'document'}...")
+- Where an author or expert is named in the document, reference them (e.g. "The heritage consultant concludes...")
+- Do not use bullet points or numbered lists — prose only
+- Keep additions concise: 1–4 sentences per issue unless the document warrants more
+- If this document adds nothing new for a particular issue, write exactly: "Nothing to add."
+- Output ONLY the additions — no preamble, no explanation, no headings other than the issue labels below
+${TONE_EXAMPLE_BLOCK}
+
+Document (conclusions and summaries shown first):
+<document>
+${docBlock}
+</document>
+
+Suggest additions to the ${fieldLabel} for each issue:
+
+${issueOutputBlock}`;
+}
+
+/**
+ * Template version with {{DOCUMENT}} placeholder — for user preview and editing.
+ */
+export function buildArgumentSuggestionTemplate({ documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes }) {
+  return buildArgumentSuggestionPrompt({ documentBlock: '{{DOCUMENT}}', documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes });
+}
+
+/**
+ * Run the argument suggestion. On first call pass an empty conversation array.
+ * On refinement passes the prior turns so Claude can adjust its suggestion.
+ *
+ * conversation = [{ role: 'assistant', content: prevSuggestion }, { role: 'user', content: refinementMsg }, ...]
+ */
+export async function suggestArgumentAddition({ text, documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes, conversation = [], customPrompt }) {
+  const initialPrompt = customPrompt ?? buildArgumentSuggestionPrompt({ text, documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes });
+
+  const messages = [
+    { role: 'user', content: initialPrompt },
+    ...conversation
+  ];
+
+  console.log('[suggestArgumentAddition] turns:', messages.length, 'doc chunks approx:', Math.ceil(text.length / 6000));
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 3000,
+    messages
+  });
+
+  return response.content[0].text.trim();
 }

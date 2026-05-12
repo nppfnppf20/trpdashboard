@@ -5,7 +5,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -785,5 +785,166 @@ export async function generateDraft(req, res) {
   } catch (err) {
     console.error('generateDraft error:', err);
     res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Argument suggestion — prose chat flow
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function suggestArgument(req, res) {
+  try {
+    const { projectId } = req.params;
+    const documentType      = req.body.document_type      || 'Other';
+    const documentTitle     = req.body.document_title     || '';
+    const documentDirection = req.body.document_direction || 'against';
+    const userNotes         = req.body.user_notes         || null;
+    const customPrompt      = req.body.custom_prompt      || null;
+    const preview           = req.query.preview === 'true';
+
+    const rawIds = req.body.relevant_track_ids;
+    let relevantTrackIds = [];
+    if (Array.isArray(rawIds)) {
+      relevantTrackIds = rawIds;
+    } else if (typeof rawIds === 'string' && rawIds.trim()) {
+      relevantTrackIds = JSON.parse(rawIds);
+    }
+
+    let conversation = [];
+    const rawConv = req.body.conversation;
+    if (typeof rawConv === 'string' && rawConv.trim()) {
+      conversation = JSON.parse(rawConv);
+    } else if (Array.isArray(rawConv)) {
+      conversation = rawConv;
+    }
+
+    let text;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+    } else if (req.body.text) {
+      text = req.body.text;
+    } else if (!preview) {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    // Fetch all active issues with their current argument notes
+    const { rows: allIssues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const issues = relevantTrackIds.length > 0
+      ? allIssues.filter(i => relevantTrackIds.includes(i.id))
+      : allIssues;
+
+    // Fetch briefing note
+    const { rows: briefingRows } = await pool.query(
+      `SELECT summary_html FROM planning_applications.document_summaries
+       WHERE project_id = $1 AND doc_type = 'briefing_note'
+       ORDER BY created_at DESC LIMIT 1`,
+      [projectId]
+    );
+    const briefingNote = briefingRows[0]?.summary_html ?? null;
+
+    // Fetch refusal reasons
+    const { rows: refusalRows } = await pool.query(
+      `SELECT title, summary, risk_level, is_key_issue
+       FROM admin_console.refusal_reasons
+       WHERE project_id = $1
+       ORDER BY sort_order, id`,
+      [projectId]
+    );
+    const refusalReasons = refusalRows;
+
+    // Fetch saved suggest template for this project
+    const { rows: templateRows } = await pool.query(
+      `SELECT suggest_argument_template FROM public.appeal_prompt_settings WHERE project_id = $1`,
+      [projectId]
+    );
+    const savedTemplate = templateRows[0]?.suggest_argument_template ?? null;
+
+    if (preview) {
+      const template = savedTemplate
+        ?? buildArgumentSuggestionTemplate({ documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes });
+      return res.json({ template });
+    }
+
+    let resolvedCustomPrompt = null;
+    if (customPrompt) {
+      resolvedCustomPrompt = customPrompt.replace('{{DOCUMENT}}', text.slice(0, 120000));
+    } else if (savedTemplate) {
+      resolvedCustomPrompt = savedTemplate.replace('{{DOCUMENT}}', text.slice(0, 120000));
+    }
+
+    const suggestion = await suggestArgumentAddition({
+      text,
+      documentType,
+      documentTitle,
+      documentDirection,
+      issues,
+      briefingNote,
+      refusalReasons,
+      userNotes,
+      conversation,
+      customPrompt: resolvedCustomPrompt
+    });
+
+    res.json({ suggestion });
+  } catch (err) {
+    console.error('suggestArgument error:', err.message, err.stack);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getSuggestTemplate(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT suggest_argument_template, updated_at FROM public.appeal_prompt_settings WHERE project_id = $1`,
+      [projectId]
+    );
+    res.json(rows[0] ?? null);
+  } catch (err) {
+    console.error('getSuggestTemplate error:', err);
+    res.status(500).json({ error: 'Failed to fetch suggest template' });
+  }
+}
+
+export async function saveSuggestTemplate(req, res) {
+  const { projectId } = req.params;
+  const { template } = req.body;
+  if (!template?.trim()) return res.status(400).json({ error: 'template is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO public.appeal_prompt_settings (project_id, suggest_argument_template, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (project_id)
+       DO UPDATE SET suggest_argument_template = $2, updated_at = NOW()
+       RETURNING suggest_argument_template, updated_at`,
+      [projectId, template.trim()]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('saveSuggestTemplate error:', err);
+    res.status(500).json({ error: 'Failed to save suggest template' });
+  }
+}
+
+export async function deleteSuggestTemplate(req, res) {
+  const { projectId } = req.params;
+  try {
+    await pool.query(
+      `UPDATE public.appeal_prompt_settings SET suggest_argument_template = NULL, updated_at = NOW() WHERE project_id = $1`,
+      [projectId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deleteSuggestTemplate error:', err);
+    res.status(500).json({ error: 'Failed to delete suggest template' });
   }
 }
