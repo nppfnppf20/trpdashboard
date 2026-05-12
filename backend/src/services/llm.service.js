@@ -1974,3 +1974,107 @@ export async function suggestArgumentAddition({ text, documentType, documentTitl
 
   return response.content[0].text.trim();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Planning application argument suggestion (prose chat flow)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function buildPlanningArgumentSuggestionPrompt({
+  text,
+  documentBlock,
+  documentType,
+  documentTitle,
+  issues,          // array of { id, label, argument_for }
+  briefingNote,    // string | null
+  policiesByTrack, // { [issueId]: [{ policy_reference, policy_name, policy_type, relevant_supporting_text }] }
+  userNotes        // string | null
+}) {
+  const docBlock = documentBlock ?? buildFullDocumentBlock(text);
+
+  const briefingSection = briefingNote
+    ? `## Project Briefing Note\nThis is background and strategic context for the project — use it to understand the client's overall position, objectives, and sensitivities. Not every part will be relevant to every issue; draw on it where it informs the compliance case but do not force it in where it does not apply.\n\n${briefingNote.trim()}`
+    : '## Project Briefing Note\nNo briefing note on file.';
+
+  const issuesSection = issues.map(issue => {
+    const forText  = issue.argument_for?.trim() || 'Nothing recorded yet.';
+    const policies = policiesByTrack?.[issue.id] ?? [];
+    const policyBlock = policies.length
+      ? `**Relevant policies:**\n` + policies.map(p => {
+          const ref  = p.policy_reference || 'Policy';
+          const name = p.policy_name ? ` — ${p.policy_name}` : '';
+          const tier = p.policy_type ? ` (${p.policy_type.replace(/_/g, ' ')})` : '';
+          const ctx  = p.relevant_supporting_text?.trim()
+            ? `\n  Context: ${p.relevant_supporting_text.trim().slice(0, 400)}`
+            : '';
+          return `- ${ref}${name}${tier}${ctx}`;
+        }).join('\n')
+      : '';
+    return `### Issue: ${issue.label} (id:${issue.id})\n**Current compliance assessment:**\n${forText}${policyBlock ? '\n\n' + policyBlock : ''}`;
+  }).join('\n\n---\n\n');
+
+  const userNotesSection = userNotes
+    ? `## User Guidance (high priority — follow this where it conflicts with your judgement)\n${userNotes.trim()}`
+    : '';
+
+  const issueOutputBlock = issues.map(i =>
+    `**Issue: ${i.label}**\n[New sentences or paragraphs to add to the compliance assessment — or "Nothing to add." if this document does not contribute anything new for this issue]`
+  ).join('\n\n');
+
+  return `You are a planning consultant helping to build the compliance case for a planning application.
+
+${briefingSection}
+
+## Issues to Address
+${issuesSection}
+
+${userNotesSection}
+
+## Document Being Reviewed
+Type: ${documentType}
+Title: ${documentTitle || 'Unknown'}
+
+Read the document carefully — conclusions and summaries first, then the supporting detail. Then read the current compliance assessment notes for each issue above.
+
+Your task is to suggest **additions only** — new sentences or short paragraphs that this document contributes to the compliance case for each issue. Do not restate, rewrite, or repeat anything already covered in the existing notes. Only output content that is genuinely new: new evidence, findings, technical conclusions, or expert positions that the existing notes do not already capture.
+
+Requirements:
+- Write in flowing prose — brief, note-like but in full sentences and paragraphs
+- Reference the document inline: name it by title, cite paragraph/section numbers where available (e.g. "At paragraph 7.3 of the ${documentTitle || 'document'}...")
+- Where an author or expert is named in the document, reference them (e.g. "The transport consultant concludes...")
+- Do not use bullet points or numbered lists — prose only
+- Keep additions concise: 1–4 sentences per issue unless the document warrants more
+- If this document adds nothing new for a particular issue, write exactly: "Nothing to add."
+- Output ONLY the additions — no preamble, no explanation, no headings other than the issue labels below
+
+Document (conclusions and summaries shown first):
+<document>
+${docBlock}
+</document>
+
+Suggest additions to the compliance assessment for each issue:
+
+${issueOutputBlock}`;
+}
+
+export function buildPlanningArgumentSuggestionTemplate({ documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes }) {
+  return buildPlanningArgumentSuggestionPrompt({ documentBlock: '{{DOCUMENT}}', documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes });
+}
+
+export async function suggestPlanningArgumentAddition({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes, conversation = [], customPrompt }) {
+  const initialPrompt = customPrompt ?? buildPlanningArgumentSuggestionPrompt({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes });
+
+  const messages = [
+    { role: 'user', content: initialPrompt },
+    ...conversation
+  ];
+
+  console.log('[suggestPlanningArgumentAddition] turns:', messages.length, 'doc chunks approx:', Math.ceil((text?.length ?? 0) / 6000));
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 3000,
+    messages
+  });
+
+  return response.content[0].text.trim();
+}

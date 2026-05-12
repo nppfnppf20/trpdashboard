@@ -44,7 +44,11 @@ import {
   draftArgumentsFromBriefing,
   getDocTypePrompt,
   saveDocTypePrompt,
-  deleteDocTypePrompt
+  deleteDocTypePrompt,
+  suggestArgument,
+  getSuggestTemplate,
+  saveSuggestTemplate,
+  deleteSuggestTemplate
 } from '../controllers/planningApplication.controller.js';
 
 const router = express.Router();
@@ -122,5 +126,11 @@ router.delete('/document-summaries/:summaryId', deleteDocumentSummary);
 router.get('/doc-type-prompts/:docType', getDocTypePrompt);
 router.put('/doc-type-prompts/:docType', saveDocTypePrompt);
 router.delete('/doc-type-prompts/:docType', deleteDocTypePrompt);
+
+// Argument suggestion (prose chat flow)
+router.post('/projects/:projectId/suggest-argument', upload.single('file'), suggestArgument);
+router.get('/projects/:projectId/suggest-template', getSuggestTemplate);
+router.put('/projects/:projectId/suggest-template', saveSuggestTemplate);
+router.delete('/projects/:projectId/suggest-template', deleteSuggestTemplate);
 
 export default router;

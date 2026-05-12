@@ -20,7 +20,9 @@ import {
   summariseDocument,
   getDefaultSummaryPrompt,
   suggestTranscriptUpdates,
-  PLANNING_ASSESSMENT_DEFAULT_PROMPT
+  PLANNING_ASSESSMENT_DEFAULT_PROMPT,
+  suggestPlanningArgumentAddition,
+  buildPlanningArgumentSuggestionTemplate
 } from '../services/llm.service.js';
 
 const SCHEMA = 'planning_applications';
@@ -1436,5 +1438,175 @@ export async function suggestDocumentUpdates(req, res) {
   } catch (err) {
     console.error('pa.suggestDocumentUpdates error:', err);
     res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Argument suggestion — prose chat flow
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function suggestArgument(req, res) {
+  try {
+    const { projectId } = req.params;
+    const documentType  = req.body.document_type  || 'Other';
+    const documentTitle = req.body.document_title || '';
+    const userNotes     = req.body.user_notes     || null;
+    const customPrompt  = req.body.custom_prompt  || null;
+    const preview       = req.query.preview === 'true';
+
+    const rawIds = req.body.relevant_track_ids;
+    let relevantTrackIds = [];
+    if (Array.isArray(rawIds)) {
+      relevantTrackIds = rawIds.map(Number);
+    } else if (typeof rawIds === 'string' && rawIds.trim()) {
+      relevantTrackIds = JSON.parse(rawIds).map(Number);
+    }
+
+    let conversation = [];
+    const rawConv = req.body.conversation;
+    if (typeof rawConv === 'string' && rawConv.trim()) {
+      conversation = JSON.parse(rawConv);
+    } else if (Array.isArray(rawConv)) {
+      conversation = rawConv;
+    }
+
+    let text;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+    } else if (req.body.text) {
+      text = req.body.text;
+    } else if (!preview) {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    // Fetch all active issues with their current compliance notes
+    const { rows: allIssues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ins.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN planning_applications.issue_notes ins
+         ON ins.track_id = pit.id AND ins.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const issues = relevantTrackIds.length > 0
+      ? allIssues.filter(i => relevantTrackIds.includes(i.id))
+      : allIssues;
+
+    // Fetch policies for the selected issues
+    const trackIds = issues.map(i => i.id);
+    let policiesByTrack = {};
+    if (trackIds.length > 0) {
+      const { rows: policyRows } = await pool.query(
+        `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
+                pp.relevant_supporting_text, pp.is_key_policy, ptr.track_id
+         FROM public.project_policies pp
+         JOIN planning_applications.policy_track_relevance ptr ON ptr.policy_id = pp.id
+         WHERE ptr.track_id = ANY($1::int[])
+         ORDER BY pp.policy_type, pp.policy_reference`,
+        [trackIds]
+      );
+      for (const row of policyRows) {
+        if (!policiesByTrack[row.track_id]) policiesByTrack[row.track_id] = [];
+        policiesByTrack[row.track_id].push(row);
+      }
+    }
+
+    // Fetch briefing transcript
+    const { rows: briefingRows } = await pool.query(
+      `SELECT summary_html FROM planning_applications.document_summaries
+       WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+       ORDER BY created_at DESC LIMIT 1`,
+      [projectId]
+    );
+    const briefingNote = briefingRows[0]?.summary_html ?? null;
+
+    // Fetch saved suggest template
+    const { rows: templateRows } = await pool.query(
+      `SELECT prompt_text FROM planning_applications.prompt_settings
+       WHERE project_id = $1 AND prompt_key = 'suggest_argument'`,
+      [projectId]
+    );
+    const savedTemplate = templateRows[0]?.prompt_text ?? null;
+
+    if (preview) {
+      const template = savedTemplate
+        ?? buildPlanningArgumentSuggestionTemplate({ documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes });
+      return res.json({ template });
+    }
+
+    let resolvedCustomPrompt = null;
+    if (customPrompt) {
+      resolvedCustomPrompt = customPrompt.replace('{{DOCUMENT}}', text.slice(0, 120000));
+    } else if (savedTemplate) {
+      resolvedCustomPrompt = savedTemplate.replace('{{DOCUMENT}}', text.slice(0, 120000));
+    }
+
+    const suggestion = await suggestPlanningArgumentAddition({
+      text,
+      documentType,
+      documentTitle,
+      issues,
+      briefingNote,
+      policiesByTrack,
+      userNotes,
+      conversation,
+      customPrompt: resolvedCustomPrompt
+    });
+
+    res.json({ suggestion });
+  } catch (err) {
+    console.error('pa.suggestArgument error:', err.message, err.stack);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getSuggestTemplate(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT prompt_text FROM planning_applications.prompt_settings
+       WHERE project_id = $1 AND prompt_key = 'suggest_argument'`,
+      [projectId]
+    );
+    res.json(rows[0] ?? null);
+  } catch (err) {
+    console.error('pa.getSuggestTemplate error:', err);
+    res.status(500).json({ error: 'Failed to fetch suggest template' });
+  }
+}
+
+export async function saveSuggestTemplate(req, res) {
+  const { projectId } = req.params;
+  const { template } = req.body;
+  if (!template?.trim()) return res.status(400).json({ error: 'template is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.prompt_settings (project_id, prompt_key, prompt_text)
+       VALUES ($1, 'suggest_argument', $2)
+       ON CONFLICT (project_id, prompt_key) DO UPDATE SET prompt_text = $2
+       RETURNING prompt_text`,
+      [projectId, template.trim()]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('pa.saveSuggestTemplate error:', err);
+    res.status(500).json({ error: 'Failed to save suggest template' });
+  }
+}
+
+export async function deleteSuggestTemplate(req, res) {
+  const { projectId } = req.params;
+  try {
+    await pool.query(
+      `DELETE FROM planning_applications.prompt_settings
+       WHERE project_id = $1 AND prompt_key = 'suggest_argument'`,
+      [projectId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('pa.deleteSuggestTemplate error:', err);
+    res.status(500).json({ error: 'Failed to delete suggest template' });
   }
 }
