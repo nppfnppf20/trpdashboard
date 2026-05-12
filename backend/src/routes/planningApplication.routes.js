@@ -41,6 +41,7 @@ import {
   resetSectionPrompt,
   getAssessmentIssues,
   generateAssessmentIssue,
+  draftArgumentsFromBriefing,
   getDocTypePrompt,
   saveDocTypePrompt,
   deleteDocTypePrompt
@@ -96,6 +97,7 @@ router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
 router.get('/projects/:projectId/assessment-issues', getAssessmentIssues);
+router.post('/projects/:projectId/draft-arguments-from-briefing', draftArgumentsFromBriefing);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/issues/:trackId/generate', generateAssessmentIssue);
 
 // Document log

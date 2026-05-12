@@ -6,8 +6,35 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { aggregateChunkResults } from './aggregator.service.js';
 import { chunkText } from './parser.service.js';
+
+// Load tone example from repo root — used as writing style reference in all generation calls
+const __dirname = dirname(fileURLToPath(import.meta.url));
+let TONE_EXAMPLE_BLOCK = '';
+try {
+  const raw = readFileSync(join(__dirname, '../../../planningstatementexample.md'), 'utf-8');
+  // Extract from planning assessment section onwards, clean up page numbers/headers
+  const startIdx = raw.indexOf('8.0 Planning Assessment');
+  const src = startIdx !== -1 ? raw.slice(startIdx, startIdx + 4000) : raw.slice(0, 4000);
+  const cleaned = src
+    .split('\n')
+    .filter(l => !/^\d+$/.test(l.trim()))
+    .filter(l => !l.match(/^[A-Z].{5,30}, PDAS$/))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 3000);
+  if (cleaned.length > 200) {
+    TONE_EXAMPLE_BLOCK = `\n\nWriting style reference — match the professional tone, register, and sentence structure of the following planning statement excerpt. Do NOT use any content, facts, project names, site details, or policy references from this example — it is for writing style only:\n<tone_example>\n${cleaned}\n</tone_example>`;
+    console.log('[llm.service] Tone example loaded:', cleaned.length, 'chars');
+  }
+} catch (e) {
+  console.warn('[llm.service] Could not load planningstatementexample.md:', e.message);
+}
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -1015,8 +1042,8 @@ export function buildDocumentBlock(text, maxChunks = 4) {
  * for the actual document text. Used when saving/loading editable templates.
  * Issue list and context are baked in fresh at call time.
  */
-export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {} }) {
-  return buildExtractPointsPrompt({ documentBlock: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, existingPointsByTrack });
+export function buildExtractPointsTemplate({ allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {}, argumentPoints = {} }) {
+  return buildExtractPointsPrompt({ documentBlock: '{{DOCUMENT}}', allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies, existingPointsByTrack, argumentPoints });
 }
 
 /**
@@ -1025,7 +1052,7 @@ export function buildExtractPointsTemplate({ allIssues, targetIssues, documentTy
  * Pass either `text` (raw document text, will be formatted as indexed chunks)
  * or `documentBlock` (pre-formatted string, used by buildExtractPointsTemplate).
  */
-export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {} }) {
+export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {}, argumentPoints = {} }) {
   const docBlock = documentBlock ?? buildDocumentBlock(text);
   const issues = targetIssues.length > 0 ? targetIssues : allIssues;
   const isPlanningApp = linkedPolicies.length > 0;
@@ -1323,21 +1350,19 @@ export const PLANNING_ASSESSMENT_DEFAULT_PROMPT = `You are a planning consultant
 {{EXAMPLE_BLOCK}}CONTENT INSTRUCTIONS:
 Write a Planning Assessment sub-section for the issue "{{ISSUE_LABEL}}"{{ISSUE_DISCIPLINE}}.
 
-Structure the sub-section as follows:
-1. Policy framework — state the relevant policies. For any policy marked [KEY POLICY], paraphrase what it requires in a sentence or two — do not use quotation marks or present any wording as a direct quote. For non-key policies, summarise what they require in a single sentence.
-2. Assessment — explain in professional planning language how the proposal is compliant with each policy. Draw on the assessment notes and supporting evidence provided below. Where expert evidence supports compliance, reference it specifically (e.g. "The Heritage Statement concludes that...").
-3. Conclusion — end the sub-section with a single concluding paragraph. If the proposal is compliant, state: "The proposals are therefore considered to comply with {{POLICY_REFS}}." If compliance is subject to conditions or mitigation mentioned in the assessment, say instead: "Subject to [the conditions/mitigation described above], the proposals are considered to comply with {{POLICY_REFS}}."
+{{POLICY_STRUCTURE}}
 
-Issue context (policy framework, assessment notes, and evidence):
+Issue context (assessment notes, evidence, and any linked policies):
 {{ISSUE_CONTEXT}}
 
 FORMAT RULES (mandatory):
-- Begin with <h3>{{ISSUE_LABEL}}</h3>
+- Begin with <h3>{{ISSUE_LABEL}}</h3> then immediately write paragraphs — no sub-headings of any kind
+- Do NOT add h4 or h5 headings such as "Policy Framework", "Assessment", or "Conclusion"
 - Every paragraph must be wrapped in <p>...</p>
-- Bold policy names and references with <strong>...</strong>
+- Bold policy names and references with <strong>...</strong> only when policies are present in the context above — do not invent or reference policies not listed
 - Do not use **, *, #, ---, or any other markdown characters
 - Do not add placeholder text — write the full sub-section from the material provided
-- If assessment notes are sparse, produce a professional assessment drawing from the policy wording and evidence`;
+- NEVER invent, assume, or refer to any planning policy not explicitly listed in the issue context above`;
 
 export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary }) {
   const exampleBlock = section.example_text?.trim()
@@ -1350,7 +1375,7 @@ export async function generatePlanningStatementAssessment({ projectName, section
     ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
     : '';
 
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${briefingBlock}`;
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
 
   const parts = [`<h2>${section.name}</h2>`];
 
@@ -1377,21 +1402,33 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
     ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
     : '';
 
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${briefingBlock}`;
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
 
   const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence);
 
+  const hasPolicies = linkedPolicies.length > 0;
   const allPolicyRefs = linkedPolicies
     .filter(p => p.policy_reference)
     .map(p => p.policy_reference);
-  const policyRefList = allPolicyRefs.length ? allPolicyRefs.join(', ') : 'the relevant policies';
+  const policyRefList = allPolicyRefs.join(', ');
+
+  const policyStructure = hasPolicies
+    ? `Write as a series of flowing paragraphs — do NOT use sub-headings such as "Policy Framework", "Assessment", or "Conclusion". Weave the policy context, assessment, and conclusion together naturally in the prose, as follows:
+- Open by introducing the relevant policies by name and reference in running text, paraphrasing what each requires (one or two sentences per policy). Do not use quotation marks or present wording as a direct quote.
+- Continue with paragraphs assessing how the proposal complies, drawing on the assessment notes and supporting evidence. Where expert evidence supports compliance, reference it specifically (e.g. "The Heritage Statement confirms that...").
+- Close with a concluding sentence in the final paragraph: "The proposals are therefore considered to comply with ${policyRefList}." If compliance depends on mitigation, say instead: "Subject to [the mitigation described above], the proposals are considered to comply with ${policyRefList}."`
+    : `Write as a series of flowing paragraphs — do NOT use sub-headings such as "Assessment" or "Conclusion". Weave the assessment and conclusion together naturally in the prose:
+- Write paragraphs explaining why the proposals are acceptable for this issue, drawing on the assessment notes and supporting evidence. Reference any expert documents cited in the notes.
+- Close with a brief concluding sentence in the final paragraph confirming the proposals are considered acceptable for this issue.
+
+IMPORTANT: There are no planning policies linked to this issue. Do NOT reference, invent, or imply any planning policy. Write solely on the basis of the assessment notes and evidence provided.`;
 
   const prompt = (customPromptTemplate ?? PLANNING_ASSESSMENT_DEFAULT_PROMPT)
     .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
     .replace(/\{\{SECTION_NAME\}\}/g, section.name)
     .replace(/\{\{ISSUE_LABEL\}\}/g, issue.label)
     .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issue.discipline ? ` (${issue.discipline})` : '')
-    .replace(/\{\{POLICY_REFS\}\}/g, policyRefList)
+    .replace(/\{\{POLICY_STRUCTURE\}\}/g, policyStructure)
     .replace(/\{\{ISSUE_CONTEXT\}\}/g, issueContext)
     .replace(/\{\{EXAMPLE_BLOCK\}\}/g, exampleBlock);
 
@@ -1493,7 +1530,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4096,
-    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${briefingBlock}`,
+    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${TONE_EXAMPLE_BLOCK}${briefingBlock}`,
     messages: [{ role: 'user', content: fullPrompt }]
   });
 
@@ -1537,7 +1574,7 @@ async function generateLlmSlot({ instruction, variables, briefingSummary }) {
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 600,
-    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${briefingBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks`,
+    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${TONE_EXAMPLE_BLOCK}${briefingBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks`,
     messages: [{ role: 'user', content: instruction }]
   });
 
@@ -1699,6 +1736,54 @@ Return ONLY a valid JSON array with no preamble, explanation, or code fences. If
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     console.error('[suggestTranscriptUpdates] Failed to parse JSON:', cleaned.slice(0, 300));
+    return [];
+  }
+}
+
+export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues }) {
+  const issueList = issues.map(i =>
+    `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.argument_for?.trim() ? `\n  Existing notes: ${i.argument_for.trim().slice(0, 200)}` : ''}`
+  ).join('\n');
+
+  const prompt = `You are a planning consultant drafting initial planning assessment notes to support a planning statement.
+
+Based on the briefing summary below, write starter argument notes for each of the following policy issues. These are working notes for the planning team to develop further — not final text.
+
+For each issue write 2–5 sentences covering:
+- Why the proposal is likely to comply with the relevant policies for this issue
+- Specific design decisions, technical measures, mitigation, or expert evidence mentioned in the briefing that support compliance
+- The key argument to develop
+
+Write in professional planning note style ("The proposals...", "It is considered..."). Be specific to the briefing content — do not invent facts not present in the briefing. Where the briefing has little relevant content for an issue, write a brief note on what information would be needed.
+
+Where an issue already has existing notes, supplement rather than replace — add any new angles from the briefing not already captured.
+
+Briefing summary:
+${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}
+
+Issues:
+${issueList}
+
+Respond ONLY with valid JSON — no markdown, no explanation:
+[
+  { "track_id": 42, "argument_for": "The proposals..." }
+]
+
+Include every issue. If you have nothing useful to say for an issue based on the briefing, return a brief note explaining what information is needed.`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    const parsed = JSON.parse(cleaned);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.error('[draftIssueArgumentsFromBriefing] Failed to parse JSON:', cleaned.slice(0, 300));
     return [];
   }
 }

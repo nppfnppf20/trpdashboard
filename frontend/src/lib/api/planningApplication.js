@@ -199,6 +199,15 @@ export async function generateDraftSection(projectId, typeId, sectionId) {
   return res.json();
 }
 
+export async function draftArgumentsFromBriefing(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-arguments-from-briefing`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to draft arguments');
+  }
+  return res.json();
+}
+
 export async function getAssessmentIssues(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/assessment-issues`);
   if (!res.ok) throw new Error('Failed to fetch assessment issues');

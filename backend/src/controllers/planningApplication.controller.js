@@ -14,6 +14,7 @@ import {
   generateDraftSection,
   generatePlanningStatementAssessment,
   generateSingleAssessmentIssue,
+  draftIssueArgumentsFromBriefing,
   generatePlanningStatementSection,
   generateFromTemplate,
   summariseDocument,
@@ -1298,6 +1299,35 @@ export async function generateSection(req, res) {
   } catch (err) {
     console.error('pa.generateSection error:', err);
     res.status(500).json({ error: err.message });
+  }
+}
+
+export async function draftArgumentsFromBriefing(req, res) {
+  const { projectId } = req.params;
+  try {
+    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
+      pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline, ain.argument_for
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN planning_applications.issue_notes ain
+           ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      )
+    ]);
+    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript summary found for this project. Upload and summarise a briefing transcript first.' });
+    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
+    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
+  } catch (err) {
+    console.error('draftArgumentsFromBriefing error:', err);
+    res.status(500).json({ error: err.message || 'Failed to draft arguments' });
   }
 }
 

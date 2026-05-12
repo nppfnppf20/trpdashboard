@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
-  import { initNotes } from '$lib/stores/planning-notes.js';
+  import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftAccepted, briefingDraftSkipped, runDraftFromBriefing, acceptBriefingDraftSuggestion, skipBriefingDraftSuggestion, closeBriefingDraft } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, argumentPointsByTrack, initAnalysis, initArgumentPoints, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/planning-analysis.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue } from '$lib/stores/planning-drafts.js';
@@ -278,6 +278,11 @@
     <!-- ── Tab 3: Argument Structure ── -->
     <div class="argument-body">
       <div class="argument-panel">
+        <div class="argument-panel-toolbar">
+          <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id)}>
+            <i class="las la-lightbulb"></i> Draft arguments from briefing
+          </button>
+        </div>
         <ArgumentStructurePanel {keyIssues} {projectPolicies} {policyTrackRelevance} argumentPointsByTrack={$argumentPointsByTrack} />
       </div>
 
@@ -644,6 +649,57 @@
 
 </div>
 
+<!-- Draft arguments from briefing modal -->
+{#if $briefingDraftOpen}
+  <div class="modal-overlay" on:click|self={closeBriefingDraft} role="dialog" aria-modal="true">
+    <div class="modal modal-briefing-draft">
+      <div class="modal-header">
+        <span class="modal-title">Draft arguments from briefing</span>
+        <button class="modal-close" on:click={closeBriefingDraft}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body">
+        {#if $briefingDraftLoading}
+          <div class="briefing-draft-loading">
+            <div class="mini-spinner"></div>
+            <span>Analysing briefing transcript and drafting arguments…</span>
+          </div>
+        {:else if $briefingDraftSuggestions.length === 0}
+          <p class="briefing-draft-empty">No suggestions returned.</p>
+        {:else}
+          <p class="briefing-draft-intro">Review the suggested argument starters below. Accept to append to the issue's argument notes, or skip to ignore.</p>
+          <div class="briefing-draft-list">
+            {#each $briefingDraftSuggestions as s (s.track_id)}
+              {@const accepted = $briefingDraftAccepted.has(s.track_id)}
+              {@const skipped = $briefingDraftSkipped.has(s.track_id)}
+              <div class="briefing-draft-card" class:bd-accepted={accepted} class:bd-skipped={skipped}>
+                <div class="bd-card-header">
+                  <span class="bd-issue-label">{s.label}</span>
+                  {#if accepted}
+                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Added</span>
+                  {:else if skipped}
+                    <span class="bd-status bd-status-skipped">Skipped</span>
+                  {:else}
+                    <div class="bd-actions">
+                      <button class="bd-btn-accept" on:click={() => acceptBriefingDraftSuggestion(s.track_id, s.argument_for)}>
+                        <i class="las la-check"></i> Accept
+                      </button>
+                      <button class="bd-btn-skip" on:click={() => skipBriefingDraftSuggestion(s.track_id)}>Skip</button>
+                    </div>
+                  {/if}
+                </div>
+                <p class="bd-argument-text">{s.argument_for}</p>
+              </div>
+            {/each}
+          </div>
+          <div class="briefing-draft-footer">
+            <button class="btn-primary" on:click={closeBriefingDraft}>Done</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
 <!-- Save to log modal -->
 {#if $logModalOpen}
   <div class="modal-overlay" on:click|self={() => $logModalOpen = false} role="dialog" aria-modal="true">
@@ -874,7 +930,7 @@
                             <div class="assessment-vars-list">
                               <code>{'{{ISSUE_LABEL}}'}</code>
                               <code>{'{{ISSUE_DISCIPLINE}}'}</code>
-                              <code>{'{{POLICY_REFS}}'}</code>
+                              <code>{'{{POLICY_STRUCTURE}}'}</code>
                               <code>{'{{ISSUE_CONTEXT}}'}</code>
                               <code>{'{{PROJECT_NAME}}'}</code>
                               <code>{'{{SECTION_NAME}}'}</code>
@@ -2446,6 +2502,126 @@
     font-size: 0.72rem;
     color: #64748b;
   }
+
+  /* ── Draft from briefing ── */
+  .argument-panel-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+  }
+
+  .btn-draft-from-briefing {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4rem 0.875rem;
+    background: #faf5ff;
+    border: 1px solid #d8b4fe;
+    border-radius: 6px;
+    color: #7c3aed;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-draft-from-briefing:hover { background: #f3e8ff; border-color: #a855f7; }
+
+  .modal-briefing-draft { max-width: 680px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; }
+  .modal-briefing-draft .modal-body { overflow-y: auto; flex: 1; }
+
+  .briefing-draft-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 2rem;
+    color: #6b7280;
+    font-size: 0.875rem;
+  }
+
+  .briefing-draft-intro {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    margin: 0 0 1rem;
+  }
+
+  .briefing-draft-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+  .briefing-draft-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.875rem;
+    transition: border-color 0.15s;
+  }
+  .briefing-draft-card.bd-accepted { border-color: #86efac; background: #f0fdf4; }
+  .briefing-draft-card.bd-skipped { opacity: 0.45; }
+
+  .bd-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .bd-issue-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #111827;
+  }
+
+  .bd-actions { display: flex; gap: 0.375rem; }
+
+  .bd-btn-accept {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.625rem;
+    background: #7c3aed;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .bd-btn-accept:hover { background: #6d28d9; }
+
+  .bd-btn-skip {
+    padding: 0.25rem 0.625rem;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 5px;
+    color: #6b7280;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  .bd-btn-skip:hover { background: #f9fafb; }
+
+  .bd-status {
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .bd-status-accepted { color: #16a34a; }
+  .bd-status-skipped { color: #9ca3af; }
+
+  .bd-argument-text {
+    font-size: 0.8125rem;
+    color: #374151;
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .briefing-draft-footer {
+    margin-top: 1.25rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .briefing-draft-empty { color: #6b7280; font-size: 0.875rem; }
 
   .section-vars-panel {
     margin: 0.75rem 0 0;

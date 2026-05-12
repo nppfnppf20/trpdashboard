@@ -1,5 +1,47 @@
 import { writable, get } from 'svelte/store';
-import { upsertIssueNote } from '$lib/api/planningApplication.js';
+import { upsertIssueNote, draftArgumentsFromBriefing } from '$lib/api/planningApplication.js';
+
+// ── Draft arguments from briefing ────────────────────────────────────────────
+
+export const briefingDraftOpen = writable(false);
+export const briefingDraftLoading = writable(false);
+export const briefingDraftSuggestions = writable([]); // [{ track_id, label, argument_for }]
+export const briefingDraftAccepted = writable(new Set());
+export const briefingDraftSkipped = writable(new Set());
+
+let _briefingProjectId;
+
+export async function runDraftFromBriefing(projectId) {
+  _briefingProjectId = projectId;
+  briefingDraftLoading.set(true);
+  briefingDraftOpen.set(true);
+  briefingDraftSuggestions.set([]);
+  briefingDraftAccepted.set(new Set());
+  briefingDraftSkipped.set(new Set());
+  try {
+    const { suggestions } = await draftArgumentsFromBriefing(projectId);
+    briefingDraftSuggestions.set(suggestions);
+  } catch (err) {
+    console.error('Draft from briefing failed:', err);
+    alert(err.message);
+    briefingDraftOpen.set(false);
+  } finally {
+    briefingDraftLoading.set(false);
+  }
+}
+
+export function acceptBriefingDraftSuggestion(trackId, argumentFor) {
+  appendToNote(trackId, 'argument_for', argumentFor);
+  briefingDraftAccepted.update(s => { const n = new Set(s); n.add(trackId); return n; });
+}
+
+export function skipBriefingDraftSuggestion(trackId) {
+  briefingDraftSkipped.update(s => { const n = new Set(s); n.add(trackId); return n; });
+}
+
+export function closeBriefingDraft() {
+  briefingDraftOpen.set(false);
+}
 
 export const issueNotes = writable({});
 export const noteStatus = writable({});
