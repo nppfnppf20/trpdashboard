@@ -534,6 +534,32 @@ export async function reorderIssueTracks(projectId, orderedIds) {
   }
 }
 
+async function applyPolicyTemplate(projectId, trackId, discipline) {
+  if (!discipline) return;
+  const { rows: projRows } = await pool.query(
+    `SELECT development_type FROM public.projects WHERE id = $1`, [projectId]
+  );
+  const developmentType = projRows[0]?.development_type;
+  if (!developmentType) return;
+
+  const { rows: tplRows } = await pool.query(
+    `SELECT policy_national_text FROM planning_applications.assessment_policy_templates
+     WHERE discipline = $1 AND development_type = $2`,
+    [discipline, developmentType]
+  );
+  if (!tplRows[0]?.policy_national_text) return;
+
+  await pool.query(
+    `INSERT INTO planning_applications.issue_notes (project_id, track_id, policy_national)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (project_id, track_id) DO UPDATE
+       SET policy_national = EXCLUDED.policy_national
+       WHERE planning_applications.issue_notes.policy_national IS NULL
+          OR planning_applications.issue_notes.policy_national = ''`,
+    [projectId, trackId, tplRows[0].policy_national_text]
+  );
+}
+
 /**
  * Create a custom issue track for a project.
  */
@@ -554,7 +580,11 @@ export async function createProjectIssueTrack(projectId, { label, discipline, so
      RETURNING *`,
     [projectId, discipline || null, label || null, order]
   );
-  return result.rows[0];
+  const track = result.rows[0];
+  await applyPolicyTemplate(projectId, track.id, track.discipline).catch(err =>
+    console.error('[applyPolicyTemplate] failed silently:', err)
+  );
+  return track;
 }
 
 /**

@@ -97,7 +97,7 @@
   .home-button:hover { background: #f1f5f9; border-color: #cbd5e1; }
   .home-button i { font-size: 1.125rem; }
 
-  .page-header { margin-bottom: 2rem; }
+  .page-header { margin-bottom: 2rem; padding-left: 8rem; }
 
   .page-title {
     font-size: 2.5rem;

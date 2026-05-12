@@ -150,6 +150,42 @@ export async function deleteSuggestTemplate(projectId) {
   return res.json();
 }
 
+// ── Policy template library (admin) ───────────────────────────────────────────
+
+const ADMIN_BASE = '/api/admin-console';
+
+export async function listPolicyTemplates() {
+  const res = await authFetch(`${ADMIN_BASE}/policy-templates`);
+  if (!res.ok) throw new Error('Failed to fetch policy templates');
+  return res.json();
+}
+
+export async function upsertPolicyTemplate(data) {
+  const res = await authFetch(`${ADMIN_BASE}/policy-templates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to save policy template');
+  return res.json();
+}
+
+export async function deletePolicyTemplate(id) {
+  const res = await authFetch(`${ADMIN_BASE}/policy-templates/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete policy template');
+  return res.json();
+}
+
+export async function setProjectDevelopmentType(projectId, developmentType) {
+  const res = await authFetch(`/api/projects/${projectId}/development-type`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ development_type: developmentType })
+  });
+  if (!res.ok) throw new Error('Failed to update development type');
+  return res.json();
+}
+
 // ── Draft types & sections ────────────────────────────────────────────────────
 
 export async function getDraftTypes() {

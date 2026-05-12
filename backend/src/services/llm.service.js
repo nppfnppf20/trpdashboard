@@ -1314,6 +1314,11 @@ function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = []) {
     }
   }
 
+  if (issue.policy_national?.trim()) {
+    lines.push(`### National Policy Context`);
+    lines.push(issue.policy_national.trim());
+  }
+
   if (issue.argument_for?.trim()) {
     lines.push(`### Policy Assessment Notes`);
     lines.push(issue.argument_for.trim());
@@ -1390,7 +1395,7 @@ export async function generatePlanningStatementAssessment({ projectName, section
   for (const issue of issues) {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
     const evidence = evidenceByTrack[issue.id] ?? [];
-    if (!linkedPolicies.length && !issue.argument_for?.trim() && !evidence.length) continue;
+    if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length) continue;
     console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
     const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, briefingSummary });
     parts.push(html);

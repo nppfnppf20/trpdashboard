@@ -24,6 +24,7 @@ import planitRoutes from './planit.routes.js';
 import lpaAnalysisRoutes from './lpaAnalysis.routes.js';
 import appealRoutes from './appeal.routes.js';
 import planningApplicationRoutes from './planningApplication.routes.js';
+import policyTemplatesRoutes from './policyTemplates.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -89,6 +90,9 @@ router.use('/api/appeal', appealRoutes);
 
 // Planning application tool
 router.use('/api/planning-application', planningApplicationRoutes);
+
+// Policy template library (admin only — requireAdmin already applied above for /api/admin-console)
+router.use('/api/admin-console/policy-templates', policyTemplatesRoutes);
 
 export default router;
 

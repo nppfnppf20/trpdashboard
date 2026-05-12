@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints } from '$lib/api/planningApplication.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftAccepted, briefingDraftSkipped, runDraftFromBriefing, acceptBriefingDraftSuggestion, skipBriefingDraftSuggestion, closeBriefingDraft } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
@@ -93,6 +93,27 @@
 
   export let project;
 
+  const DEV_TYPES = [
+    'Residential', 'Commercial', 'Solar', 'Wind', 'Mixed Use',
+    'Industrial', 'Change of Use', 'Agricultural', 'Other'
+  ];
+
+  let developmentType = project.development_type ?? '';
+  let devTypeSaving = false;
+
+  async function handleDevTypeChange(e) {
+    const value = e.target.value;
+    developmentType = value;
+    devTypeSaving = true;
+    try {
+      await setProjectDevelopmentType(project.id, value || null);
+    } catch (err) {
+      console.error('Failed to save development type:', err);
+    } finally {
+      devTypeSaving = false;
+    }
+  }
+
   let activeTab = 'key-issues';
 
   let keyIssues = [];
@@ -164,6 +185,15 @@
     <div class="header-info">
       <h1>{project.project_name}</h1>
       {#if project.project_id}<span class="project-ref">{project.project_id}</span>{/if}
+    </div>
+    <div class="header-dev-type">
+      <label for="dev-type-select">Development Type</label>
+      <select id="dev-type-select" value={developmentType} on:change={handleDevTypeChange} disabled={devTypeSaving}>
+        <option value="">Not set</option>
+        {#each DEV_TYPES as dt}
+          <option value={dt}>{dt}</option>
+        {/each}
+      </select>
     </div>
   </div>
 
@@ -1111,16 +1141,46 @@
   .workspace-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 0.75rem 1.5rem;
     background: white;
     border-bottom: 1px solid #e2e8f0;
     flex-shrink: 0;
+    gap: 1rem;
   }
 
   .header-info {
     display: flex;
     align-items: center;
     gap: 0.625rem;
+  }
+
+  .header-dev-type {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .header-dev-type label {
+    font-size: 0.8125rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+
+  .header-dev-type select {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 5px;
+    font-size: 0.8125rem;
+    color: #1e293b;
+    background: white;
+    cursor: pointer;
+  }
+
+  .header-dev-type select:focus {
+    outline: none;
+    border-color: #3b82f6;
   }
 
   .header-info h1 {

@@ -23,6 +23,13 @@
       <h2>Clients</h2>
       <p>View and manage client organisations and their contacts</p>
     </button>
+    <button class="tool-card" on:click={() => goto('/admin-console/policy-templates')}>
+      <div class="card-icon">
+        <i class="las la-file-alt"></i>
+      </div>
+      <h2>Policy Templates</h2>
+      <p>Manage national policy text templates auto-applied to issue tracks by discipline and development type</p>
+    </button>
   </div>
 </div>
 

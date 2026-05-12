@@ -98,7 +98,7 @@ async function getAllProjects(req, res) {
               lpa_reference, submission_date, validation_date,
               lpa_consultation_end_date, committee_date, target_determination_date,
               determined_date, expiry_of_1st_stat_period_date, eot_date,
-              six_months_appeal_window_date, comments,
+              six_months_appeal_window_date, comments, development_type,
               created_at, updated_at
        FROM projects
        ORDER BY created_at DESC`
