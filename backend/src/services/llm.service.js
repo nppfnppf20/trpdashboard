@@ -776,12 +776,13 @@ FORMAT RULES (mandatory):
 - Numbered lists must use <ol><li>...</li></ol>
 - Bullet lists must use <ul><li>...</li></ul>
 - Bold text must use <strong>...</strong>
-- Do not use **, *, #, ---, or any other markdown characters at all`;
+- Do not use **, *, #, ---, or any other markdown characters at all
+- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 2000,
-    system: 'You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error.',
+    system: 'You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.',
     messages: [{ role: 'user', content: prompt }]
   });
 
@@ -897,7 +898,7 @@ ${reasonsText}
 Key issues identified for this appeal:
 ${issuesText}${notesSection}
 
-Produce a structured working argument summary in HTML. Use <h2> for the main sections, <h3> for issue headings, <p> for body text, and <ul>/<li> for bullet points. Do not use markdown.
+Produce a structured working argument summary in HTML. Use <h2> for the main sections, <h3> for issue headings, <p> for body text, and <ul>/<li> for bullet points. Do not use markdown. Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead.
 
 Structure:
 1. Appeal Overview — brief description of what is being appealed and the overall strategic position
@@ -1388,7 +1389,7 @@ export async function generatePlanningStatementAssessment({ projectName, section
     ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
     : '';
 
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
 
   const parts = [`<h2>${section.name}</h2>`];
 
@@ -1415,7 +1416,7 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
     ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
     : '';
 
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
 
   const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence);
 
@@ -1543,7 +1544,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4096,
-    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${TONE_EXAMPLE_BLOCK}${briefingBlock}`,
+    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${TONE_EXAMPLE_BLOCK}${briefingBlock}`,
     messages: [{ role: 'user', content: fullPrompt }]
   });
 
@@ -1587,7 +1588,7 @@ async function generateLlmSlot({ instruction, variables, briefingSummary }) {
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 600,
-    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${TONE_EXAMPLE_BLOCK}${briefingBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks`,
+    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${TONE_EXAMPLE_BLOCK}${briefingBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks\n- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead`,
     messages: [{ role: 'user', content: instruction }]
   });
 
@@ -1758,18 +1759,15 @@ export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues 
     `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.argument_for?.trim() ? `\n  Existing notes: ${i.argument_for.trim().slice(0, 200)}` : ''}`
   ).join('\n');
 
-  const prompt = `You are a planning consultant drafting initial planning assessment notes to support a planning statement.
+  const prompt = `You are a planning consultant building a planning case on behalf of the applicant. Your job is to extract and formulate argument positions — points that can be advanced IN FAVOUR of the proposal — drawing on any relevant content in the briefing summary below.
 
-Based on the briefing summary below, write starter argument notes for each of the following policy issues. These are working notes for the planning team to develop further — not final text.
+For each issue listed, identify whether the briefing contains any information that supports the case: design decisions, technical measures, expert evidence, mitigation, site characteristics, or any other facts that could form the basis of a planning argument for that issue.
 
-For each issue write 2–5 sentences covering:
-- Why the proposal is likely to comply with the relevant policies for this issue
-- Specific design decisions, technical measures, mitigation, or expert evidence mentioned in the briefing that support compliance
-- The key argument to develop
+If the briefing contains relevant material for an issue, write 2–5 sentences formulating the argument. Write as argument starters that can be developed further — not as a summary of what was discussed. Do not reference "the briefing" or "the transcript" in your output; simply state the argument as if it is your working position ("The proposals...", "It is considered...", "In terms of [issue], the development...").
 
-Write in professional planning note style ("The proposals...", "It is considered..."). Be specific to the briefing content — do not invent facts not present in the briefing. Where the briefing has little relevant content for an issue, write a brief note on what information would be needed.
+Only include issues where the briefing genuinely provides something to work with. If there is nothing relevant for an issue, omit it from your response entirely — do not include placeholders or notes about what is missing.
 
-Where an issue already has existing notes, supplement rather than replace — add any new angles from the briefing not already captured.
+Where an issue already has existing notes, supplement rather than replace — add new angles from the briefing not already captured.
 
 Briefing summary:
 ${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}
@@ -1782,7 +1780,9 @@ Respond ONLY with valid JSON — no markdown, no explanation:
   { "track_id": 42, "argument_for": "The proposals..." }
 ]
 
-Include every issue. If you have nothing useful to say for an issue based on the briefing, return a brief note explaining what information is needed.`;
+Only include issues where you have substantive argument content to contribute. Omit issues entirely if the briefing has nothing relevant.
+
+Do not use em dashes (—) anywhere in your output; use a comma, colon, or rewrite the sentence instead.`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
@@ -1944,6 +1944,7 @@ Requirements:
 - Keep additions concise: 1–4 sentences per issue unless the document warrants more
 - If this document adds nothing new for a particular issue, write exactly: "Nothing to add."
 - Output ONLY the additions — no preamble, no explanation, no headings other than the issue labels below
+- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead
 ${TONE_EXAMPLE_BLOCK}
 
 Document (conclusions and summaries shown first):
