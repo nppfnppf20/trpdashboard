@@ -1345,22 +1345,30 @@ function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = []) {
  * @param {Record<number, Array>} params.evidenceByTrack  track_id → evidence rows
  * @returns {Promise<string>}  stitched HTML
  */
-export const PLANNING_ASSESSMENT_DEFAULT_PROMPT = `You are a planning consultant drafting the "{{SECTION_NAME}}" section of a Planning Statement for the project "{{PROJECT_NAME}}". Output HTML only — no markdown.
+export const PLANNING_ASSESSMENT_DEFAULT_PROMPT = `You are writing a planning assessment section for a planning statement. Here's what I want:
+- Each of these sections will take an issue.
+- It will outline the national policy, the local policy, and any other policy (this could be supplementary or national guidance etc.).
+Here's how it will work:
+- The layout will be: The argument structure will be: 1) National policy says X. 2) Local policy says X. 3) Any other policy says X 4) This is how the proposals are compliant with those policies. (That will have user notes, like planning notes, an argument that we've come up with and also specialist surveys, the structure will usually be both of those: this is how we believe the proposal meets the scheme and then we've had this specialist report done and this said X and this is why it meets the scheme.)
+  5) Then the conclusion will be: therefore we think it meets and then your list of policies it meets that we mentioned at the start.
+That's the structure of each section. Sometimes we might not meet policy, in which case we'll need justification or mitigation, but that will also be included in the note. You're basically polishing up the argument structure but just so you know that's how this will look.
 
-{{EXAMPLE_BLOCK}}CONTENT INSTRUCTIONS:
-Write a Planning Assessment sub-section for the issue "{{ISSUE_LABEL}}"{{ISSUE_DISCIPLINE}}.
+The argument structure and the relevant policies have been provided for you. You are absolutely not to hallucinate anything, only to polish up the information that has been provided for you in the tone that has been shown to you.
 
-{{POLICY_STRUCTURE}}
+You are writing the sub-section for the issue "{{ISSUE_LABEL}}"{{ISSUE_DISCIPLINE}}, for the project "{{PROJECT_NAME}}".
 
-Issue context (assessment notes, evidence, and any linked policies):
+{{EXAMPLE_BLOCK}}{{POLICY_STRUCTURE}}
+
+Issue context — policies, assessment notes, and specialist evidence:
 {{ISSUE_CONTEXT}}
 
-FORMAT RULES (mandatory):
-- Begin with <h3>{{ISSUE_LABEL}}</h3> then immediately write paragraphs — no sub-headings of any kind
-- Do NOT add h4 or h5 headings such as "Policy Framework", "Assessment", or "Conclusion"
+FORMAT RULES (mandatory — failure to follow these is an error):
+- Output HTML only — no markdown whatsoever
+- Begin with <h3>{{ISSUE_LABEL}}</h3> then write flowing paragraphs — no other headings of any kind
+- Do NOT add h4 or h5 headings such as "National Policy", "Local Policy", "Policy Framework", "Assessment", or "Conclusion" — the prose itself carries the structure
 - Every paragraph must be wrapped in <p>...</p>
-- Bold policy names and references with <strong>...</strong> only when policies are present in the context above — do not invent or reference policies not listed
-- Do not use **, *, #, ---, or any other markdown characters
+- Bold policy names and references with <strong>...</strong> — only for policies explicitly listed in the issue context above
+- Do not use **, *, #, ---, or any other markdown characters anywhere in the output
 - Do not add placeholder text — write the full sub-section from the material provided
 - NEVER invent, assume, or refer to any planning policy not explicitly listed in the issue context above`;
 
@@ -1413,12 +1421,12 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
   const policyRefList = allPolicyRefs.join(', ');
 
   const policyStructure = hasPolicies
-    ? `Write as a series of flowing paragraphs — do NOT use sub-headings such as "Policy Framework", "Assessment", or "Conclusion". Weave the policy context, assessment, and conclusion together naturally in the prose, as follows:
-- Open by introducing the relevant policies by name and reference in running text, paraphrasing what each requires (one or two sentences per policy). Do not use quotation marks or present wording as a direct quote.
-- Continue with paragraphs assessing how the proposal complies, drawing on the assessment notes and supporting evidence. Where expert evidence supports compliance, reference it specifically (e.g. "The Heritage Statement confirms that...").
-- Close with a concluding sentence in the final paragraph: "The proposals are therefore considered to comply with ${policyRefList}." If compliance depends on mitigation, say instead: "Subject to [the mitigation described above], the proposals are considered to comply with ${policyRefList}."`
-    : `Write as a series of flowing paragraphs — do NOT use sub-headings such as "Assessment" or "Conclusion". Weave the assessment and conclusion together naturally in the prose:
-- Write paragraphs explaining why the proposals are acceptable for this issue, drawing on the assessment notes and supporting evidence. Reference any expert documents cited in the notes.
+    ? `Follow this structure — write entirely in flowing prose, no sub-headings of any kind:
+1. National policies first — state what each requires in one or two flowing sentences in running prose. Then local plan policies in the same way. Then any neighbourhood, supplementary, or other policies. Reference each policy by name and number in the text.
+2. Write paragraphs explaining how the proposals comply with those policies. Draw directly on the assessment notes and specialist evidence provided — reference expert documents specifically where cited (e.g. "The Transport Assessment confirms..."). Where the scheme does not fully comply or relies on mitigation, explain the justification or mitigation measure.
+3. Close with a concluding sentence in the final paragraph: "The proposals are therefore considered to comply with ${policyRefList}." If compliance depends on mitigation: "Subject to [the mitigation described above], the proposals are therefore considered to comply with ${policyRefList}."`
+    : `Write as a series of flowing paragraphs — no sub-headings of any kind:
+- Write paragraphs explaining why the proposals are acceptable for this issue, drawing on the assessment notes and specialist evidence provided. Reference any expert documents cited in the notes specifically (e.g. "The Noise Assessment concludes..."). Where mitigation is involved, explain how it makes the proposals acceptable.
 - Close with a brief concluding sentence in the final paragraph confirming the proposals are considered acceptable for this issue.
 
 IMPORTANT: There are no planning policies linked to this issue. Do NOT reference, invent, or imply any planning policy. Write solely on the basis of the assessment notes and evidence provided.`;
