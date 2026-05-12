@@ -186,15 +186,6 @@
       <h1>{project.project_name}</h1>
       {#if project.project_id}<span class="project-ref">{project.project_id}</span>{/if}
     </div>
-    <div class="header-dev-type">
-      <label for="dev-type-select">Development Type</label>
-      <select id="dev-type-select" value={developmentType} on:change={handleDevTypeChange} disabled={devTypeSaving}>
-        <option value="">Not set</option>
-        {#each DEV_TYPES as dt}
-          <option value={dt}>{dt}</option>
-        {/each}
-      </select>
-    </div>
   </div>
 
   <!-- Tabs -->
@@ -620,6 +611,12 @@
                   {/if}
                 </div>
                 <div class="draft-type-actions">
+                  <select class="card-dev-type-select" value={developmentType} on:change={handleDevTypeChange} disabled={devTypeSaving} title="Development type">
+                    <option value="">Dev type...</option>
+                    {#each DEV_TYPES as dt}
+                      <option value={dt}>{dt}</option>
+                    {/each}
+                  </select>
                   {#if draft}
                     <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
@@ -1153,34 +1150,6 @@
     display: flex;
     align-items: center;
     gap: 0.625rem;
-  }
-
-  .header-dev-type {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-shrink: 0;
-  }
-
-  .header-dev-type label {
-    font-size: 0.8125rem;
-    color: #64748b;
-    white-space: nowrap;
-  }
-
-  .header-dev-type select {
-    padding: 0.3rem 0.6rem;
-    border: 1px solid #d1d5db;
-    border-radius: 5px;
-    font-size: 0.8125rem;
-    color: #1e293b;
-    background: white;
-    cursor: pointer;
-  }
-
-  .header-dev-type select:focus {
-    outline: none;
-    border-color: #3b82f6;
   }
 
   .header-info h1 {
@@ -1898,6 +1867,19 @@
     flex-shrink: 0;
     align-items: center;
   }
+
+  .card-dev-type-select {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: #374151;
+    background: white;
+    cursor: pointer;
+    max-width: 130px;
+  }
+  .card-dev-type-select:focus { outline: none; border-color: #7c3aed; }
 
   .draft-open-btn {
     padding: 0.4rem 0.875rem;

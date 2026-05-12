@@ -37,7 +37,8 @@
     low_risk:            { bg: '#dcfce7', colour: '#16a34a' }
   };
 
-  function autoresize(node, _value) {
+  function valueAndResize(node, value) {
+    node.value = value ?? '';
     function resize() {
       node.style.height = 'auto';
       node.style.height = node.scrollHeight + 'px';
@@ -45,7 +46,7 @@
     node.addEventListener('input', resize);
     resize();
     return {
-      update() { resize(); },
+      update(v) { node.value = v ?? ''; resize(); },
       destroy() { node.removeEventListener('input', resize); }
     };
   }
@@ -61,7 +62,6 @@
     {#each keyIssues as issue (issue.id)}
       {@const risk = riskColours[issue.last_known_risk_level]}
       {@const linked = linkedPolicies(issue.id)}
-      {@const points = argumentPointsByTrack[issue.id] ?? []}
       <div class="argument-section">
         <div class="argument-heading">
           <div class="argument-title-row">
@@ -102,35 +102,12 @@
           </div>
         {/if}
 
-        {#if points.length > 0}
-          <div class="evidence-block">
-            <span class="evidence-label">Evidence ({points.length})</span>
-            {#each points as pt}
-              {@const ev = pt.evidence?.[0]}
-              <div class="evidence-row">
-                <div class="evidence-row-top">
-                  <span class="evidence-headline">{pt.headline}</span>
-                </div>
-                <div class="evidence-citation">
-                  {#if ev?.quote_snapshot}
-                    <span class="evidence-quote">"{ev.quote_snapshot}"</span>
-                  {/if}
-                  <span class="evidence-meta">
-                    {#if ev?.relevance_note}{ev.relevance_note}{/if}{#if ev?.relevance_note && pt.source_doc_title} · {/if}{#if pt.source_doc_title}{pt.source_doc_title}{/if}
-                  </span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-
         <div class="note-field-group">
           <label class="note-label">Policy Assessment</label>
           <textarea
             class="notes-field"
             placeholder="Describe how the proposal is policy compliant on this issue..."
-            value={$issueNotes[issue.id]?.argument_for ?? ''}
-            use:autoresize={$issueNotes[issue.id]?.argument_for}
+            use:valueAndResize={$issueNotes[issue.id]?.argument_for ?? ''}
             on:input={(e) => handleNoteInput(issue.id, 'argument_for', e.target.value)}
           ></textarea>
         </div>
@@ -275,64 +252,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-  }
-
-  .evidence-block {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.625rem 0.75rem;
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    border-radius: 6px;
-  }
-
-  .evidence-label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #15803d;
-  }
-
-  .evidence-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.375rem 0;
-    border-top: 1px solid #dcfce7;
-  }
-
-  .evidence-row:first-of-type { border-top: none; padding-top: 0; }
-
-  .evidence-row-top { display: flex; align-items: flex-start; gap: 0.5rem; }
-
-  .evidence-headline {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #1e293b;
-    line-height: 1.4;
-  }
-
-  .evidence-citation {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.375rem;
-  }
-
-  .evidence-quote {
-    font-size: 0.75rem;
-    color: #475569;
-    font-style: italic;
-    line-height: 1.4;
-  }
-
-  .evidence-meta {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #94a3b8;
-    white-space: nowrap;
   }
 
   .note-field-group {
