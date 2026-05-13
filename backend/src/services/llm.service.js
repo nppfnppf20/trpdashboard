@@ -1808,6 +1808,109 @@ Do not use em dashes (—) anywhere in your output; use a comma, colon, or rewri
   }
 }
 
+export async function draftArgumentsFromIssueSummaries({ issues, policiesByTrack }) {
+  const issueList = issues
+    .filter(i => i.summary?.trim())
+    .map(i => {
+      const policies = policiesByTrack?.[i.id] ?? [];
+      const policyList = policies.length
+        ? '\n  Relevant policies:\n' + policies.map(p => {
+            const ref  = p.policy_reference || 'Policy';
+            const name = p.policy_name ? ` — ${p.policy_name}` : '';
+            const tier = p.policy_type ? ` (${p.policy_type.replace(/_/g, ' ')})` : '';
+            const wording = p.relevant_supporting_text?.trim()
+              ? `\n    Wording: ${p.relevant_supporting_text.trim().slice(0, 500)}`
+              : '';
+            return `  - ${ref}${name}${tier}${wording}`;
+          }).join('\n')
+        : '';
+      const existing = i.argument_for?.trim()
+        ? `\n  Existing argument: ${i.argument_for.trim().slice(0, 200)}`
+        : '';
+      return `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}\n  Position note: ${i.summary.trim()}${policyList}${existing}`;
+    }).join('\n\n');
+
+  if (!issueList) return [];
+
+  const prompt = `You are a planning consultant building the compliance case for a planning application. Based on the position notes below, draft a substantive argument for each issue — content that would go into the "argument for" section of the compliance notes.
+
+Each argument should:
+- Expand the position note into a proper compliance argument
+- Reference the relevant policies where provided
+- Be written in formal planning language suitable for a planning statement
+- Be 3-6 sentences — substantive but not a full essay
+- Build on any existing argument rather than repeating it
+
+Issues and position notes:
+${issueList}
+
+Respond ONLY with valid JSON — no markdown, no explanation:
+[
+  { "track_id": 42, "argument_for": "The proposals..." }
+]
+
+Only include issues where the position note gives you enough to work with.`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 3000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(s => ({ ...s, argument_for: noEmDash(s.argument_for) }));
+  } catch {
+    console.error('[draftArgumentsFromIssueSummaries] Failed to parse JSON:', cleaned.slice(0, 300));
+    return [];
+  }
+}
+
+export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues }) {
+  const issueList = issues.map(i =>
+    `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.summary?.trim() ? `\n  Existing note: ${i.summary.trim().slice(0, 150)}` : ''}`
+  ).join('\n');
+
+  const prompt = `You are a planning consultant reviewing a briefing note for a planning application. Based on the briefing, draft a brief position note for each key issue listed below.
+
+Each note should be 2-4 sentences capturing: the consultant's position on this issue, the key evidence or approach, and any sensitivities flagged in the briefing. Write as working notes for the consultant — concise and practical, not formal submission language.
+
+Briefing note:
+<briefing>
+${briefingSummary}
+</briefing>
+
+Key issues:
+${issueList}
+
+Respond ONLY with valid JSON — no markdown, no explanation:
+[
+  { "track_id": 42, "summary": "Our position is..." }
+]
+
+Only include issues where the briefing contains relevant content. Omit issues entirely if the briefing has nothing relevant.`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 2000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(s => ({ ...s, summary: noEmDash(s.summary) }));
+  } catch {
+    console.error('[draftKeyIssueSummariesFromBriefing] Failed to parse JSON:', cleaned.slice(0, 300));
+    return [];
+  }
+}
+
 export async function evolveArgumentFromBriefing({ issueLabel, existingArgument, newInformation, conversation = [] }) {
   const hasExisting = existingArgument?.trim();
 

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
-  import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload } from '$lib/stores/planning-notes.js';
+  import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { argumentPointsByTrack, initArgumentPoints } from '$lib/stores/planning-analysis.js';
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt } from '$lib/stores/planning-suggestion.js';
@@ -231,6 +231,38 @@
   {:else if activeTab === 'key-issues'}
     <!-- ── Tab 1: Key Issues ── -->
     <div class="tab-body">
+      {#if keyIssues.length > 0}
+        <div class="key-issues-toolbar">
+          <div class="briefing-btn-group" use:clickOutside={() => $keyIssueDropdownOpen = false}>
+            <button class="btn-draft-from-briefing" on:click={() => runKeyIssueDraftFromBriefing(project.id, $keyIssueSelectedNoteId)}>
+              <i class="las la-lightbulb"></i> Draft issue notes from briefing
+              {#if $keyIssueSelectedNoteId}
+                {@const note = $briefingNotes.find(n => n.id === $keyIssueSelectedNoteId)}
+                {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
+              {/if}
+            </button>
+            <button class="btn-briefing-chevron" on:click={() => $keyIssueDropdownOpen = !$keyIssueDropdownOpen} title="Select briefing note">
+              <i class="las la-angle-down"></i>
+            </button>
+            {#if $keyIssueDropdownOpen}
+              <div class="briefing-dropdown">
+                <button class="briefing-dropdown-item" class:active={$keyIssueSelectedNoteId === null} on:click={() => { $keyIssueSelectedNoteId = null; $keyIssueDropdownOpen = false; }}>
+                  <span>Latest briefing note</span>
+                </button>
+                {#each $briefingNotes as note}
+                  <button class="briefing-dropdown-item" class:active={$keyIssueSelectedNoteId === note.id} on:click={() => { $keyIssueSelectedNoteId = note.id; $keyIssueDropdownOpen = false; }}>
+                    <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
+                    <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </button>
+                {/each}
+                <button class="briefing-dropdown-item briefing-dropdown-upload" on:click={openBriefingUpload}>
+                  <i class="las la-plus"></i> Upload new briefing note
+                </button>
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
       {#if keyIssues.length === 0}
         <div class="empty-state">
           <i class="las la-list-alt"></i>
@@ -319,6 +351,9 @@
     <div class="argument-body">
       <div class="argument-panel">
         <div class="argument-panel-toolbar">
+          <button class="btn-from-issue-notes" on:click={() => runDraftFromIssueSummaries(project.id)}>
+            <i class="las la-file-alt"></i> Build from issue notes
+          </button>
           <div class="briefing-btn-group" use:clickOutside={() => $briefingDropdownOpen = false}>
             <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id, $selectedBriefingNoteId)}>
               <i class="las la-lightbulb"></i> Draft from briefing
@@ -885,6 +920,57 @@
             {$briefingUploadLoading ? 'Uploading...' : 'Upload & draft arguments'}
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Draft key issue notes from briefing modal -->
+{#if $keyIssueDraftOpen}
+  <div class="modal-overlay" on:click|self={closeKeyIssueDraft} role="dialog" aria-modal="true">
+    <div class="modal modal-briefing-draft">
+      <div class="modal-header">
+        <span class="modal-title">Draft issue notes from briefing</span>
+        <button class="modal-close" on:click={closeKeyIssueDraft}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body">
+        {#if $keyIssueDraftLoading}
+          <div class="briefing-draft-loading">
+            <div class="mini-spinner"></div>
+            <span>Analysing briefing and drafting position notes…</span>
+          </div>
+        {:else if $keyIssueDraftSuggestions.length === 0}
+          <p class="briefing-draft-empty">No suggestions returned.</p>
+        {:else}
+          <p class="briefing-draft-intro">Review the suggested position notes below. Accept to set the issue note, or skip to ignore.</p>
+          <div class="briefing-draft-list">
+            {#each $keyIssueDraftSuggestions as s (s.track_id)}
+              {@const accepted = $keyIssueDraftAccepted.has(s.track_id)}
+              {@const skipped = $keyIssueDraftSkipped.has(s.track_id)}
+              <div class="briefing-draft-card" class:bd-accepted={accepted} class:bd-skipped={skipped}>
+                <div class="bd-card-header">
+                  <span class="bd-issue-label">{s.label}</span>
+                  {#if accepted}
+                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Applied</span>
+                  {:else if skipped}
+                    <span class="bd-status bd-status-skipped">Skipped</span>
+                  {:else}
+                    <div class="bd-actions">
+                      <button class="bd-btn-accept" on:click={() => acceptKeyIssueSummary(s.track_id, s.summary)}>
+                        <i class="las la-check"></i> Accept
+                      </button>
+                      <button class="bd-btn-skip" on:click={() => skipKeyIssueSummary(s.track_id)}>Skip</button>
+                    </div>
+                  {/if}
+                </div>
+                <p class="bd-argument-text">{s.summary}</p>
+              </div>
+            {/each}
+          </div>
+          <div class="briefing-draft-footer">
+            <button class="btn-primary" on:click={closeKeyIssueDraft}>Done</button>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -2709,11 +2795,31 @@
   }
 
   /* ── Draft from briefing ── */
-  .argument-panel-toolbar {
+  .argument-panel-toolbar,
+  .key-issues-toolbar {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
     margin-bottom: 0.75rem;
   }
+
+  .btn-from-issue-notes {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4rem 0.875rem;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    color: #15803d;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .btn-from-issue-notes:hover { background: #dcfce7; border-color: #86efac; }
 
   .briefing-btn-group {
     position: relative;

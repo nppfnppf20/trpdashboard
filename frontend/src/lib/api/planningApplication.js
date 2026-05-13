@@ -308,6 +308,28 @@ export async function uploadBriefingNote(projectId, { file, text, title }) {
   return res.json();
 }
 
+export async function draftArgumentsFromIssueNotes(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-arguments-from-issue-notes`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to draft arguments from issue notes');
+  }
+  return res.json();
+}
+
+export async function draftKeySummariesFromBriefing(projectId, briefingNoteId = null) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-key-summaries-from-briefing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefing_note_id: briefingNoteId })
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to draft key issue summaries');
+  }
+  return res.json();
+}
+
 export async function draftArgumentsFromBriefing(projectId, briefingNoteId = null) {
   const res = await authFetch(`${BASE}/projects/${projectId}/draft-arguments-from-briefing`, {
     method: 'POST',

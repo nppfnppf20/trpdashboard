@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { upsertIssueNote, draftArgumentsFromBriefing, getBriefingNotes, uploadBriefingNote, evolveArgument } from '$lib/api/planningApplication.js';
+import { upsertIssueNote, updateKeyIssueSummary, draftArgumentsFromBriefing, draftArgumentsFromIssueNotes, draftKeySummariesFromBriefing, getBriefingNotes, uploadBriefingNote, evolveArgument } from '$lib/api/planningApplication.js';
 
 // ── Draft arguments from briefing ────────────────────────────────────────────
 
@@ -70,6 +70,24 @@ export async function submitBriefingUpload(projectId) {
   }
 }
 
+export async function runDraftFromIssueSummaries(projectId) {
+  briefingDraftLoading.set(true);
+  briefingDraftOpen.set(true);
+  briefingDraftSuggestions.set([]);
+  briefingDraftAccepted.set(new Set());
+  briefingDraftSkipped.set(new Set());
+  try {
+    const { suggestions } = await draftArgumentsFromIssueNotes(projectId);
+    briefingDraftSuggestions.set(suggestions);
+  } catch (err) {
+    console.error('Draft from issue summaries failed:', err);
+    alert(err.message);
+    briefingDraftOpen.set(false);
+  } finally {
+    briefingDraftLoading.set(false);
+  }
+}
+
 export async function runDraftFromBriefing(projectId, briefingNoteId = null) {
   _briefingProjectId = projectId;
   briefingDraftLoading.set(true);
@@ -134,6 +152,47 @@ export function skipBriefingDraftSuggestion(trackId) {
 export function closeBriefingDraft() {
   briefingDraftOpen.set(false);
   briefingEvolveState.set({});
+}
+
+// ── Draft key issue summaries from briefing ───────────────────────────────────
+
+export const keyIssueDraftOpen = writable(false);
+export const keyIssueDraftLoading = writable(false);
+export const keyIssueDraftSuggestions = writable([]); // [{ track_id, label, summary }]
+export const keyIssueDraftAccepted = writable(new Set());
+export const keyIssueDraftSkipped = writable(new Set());
+export const keyIssueDropdownOpen = writable(false);
+export const keyIssueSelectedNoteId = writable(null);
+
+export async function runKeyIssueDraftFromBriefing(projectId, briefingNoteId = null) {
+  keyIssueDraftLoading.set(true);
+  keyIssueDraftOpen.set(true);
+  keyIssueDraftSuggestions.set([]);
+  keyIssueDraftAccepted.set(new Set());
+  keyIssueDraftSkipped.set(new Set());
+  try {
+    const { suggestions } = await draftKeySummariesFromBriefing(projectId, briefingNoteId);
+    keyIssueDraftSuggestions.set(suggestions);
+  } catch (err) {
+    console.error('Draft key summaries from briefing failed:', err);
+    alert(err.message);
+    keyIssueDraftOpen.set(false);
+  } finally {
+    keyIssueDraftLoading.set(false);
+  }
+}
+
+export async function acceptKeyIssueSummary(trackId, summary) {
+  await updateKeyIssueSummary(trackId, summary);
+  keyIssueDraftAccepted.update(s => { const n = new Set(s); n.add(trackId); return n; });
+}
+
+export function skipKeyIssueSummary(trackId) {
+  keyIssueDraftSkipped.update(s => { const n = new Set(s); n.add(trackId); return n; });
+}
+
+export function closeKeyIssueDraft() {
+  keyIssueDraftOpen.set(false);
 }
 
 export const issueNotes = writable({});

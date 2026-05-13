@@ -15,6 +15,8 @@ import {
   generatePlanningStatementAssessment,
   generateSingleAssessmentIssue,
   draftIssueArgumentsFromBriefing,
+  draftArgumentsFromIssueSummaries,
+  draftKeyIssueSummariesFromBriefing,
   evolveArgumentFromBriefing,
   generatePlanningStatementSection,
   generateFromTemplate,
@@ -1392,6 +1394,79 @@ export async function draftArgumentsFromBriefing(req, res) {
   } catch (err) {
     console.error('draftArgumentsFromBriefing error:', err);
     res.status(500).json({ error: err.message || 'Failed to draft arguments' });
+  }
+}
+
+export async function draftArgumentsFromIssueNotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, pit.summary, ins.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN planning_applications.issue_notes ins
+         ON ins.track_id = pit.id AND ins.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE AND pit.summary IS NOT NULL AND pit.summary != ''
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+    if (!issues.length) return res.status(404).json({ error: 'No key issue notes found. Add position notes in the Key Issues tab first.' });
+
+    const trackIds = issues.map(i => i.id);
+    const { rows: policyRows } = await pool.query(
+      `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type, pp.relevant_supporting_text, ptr.track_id
+       FROM public.project_policies pp
+       JOIN planning_applications.policy_track_relevance ptr ON ptr.policy_id = pp.id
+       WHERE ptr.track_id = ANY($1::int[])
+       ORDER BY pp.policy_type, pp.policy_reference`,
+      [trackIds]
+    );
+    const policiesByTrack = {};
+    for (const row of policyRows) {
+      if (!policiesByTrack[row.track_id]) policiesByTrack[row.track_id] = [];
+      policiesByTrack[row.track_id].push(row);
+    }
+
+    const suggestions = await draftArgumentsFromIssueSummaries({ issues, policiesByTrack });
+    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
+    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
+  } catch (err) {
+    console.error('draftArgumentsFromIssueNotes error:', err);
+    res.status(500).json({ error: err.message || 'Failed to draft arguments from issue notes' });
+  }
+}
+
+export async function draftKeySummariesFromBriefing(req, res) {
+  const { projectId } = req.params;
+  try {
+    const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
+
+    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
+      briefingNoteId
+        ? pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
+            [projectId, briefingNoteId]
+          )
+        : pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+            [projectId]
+          ),
+      pool.query(
+        `SELECT id, label, discipline, summary
+         FROM admin_console.project_issue_tracks
+         WHERE project_id = $1 AND is_active = TRUE
+         ORDER BY sort_order, id`,
+        [projectId]
+      )
+    ]);
+    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project.' });
+    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
+    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
+  } catch (err) {
+    console.error('draftKeySummariesFromBriefing error:', err);
+    res.status(500).json({ error: err.message || 'Failed to draft key issue summaries' });
   }
 }
 
