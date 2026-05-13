@@ -1,13 +1,16 @@
 /**
  * HLPV Narrative Store
- * Manages state for LLM-generated HLPV discipline narratives.
+ * Manages state for the LLM-generated combined HLPV narrative document.
  */
 
 import { writable, get } from 'svelte/store';
 import { getBriefingNotes, generateHlpvNarrative } from '$lib/api/hlpv.js';
 
-// Generated narrative HTML per discipline name, e.g. { Heritage: '<p>...</p>' }
-export const narratives = writable({});
+// Single combined HTML narrative (all disciplines + briefing-note topics)
+export const narrative = writable('');
+
+// Increments each time generation completes — used as a key to remount the editor
+export const narrativeGenerationId = writable(0);
 
 export const narrativeLoading = writable(false);
 export const narrativeError = writable(null);
@@ -33,9 +36,9 @@ export function selectBriefingNote(id) {
 }
 
 /**
- * Generate narrative for all disciplines that have triggered rules.
+ * Generate a combined narrative for all triggered disciplines + briefing-note topics.
  * @param {string|number|null} projectId
- * @param {Array} allDisciplines — full disciplines array from the report; filtered internally
+ * @param {Array} allDisciplines — full disciplines array; filtered internally to triggered rules only
  */
 export async function generateNarrative(projectId, allDisciplines) {
   const active = (allDisciplines ?? []).filter(d => d.triggeredRules?.length > 0);
@@ -46,8 +49,9 @@ export async function generateNarrative(projectId, allDisciplines) {
 
   try {
     const noteId = get(selectedBriefingNoteId);
-    const { narratives: result } = await generateHlpvNarrative(projectId, active, noteId);
-    narratives.set(result);
+    const { narrative: result } = await generateHlpvNarrative(projectId, active, noteId);
+    narrative.set(result);
+    narrativeGenerationId.update(n => n + 1);
   } catch (err) {
     console.error('[hlpv-narrative] Generation failed:', err);
     narrativeError.set(err.message ?? 'Generation failed');
@@ -56,11 +60,12 @@ export async function generateNarrative(projectId, allDisciplines) {
   }
 }
 
-export function updateNarrative(disciplineName, html) {
-  narratives.update(n => ({ ...n, [disciplineName]: html }));
+export function updateNarrative(html) {
+  narrative.set(html);
 }
 
-export function clearNarratives() {
-  narratives.set({});
+export function clearNarrative() {
+  narrative.set('');
+  narrativeGenerationId.set(0);
   narrativeError.set(null);
 }

@@ -1,8 +1,11 @@
 <script>
   import { buildCombinedReport } from '$lib/services/reportGenerator.js';
-  import NarrativePanel from './NarrativePanel.svelte';
+  import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import NarrativeBriefingSelector from './NarrativeBriefingSelector.svelte';
-  import { narratives, narrativeLoading, narrativeError, generateNarrative, loadBriefingNotes } from '$lib/stores/hlpv-narrative.js';
+  import {
+    narrative, narrativeGenerationId, narrativeLoading, narrativeError,
+    generateNarrative, loadBriefingNotes, updateNarrative
+  } from '$lib/stores/hlpv-narrative.js';
 
   /** @type {any} */
   export let heritageData = null;
@@ -36,7 +39,7 @@
 
   $: disciplines = report?.structuredReport?.disciplines || [];
   $: disciplinesWithRules = disciplines.filter(d => d.triggeredRules?.length > 0);
-  $: hasAnyNarrative = disciplinesWithRules.some(d => $narratives[d.name]);
+  $: hasNarrative = Boolean($narrative);
 
   /** Format distance in meters to a readable string */
   function fmtDist(dist_m, on_site, isCoverage = false) {
@@ -50,10 +53,6 @@
     return f.name || f.site_name || f.sitename || f.project_name || null;
   }
 
-  /**
-   * Build a designation detail list (plain text) for the given discipline.
-   * Attached to the discipline object before sending to the LLM.
-   */
   function buildDesignationDetails(disciplineName) {
     const lines = [];
 
@@ -135,7 +134,6 @@
     return lines.join('\n');
   }
 
-  /** Disciplines augmented with designation detail text for the LLM prompt */
   $: disciplinesForGeneration = disciplines.map(d => {
     const details = buildDesignationDetails(d.name);
     return details ? { ...d, designationDetails: details } : d;
@@ -145,7 +143,7 @@
 <div class="narrative-tab">
   <div class="tab-header">
     <h2>Generate Narrative</h2>
-    <p class="tab-desc">Generate a professional planning assessment paragraph for each discipline that has triggered risk rules.</p>
+    <p class="tab-desc">Generate a combined professional planning assessment covering all risk disciplines and any additional topics from the briefing note.</p>
   </div>
 
   {#if disciplinesWithRules.length === 0}
@@ -175,27 +173,33 @@
           {#if $narrativeLoading}
             <span class="spinner-xs"></span> Generating...
           {:else}
-            <i class="las la-robot"></i> {hasAnyNarrative ? 'Regenerate all' : 'Generate narrative'}
+            <i class="las la-robot"></i> {hasNarrative ? 'Regenerate' : 'Generate narrative'}
           {/if}
         </button>
       </div>
     </div>
 
-    <!-- Per-discipline narrative panels -->
-    <div class="disciplines">
-      {#each disciplinesWithRules as discipline}
-        <div class="discipline-section">
-          <h3 class="discipline-heading">{discipline.name}</h3>
-          {#if $narratives[discipline.name]}
-            <NarrativePanel disciplineName={discipline.name} />
-          {:else}
-            <div class="discipline-placeholder">
-              <i class="las la-pen-alt"></i>
-              Click <strong>Generate narrative</strong> to create a draft assessment for {discipline.name}.
-            </div>
-          {/if}
+    <!-- Combined narrative editor -->
+    <div class="editor-wrap">
+      {#if hasNarrative}
+        <div class="ai-bar">
+          <span class="narrative-tag">AI Draft</span>
+          <span class="narrative-hint">Edit as needed before use</span>
         </div>
-      {/each}
+        {#key $narrativeGenerationId}
+          <RichTextEditor
+            content={$narrative}
+            fullHeight={true}
+            placeholder=""
+            on:change={(e) => updateNarrative(e.detail.html)}
+          />
+        {/key}
+      {:else}
+        <div class="placeholder">
+          <i class="las la-pen-alt"></i>
+          Click <strong>Generate narrative</strong> to create a draft assessment covering all risk disciplines{projectId ? ' and any additional topics from the briefing note' : ''}.
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -213,6 +217,7 @@
   .tab-header {
     padding: 1.5rem 1.5rem 1rem;
     border-bottom: 1px solid #e5e7eb;
+    flex-shrink: 0;
   }
 
   .tab-header h2 {
@@ -330,31 +335,42 @@
 
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .disciplines {
+  .editor-wrap {
     padding: 1.5rem;
+    flex: 1;
+  }
+
+  .ai-bar {
     display: flex;
-    flex-direction: column;
-    gap: 2rem;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.4rem 0.75rem;
+    background: #eef2ff;
+    border: 1px solid #e0e7ff;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
   }
 
-  .discipline-section {
-    border-top: 2px solid #e5e7eb;
-    padding-top: 1.25rem;
+  .narrative-tag {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #4f46e5;
   }
 
-  .discipline-section:first-child {
-    border-top: none;
-    padding-top: 0;
+  .narrative-hint {
+    font-size: 0.72rem;
+    color: #818cf8;
   }
 
-  .discipline-heading {
-    margin: 0 0 0.875rem;
-    font-size: 1.125rem;
-    color: #374151;
-    font-weight: 600;
+  /* Remove top border-radius from editor when ai-bar sits above it */
+  .ai-bar + :global(.rich-text-editor) {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
   }
 
-  .discipline-placeholder {
+  .placeholder {
     padding: 1rem 1.25rem;
     background: #f9fafb;
     border: 1px dashed #d1d5db;
@@ -366,7 +382,7 @@
     gap: 0.625rem;
   }
 
-  .discipline-placeholder i {
+  .placeholder i {
     font-size: 1rem;
     color: #9ca3af;
     flex-shrink: 0;

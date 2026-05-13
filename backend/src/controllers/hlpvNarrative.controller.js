@@ -41,8 +41,8 @@ export async function generateNarrative(req, res) {
       }
     }
 
-    const narratives = await generateHlpvNarrative(disciplines, briefingText);
-    res.json({ narratives });
+    const narrative = await generateHlpvNarrative(disciplines, briefingText);
+    res.json({ narrative });
   } catch (err) {
     console.error('hlpvNarrative.generateNarrative error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate narrative' });

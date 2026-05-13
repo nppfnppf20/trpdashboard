@@ -2244,64 +2244,61 @@ const HLPV_NARRATIVE_SYSTEM = `You are a specialist planning consultant writing 
 This is a professional site appraisal document that assesses the planning constraints affecting a proposed development. \
 Write with authority and precision in clear, professional planning language.`;
 
-function buildHlpvDisciplinePrompt(discipline, briefingText) {
-  const riskLabel = (discipline.overallRisk ?? 'unknown').replace(/_/g, ' ');
-
-  const ruleLines = (discipline.triggeredRules ?? [])
-    .map(r => `- ${r.rule} [${r.level.replace(/_/g, ' ')}]: ${r.findings}`)
-    .join('\n');
-
+function buildHlpvCombinedPrompt(disciplines, briefingText) {
   const parts = [
-    `Write a professional High-Level Planning View assessment for the **${discipline.name}** discipline.`,
-    `\nOverall risk level: ${riskLabel}`,
-    `\n## Triggered rules\n${ruleLines}`,
+    'Write a complete HLPV (High-Level Planning View) narrative assessment as a single HTML document.',
+    '\n\nThe following disciplines have triggered planning risk rules:\n',
   ];
 
-  if (discipline.designationDetails) {
-    parts.push(`\n## Individual designations found (use these specific names and distances in your narrative)\n${discipline.designationDetails}`);
-  }
+  for (const discipline of disciplines) {
+    const riskLabel = (discipline.overallRisk ?? 'unknown').replace(/_/g, ' ');
+    const ruleLines = (discipline.triggeredRules ?? [])
+      .map(r => `  - ${r.rule} [${r.level.replace(/_/g, ' ')}]: ${r.findings}`)
+      .join('\n');
 
-  if (discipline.disciplineRecommendation) {
-    parts.push(`\n## Suggested text (use as a guide for register and conclusions — rewrite entirely for this project)\n${discipline.disciplineRecommendation}`);
+    parts.push(`\n### ${discipline.name}\nOverall risk: ${riskLabel}\nTriggered rules:\n${ruleLines}`);
+
+    if (discipline.designationDetails) {
+      parts.push(`\nIndividual designations (use these specific names and distances):\n${discipline.designationDetails}`);
+    }
+
+    if (discipline.disciplineRecommendation) {
+      parts.push(`\nSuggested text (calibrate register only — rewrite entirely):\n${discipline.disciplineRecommendation}`);
+    }
   }
 
   if (briefingText) {
-    parts.push(`\n## Briefing notes (incorporate relevant project context)\n${briefingText}`);
+    parts.push(`\n\n## Briefing note\n${briefingText}`);
   }
 
-  parts.push(`
-Instructions:
-- Every fact must come from the designation data above — do not invent or assume any designations
-- Name specific designations by their actual names and state their distances from the site as listed above
-- State the overall risk level and explain why these specific designations create that level of risk
-- Recommend appropriate next steps (surveys, specialist input, mitigation, further assessment) relevant to these exact designations
-- Write 2–3 concise professional paragraphs
-- Format as HTML using only <p> tags — no headings, no bullet points, no other HTML
-- Do not include a discipline heading
-- Do not copy phrases verbatim from the suggested text or tone example — use them only to calibrate register and the types of conclusions drawn`);
+  parts.push(`\n\nInstructions:
+1. Write a professional HLPV narrative for each discipline listed above (2-3 paragraphs each).
+2. If a briefing note is provided, also identify any additional planning topics or constraints mentioned in it that are NOT already covered by the disciplines above (e.g. highways, drainage, flood risk, noise, ground conditions, utilities). For each additional topic found, write 1-2 professional paragraphs drawing only on briefing note content.
+3. Output as a single HTML document. For each section:
+   - <h2>Discipline or topic name</h2>
+   - For HLPV disciplines only: <p><strong>Overall risk: [risk level]</strong></p>
+   - Then the assessment paragraphs using <p> tags only
+4. Return ONLY the HTML — no preamble, no markdown fences, no explanation.
+5. Every fact about specific designations must come from the designation data provided — do not invent designations, distances, or names.
+6. Never reference "the briefing note" or "briefing" in the output — this is a client-facing document. Incorporate the information naturally as part of the planning assessment.
+7. Do not copy phrases verbatim from the suggested text or tone example — use them only to calibrate register.`);
 
   return parts.join('');
 }
 
 /**
- * Generate LLM narrative HTML for each discipline that has triggered rules.
+ * Generate a single combined HLPV narrative HTML document for all disciplines,
+ * plus any additional topics identified from the briefing note.
  *
- * @param {Array<{ name: string, overallRisk: string, triggeredRules: any[], disciplineRecommendation: string }>} disciplines
+ * @param {Array} disciplines — discipline objects with triggeredRules
  * @param {string|null} briefingText — plain text from briefing note
- * @returns {Promise<Record<string, string>>} discipline name -> HTML narrative
+ * @returns {Promise<string>} combined HTML narrative
  */
 export async function generateHlpvNarrative(disciplines, briefingText) {
-  const results = {};
   const system = HLPV_NARRATIVE_SYSTEM + HLPV_TONE_EXAMPLE_BLOCK;
-
-  for (const discipline of disciplines) {
-    if (!discipline.triggeredRules?.length) continue;
-    const user = buildHlpvDisciplinePrompt(discipline, briefingText);
-    const raw = await callClaude(system, user, MODEL_SONNET);
-    results[discipline.name] = noEmDash(raw.trim());
-  }
-
-  return results;
+  const user = buildHlpvCombinedPrompt(disciplines, briefingText);
+  const raw = await callClaude(system, user, MODEL_SONNET);
+  return noEmDash(raw.trim());
 }
 
 export async function suggestPlanningArgumentAddition({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes, conversation = [], customPrompt }) {

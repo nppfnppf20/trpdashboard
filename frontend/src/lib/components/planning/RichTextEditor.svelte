@@ -4,6 +4,7 @@
 
   export let content = '';
   export let placeholder = 'Start typing...';
+  export let fullHeight = false;
 
   const dispatch = createEventDispatcher();
 
@@ -104,7 +105,7 @@
   }
 </script>
 
-<div class="rich-text-editor">
+<div class="rich-text-editor" class:full-height={fullHeight}>
   <div class="toolbar">
     <div class="toolbar-group">
       <button
@@ -274,6 +275,10 @@
   .btn-text {
     font-size: 0.875rem;
     font-weight: 600;
+  }
+
+  .full-height .editor-content {
+    max-height: none;
   }
 
   .editor-content {
