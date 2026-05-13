@@ -8,6 +8,7 @@
   import OneOffSiteModal from '../shared/OneOffSiteModal.svelte';
   import AddProjectModal from '../projects/AddProjectModal.svelte';
   import ProjectSelector from '../shared/ProjectSelector.svelte';
+  import NarrativeTab from './NarrativeTab.svelte';
   import { analyzeHeritage, analyzeLandscape, analyzeAgLand, analyzeRenewables, analyzeEcology, analyzeTrees, analyzeAirfields, saveSite, createAnalysisSession, getSessionByProject } from '$lib/services/api.js';
   import { startNewScreenshotSession } from '$lib/services/screenshotManager.js';
 
@@ -649,6 +650,12 @@
         >
           Edit Report
         </button>
+        <button
+          class="tab-button {activeTab === 'narrative' ? 'active' : ''}"
+          on:click={() => setActiveTab('narrative')}
+        >
+          Narrative
+        </button>
       {/if}
     </div>
 
@@ -723,6 +730,7 @@
           onOpenTRPReport={openTRPReport}
           analysisSaved={analysisSaved}
           projectName={selectedProject?.project_name || 'Site'}
+          projectId={selectedProject?.id ?? null}
           {analysisSessionId}
         />
       {:else if activeTab === 'trp-report'}
@@ -735,6 +743,17 @@
           treesData={treesResult}
           airfieldsData={airfieldsResult}
           {analysisSessionId}
+          projectId={selectedProject?.id || null}
+        />
+      {:else if activeTab === 'narrative'}
+        <NarrativeTab
+          heritageData={heritageResult}
+          landscapeData={landscapeResult}
+          renewablesData={renewablesResult}
+          ecologyData={ecologyResult}
+          agLandData={agLandResult}
+          treesData={treesResult}
+          airfieldsData={airfieldsResult}
           projectId={selectedProject?.id || null}
         />
       {/if}

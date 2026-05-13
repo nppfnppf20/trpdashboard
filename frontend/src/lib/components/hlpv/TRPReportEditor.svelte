@@ -2262,4 +2262,5 @@
     color: #9ca3af;
     flex-shrink: 0;
   }
+
 </style>

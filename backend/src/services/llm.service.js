@@ -2223,6 +2223,87 @@ export function buildPlanningArgumentSuggestionTemplate({ documentType, document
   return buildPlanningArgumentSuggestionPrompt({ documentBlock: '{{DOCUMENT}}', documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HLPV Narrative Generation
+// Generates professional planning assessment paragraphs per discipline.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let HLPV_TONE_EXAMPLE_BLOCK = '';
+try {
+  const raw = readFileSync(join(__dirname, '../../../hlpvexample.md'), 'utf-8');
+  const cleaned = raw.trim().replace(/^#.*\n?/gm, '').trim(); // strip markdown headings
+  if (cleaned.length > 100) {
+    HLPV_TONE_EXAMPLE_BLOCK = `\n\nThe following is a real High-Level Planning View written by this consultancy. Use it ONLY as a style reference — to learn the professional register, the way conclusions are phrased, the level of detail, and the types of recommendations typically made. Do NOT reproduce any place names, designation names, distances, policy references, or factual content from it. Every fact in your output must come solely from the designation data provided in the user message:\n<tone_example>\n${cleaned.slice(0, 3000)}\n</tone_example>`;
+    console.log('[llm.service] HLPV tone example loaded:', cleaned.slice(0, 3000).length, 'chars');
+  }
+} catch (e) {
+  console.warn('[llm.service] Could not load hlpvexample.md:', e.message);
+}
+
+const HLPV_NARRATIVE_SYSTEM = `You are a specialist planning consultant writing a High-Level Planning View (HLPV). \
+This is a professional site appraisal document that assesses the planning constraints affecting a proposed development. \
+Write with authority and precision in clear, professional planning language.`;
+
+function buildHlpvDisciplinePrompt(discipline, briefingText) {
+  const riskLabel = (discipline.overallRisk ?? 'unknown').replace(/_/g, ' ');
+
+  const ruleLines = (discipline.triggeredRules ?? [])
+    .map(r => `- ${r.rule} [${r.level.replace(/_/g, ' ')}]: ${r.findings}`)
+    .join('\n');
+
+  const parts = [
+    `Write a professional High-Level Planning View assessment for the **${discipline.name}** discipline.`,
+    `\nOverall risk level: ${riskLabel}`,
+    `\n## Triggered rules\n${ruleLines}`,
+  ];
+
+  if (discipline.designationDetails) {
+    parts.push(`\n## Individual designations found (use these specific names and distances in your narrative)\n${discipline.designationDetails}`);
+  }
+
+  if (discipline.disciplineRecommendation) {
+    parts.push(`\n## Suggested text (use as a guide for register and conclusions — rewrite entirely for this project)\n${discipline.disciplineRecommendation}`);
+  }
+
+  if (briefingText) {
+    parts.push(`\n## Briefing notes (incorporate relevant project context)\n${briefingText}`);
+  }
+
+  parts.push(`
+Instructions:
+- Every fact must come from the designation data above — do not invent or assume any designations
+- Name specific designations by their actual names and state their distances from the site as listed above
+- State the overall risk level and explain why these specific designations create that level of risk
+- Recommend appropriate next steps (surveys, specialist input, mitigation, further assessment) relevant to these exact designations
+- Write 2–3 concise professional paragraphs
+- Format as HTML using only <p> tags — no headings, no bullet points, no other HTML
+- Do not include a discipline heading
+- Do not copy phrases verbatim from the suggested text or tone example — use them only to calibrate register and the types of conclusions drawn`);
+
+  return parts.join('');
+}
+
+/**
+ * Generate LLM narrative HTML for each discipline that has triggered rules.
+ *
+ * @param {Array<{ name: string, overallRisk: string, triggeredRules: any[], disciplineRecommendation: string }>} disciplines
+ * @param {string|null} briefingText — plain text from briefing note
+ * @returns {Promise<Record<string, string>>} discipline name -> HTML narrative
+ */
+export async function generateHlpvNarrative(disciplines, briefingText) {
+  const results = {};
+  const system = HLPV_NARRATIVE_SYSTEM + HLPV_TONE_EXAMPLE_BLOCK;
+
+  for (const discipline of disciplines) {
+    if (!discipline.triggeredRules?.length) continue;
+    const user = buildHlpvDisciplinePrompt(discipline, briefingText);
+    const raw = await callClaude(system, user, MODEL_SONNET);
+    results[discipline.name] = noEmDash(raw.trim());
+  }
+
+  return results;
+}
+
 export async function suggestPlanningArgumentAddition({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes, conversation = [], customPrompt }) {
   const initialPrompt = customPrompt ?? buildPlanningArgumentSuggestionPrompt({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes });
 
