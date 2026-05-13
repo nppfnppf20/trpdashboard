@@ -12,6 +12,11 @@ import { dirname, join } from 'path';
 import { aggregateChunkResults } from './aggregator.service.js';
 import { chunkText } from './parser.service.js';
 
+function noEmDash(str) {
+  if (!str) return str;
+  return str.replace(/ — /g, ', ').replace(/—/g, '-');
+}
+
 // Load tone example from repo root — used as writing style reference in all generation calls
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let TONE_EXAMPLE_BLOCK = '';
@@ -777,7 +782,8 @@ FORMAT RULES (mandatory):
 - Bullet lists must use <ul><li>...</li></ul>
 - Bold text must use <strong>...</strong>
 - Do not use **, *, #, ---, or any other markdown characters at all
-- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead`;
+- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead
+- Do not number individual paragraphs — do not prefix paragraphs with numbers like 7.1, 7.2 etc.`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
@@ -787,7 +793,7 @@ FORMAT RULES (mandatory):
   });
 
   const raw = response.content[0].text.trim();
-  return raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
 /**
@@ -853,7 +859,7 @@ Produce the complete ${draftTypeName} as HTML now.`;
       messages: [{ role: 'user', content: prompt }]
     });
     const raw = response.content[0].text.trim();
-    return raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+    return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
   }
 
   // Section-by-section generation (sequential to respect rate limits)
@@ -918,7 +924,7 @@ Be concise and professional. Write in working note style, not formal legal prose
     messages: [{ role: 'user', content: prompt }]
   });
 
-  return response.content[0].text;
+  return noEmDash(response.content[0].text);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1453,8 +1459,8 @@ IMPORTANT: There are no planning policies linked to this issue. Do NOT reference
     messages: [{ role: 'user', content: prompt }]
   });
 
-  const raw = response.content[0].text.trim()
-    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  const raw = noEmDash(response.content[0].text.trim()
+    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
   return `<div class="llm-generated">${raw}</div>`;
 }
 
@@ -1548,8 +1554,8 @@ export async function generatePlanningStatementSection({ section, variables, sec
     messages: [{ role: 'user', content: fullPrompt }]
   });
 
-  let output = response.content[0].text.trim();
-  output = output.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  let output = noEmDash(response.content[0].text.trim()
+    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 
   // Programmatic substitution of output vars — these are never touched by the LLM
   for (const key of PLANNING_STATEMENT_OUTPUT_VARS) {
@@ -1592,8 +1598,8 @@ async function generateLlmSlot({ instruction, variables, briefingSummary }) {
     messages: [{ role: 'user', content: instruction }]
   });
 
-  const html = response.content[0].text.trim()
-    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  const html = noEmDash(response.content[0].text.trim()
+    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
   return `<div class="llm-generated">${html}</div>`;
 }
 
@@ -1644,7 +1650,7 @@ export async function generateFromTemplate({ section, variables, briefingSummary
     output = output.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), replacement);
   }
 
-  return output;
+  return noEmDash(output);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1794,11 +1800,48 @@ Do not use em dashes (—) anywhere in your output; use a comma, colon, or rewri
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     const parsed = JSON.parse(cleaned);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(s => ({ ...s, argument_for: noEmDash(s.argument_for) }));
   } catch {
     console.error('[draftIssueArgumentsFromBriefing] Failed to parse JSON:', cleaned.slice(0, 300));
     return [];
   }
+}
+
+export async function evolveArgumentFromBriefing({ issueLabel, existingArgument, newInformation, conversation = [] }) {
+  const hasExisting = existingArgument?.trim();
+
+  const systemPrompt = `You are a planning consultant helping to evolve a planning argument for a specific issue. Your job is to produce a revised, coherent argument that incorporates new strategic information from a briefing note. Be direct and write in formal planning language. Do not use em dashes.`;
+
+  const userPrompt = `Issue: ${issueLabel}
+
+${hasExisting
+  ? `Current argument:\n${existingArgument.trim()}`
+  : `Current argument: (none yet)`}
+
+New information from briefing note:\n${newInformation.trim()}
+
+Based on this new information, produce an evolved version of the argument for this issue. The revised argument should:
+- Reflect the updated position — if the proposals have changed or developed, write from that new position rather than layering old and new
+- Replace superseded content rather than appending to it
+- Be coherent as a standalone argument — not a list of addenda
+- Incorporate the new information naturally
+
+Write only the revised argument text. No preamble, no explanation of what changed.`;
+
+  const messages = [
+    { role: 'user', content: userPrompt },
+    ...conversation
+  ];
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    system: systemPrompt,
+    max_tokens: 2000,
+    messages
+  });
+
+  return noEmDash(response.content[0].text.trim());
 }
 
 export async function extractPointsFromDocument({ text, allIssues, targetIssues, documentType, documentDirection, userNotes, linkedPolicies = [], existingPointsByTrack = {}, customPrompt }) {
@@ -1986,7 +2029,7 @@ export async function suggestArgumentAddition({ text, documentType, documentTitl
     messages
   });
 
-  return response.content[0].text.trim();
+  return noEmDash(response.content[0].text.trim());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2011,6 +2054,9 @@ export function buildPlanningArgumentSuggestionPrompt({
 
   const issuesSection = issues.map(issue => {
     const forText  = issue.argument_for?.trim() || 'Nothing recorded yet.';
+    const summaryBlock = issue.summary?.trim()
+      ? `**Consultant's position note:**\n${issue.summary.trim()}\n\n`
+      : '';
     const policies = policiesByTrack?.[issue.id] ?? [];
     const policyBlock = policies.length
       ? `**Relevant policies:**\n` + policies.map(p => {
@@ -2023,7 +2069,7 @@ export function buildPlanningArgumentSuggestionPrompt({
           return `- ${ref}${name}${tier}${ctx}`;
         }).join('\n')
       : '';
-    return `### Issue: ${issue.label} (id:${issue.id})\n**Current compliance assessment:**\n${forText}${policyBlock ? '\n\n' + policyBlock : ''}`;
+    return `### Issue: ${issue.label} (id:${issue.id})\n${summaryBlock}**Current compliance assessment:**\n${forText}${policyBlock ? '\n\n' + policyBlock : ''}`;
   }).join('\n\n---\n\n');
 
   const userNotesSection = userNotes
@@ -2090,5 +2136,5 @@ export async function suggestPlanningArgumentAddition({ text, documentType, docu
     messages
   });
 
-  return response.content[0].text.trim();
+  return noEmDash(response.content[0].text.trim());
 }

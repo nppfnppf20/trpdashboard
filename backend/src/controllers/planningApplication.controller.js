@@ -15,6 +15,7 @@ import {
   generatePlanningStatementAssessment,
   generateSingleAssessmentIssue,
   draftIssueArgumentsFromBriefing,
+  evolveArgumentFromBriefing,
   generatePlanningStatementSection,
   generateFromTemplate,
   summariseDocument,
@@ -1304,15 +1305,76 @@ export async function generateSection(req, res) {
   }
 }
 
+export async function getBriefingNotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, title, file_name, created_at FROM planning_applications.document_summaries
+       WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+       ORDER BY created_at DESC`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('pa.getBriefingNotes error:', err);
+    res.status(500).json({ error: 'Failed to fetch briefing notes' });
+  }
+}
+
+export async function uploadBriefingNote(req, res) {
+  const { projectId } = req.params;
+  try {
+    let text, fileName;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+      fileName = req.file.originalname;
+    } else if (req.body.text) {
+      text = req.body.text;
+      fileName = null;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    const title = req.body.title?.trim() || fileName || 'Briefing note';
+
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_template FROM planning_applications.doc_type_prompts WHERE doc_type = $1`,
+      ['briefing_transcript']
+    );
+    const customPrompt = promptRows[0]?.prompt_template ?? null;
+
+    const summaryHtml = await summariseDocument(text, fileName, 'briefing_transcript', customPrompt);
+
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.document_summaries
+         (project_id, title, file_name, doc_type, summary_html)
+       VALUES ($1, $2, $3, 'briefing_transcript', $4) RETURNING id, title, file_name, created_at`,
+      [projectId, title, fileName, summaryHtml]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('pa.uploadBriefingNote error:', err);
+    res.status(500).json({ error: err.message || 'Failed to upload briefing note' });
+  }
+}
+
 export async function draftArgumentsFromBriefing(req, res) {
   const { projectId } = req.params;
   try {
+    const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
+
     const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
-      pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      ),
+      briefingNoteId
+        ? pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
+            [projectId, briefingNoteId]
+          )
+        : pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+            [projectId]
+          ),
       pool.query(
         `SELECT pit.id, pit.label, pit.discipline, ain.argument_for
          FROM admin_console.project_issue_tracks pit
@@ -1330,6 +1392,39 @@ export async function draftArgumentsFromBriefing(req, res) {
   } catch (err) {
     console.error('draftArgumentsFromBriefing error:', err);
     res.status(500).json({ error: err.message || 'Failed to draft arguments' });
+  }
+}
+
+export async function evolveArgument(req, res) {
+  const { projectId } = req.params;
+  const { track_id, new_information, conversation } = req.body;
+  if (!track_id || !new_information?.trim()) {
+    return res.status(400).json({ error: 'track_id and new_information are required' });
+  }
+  try {
+    const [{ rows: issueRows }, { rows: noteRows }] = await Promise.all([
+      pool.query(
+        `SELECT label FROM admin_console.project_issue_tracks WHERE id = $1 AND project_id = $2`,
+        [track_id, projectId]
+      ),
+      pool.query(
+        `SELECT argument_for FROM planning_applications.issue_notes WHERE track_id = $1 AND project_id = $2`,
+        [track_id, projectId]
+      )
+    ]);
+    if (!issueRows.length) return res.status(404).json({ error: 'Issue not found' });
+    const issueLabel = issueRows[0].label;
+    const existingArgument = noteRows[0]?.argument_for ?? '';
+    const evolved = await evolveArgumentFromBriefing({
+      issueLabel,
+      existingArgument,
+      newInformation: new_information,
+      conversation: conversation ?? []
+    });
+    res.json({ evolved });
+  } catch (err) {
+    console.error('pa.evolveArgument error:', err);
+    res.status(500).json({ error: err.message || 'Failed to evolve argument' });
   }
 }
 
@@ -1481,7 +1576,7 @@ export async function suggestArgument(req, res) {
 
     // Fetch all active issues with their current compliance notes
     const { rows: allIssues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline, ins.argument_for
+      `SELECT pit.id, pit.label, pit.discipline, pit.summary, ins.argument_for
        FROM admin_console.project_issue_tracks pit
        LEFT JOIN planning_applications.issue_notes ins
          ON ins.track_id = pit.id AND ins.project_id = $1

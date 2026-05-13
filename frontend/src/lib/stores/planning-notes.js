@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { upsertIssueNote, draftArgumentsFromBriefing } from '$lib/api/planningApplication.js';
+import { upsertIssueNote, draftArgumentsFromBriefing, getBriefingNotes, uploadBriefingNote, evolveArgument } from '$lib/api/planningApplication.js';
 
 // ── Draft arguments from briefing ────────────────────────────────────────────
 
@@ -9,9 +9,68 @@ export const briefingDraftSuggestions = writable([]); // [{ track_id, label, arg
 export const briefingDraftAccepted = writable(new Set());
 export const briefingDraftSkipped = writable(new Set());
 
+// Briefing notes list + selection
+export const briefingNotes = writable([]);           // [{ id, title, file_name, created_at }]
+export const selectedBriefingNoteId = writable(null); // null = latest
+export const briefingDropdownOpen = writable(false);
+
+// Upload new briefing note
+export const briefingUploadOpen = writable(false);
+export const briefingUploadTab = writable('upload');  // 'upload' | 'paste'
+export const briefingUploadFile = writable(null);
+export const briefingUploadText = writable('');
+export const briefingUploadTitle = writable('');
+export const briefingUploadLoading = writable(false);
+
 let _briefingProjectId;
 
-export async function runDraftFromBriefing(projectId) {
+export async function loadBriefingNotes(projectId) {
+  try {
+    const notes = await getBriefingNotes(projectId);
+    briefingNotes.set(notes);
+  } catch (err) {
+    console.error('Failed to load briefing notes:', err);
+  }
+}
+
+export function selectBriefingNote(id) {
+  selectedBriefingNoteId.set(id);
+  briefingDropdownOpen.set(false);
+}
+
+export function openBriefingUpload() {
+  briefingDropdownOpen.set(false);
+  briefingUploadFile.set(null);
+  briefingUploadText.set('');
+  briefingUploadTitle.set('');
+  briefingUploadTab.set('upload');
+  briefingUploadOpen.set(false);
+  // small tick to let dropdown close before opening modal
+  setTimeout(() => briefingUploadOpen.set(true), 10);
+}
+
+export async function submitBriefingUpload(projectId) {
+  const file = get(briefingUploadFile);
+  const text = get(briefingUploadText);
+  const title = get(briefingUploadTitle);
+  if (!file && !text.trim()) return;
+
+  briefingUploadLoading.set(true);
+  try {
+    const newNote = await uploadBriefingNote(projectId, { file, text: text || undefined, title: title || undefined });
+    briefingNotes.update(notes => [newNote, ...notes]);
+    selectedBriefingNoteId.set(newNote.id);
+    briefingUploadOpen.set(false);
+    runDraftFromBriefing(projectId, newNote.id);
+  } catch (err) {
+    console.error('Failed to upload briefing note:', err);
+    alert(err.message);
+  } finally {
+    briefingUploadLoading.set(false);
+  }
+}
+
+export async function runDraftFromBriefing(projectId, briefingNoteId = null) {
   _briefingProjectId = projectId;
   briefingDraftLoading.set(true);
   briefingDraftOpen.set(true);
@@ -19,7 +78,7 @@ export async function runDraftFromBriefing(projectId) {
   briefingDraftAccepted.set(new Set());
   briefingDraftSkipped.set(new Set());
   try {
-    const { suggestions } = await draftArgumentsFromBriefing(projectId);
+    const { suggestions } = await draftArgumentsFromBriefing(projectId, briefingNoteId);
     briefingDraftSuggestions.set(suggestions);
   } catch (err) {
     console.error('Draft from briefing failed:', err);
@@ -30,9 +89,42 @@ export async function runDraftFromBriefing(projectId) {
   }
 }
 
-export function acceptBriefingDraftSuggestion(trackId, argumentFor) {
-  appendToNote(trackId, 'argument_for', argumentFor);
-  briefingDraftAccepted.update(s => { const n = new Set(s); n.add(trackId); return n; });
+// Per-issue evolve state: { loading, evolved, conversation, input, applying, applied }
+export const briefingEvolveState = writable({});
+
+export async function startEvolveArgument(projectId, trackId, newInformation) {
+  briefingEvolveState.update(s => ({ ...s, [trackId]: { loading: true, evolved: null, conversation: [], input: '', applying: false, applied: false } }));
+  try {
+    const { evolved } = await evolveArgument(projectId, { trackId, newInformation, conversation: [] });
+    briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: false, evolved } }));
+  } catch (err) {
+    console.error('evolveArgument failed:', err);
+    alert(err.message);
+    briefingEvolveState.update(s => { const n = { ...s }; delete n[trackId]; return n; });
+  }
+}
+
+export async function sendEvolveRefinement(projectId, trackId, newInformation) {
+  const state = get(briefingEvolveState)[trackId];
+  if (!state?.input?.trim()) return;
+  const userMsg = { role: 'user', content: state.input.trim() };
+  const updatedConv = [...state.conversation, { role: 'assistant', content: state.evolved }, userMsg];
+  briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: true, input: '', conversation: updatedConv } }));
+  try {
+    const { evolved } = await evolveArgument(projectId, { trackId, newInformation, conversation: updatedConv });
+    briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: false, evolved, conversation: [...updatedConv, { role: 'assistant', content: evolved }] } }));
+  } catch (err) {
+    console.error('sendEvolveRefinement failed:', err);
+    alert(err.message);
+    briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: false } }));
+  }
+}
+
+export function applyEvolvedArgument(trackId) {
+  const state = get(briefingEvolveState)[trackId];
+  if (!state?.evolved) return;
+  replaceNote(trackId, 'argument_for', state.evolved);
+  briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], applying: false, applied: true } }));
 }
 
 export function skipBriefingDraftSuggestion(trackId) {
@@ -41,6 +133,7 @@ export function skipBriefingDraftSuggestion(trackId) {
 
 export function closeBriefingDraft() {
   briefingDraftOpen.set(false);
+  briefingEvolveState.set({});
 }
 
 export const issueNotes = writable({});
@@ -70,6 +163,11 @@ export function appendToNote(trackId, field, appendText) {
     const updated = current ? `${current}\n\n${appendText}` : appendText;
     return { ...n, [trackId]: { ...(n[trackId] ?? {}), [field]: updated } };
   });
+  saveNote(trackId);
+}
+
+export function replaceNote(trackId, field, text) {
+  issueNotes.update(n => ({ ...n, [trackId]: { ...(n[trackId] ?? {}), [field]: text } }));
   saveNote(trackId);
 }
 

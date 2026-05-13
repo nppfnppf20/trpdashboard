@@ -284,12 +284,50 @@ export async function generateDraftSection(projectId, typeId, sectionId) {
   return res.json();
 }
 
-export async function draftArgumentsFromBriefing(projectId) {
-  const res = await authFetch(`${BASE}/projects/${projectId}/draft-arguments-from-briefing`, { method: 'POST' });
+export async function getBriefingNotes(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/briefing-notes`);
+  if (!res.ok) throw new Error('Failed to fetch briefing notes');
+  return res.json();
+}
+
+export async function uploadBriefingNote(projectId, { file, text, title }) {
+  if (file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (title) fd.append('title', title);
+    const res = await authFetch(`${BASE}/projects/${projectId}/briefing-notes`, { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to upload briefing note'); }
+    return res.json();
+  }
+  const res = await authFetch(`${BASE}/projects/${projectId}/briefing-notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, title })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to upload briefing note'); }
+  return res.json();
+}
+
+export async function draftArgumentsFromBriefing(projectId, briefingNoteId = null) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-arguments-from-briefing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefing_note_id: briefingNoteId })
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to draft arguments');
   }
+  return res.json();
+}
+
+export async function evolveArgument(projectId, { trackId, newInformation, conversation }) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/evolve-argument`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: trackId, new_information: newInformation, conversation: conversation ?? [] })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to evolve argument'); }
   return res.json();
 }
 

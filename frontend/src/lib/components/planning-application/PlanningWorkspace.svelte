@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
-  import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftAccepted, briefingDraftSkipped, runDraftFromBriefing, acceptBriefingDraftSuggestion, skipBriefingDraftSuggestion, closeBriefingDraft } from '$lib/stores/planning-notes.js';
+  import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { argumentPointsByTrack, initArgumentPoints } from '$lib/stores/planning-analysis.js';
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt } from '$lib/stores/planning-suggestion.js';
@@ -81,6 +81,7 @@
     });
 
   let suggestFileInput;
+  let briefingFileInput;
   let chatEndEl;
 
   $: if ($conversation.length && chatEndEl) setTimeout(() => chatEndEl?.scrollIntoView({ behavior: 'smooth' }), 50);
@@ -149,10 +150,16 @@
     } finally {
       loading = false;
     }
-    // Run independently — draft failures must not block the rest of the workspace
-    await Promise.all([loadDraftTypes(), loadAssessmentIssues()]);
+    // Run independently — failures must not block the rest of the workspace
+    await Promise.all([loadDraftTypes(), loadAssessmentIssues(), loadBriefingNotes(project.id)]);
   }
 
+
+  function clickOutside(node, handler) {
+    function onClick(e) { if (!node.contains(e.target)) handler(); }
+    document.addEventListener('click', onClick, true);
+    return { destroy() { document.removeEventListener('click', onClick, true); } };
+  }
 
   function autoresize(node, _value) {
     function resize() {
@@ -312,9 +319,42 @@
     <div class="argument-body">
       <div class="argument-panel">
         <div class="argument-panel-toolbar">
-          <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id)}>
-            <i class="las la-lightbulb"></i> Draft arguments from briefing
-          </button>
+          <div class="briefing-btn-group" use:clickOutside={() => $briefingDropdownOpen = false}>
+            <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id, $selectedBriefingNoteId)}>
+              <i class="las la-lightbulb"></i> Draft from briefing
+              {#if $selectedBriefingNoteId}
+                {@const note = $briefingNotes.find(n => n.id === $selectedBriefingNoteId)}
+                {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
+              {/if}
+            </button>
+            <button class="btn-briefing-chevron" on:click={() => $briefingDropdownOpen = !$briefingDropdownOpen} title="Select briefing note">
+              <i class="las la-angle-down"></i>
+            </button>
+            {#if $briefingDropdownOpen}
+              <div class="briefing-dropdown">
+                <button
+                  class="briefing-dropdown-item"
+                  class:active={$selectedBriefingNoteId === null}
+                  on:click={() => selectBriefingNote(null)}
+                >
+                  <span>Latest briefing note</span>
+                </button>
+                {#each $briefingNotes as note}
+                  <button
+                    class="briefing-dropdown-item"
+                    class:active={$selectedBriefingNoteId === note.id}
+                    on:click={() => selectBriefingNote(note.id)}
+                  >
+                    <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
+                    <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </button>
+                {/each}
+                <button class="briefing-dropdown-item briefing-dropdown-upload" on:click={openBriefingUpload}>
+                  <i class="las la-plus"></i> Upload new briefing note
+                </button>
+              </div>
+            {/if}
+          </div>
         </div>
         <ArgumentStructurePanel {keyIssues} {projectPolicies} {policyTrackRelevance} argumentPointsByTrack={$argumentPointsByTrack} />
       </div>
@@ -712,28 +752,68 @@
         {:else if $briefingDraftSuggestions.length === 0}
           <p class="briefing-draft-empty">No suggestions returned.</p>
         {:else}
-          <p class="briefing-draft-intro">Review the suggested argument starters below. Accept to append to the issue's argument notes, or skip to ignore.</p>
+          <p class="briefing-draft-intro">Review the suggested changes below. Click "Evolve argument" to see how the AI proposes to rework the existing argument, then refine or apply it.</p>
           <div class="briefing-draft-list">
             {#each $briefingDraftSuggestions as s (s.track_id)}
-              {@const accepted = $briefingDraftAccepted.has(s.track_id)}
               {@const skipped = $briefingDraftSkipped.has(s.track_id)}
-              <div class="briefing-draft-card" class:bd-accepted={accepted} class:bd-skipped={skipped}>
+              {@const evolve = $briefingEvolveState[s.track_id]}
+              <div class="briefing-draft-card" class:bd-skipped={skipped} class:bd-applied={evolve?.applied}>
                 <div class="bd-card-header">
                   <span class="bd-issue-label">{s.label}</span>
-                  {#if accepted}
-                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Added</span>
+                  {#if evolve?.applied}
+                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Applied</span>
                   {:else if skipped}
                     <span class="bd-status bd-status-skipped">Skipped</span>
-                  {:else}
+                  {:else if !evolve}
                     <div class="bd-actions">
-                      <button class="bd-btn-accept" on:click={() => acceptBriefingDraftSuggestion(s.track_id, s.argument_for)}>
-                        <i class="las la-check"></i> Accept
+                      <button class="bd-btn-accept" on:click={() => startEvolveArgument(project.id, s.track_id, s.argument_for)}>
+                        <i class="las la-magic"></i> Evolve argument
                       </button>
                       <button class="bd-btn-skip" on:click={() => skipBriefingDraftSuggestion(s.track_id)}>Skip</button>
                     </div>
                   {/if}
                 </div>
-                <p class="bd-argument-text">{s.argument_for}</p>
+
+                <!-- New information from briefing -->
+                <div class="bd-new-info">
+                  <span class="bd-new-info-label">From briefing</span>
+                  <p class="bd-argument-text">{s.argument_for}</p>
+                </div>
+
+                <!-- Evolve panel -->
+                {#if evolve && !evolve.applied}
+                  <div class="bd-evolve-panel">
+                    {#if evolve.loading}
+                      <div class="bd-evolve-loading">
+                        <div class="mini-spinner"></div>
+                        <span>Reworking argument…</span>
+                      </div>
+                    {:else if evolve.evolved}
+                      <div class="bd-evolve-result">
+                        <span class="bd-evolved-label">Proposed argument</span>
+                        <p class="bd-evolved-text">{evolve.evolved}</p>
+                      </div>
+                      <div class="bd-evolve-chat">
+                        <textarea
+                          class="bd-chat-input"
+                          placeholder="Ask for changes — e.g. 'keep the reference to the original scheme but lead with the new position'…"
+                          rows="2"
+                          value={evolve.input}
+                          on:input={(e) => briefingEvolveState.update(st => ({ ...st, [s.track_id]: { ...st[s.track_id], input: e.target.value } }))}
+                          on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendEvolveRefinement(project.id, s.track_id, s.argument_for); } }}
+                        ></textarea>
+                        <div class="bd-evolve-actions">
+                          <button class="bd-chat-send" disabled={!evolve.input?.trim() || evolve.loading} on:click={() => sendEvolveRefinement(project.id, s.track_id, s.argument_for)}>
+                            <i class="las la-paper-plane"></i>
+                          </button>
+                          <button class="bd-btn-apply" on:click={() => applyEvolvedArgument(s.track_id)}>
+                            <i class="las la-check"></i> Apply
+                          </button>
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -741,6 +821,70 @@
             <button class="btn-primary" on:click={closeBriefingDraft}>Done</button>
           </div>
         {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Upload new briefing note modal -->
+{#if $briefingUploadOpen}
+  <div class="modal-overlay" on:click|self={() => $briefingUploadOpen = false} role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Upload briefing note</span>
+        <button class="modal-close" on:click={() => $briefingUploadOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="log-form-field" style="margin-bottom:1rem">
+          <label class="section-field-label">Title <span class="form-label-hint">(optional)</span></label>
+          <input class="add-section-input" type="text" bind:value={$briefingUploadTitle} placeholder="e.g. Briefing note v2 — April review" />
+        </div>
+        <div class="input-tabs">
+          <button class="input-tab" class:active={$briefingUploadTab === 'upload'} on:click={() => $briefingUploadTab = 'upload'}>
+            <i class="las la-file-upload"></i> Upload
+          </button>
+          <button class="input-tab" class:active={$briefingUploadTab === 'paste'} on:click={() => $briefingUploadTab = 'paste'}>
+            <i class="las la-paste"></i> Paste Text
+          </button>
+        </div>
+        {#if $briefingUploadTab === 'upload'}
+          <div
+            class="upload-zone"
+            class:has-file={$briefingUploadFile}
+            on:dragover|preventDefault={() => {}}
+            on:drop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) $briefingUploadFile = f; }}
+            on:click={() => briefingFileInput.click()}
+            role="button"
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && briefingFileInput.click()}
+          >
+            {#if $briefingUploadFile}
+              <i class="las la-file-alt"></i>
+              <span>{$briefingUploadFile.name}</span>
+              <span class="upload-sub">Click to change</span>
+            {:else}
+              <i class="las la-cloud-upload-alt"></i>
+              <span>Drop a PDF or click to upload</span>
+              <span class="upload-sub">PDF, TXT or MD · max 20MB</span>
+            {/if}
+          </div>
+          <input type="file" accept=".pdf,.txt,.md" bind:this={briefingFileInput} on:change={(e) => $briefingUploadFile = e.target.files[0] || null} style="display:none" />
+        {:else}
+          <textarea class="paste-area" bind:value={$briefingUploadText} placeholder="Paste briefing note text here..."></textarea>
+        {/if}
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left"></div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={() => $briefingUploadOpen = false}>Cancel</button>
+          <button
+            class="modal-run"
+            disabled={$briefingUploadLoading || ($briefingUploadTab === 'upload' ? !$briefingUploadFile : !$briefingUploadText.trim())}
+            on:click={() => submitBriefingUpload(project.id)}
+          >
+            {$briefingUploadLoading ? 'Uploading...' : 'Upload & draft arguments'}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -2571,6 +2715,12 @@
     margin-bottom: 0.75rem;
   }
 
+  .briefing-btn-group {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+  }
+
   .btn-draft-from-briefing {
     display: flex;
     align-items: center;
@@ -2578,7 +2728,8 @@
     padding: 0.4rem 0.875rem;
     background: #faf5ff;
     border: 1px solid #d8b4fe;
-    border-radius: 6px;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
     color: #7c3aed;
     font-size: 0.8125rem;
     font-weight: 500;
@@ -2586,6 +2737,87 @@
     transition: all 0.15s;
   }
   .btn-draft-from-briefing:hover { background: #f3e8ff; border-color: #a855f7; }
+
+  .briefing-note-pill {
+    background: #ede9fe;
+    color: #6d28d9;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .btn-briefing-chevron {
+    display: flex;
+    align-items: center;
+    padding: 0.4rem 0.5rem;
+    background: #faf5ff;
+    border: 1px solid #d8b4fe;
+    border-radius: 0 6px 6px 0;
+    color: #7c3aed;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-briefing-chevron:hover { background: #f3e8ff; border-color: #a855f7; }
+
+  .briefing-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    min-width: 240px;
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .briefing-dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.6rem 0.875rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: left;
+    font-size: 0.8125rem;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.1s;
+    font-family: inherit;
+  }
+  .briefing-dropdown-item:last-child { border-bottom: none; }
+  .briefing-dropdown-item:hover { background: #f8fafc; }
+  .briefing-dropdown-item.active { background: #faf5ff; color: #7c3aed; }
+
+  .briefing-dropdown-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .briefing-dropdown-date {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .briefing-dropdown-upload {
+    color: #7c3aed;
+    font-weight: 500;
+    gap: 0.375rem;
+    justify-content: flex-start;
+  }
 
   .modal-briefing-draft { max-width: 680px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; }
   .modal-briefing-draft .modal-body { overflow-y: auto; flex: 1; }
@@ -2675,6 +2907,123 @@
     margin: 0;
     white-space: pre-wrap;
   }
+
+  .bd-new-info {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.625rem 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .bd-new-info-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .bd-evolve-panel {
+    margin-top: 0.75rem;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 0.75rem;
+  }
+
+  .bd-evolve-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: #64748b;
+    padding: 0.5rem 0;
+  }
+
+  .bd-evolve-result {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    padding: 0.625rem 0.75rem;
+    margin-bottom: 0.625rem;
+  }
+
+  .bd-evolved-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #16a34a;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .bd-evolved-text {
+    font-size: 0.8125rem;
+    color: #374151;
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .bd-evolve-chat {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .bd-chat-input {
+    flex: 1;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    resize: none;
+    line-height: 1.5;
+  }
+  .bd-chat-input:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.08); }
+
+  .bd-evolve-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    flex-shrink: 0;
+  }
+
+  .bd-chat-send {
+    padding: 0.4rem 0.5rem;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+  }
+  .bd-chat-send:hover:not(:disabled) { background: #e2e8f0; }
+  .bd-chat-send:disabled { opacity: 0.4; cursor: default; }
+
+  .bd-btn-apply {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.625rem;
+    background: #16a34a;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .bd-btn-apply:hover { background: #15803d; }
+
+  .bd-applied { opacity: 0.7; }
 
   .briefing-draft-footer {
     margin-top: 1.25rem;
