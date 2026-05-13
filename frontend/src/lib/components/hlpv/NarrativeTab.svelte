@@ -2,10 +2,23 @@
   import { buildCombinedReport } from '$lib/services/reportGenerator.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import NarrativeBriefingSelector from './NarrativeBriefingSelector.svelte';
+  import { tick } from 'svelte';
   import {
     narrative, narrativeGenerationId, narrativeLoading, narrativeError,
     generateNarrative, loadBriefingNotes, updateNarrative
   } from '$lib/stores/hlpv-narrative.js';
+
+  let editorRef;
+  let trackedGenId = 0;
+
+  // When generation completes, push new content into the already-mounted editor
+  // (avoids destroying/remounting which collapses layout)
+  $: if ($narrativeGenerationId !== trackedGenId) {
+    trackedGenId = $narrativeGenerationId;
+    if ($narrativeGenerationId > 0) {
+      tick().then(() => { if (editorRef) editorRef.setHTML($narrative); });
+    }
+  }
 
   /** @type {any} */
   export let heritageData = null;
@@ -186,14 +199,13 @@
           <span class="narrative-tag">AI Draft</span>
           <span class="narrative-hint">Edit as needed before use</span>
         </div>
-        {#key $narrativeGenerationId}
-          <RichTextEditor
-            content={$narrative}
-            fullHeight={true}
-            placeholder=""
-            on:change={(e) => updateNarrative(e.detail.html)}
-          />
-        {/key}
+        <RichTextEditor
+          bind:this={editorRef}
+          content={$narrative}
+          fullHeight={true}
+          placeholder=""
+          on:change={(e) => updateNarrative(e.detail.html)}
+        />
       {:else}
         <div class="placeholder">
           <i class="las la-pen-alt"></i>

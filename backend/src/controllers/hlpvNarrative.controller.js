@@ -24,18 +24,13 @@ export async function generateNarrative(req, res) {
   try {
     let briefingText = null;
 
-    if (projectId) {
-      const query = briefingNoteId
-        ? `SELECT summary_html FROM planning_applications.document_summaries
-           WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`
-        : `SELECT summary_html FROM planning_applications.document_summaries
-           WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-           ORDER BY created_at DESC LIMIT 1`;
-
-      const params = briefingNoteId ? [briefingNoteId, projectId] : [projectId];
-      const { rows } = await pool.query(query, params);
+    if (projectId && briefingNoteId) {
+      const { rows } = await pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
+        [briefingNoteId, projectId]
+      );
       const html = rows[0]?.summary_html ?? null;
-
       if (html) {
         briefingText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       }

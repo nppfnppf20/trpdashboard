@@ -25,7 +25,7 @@
     {#if selectedNote}
       <span class="briefing-trigger-name">{selectedNote.title || selectedNote.file_name}</span>
     {:else}
-      <span class="briefing-trigger-placeholder">Briefing note (latest)</span>
+      <span class="briefing-trigger-placeholder">No briefing note</span>
     {/if}
     <i class="las la-angle-down briefing-chevron"></i>
   </button>
@@ -37,7 +37,7 @@
         class:briefing-option--active={$selectedBriefingNoteId === null}
         on:click={() => selectBriefingNote(null)}
       >
-        Latest briefing note
+        No briefing note
       </button>
 
       {#each $briefingNotes as note}
