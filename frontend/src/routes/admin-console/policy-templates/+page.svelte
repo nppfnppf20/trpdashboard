@@ -36,6 +36,17 @@
   let deleteId = null;
   let deleteLoading = false;
 
+  // Preview
+  let previewOpen = false;
+  let previewTitle = '';
+  let previewText = '';
+
+  function openPreview(t) {
+    previewTitle = `${disciplineLabel(t.discipline)} — ${t.development_type}`;
+    previewText = t.policy_national_text ?? '';
+    previewOpen = true;
+  }
+
   onMount(loadTemplates);
 
   async function loadTemplates() {
@@ -138,7 +149,13 @@
           <tr>
             <td>{t.development_type}</td>
             <td>{disciplineLabel(t.discipline)}</td>
-            <td class="text-preview">{truncate(t.policy_national_text)}</td>
+            <td class="text-preview">
+              {#if t.policy_national_text?.trim()}
+                <button class="preview-link" on:click={() => openPreview(t)}>{truncate(t.policy_national_text)}</button>
+              {:else}
+                <span class="muted">—</span>
+              {/if}
+            </td>
             <td class="actions-cell">
               <button class="btn-sm btn-edit" on:click={() => openEdit(t)}>Edit</button>
               <button class="btn-sm btn-delete" on:click={() => deleteId = t.id}>Delete</button>
@@ -149,6 +166,19 @@
     </table>
   {/if}
 </div>
+
+<!-- Preview modal -->
+{#if previewOpen}
+  <div class="modal-backdrop" on:click|self={() => previewOpen = false}>
+    <div class="modal modal-preview">
+      <div class="modal-header">
+        <h2>{previewTitle}</h2>
+        <button class="close-btn" on:click={() => previewOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="preview-body">{previewText}</div>
+    </div>
+  </div>
+{/if}
 
 <!-- Create / Edit modal -->
 {#if modalOpen}
@@ -307,6 +337,34 @@
     max-width: 420px;
     font-size: 0.8125rem;
     line-height: 1.5;
+  }
+
+  .preview-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #475569;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: #cbd5e1;
+    text-underline-offset: 2px;
+  }
+  .preview-link:hover { color: #1e293b; text-decoration-color: #94a3b8; }
+
+  .muted { color: #94a3b8; }
+
+  .modal-preview { width: 680px; }
+  .preview-body {
+    white-space: pre-wrap;
+    font-size: 0.875rem;
+    line-height: 1.75;
+    color: #1e293b;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 0.25rem 0;
   }
 
   .actions-cell {

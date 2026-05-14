@@ -23,6 +23,16 @@
 
   let editor;
 
+  let previewOpen = false;
+  let previewTitle = '';
+  let previewHtml = '';
+
+  function openPreview(t, field) {
+    previewTitle = `${t.development_type} — ${field.label}`;
+    previewHtml = t[field.key] ?? '';
+    previewOpen = true;
+  }
+
   onMount(load);
 
   async function load() {
@@ -118,7 +128,7 @@
             {#each FIELDS as f}
               <td class="status-cell">
                 {#if t[f.key]?.trim()}
-                  <span class="pill pill-ok">{wordCount(t[f.key])}w</span>
+                  <button class="pill pill-ok pill-btn" on:click={() => openPreview(t, f)}>{wordCount(t[f.key])}w</button>
                 {:else}
                   <span class="pill pill-empty">—</span>
                 {/if}
@@ -135,6 +145,18 @@
     </table>
   {/if}
 </div>
+
+{#if previewOpen}
+  <div class="modal-backdrop" on:click|self={() => previewOpen = false} role="dialog" aria-modal="true">
+    <div class="modal preview-modal">
+      <div class="modal-header">
+        <h2>{previewTitle}</h2>
+        <button class="close-btn" on:click={() => previewOpen = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="preview-body prose">{@html previewHtml}</div>
+    </div>
+  </div>
+{/if}
 
 {#if modalOpen}
   <div class="modal-backdrop" on:click|self={() => modalOpen = false} role="dialog" aria-modal="true">
@@ -245,6 +267,13 @@
 
   .pill-ok { background: #dcfce7; color: #15803d; }
   .pill-empty { background: #f1f5f9; color: #94a3b8; }
+  .pill-btn { border: none; cursor: pointer; }
+  .pill-btn:hover { background: #bbf7d0; }
+
+  .preview-modal { width: 760px; max-height: 80vh; }
+  .preview-body { padding: 1.5rem; overflow-y: auto; flex: 1; font-size: 0.9rem; line-height: 1.7; color: #1e293b; }
+  .preview-body :global(p) { margin: 0 0 0.75rem; }
+  .preview-body :global(blockquote) { margin: 0.75rem 0 0.75rem 1rem; padding-left: 1rem; border-left: 3px solid #cbd5e1; color: #475569; }
 
   .actions-cell { white-space: nowrap; }
 
