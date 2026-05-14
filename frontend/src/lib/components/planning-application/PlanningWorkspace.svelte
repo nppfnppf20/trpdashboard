@@ -95,7 +95,7 @@
   export let project;
 
   const DEV_TYPES = [
-    'Residential', 'Commercial', 'Solar', 'Wind', 'Mixed Use',
+    'Residential', 'Co-Living', 'Commercial', 'Solar', 'Wind', 'Mixed Use',
     'Industrial', 'Change of Use', 'Agricultural', 'Other'
   ];
 

@@ -1481,18 +1481,23 @@ const PLANNING_STATEMENT_OUTPUT_VARS = new Set([
   'PROJECT_NAME', 'APPLICANT_NAME', 'LPA_NAME', 'SITE_ADDRESS', 'DEVELOPMENT_DESCRIPTION',
   'ABOUT_APPLICANT', 'PRE_APP_SUMMARY', 'EIA_SUMMARY', 'SCI_SUMMARY',
   'NATIONAL_POLICIES', 'LOCAL_POLICIES', 'OTHER_POLICIES',
+  'LOCAL_POLICIES_KEY', 'LOCAL_POLICIES_OTHER', 'SUPPLEMENTARY_POLICIES',
   'LOCAL_POLICY_NAMES', 'SUPPLEMENTARY_POLICY_NAMES',
   'PROPOSED_DEVELOPMENT_HTML', 'SITE_SURROUNDINGS_HTML', 'PLANNING_HISTORY_TABLE',
   'DOCUMENT_LIST_DOCS', 'DOCUMENT_LIST_DRAWINGS',
+  'NPPF_TEXT', 'NPPG_TEXT', 'OTHER_NATIONAL_TEXT', 'OTHER_GUIDANCE_TEXT',
 ]);
 
 const OUTPUT_VAR_PLACEHOLDER_LABELS = {
-  ABOUT_APPLICANT:   'About the Applicant',
-  PRE_APP_SUMMARY:   'Pre-Application Response Summary',
-  EIA_SUMMARY:       'EIA / Environmental Statement Summary',
-  SCI_SUMMARY:       'Statement of Community Involvement Summary',
+  ABOUT_APPLICANT:            'About the Applicant',
+  PRE_APP_SUMMARY:            'Pre-Application Response Summary',
+  EIA_SUMMARY:                'EIA / Environmental Statement Summary',
+  SCI_SUMMARY:                'Statement of Community Involvement Summary',
   NATIONAL_POLICIES:          'National Policies',
   LOCAL_POLICIES:             'Local Development Plan Policies',
+  LOCAL_POLICIES_KEY:         'Key Local Policies',
+  LOCAL_POLICIES_OTHER:       'Other Local Policies',
+  SUPPLEMENTARY_POLICIES:     'Supplementary Planning Documents',
   OTHER_POLICIES:             'Other Material Policies',
   LOCAL_POLICY_NAMES:         'Local Policy Names',
   SUPPLEMENTARY_POLICY_NAMES: 'Supplementary Policy Names',
@@ -1501,6 +1506,10 @@ const OUTPUT_VAR_PLACEHOLDER_LABELS = {
   PLANNING_HISTORY_TABLE:     'Planning History Table',
   DOCUMENT_LIST_DOCS:         'Document List',
   DOCUMENT_LIST_DRAWINGS:     'Drawings List',
+  NPPF_TEXT:                  'National Planning Policy Framework',
+  NPPG_TEXT:                  'National Planning Practice Guidance',
+  OTHER_NATIONAL_TEXT:        'Other National Policy',
+  OTHER_GUIDANCE_TEXT:        'Other Policy and Guidance',
 };
 
 export async function generatePlanningStatementSection({ section, variables, sectionNumber, briefingSummary }) {

@@ -176,6 +176,22 @@ export async function deletePolicyTemplate(id) {
   return res.json();
 }
 
+export async function listPolicyContextTemplates() {
+  const res = await authFetch(`${ADMIN_BASE}/planning-templates`);
+  if (!res.ok) throw new Error('Failed to fetch planning templates');
+  return res.json();
+}
+
+export async function updatePolicyContextTemplate(devType, data) {
+  const res = await authFetch(`${ADMIN_BASE}/planning-templates/${encodeURIComponent(devType)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to save planning template');
+  return res.json();
+}
+
 export async function setProjectDevelopmentType(projectId, developmentType) {
   const res = await authFetch(`/api/projects/${projectId}/development-type`, {
     method: 'PATCH',

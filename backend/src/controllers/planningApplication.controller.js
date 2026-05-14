@@ -762,7 +762,7 @@ function stripHtml(html) {
 
 async function resolvePlanningStatementVariables(projectId) {
   const { rows: [project] } = await pool.query(
-    `SELECT project_name, client, local_planning_authority, address, development_description
+    `SELECT project_name, client, local_planning_authority, address, development_description, development_type
      FROM public.projects WHERE id = $1`, [projectId]
   );
   if (!project) return {};
@@ -790,6 +790,13 @@ async function resolvePlanningStatementVariables(projectId) {
   const { rows: policies } = await pool.query(
     `SELECT policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, is_key_policy
      FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, policy_reference`, [projectId]
+  );
+
+  const { rows: [policyContextTemplate] } = await pool.query(
+    `SELECT nppf_text, nppg_text, other_national_text, other_guidance_text
+     FROM planning_applications.policy_context_templates
+     WHERE development_type = $1`,
+    [project.development_type ?? '']
   );
 
   const lpaArr = project.local_planning_authority;
@@ -880,9 +887,13 @@ ${history.map(h => {
   };
 
   const localPolicies = policies.filter(p => p.policy_type === 'local');
+  const localPoliciesKey = localPolicies.filter(p => p.is_key_policy);
+  const localPoliciesOther = localPolicies.filter(p => !p.is_key_policy);
   const nationalPolicies = policies.filter(p => p.policy_type === 'national');
   const supplementaryPolicies = policies.filter(p => p.policy_type === 'supplementary');
-  const otherPolicies = policies.filter(p => !['local', 'national'].includes(p.policy_type));
+  const otherPolicies = policies.filter(p => !['local', 'national', 'supplementary'].includes(p.policy_type));
+
+  const pct = policyContextTemplate ?? {};
 
   const variables = {
     PROJECT_NAME:              project.project_name ?? '[Project Name]',
@@ -904,6 +915,9 @@ ${history.map(h => {
     EIA_SUMMARY:               summaryByType.eia_response ?? '',
     SCI_SUMMARY:               summaryByType.sci ?? '',
     LOCAL_POLICIES:            formatPolicyListHtml(localPolicies),
+    LOCAL_POLICIES_KEY:        formatPolicyListHtml(localPoliciesKey),
+    LOCAL_POLICIES_OTHER:      formatPolicyNamesHtml(localPoliciesOther),
+    SUPPLEMENTARY_POLICIES:    formatPolicyNamesHtml(supplementaryPolicies),
     NATIONAL_POLICIES:         formatPolicyListHtml(nationalPolicies),
     OTHER_POLICIES:            formatPolicyListHtml(otherPolicies),
     LOCAL_POLICY_NAMES:        formatPolicyNamesHtml(localPolicies),
@@ -911,6 +925,10 @@ ${history.map(h => {
     LOCAL_POLICIES_CONTEXT:    formatPolicyContext(localPolicies),
     NATIONAL_POLICIES_CONTEXT: formatPolicyContext(nationalPolicies),
     OTHER_POLICIES_CONTEXT:    formatPolicyContext(otherPolicies),
+    NPPF_TEXT:                 pct.nppf_text ?? '',
+    NPPG_TEXT:                 pct.nppg_text ?? '',
+    OTHER_NATIONAL_TEXT:       pct.other_national_text ?? '',
+    OTHER_GUIDANCE_TEXT:       pct.other_guidance_text ?? '',
     FULL_STATEMENT:            '',
   };
 
