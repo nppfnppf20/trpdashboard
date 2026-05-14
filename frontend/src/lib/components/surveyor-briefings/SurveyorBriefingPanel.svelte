@@ -5,6 +5,7 @@
   import SentBriefingsHistory from './SentBriefingsHistory.svelte';
   import EditEmailTemplate from './EditEmailTemplate.svelte';
   import EditMasterWarningModal from '$lib/components/shared/EditMasterWarningModal.svelte';
+  import DraftBriefingsModal from './DraftBriefingsModal.svelte';
 
   export let selectedProject;
 
@@ -17,6 +18,12 @@
   let showEditWarning = false;
   let selectedTemplate = null;
   let templateToEdit = null;
+
+  // Draft from briefing note (Flow 2)
+  let showDraftModal = false;
+  let pendingDrafts = []; // [{ discipline, template, surveyors }] — queued after modal
+  let currentDraftIndex = 0; // which pending draft is open in BriefingEditor
+  let editorPreselectedSurveyors = []; // passed to BriefingEditor when opening a queued draft
 
   $: if (selectedProject) {
     loadData();
@@ -59,6 +66,38 @@
 
   function openNewRequest() {
     selectedTemplate = null;
+    editorPreselectedSurveyors = [];
+    showEditor = true;
+  }
+
+  function handleDraftProceed(event) {
+    pendingDrafts = event.detail.drafts;
+    currentDraftIndex = 0;
+    showDraftModal = false;
+    openNextDraft();
+  }
+
+  function openNextDraft() {
+    if (currentDraftIndex >= pendingDrafts.length) {
+      pendingDrafts = [];
+      currentDraftIndex = 0;
+      return;
+    }
+    const draft = pendingDrafts[currentDraftIndex];
+    selectedTemplate = draft.template;
+    // Map surveyors to the shape BriefingEditor expects for preSelectedSurveyors
+    editorPreselectedSurveyors = draft.surveyors.flatMap(sv => {
+      const primaryContact = sv.contacts?.find(c => c.is_primary) ?? sv.contacts?.[0] ?? null;
+      if (!primaryContact) return [];
+      return [{
+        surveyorId: sv.id,
+        surveyorOrganisation: sv.organisation,
+        discipline: sv.discipline,
+        contactId: primaryContact.id,
+        contactName: primaryContact.name,
+        contactEmail: primaryContact.email ?? ''
+      }];
+    });
     showEditor = true;
   }
 
@@ -80,12 +119,22 @@
   async function handleSaved() {
     showEditor = false;
     selectedTemplate = null;
+    editorPreselectedSurveyors = [];
     await loadSentRequests();
+    // Advance to next queued draft if any
+    currentDraftIndex += 1;
+    openNextDraft();
   }
 
   function handleClose() {
     showEditor = false;
     selectedTemplate = null;
+    editorPreselectedSurveyors = [];
+    // User closed without saving — skip this draft and open next
+    if (pendingDrafts.length > 0) {
+      currentDraftIndex += 1;
+      openNextDraft();
+    }
   }
 
   async function handleTemplateEditorClose() {
@@ -104,10 +153,16 @@
 <div class="briefing-panel">
   <div class="panel-header">
     <h2>Surveyor Quote Requests</h2>
-    <button class="btn btn-primary" on:click={openNewRequest}>
-      <i class="las la-plus"></i>
-      New Quote Request
-    </button>
+    <div class="header-actions">
+      <button class="btn btn-draft" on:click={() => showDraftModal = true} disabled={!selectedProject?.unique_id}>
+        <i class="las la-magic"></i>
+        Draft from Briefing Note
+      </button>
+      <button class="btn btn-primary" on:click={openNewRequest}>
+        <i class="las la-plus"></i>
+        New Quote Request
+      </button>
+    </div>
   </div>
 
   {#if loading}
@@ -161,10 +216,19 @@
     show={showEditor}
     projectId={selectedProject?.unique_id}
     preSelectedTemplate={selectedTemplate}
+    preSelectedSurveyors={editorPreselectedSurveyors}
     on:saved={handleSaved}
     on:close={handleClose}
   />
 {/if}
+
+<!-- Draft from Briefing Note Modal -->
+<DraftBriefingsModal
+  show={showDraftModal}
+  projectId={selectedProject?.unique_id}
+  on:proceed={handleDraftProceed}
+  on:close={() => showDraftModal = false}
+/>
 
 <!-- Edit Master Warning Modal -->
 <EditMasterWarningModal
@@ -207,6 +271,27 @@
     font-size: 1.25rem;
     font-weight: 600;
     color: #1e293b;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .btn-draft {
+    background: white;
+    color: #7c3aed;
+    border: 1px solid #7c3aed;
+  }
+
+  .btn-draft:hover:not(:disabled) {
+    background: #f5f3ff;
+  }
+
+  .btn-draft:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .btn {

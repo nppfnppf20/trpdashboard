@@ -2,11 +2,12 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import SelectSurveyorModal from './SelectSurveyorModal.svelte';
-  import { getTemplates, mergeTemplate, saveSentRequest } from '$lib/api/quoteRequests.js';
+  import { getTemplates, mergeTemplate, saveSentRequest, suggestEmailEditsForDiscipline } from '$lib/api/quoteRequests.js';
 
   export let show = false;
   export let projectId;
   export let preSelectedTemplate = null;
+  export let preSelectedSurveyors = []; // [{ surveyorId, surveyorOrganisation, discipline, contactId, contactName, contactEmail }]
 
   const dispatch = createEventDispatcher();
 
@@ -33,6 +34,11 @@
   let merging = false;
   let error = null;
   let currentSubject = '';
+
+  // Flow 1: inline email edit suggestion
+  let editSuggestionLoading = false;
+  let editSuggestion = null; // { hasChanges, reasoning, suggestedContent }
+  let editSuggestionDismissed = false;
 
   // For backwards compatibility with merge API - extract surveyor IDs
   $: selectedSurveyorIds = selectedSurveyors.map(s => s.surveyorId);
@@ -67,9 +73,12 @@
     await loadTemplates();
     if (preSelectedTemplate) {
       selectedTemplateId = preSelectedTemplate.id;
-      if (selectedSurveyorIds.length > 0) {
-        await mergeTemplateContent();
-      }
+    }
+    if (preSelectedSurveyors?.length > 0) {
+      selectedSurveyors = [...preSelectedSurveyors];
+    }
+    if (selectedTemplateId && selectedSurveyorIds.length > 0) {
+      await mergeTemplateContent();
     }
   });
 
@@ -101,6 +110,32 @@
     } finally {
       merging = false;
     }
+  }
+
+  async function checkAgainstBriefing() {
+    if (!richTextEditor || !selectedDiscipline || !projectId) return;
+    editSuggestion = null;
+    editSuggestionDismissed = false;
+    editSuggestionLoading = true;
+    try {
+      const currentContent = richTextEditor.getHTML();
+      const result = await suggestEmailEditsForDiscipline(projectId, {
+        discipline: selectedDiscipline,
+        templateContent: currentContent
+      });
+      editSuggestion = result;
+    } catch (err) {
+      console.error('checkAgainstBriefing failed:', err);
+      alert(err.message);
+    } finally {
+      editSuggestionLoading = false;
+    }
+  }
+
+  function applySuggestion() {
+    if (!editSuggestion?.suggestedContent || !richTextEditor) return;
+    richTextEditor.setHTML(editSuggestion.suggestedContent);
+    editSuggestion = null;
   }
 
   function handleSurveyorSelect(event) {
@@ -348,7 +383,53 @@
 
         <!-- Rich Text Editor -->
         <div class="form-group">
-          <label>Email Content:</label>
+          <div class="editor-label-row">
+            <label>Email Content:</label>
+            {#if selectedDiscipline && selectedDiscipline !== 'Any' && projectId}
+              <button
+                class="btn-check-briefing"
+                on:click={checkAgainstBriefing}
+                disabled={editSuggestionLoading || merging}
+                title="Check scope against project briefing note"
+              >
+                {#if editSuggestionLoading}
+                  <span class="btn-micro-spinner"></span>
+                  Checking…
+                {:else}
+                  <i class="las la-magic"></i>
+                  Check against briefing
+                {/if}
+              </button>
+            {/if}
+          </div>
+
+          {#if editSuggestion && !editSuggestionDismissed}
+            {#if editSuggestion.hasChanges}
+              <div class="suggestion-banner suggestion-changes">
+                <div class="suggestion-header">
+                  <i class="las la-lightbulb"></i>
+                  <span class="suggestion-title">Suggested changes from briefing note</span>
+                  <button class="suggestion-dismiss" on:click={() => editSuggestionDismissed = true}>
+                    <i class="las la-times"></i>
+                  </button>
+                </div>
+                <p class="suggestion-reasoning">{editSuggestion.reasoning}</p>
+                <button class="btn btn-apply-suggestion" on:click={applySuggestion}>
+                  <i class="las la-check"></i>
+                  Apply suggestion
+                </button>
+              </div>
+            {:else}
+              <div class="suggestion-banner suggestion-nochange">
+                <i class="las la-check-circle"></i>
+                <span>No changes needed — the standard scope covers this project's requirements.</span>
+                <button class="suggestion-dismiss" on:click={() => editSuggestionDismissed = true}>
+                  <i class="las la-times"></i>
+                </button>
+              </div>
+            {/if}
+          {/if}
+
           {#if merging}
             <div class="merging-indicator">
               <div class="spinner"></div>
@@ -745,5 +826,149 @@
     background: #f8fafc;
     color: #475569;
     border-color: #94a3b8;
+  }
+
+  /* ── Check-against-briefing button & suggestion banner ───────────────────── */
+  .editor-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .editor-label-row label {
+    font-weight: 600;
+    color: #475569;
+    font-size: 0.875rem;
+    margin: 0;
+  }
+
+  .btn-check-briefing {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3rem 0.75rem;
+    background: white;
+    color: #7c3aed;
+    border: 1px solid #7c3aed;
+    border-radius: 5px;
+    font-size: 0.775rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-check-briefing:hover:not(:disabled) {
+    background: #f5f3ff;
+  }
+
+  .btn-check-briefing:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-micro-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(124, 58, 237, 0.25);
+    border-top-color: #7c3aed;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  .suggestion-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+  }
+
+  .suggestion-changes {
+    background: #faf5ff;
+    border: 1px solid #ddd6fe;
+    flex-direction: column;
+  }
+
+  .suggestion-nochange {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    align-items: center;
+  }
+
+  .suggestion-nochange i {
+    font-size: 1rem;
+    color: #16a34a;
+  }
+
+  .suggestion-nochange .suggestion-dismiss {
+    margin-left: auto;
+  }
+
+  .suggestion-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .suggestion-header i {
+    color: #7c3aed;
+    font-size: 1rem;
+  }
+
+  .suggestion-title {
+    font-weight: 600;
+    color: #5b21b6;
+    flex: 1;
+  }
+
+  .suggestion-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 0.125rem;
+    font-size: 0.875rem;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+  }
+
+  .suggestion-dismiss:hover {
+    color: #475569;
+  }
+
+  .suggestion-reasoning {
+    margin: 0;
+    color: #6b21a8;
+    line-height: 1.5;
+    font-size: 0.8rem;
+  }
+
+  .btn-apply-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4rem 0.875rem;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 0.775rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    align-self: flex-start;
+  }
+
+  .btn-apply-suggestion:hover {
+    background: #6d28d9;
   }
 </style>

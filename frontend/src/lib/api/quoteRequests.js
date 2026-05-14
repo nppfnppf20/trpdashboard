@@ -123,6 +123,44 @@ export async function deleteSentRequest(requestId) {
 }
 
 /**
+ * Analyse project briefing note and suggest disciplines + 4★+ surveyors.
+ * @param {string} projectId - Project UUID
+ * @param {number|null} briefingNoteId - Optional specific briefing note ID (null = latest)
+ * @returns {Promise<{suggestions: Array}>} suggestions: [{ discipline, reasoning, template, surveyors }]
+ */
+export async function analyseDisciplines(projectId, briefingNoteId = null) {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/analyse-disciplines`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefing_note_id: briefingNoteId })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.details || error.error || 'Failed to analyse disciplines');
+  }
+  return response.json();
+}
+
+/**
+ * Suggest scope-section edits to a briefing email from the project briefing note.
+ * @param {string} projectId - Project UUID
+ * @param {Object} params - { briefingNoteId, discipline, templateContent }
+ * @returns {Promise<{hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
+ */
+export async function suggestEmailEditsForDiscipline(projectId, { briefingNoteId = null, discipline, templateContent }) {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/suggest-email-edits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefing_note_id: briefingNoteId, discipline, template_content: templateContent })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.details || error.error || 'Failed to suggest email edits');
+  }
+  return response.json();
+}
+
+/**
  * Update a template
  * @param {number} templateId - Template ID
  * @param {Object} updates - { templateName, description, subjectLine, templateContent }

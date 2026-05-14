@@ -1,4 +1,6 @@
 import * as quoteRequestsService from '../services/quoteRequests.service.js';
+import { pool } from '../db.js';
+import { analyseBriefingForDisciplines, suggestEmailEdits } from '../services/surveyorBriefing.service.js';
 
 /**
  * GET /api/admin-console/quote-request-templates
@@ -178,6 +180,111 @@ export async function deleteSentRequest(req, res) {
       error: 'Failed to delete sent request',
       details: error.message
     });
+  }
+}
+
+/**
+ * POST /api/admin-console/quote-requests/projects/:projectId/analyse-disciplines
+ * Analyse the project's latest briefing note and suggest disciplines + 4★+ surveyors.
+ */
+export async function analyseDisciplines(req, res) {
+  const { projectId } = req.params;
+  const { briefing_note_id } = req.body;
+  try {
+    const noteQuery = briefing_note_id
+      ? `SELECT ds.summary_html
+         FROM planning_applications.document_summaries ds
+         JOIN public.projects p ON p.id = ds.project_id
+         WHERE ds.id = $1 AND p.unique_id = $2`
+      : `SELECT ds.summary_html
+         FROM planning_applications.document_summaries ds
+         JOIN public.projects p ON p.id = ds.project_id
+         WHERE p.unique_id = $1
+           AND ds.doc_type IN ('briefing_transcript', 'briefing_note')
+         ORDER BY ds.created_at DESC LIMIT 1`;
+    const noteParams = briefing_note_id ? [parseInt(briefing_note_id), projectId] : [projectId];
+    const { rows: noteRows } = await pool.query(noteQuery, noteParams);
+
+    if (!noteRows.length || !noteRows[0].summary_html) {
+      return res.status(404).json({ error: 'No briefing note found for this project. Upload a briefing note first.' });
+    }
+    const briefingText = noteRows[0].summary_html;
+
+    const templates = await quoteRequestsService.getTemplates({});
+    const availableDisciplines = [...new Set(templates.filter(t => t.discipline).map(t => t.discipline))];
+
+    const disciplineSuggestions = await analyseBriefingForDisciplines(briefingText, availableDisciplines);
+
+    const results = await Promise.all(
+      disciplineSuggestions.map(async ({ discipline, reasoning }) => {
+        const template = templates.find(t => t.discipline?.toLowerCase() === discipline.toLowerCase()) ?? null;
+
+        const { rows: surveyors } = await pool.query(
+          `SELECT so.id, so.organisation, so.discipline, so.location,
+                  so.avg_overall, so.avg_quality, so.avg_responsiveness, so.avg_on_time, so.total_reviews,
+                  json_agg(
+                    DISTINCT jsonb_build_object(
+                      'id', c.id, 'name', c.name, 'email', c.email, 'is_primary', c.is_primary
+                    )
+                  ) FILTER (WHERE c.id IS NOT NULL) AS contacts
+           FROM admin_console.surveyor_organisations so
+           LEFT JOIN admin_console.contacts c
+             ON c.organisation_id = so.id AND c.organisation_type = 'surveyor'
+           WHERE LOWER(so.discipline) = LOWER($1)
+             AND so.avg_overall >= 4
+             AND so.approval_status = 'approved'
+           GROUP BY so.id
+           ORDER BY so.avg_overall DESC`,
+          [discipline]
+        );
+
+        return { discipline, reasoning, template, surveyors };
+      })
+    );
+
+    res.json({ suggestions: results });
+  } catch (err) {
+    console.error('analyseDisciplines error:', err);
+    res.status(500).json({ error: 'Failed to analyse disciplines', details: err.message });
+  }
+}
+
+/**
+ * POST /api/admin-console/quote-requests/projects/:projectId/suggest-email-edits
+ * Suggest scope-section edits to a briefing email based on the project briefing note.
+ */
+export async function suggestEmailEditsForDiscipline(req, res) {
+  const { projectId } = req.params;
+  const { briefing_note_id, discipline, template_content } = req.body;
+
+  if (!discipline || !template_content) {
+    return res.status(400).json({ error: 'discipline and template_content are required' });
+  }
+
+  try {
+    const noteQuery = briefing_note_id
+      ? `SELECT ds.summary_html
+         FROM planning_applications.document_summaries ds
+         JOIN public.projects p ON p.id = ds.project_id
+         WHERE ds.id = $1 AND p.unique_id = $2`
+      : `SELECT ds.summary_html
+         FROM planning_applications.document_summaries ds
+         JOIN public.projects p ON p.id = ds.project_id
+         WHERE p.unique_id = $1
+           AND ds.doc_type IN ('briefing_transcript', 'briefing_note')
+         ORDER BY ds.created_at DESC LIMIT 1`;
+    const noteParams = briefing_note_id ? [parseInt(briefing_note_id), projectId] : [projectId];
+    const { rows: noteRows } = await pool.query(noteQuery, noteParams);
+
+    if (!noteRows.length || !noteRows[0].summary_html) {
+      return res.status(404).json({ error: 'No briefing note found for this project' });
+    }
+
+    const result = await suggestEmailEdits(noteRows[0].summary_html, discipline, template_content);
+    res.json(result);
+  } catch (err) {
+    console.error('suggestEmailEditsForDiscipline error:', err);
+    res.status(500).json({ error: 'Failed to suggest email edits', details: err.message });
   }
 }
 

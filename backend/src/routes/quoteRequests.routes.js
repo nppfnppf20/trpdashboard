@@ -15,4 +15,8 @@ router.post('/projects/:projectId/sent-requests', quoteRequestsController.create
 router.get('/sent-requests/:id', quoteRequestsController.getSentRequestById);
 router.delete('/sent-requests/:id', quoteRequestsController.deleteSentRequest);
 
+// LLM-assisted briefing routes
+router.post('/projects/:projectId/analyse-disciplines', quoteRequestsController.analyseDisciplines);
+router.post('/projects/:projectId/suggest-email-edits', quoteRequestsController.suggestEmailEditsForDiscipline);
+
 export default router;
