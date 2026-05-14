@@ -37,7 +37,13 @@ import {
   getDocumentLog,
   createDocumentLogEntry,
   deleteDocumentLogEntry,
-  updateDocumentLogEntry
+  updateDocumentLogEntry,
+  getBriefingNotes,
+  uploadBriefingNote,
+  draftArgumentsFromBriefing,
+  draftArgumentsFromIssueNotes,
+  draftKeySummariesFromBriefing,
+  evolveArgument
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -94,6 +100,14 @@ router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
+
+// Briefing notes
+router.get('/projects/:projectId/briefing-notes', getBriefingNotes);
+router.post('/projects/:projectId/briefing-notes', upload.single('file'), uploadBriefingNote);
+router.post('/projects/:projectId/draft-arguments-from-briefing', draftArgumentsFromBriefing);
+router.post('/projects/:projectId/draft-arguments-from-issue-notes', draftArgumentsFromIssueNotes);
+router.post('/projects/:projectId/draft-key-summaries-from-briefing', draftKeySummariesFromBriefing);
+router.post('/projects/:projectId/evolve-argument', evolveArgument);
 
 // Document log
 router.get('/projects/:projectId/document-log', getDocumentLog);

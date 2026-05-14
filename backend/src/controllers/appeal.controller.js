@@ -5,7 +5,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, summariseDocument } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -946,5 +946,181 @@ export async function deleteSuggestTemplate(req, res) {
   } catch (err) {
     console.error('deleteSuggestTemplate error:', err);
     res.status(500).json({ error: 'Failed to delete suggest template' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Briefing notes (shared storage with planning-application)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getBriefingNotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, title, file_name, created_at FROM planning_applications.document_summaries
+       WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+       ORDER BY created_at DESC`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('appeal.getBriefingNotes error:', err);
+    res.status(500).json({ error: 'Failed to fetch briefing notes' });
+  }
+}
+
+export async function uploadBriefingNote(req, res) {
+  const { projectId } = req.params;
+  try {
+    let text, fileName;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+      fileName = req.file.originalname;
+    } else if (req.body.text) {
+      text = req.body.text;
+      fileName = null;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+    const title = req.body.title?.trim() || fileName || 'Briefing note';
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_template FROM planning_applications.doc_type_prompts WHERE doc_type = $1`,
+      ['briefing_transcript']
+    );
+    const customPrompt = promptRows[0]?.prompt_template ?? null;
+    const summaryHtml = await summariseDocument(text, fileName, 'briefing_transcript', customPrompt);
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.document_summaries
+         (project_id, title, file_name, doc_type, summary_html)
+       VALUES ($1, $2, $3, 'briefing_transcript', $4) RETURNING id, title, file_name, created_at`,
+      [projectId, title, fileName, summaryHtml]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('appeal.uploadBriefingNote error:', err);
+    res.status(500).json({ error: err.message || 'Failed to upload briefing note' });
+  }
+}
+
+export async function draftArgumentsFromBriefing(req, res) {
+  const { projectId } = req.params;
+  try {
+    const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
+    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
+      briefingNoteId
+        ? pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
+            [projectId, briefingNoteId]
+          )
+        : pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+            [projectId]
+          ),
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline, ain.argument_for
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN public.appeal_issue_notes ain
+           ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      )
+    ]);
+    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project. Upload a briefing note first.' });
+    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
+    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
+  } catch (err) {
+    console.error('appeal.draftArgumentsFromBriefing error:', err);
+    res.status(500).json({ error: err.message || 'Failed to draft arguments' });
+  }
+}
+
+export async function draftArgumentsFromIssueNotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, pit.summary, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE AND pit.summary IS NOT NULL AND pit.summary != ''
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+    if (!issues.length) return res.status(404).json({ error: 'No key issue notes found. Add position notes in the Key Issues tab first.' });
+    const suggestions = await draftArgumentsFromIssueSummaries({ issues, policiesByTrack: {} });
+    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
+    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
+  } catch (err) {
+    console.error('appeal.draftArgumentsFromIssueNotes error:', err);
+    res.status(500).json({ error: err.message || 'Failed to draft arguments from issue notes' });
+  }
+}
+
+export async function draftKeySummariesFromBriefing(req, res) {
+  const { projectId } = req.params;
+  try {
+    const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
+    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
+      briefingNoteId
+        ? pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
+            [projectId, briefingNoteId]
+          )
+        : pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+            [projectId]
+          ),
+      pool.query(
+        `SELECT id, label, discipline, summary
+         FROM admin_console.project_issue_tracks
+         WHERE project_id = $1 AND is_active = TRUE
+         ORDER BY sort_order, id`,
+        [projectId]
+      )
+    ]);
+    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project.' });
+    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
+    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
+  } catch (err) {
+    console.error('appeal.draftKeySummariesFromBriefing error:', err);
+    res.status(500).json({ error: err.message || 'Failed to draft key issue summaries' });
+  }
+}
+
+export async function evolveArgument(req, res) {
+  const { projectId } = req.params;
+  const { track_id, new_information, conversation } = req.body;
+  if (!track_id || !new_information?.trim()) {
+    return res.status(400).json({ error: 'track_id and new_information are required' });
+  }
+  try {
+    const [{ rows: issueRows }, { rows: noteRows }] = await Promise.all([
+      pool.query(
+        `SELECT label FROM admin_console.project_issue_tracks WHERE id = $1 AND project_id = $2`,
+        [track_id, projectId]
+      ),
+      pool.query(
+        `SELECT argument_for FROM public.appeal_issue_notes WHERE track_id = $1 AND project_id = $2`,
+        [track_id, projectId]
+      )
+    ]);
+    if (!issueRows.length) return res.status(404).json({ error: 'Issue not found' });
+    const evolved = await evolveArgumentFromBriefing({
+      issueLabel: issueRows[0].label,
+      existingArgument: noteRows[0]?.argument_for ?? '',
+      newInformation: new_information,
+      conversation: conversation ?? []
+    });
+    res.json({ evolved });
+  } catch (err) {
+    console.error('appeal.evolveArgument error:', err);
+    res.status(500).json({ error: err.message || 'Failed to evolve argument' });
   }
 }

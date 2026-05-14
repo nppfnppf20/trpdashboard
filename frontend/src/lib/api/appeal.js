@@ -318,6 +318,69 @@ export async function createArgumentPoint(projectId, point) {
   return res.json();
 }
 
+// ── Briefing notes ─────────────────────────────────────────────────────────
+
+export async function getBriefingNotes(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-notes`);
+  if (!res.ok) throw new Error('Failed to fetch briefing notes');
+  return res.json();
+}
+
+export async function uploadBriefingNote(projectId, { file, text, title }) {
+  if (file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (title) fd.append('title', title);
+    const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-notes`, { method: 'POST', body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to upload briefing note'); }
+    return res.json();
+  } else {
+    const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, title })
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to upload briefing note'); }
+    return res.json();
+  }
+}
+
+export async function draftArgumentsFromBriefing(projectId, briefingNoteId = null) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/draft-arguments-from-briefing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefing_note_id: briefingNoteId })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to draft arguments'); }
+  return res.json();
+}
+
+export async function draftArgumentsFromIssueNotes(projectId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/draft-arguments-from-issue-notes`, { method: 'POST' });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to draft arguments from issue notes'); }
+  return res.json();
+}
+
+export async function draftKeySummariesFromBriefing(projectId, briefingNoteId = null) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/draft-key-summaries-from-briefing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefing_note_id: briefingNoteId })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to draft key summaries'); }
+  return res.json();
+}
+
+export async function evolveArgument(projectId, { trackId, newInformation, conversation }) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/evolve-argument`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: trackId, new_information: newInformation, conversation })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to evolve argument'); }
+  return res.json();
+}
+
 export async function updateDocumentStatus(docId, reviewStatus) {
   const res = await authFetch(`/api/appeal/documents/${docId}/status`, {
     method: 'PUT',
