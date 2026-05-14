@@ -5,7 +5,8 @@
     { path: '/admin-console/surveyors', label: 'Surveyors', icon: 'la-users' },
     { path: '/admin-console/clients', label: 'Clients', icon: 'la-building' },
     { path: '/admin-console/policy-templates', label: 'Policy Templates', icon: 'la-file-alt' },
-    { path: '/admin-console/planning-templates', label: 'Planning Statement Templates', icon: 'la-clipboard-list' }
+    { path: '/admin-console/planning-templates', label: 'Planning Statement Templates', icon: 'la-clipboard-list' },
+    { path: '/admin-console/issue-templates', label: 'Issue Policy Templates', icon: 'la-tags' }
   ];
 </script>
 

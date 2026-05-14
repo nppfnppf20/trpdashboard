@@ -1301,8 +1301,29 @@ const PLANNING_TIER_LABELS = {
 
 const PLANNING_TIER_ORDER = ['national', 'local', 'neighbourhood', 'supplementary', 'other'];
 
-function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = []) {
+function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = [], issueType = null) {
   const lines = [];
+
+  // Issue-type-specific national policy context (seeded templates)
+  if (issueType) {
+    const stripHtml = s => s?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
+    if (issueType.nppf_text?.trim()) {
+      lines.push(`### NPPF — ${issue.label}`);
+      lines.push(stripHtml(issueType.nppf_text));
+    }
+    if (issueType.nppg_text?.trim()) {
+      lines.push(`### NPPG — ${issue.label}`);
+      lines.push(stripHtml(issueType.nppg_text));
+    }
+    if (issueType.other_national_text?.trim()) {
+      lines.push(`### Other National Policy — ${issue.label}`);
+      lines.push(stripHtml(issueType.other_national_text));
+    }
+    if (issueType.other_guidance_text?.trim()) {
+      lines.push(`### Other Guidance — ${issue.label}`);
+      lines.push(stripHtml(issueType.other_guidance_text));
+    }
+  }
 
   for (const tier of PLANNING_TIER_ORDER) {
     const tierPolicies = linkedPolicies.filter(p => p.policy_type === tier);
@@ -1384,34 +1405,23 @@ FORMAT RULES (mandatory — failure to follow these is an error):
 - Do not add placeholder text — write the full sub-section from the material provided
 - NEVER invent, assume, or refer to any planning policy not explicitly listed in the issue context above`;
 
-export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary }) {
-  const exampleBlock = section.example_text?.trim()
-    ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
-    : '';
-
-  const customPromptTemplate = section.generation_prompt?.trim() || null;
-
-  const briefingBlock = briefingSummary?.trim()
-    ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
-    : '';
-
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
-
+export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack = {}, briefingSummary }) {
   const parts = [`<h2>${section.name}</h2>`];
 
   for (const issue of issues) {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
     const evidence = evidenceByTrack[issue.id] ?? [];
-    if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length) continue;
+    const issueType = issueTypesByTrack[issue.id] ?? null;
+    if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length && !issueType) continue;
     console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
-    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, briefingSummary });
+    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType, briefingSummary });
     parts.push(html);
   }
 
   return parts.join('\n\n');
 }
 
-export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, briefingSummary }) {
+export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType = null, briefingSummary }) {
   const exampleBlock = section.example_text?.trim()
     ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
     : '';
@@ -1424,7 +1434,7 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
 
   const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
 
-  const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence);
+  const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence, issueType);
 
   const hasPolicies = linkedPolicies.length > 0;
   const allPolicyRefs = linkedPolicies

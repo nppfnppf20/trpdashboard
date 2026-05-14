@@ -97,7 +97,7 @@
 
   const DEV_TYPES = [
     'Residential', 'Co-Living', 'Commercial', 'Solar', 'Wind', 'Mixed Use',
-    'Industrial', 'Change of Use', 'Agricultural', 'Other'
+    'Industrial', 'Change of Use', 'Agricultural', 'Synchronous condensers', 'Other'
   ];
 
   let developmentType = project.development_type ?? '';

@@ -755,6 +755,24 @@ async function fetchLinkedPoliciesByTrack(projectId) {
   return map;
 }
 
+async function fetchIssueTypesByTrack(projectId) {
+  const { rows } = await pool.query(
+    `SELECT pit.id AS track_id,
+            it.id, it.label, it.development_type,
+            it.nppf_text, it.nppg_text, it.other_national_text, it.other_guidance_text
+     FROM admin_console.project_issue_tracks pit
+     JOIN admin_console.issue_types it ON it.id = pit.issue_type_id
+     WHERE pit.project_id = $1 AND pit.issue_type_id IS NOT NULL`,
+    [projectId]
+  );
+  const map = {};
+  for (const row of rows) {
+    const { track_id, ...issueType } = row;
+    map[track_id] = issueType;
+  }
+  return map;
+}
+
 function stripHtml(html) {
   if (!html) return '';
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -948,7 +966,7 @@ export async function generateDraft(req, res) {
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
 
-    const [{ rows: issues }, { rows: sections }, evidenceByTrack, linkedPoliciesByTrack] = await Promise.all([
+    const [{ rows: issues }, { rows: sections }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack] = await Promise.all([
       pool.query(
         `SELECT pit.id, pit.label, pit.discipline,
                 ain.argument_against, ain.argument_for,
@@ -967,7 +985,8 @@ export async function generateDraft(req, res) {
         [typeId]
       ),
       fetchEvidenceByTrack(projectId),
-      fetchLinkedPoliciesByTrack(projectId)
+      fetchLinkedPoliciesByTrack(projectId),
+      fetchIssueTypesByTrack(projectId)
     ]);
 
     const hasTemplatedSections = sections.some(s => s.generation_prompt?.includes('{{') || !!s.template_html);
@@ -989,7 +1008,7 @@ export async function generateDraft(req, res) {
         } else if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary
           });
         } else if (section.generation_prompt?.includes('{{')) {
           html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary });
@@ -1033,7 +1052,7 @@ export async function generateDraft(req, res) {
         if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary: fallbackBriefingSummary
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary: fallbackBriefingSummary
           });
         } else {
           html = await generateDraftSection({
@@ -1254,7 +1273,7 @@ export async function generateSection(req, res) {
       html = await generateFromTemplate({ section, variables, briefingSummary });
 
     } else if (section.slug === 'planning_assessment') {
-      const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack, { rows: bsRows }] = await Promise.all([
+      const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, { rows: bsRows }] = await Promise.all([
         pool.query(
           `SELECT pit.id, pit.label, pit.discipline,
                   ain.argument_against, ain.argument_for,
@@ -1269,6 +1288,7 @@ export async function generateSection(req, res) {
         ),
         fetchEvidenceByTrack(projectId),
         fetchLinkedPoliciesByTrack(projectId),
+        fetchIssueTypesByTrack(projectId),
         pool.query(
           `SELECT summary_html FROM planning_applications.document_summaries
            WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
@@ -1277,7 +1297,7 @@ export async function generateSection(req, res) {
       ]);
       html = await generatePlanningStatementAssessment({
         projectName: projectRows[0].project_name,
-        section, issues, linkedPoliciesByTrack, evidenceByTrack,
+        section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack,
         briefingSummary: bsRows[0]?.summary_html ?? null
       });
 
@@ -1541,7 +1561,7 @@ export async function getAssessmentIssues(req, res) {
 export async function generateAssessmentIssue(req, res) {
   const { projectId, typeId, sectionId, trackId } = req.params;
   try {
-    const [{ rows: projectRows }, { rows: sectionRows }, { rows: issueRows }, evidenceByTrack, linkedPoliciesByTrack, { rows: bsRows }] = await Promise.all([
+    const [{ rows: projectRows }, { rows: sectionRows }, { rows: issueRows }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, { rows: bsRows }] = await Promise.all([
       pool.query(`SELECT project_name FROM public.projects WHERE id = $1`, [projectId]),
       pool.query(`SELECT * FROM planning_applications.draft_sections WHERE id = $1`, [sectionId]),
       pool.query(
@@ -1557,6 +1577,7 @@ export async function generateAssessmentIssue(req, res) {
       ),
       fetchEvidenceByTrack(projectId),
       fetchLinkedPoliciesByTrack(projectId),
+      fetchIssueTypesByTrack(projectId),
       pool.query(
         `SELECT summary_html FROM planning_applications.document_summaries
          WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
@@ -1574,6 +1595,7 @@ export async function generateAssessmentIssue(req, res) {
       issue,
       linkedPolicies: linkedPoliciesByTrack[issue.id] ?? [],
       evidence: evidenceByTrack[issue.id] ?? [],
+      issueType: issueTypesByTrack[issue.id] ?? null,
       briefingSummary: bsRows[0]?.summary_html ?? null
     });
     res.json({ html });

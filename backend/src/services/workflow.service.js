@@ -563,7 +563,7 @@ async function applyPolicyTemplate(projectId, trackId, discipline) {
 /**
  * Create a custom issue track for a project.
  */
-export async function createProjectIssueTrack(projectId, { label, discipline, sortOrder }) {
+export async function createProjectIssueTrack(projectId, { label, discipline, issue_type_id, sortOrder }) {
   let order = sortOrder;
   if (order == null) {
     const maxRow = await pool.query(
@@ -575,10 +575,10 @@ export async function createProjectIssueTrack(projectId, { label, discipline, so
 
   const result = await pool.query(
     `INSERT INTO admin_console.project_issue_tracks
-       (project_id, track_type, discipline, label, sort_order, is_active, created_from_hlpv)
-     VALUES ($1, 'custom', $2, $3, $4, TRUE, FALSE)
+       (project_id, track_type, discipline, label, issue_type_id, sort_order, is_active, created_from_hlpv)
+     VALUES ($1, 'custom', $2, $3, $4, $5, TRUE, FALSE)
      RETURNING *`,
-    [projectId, discipline || null, label || null, order]
+    [projectId, discipline || null, label || null, issue_type_id || null, order]
   );
   const track = result.rows[0];
   await applyPolicyTemplate(projectId, track.id, track.discipline).catch(err =>
@@ -591,17 +591,18 @@ export async function createProjectIssueTrack(projectId, { label, discipline, so
  * Update issue track metadata (label, is_key_issue, is_active).
  */
 export async function updateProjectIssueTrack(issueTrackId, updates) {
-  const { label, discipline, isKeyIssue, isActive } = updates;
+  const { label, discipline, issue_type_id, isKeyIssue, isActive } = updates;
   const result = await pool.query(
     `UPDATE admin_console.project_issue_tracks
-     SET label        = COALESCE($1, label),
-         discipline   = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE discipline END,
-         is_key_issue = COALESCE($3, is_key_issue),
-         is_active    = COALESCE($4, is_active),
-         updated_at   = NOW()
-     WHERE id = $5
+     SET label         = COALESCE($1, label),
+         discipline    = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE discipline END,
+         issue_type_id = CASE WHEN $3::int IS NOT NULL THEN $3 ELSE issue_type_id END,
+         is_key_issue  = COALESCE($4, is_key_issue),
+         is_active     = COALESCE($5, is_active),
+         updated_at    = NOW()
+     WHERE id = $6
      RETURNING *`,
-    [label ?? null, discipline ?? null, isKeyIssue ?? null, isActive ?? null, issueTrackId]
+    [label ?? null, discipline ?? null, issue_type_id ?? null, isKeyIssue ?? null, isActive ?? null, issueTrackId]
   );
   if (result.rows.length === 0) throw new Error('Issue track not found');
   return result.rows[0];
