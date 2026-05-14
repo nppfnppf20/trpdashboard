@@ -1543,7 +1543,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
   - Paragraphs within subsection ${n}.1 → ${n}.1.1, ${n}.1.2 …  (same pattern)
   - Every <p> must begin with its paragraph number. Do not write any unnumbered paragraph.\n\n`;
   } else {
-    numberingInstruction = `NUMBERING: This is a prefatory section (Executive Summary — no section number). Do not add any numeric prefix to the heading or paragraphs.\n\n`;
+    numberingInstruction = `NUMBERING: Do not add any numeric prefix to the heading or paragraphs in this section.\n\n`;
   }
 
   const exampleBlock = section.example_text?.trim()
