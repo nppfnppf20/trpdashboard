@@ -2,6 +2,7 @@
   import { buildCombinedReport } from '$lib/services/reportGenerator.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import NarrativeBriefingSelector from './NarrativeBriefingSelector.svelte';
+  import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { tick } from 'svelte';
   import {
     narrative, narrativeGenerationId, narrativeLoading, narrativeError,
@@ -147,6 +148,19 @@
     return lines.join('\n');
   }
 
+  let exportingWord = false;
+
+  async function handleExportToWord() {
+    const html = editorRef?.getHTML();
+    if (!html) return;
+    exportingWord = true;
+    try {
+      await exportHtmlToWord(html, 'HLPV Narrative', '/basicdocument.docx');
+    } finally {
+      exportingWord = false;
+    }
+  }
+
   $: disciplinesForGeneration = disciplines.map(d => {
     const details = buildDesignationDetails(d.name);
     return details ? { ...d, designationDetails: details } : d;
@@ -177,6 +191,11 @@
       <div class="toolbar-right">
         {#if $narrativeError}
           <span class="toolbar-error">{$narrativeError}</span>
+        {/if}
+        {#if hasNarrative}
+          <button class="btn-generate" disabled={exportingWord} on:click={handleExportToWord}>
+            {#if exportingWord}<span class="spinner-xs"></span> Exporting...{:else}<i class="las la-file-word"></i> Export{/if}
+          </button>
         {/if}
         <button
           class="btn-generate"

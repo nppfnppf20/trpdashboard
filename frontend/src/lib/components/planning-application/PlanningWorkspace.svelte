@@ -10,6 +10,7 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
+  import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
 
   const SUGGEST_DOC_TYPES = [
     'Officer Report',
@@ -183,6 +184,21 @@
     medium_low_risk:     { bg: '#dcfce7', colour: '#15803d' },
     low_risk:            { bg: '#dcfce7', colour: '#16a34a' }
   };
+
+  let exportingWord = false;
+
+  async function handleExportToWord() {
+    const html = draftEditor?.getHTML();
+    if (!html) return;
+    const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
+    const filename = activeType?.name ?? 'document';
+    exportingWord = true;
+    try {
+      await exportHtmlToWord(html, filename, '/basicdocument.docx');
+    } finally {
+      exportingWord = false;
+    }
+  }
 </script>
 
 <div class="workspace">
@@ -661,6 +677,9 @@
           </button>
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
+          </button>
+          <button class="draft-save-btn" disabled={exportingWord} on:click={handleExportToWord}>
+            {#if exportingWord}<div class="mini-spinner"></div> Exporting...{:else}<i class="las la-file-word"></i> Export{/if}
           </button>
         </div>
       </div>

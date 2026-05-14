@@ -138,4 +138,33 @@ function escapeXml(text) {
     .replace(/"/g, '&quot;');
 }
 
-export default { exportDeliverableToWord };
+/**
+ * Generic export: any HTML content to a named .docx using a given template path
+ */
+export async function exportHtmlToWord(html, filename, templatePath = '/basicdocument.docx') {
+  const response = await fetch(templatePath);
+  if (!response.ok) throw new Error(`Could not load template: ${templatePath}`);
+
+  const arrayBuffer = await response.arrayBuffer();
+  const zip = new PizZip(arrayBuffer);
+
+  const documentXml = new TextDecoder('utf-8').decode(zip.file('word/document.xml').asUint8Array());
+  const bodyContent = htmlToOOXML(html);
+
+  const insertAt = documentXml.lastIndexOf('<w:sectPr');
+  const bodyClose = documentXml.lastIndexOf('</w:body>');
+  const position = (insertAt !== -1 && insertAt < bodyClose) ? insertAt : bodyClose;
+  const newDocXml = documentXml.slice(0, position) + bodyContent + documentXml.slice(position);
+
+  zip.file('word/document.xml', newDocXml);
+
+  const blob = zip.generate({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  });
+
+  const safeName = filename.replace(/[^a-zA-Z0-9]/g, '_');
+  saveAs(blob, `${safeName}.docx`);
+}
+
+export default { exportDeliverableToWord, exportHtmlToWord };
