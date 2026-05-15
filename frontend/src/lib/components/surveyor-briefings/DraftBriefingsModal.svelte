@@ -76,8 +76,10 @@
   }
 
   function starRating(val) {
-    if (!val) return '—';
-    return '★'.repeat(Math.round(val)) + '☆'.repeat(5 - Math.round(val));
+    const n = parseFloat(val);
+    if (!n) return '—';
+    const rounded = Math.round(n);
+    return '★'.repeat(rounded) + '☆'.repeat(Math.max(0, 5 - rounded));
   }
 </script>
 
@@ -186,7 +188,7 @@
                               <span class="surveyor-location">{surveyor.location}</span>
                             {/if}
                           </div>
-                          <span class="surveyor-rating" title="Overall rating: {surveyor.avg_overall?.toFixed(1) ?? '—'}">
+                          <span class="surveyor-rating" title="Overall rating: {surveyor.avg_overall != null ? parseFloat(surveyor.avg_overall).toFixed(1) : '—'}">
                             {starRating(surveyor.avg_overall)}
                           </span>
                         </label>
