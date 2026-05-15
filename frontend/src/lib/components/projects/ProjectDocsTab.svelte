@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte';
+  import PopulateFromBriefingModal from '$lib/components/briefing-populate/PopulateFromBriefingModal.svelte';
+  import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import {
     getDocumentSummaries,
     generateDocumentSummary,
@@ -115,6 +117,12 @@
 
   // Expanded summaries
   let expandedIds = new Set();
+
+  // Modal state
+  let showPopulate = false;
+  let showGuide = false;
+
+  $: hasBriefing = summaries.some(s => s.doc_type === 'briefing_transcript');
 
   onMount(() => { if (projectId) load(); });
   $: if (projectId) load();
@@ -320,6 +328,14 @@
       <p>Upload and summarise documents or add entries manually. Saved summaries can be used to generate planning statement content.</p>
     </div>
     <div class="header-actions">
+      <button class="btn-action tertiary" on:click={() => (showGuide = true)}>
+        <i class="las la-clipboard-list"></i> Meeting Guide
+      </button>
+      {#if hasBriefing}
+        <button class="btn-action tertiary" on:click={() => (showPopulate = true)}>
+          <i class="las la-magic"></i> Populate from Briefing
+        </button>
+      {/if}
       <button class="btn-action" class:active={mode === 'upload'} on:click={() => setMode('upload')}>
         <i class="las la-cloud-upload-alt"></i> Upload & Summarise
       </button>
@@ -602,6 +618,20 @@
   </div>
 {/if}
 
+<PopulateFromBriefingModal
+  show={showPopulate}
+  projectId={projectId}
+  onClose={() => (showPopulate = false)}
+  onComplete={() => { showPopulate = false; load(); }}
+/>
+
+<MeetingGuideModal
+  show={showGuide}
+  project={project}
+  issueTracks={[]}
+  onClose={() => (showGuide = false)}
+/>
+
 <style>
   .project-docs {
     display: flex;
@@ -636,6 +666,8 @@
   .btn-action:hover { background: #7e22ce; }
   .btn-action.secondary { background: white; color: #475569; border: 1px solid #cbd5e1; }
   .btn-action.secondary:hover { background: #f8fafc; }
+  .btn-action.tertiary { background: #f3f0ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+  .btn-action.tertiary:hover { background: #ede9fe; }
   .btn-action.active { outline: 2px solid #9333ea; outline-offset: 2px; }
 
   .panel {

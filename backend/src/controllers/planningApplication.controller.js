@@ -1820,3 +1820,236 @@ export async function deleteSuggestTemplate(req, res) {
     res.status(500).json({ error: 'Failed to delete suggest template' });
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project Completeness
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DOC_SUMMARY_TYPES = [
+  { key: 'briefing_transcript', label: 'Briefing Transcript', canDraft: false },
+  { key: 'about_applicant',     label: 'About the Applicant', canDraft: true },
+  { key: 'proposed_development',label: 'Proposed Development', canDraft: true },
+  { key: 'site_surroundings',   label: 'Site and Surroundings', canDraft: true },
+  { key: 'pre_app',             label: 'Pre-app Response', canDraft: true },
+  { key: 'eia_response',        label: 'EIA Scoping Response', canDraft: false },
+  { key: 'sci',                 label: 'Statement of Community Involvement', canDraft: false }
+];
+
+const PROJECT_FIELDS = [
+  { key: 'development_description', label: 'Development Description' },
+  { key: 'development_type',        label: 'Development Type' },
+  { key: 'client',                  label: 'Client / Applicant' },
+  { key: 'address',                 label: 'Site Address' },
+  { key: 'case_officer_name',       label: 'Case Officer' },
+  { key: 'submission_date',         label: 'Target Submission Date' },
+  { key: 'target_determination_date', label: 'Target Determination Date' }
+];
+
+export async function getProjectCompleteness(req, res) {
+  const projectId = parseInt(req.params.projectId);
+  try {
+    const [
+      projectResult,
+      docSummaryResult,
+      trackResult,
+      issueNotesResult,
+      trackSummaryResult,
+      policiesResult,
+      docLogResult,
+      historyResult
+    ] = await Promise.all([
+      pool.query(`SELECT development_description, development_type, client, address,
+                         case_officer_name, submission_date, target_determination_date
+                  FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(`SELECT DISTINCT ON (doc_type) doc_type
+                  FROM planning_applications.document_summaries
+                  WHERE project_id = $1 ORDER BY doc_type, created_at DESC`, [projectId]),
+      pool.query(`SELECT id, label, discipline, last_known_risk_level
+                  FROM admin_console.project_issue_tracks
+                  WHERE project_id = $1 AND is_active = TRUE ORDER BY sort_order, id`, [projectId]),
+      pool.query(`SELECT track_id, policy_national, policy_local, argument_for, argument_against
+                  FROM planning_applications.issue_notes WHERE project_id = $1`, [projectId]),
+      pool.query(`SELECT id, summary FROM admin_console.project_issue_tracks
+                  WHERE project_id = $1 AND is_active = TRUE`, [projectId]),
+      pool.query(`SELECT COUNT(*) AS count FROM public.project_policies WHERE project_id = $1`, [projectId]),
+      pool.query(`SELECT COUNT(*) AS count FROM planning_applications.document_log WHERE project_id = $1`, [projectId]),
+      pool.query(`SELECT COUNT(*) AS count FROM planning_applications.planning_history WHERE project_id = $1`, [projectId])
+    ]);
+
+    const project = projectResult.rows[0] ?? {};
+    const presentDocTypes = new Set(docSummaryResult.rows.map(r => r.doc_type));
+    const tracks = trackResult.rows;
+    const notesByTrack = Object.fromEntries(issueNotesResult.rows.map(r => [r.track_id, r]));
+    const summaryByTrack = Object.fromEntries(trackSummaryResult.rows.map(r => [r.id, r.summary]));
+    const hasPolicies = parseInt(policiesResult.rows[0]?.count ?? 0) > 0;
+    const hasDocLog  = parseInt(docLogResult.rows[0]?.count ?? 0) > 0;
+    const hasHistory = parseInt(historyResult.rows[0]?.count ?? 0) > 0;
+    const hasBriefing = presentDocTypes.has('briefing_transcript');
+
+    // ── Section: project fields ───────────────────────────────────────────────
+    const fieldItems = PROJECT_FIELDS.map(f => ({
+      key: f.key,
+      label: f.label,
+      status: project[f.key] ? 'complete' : 'missing',
+      can_draft_from_briefing: false
+    }));
+    const fieldSection = {
+      key: 'project_fields',
+      label: 'Project Details',
+      status: sectionStatus(fieldItems),
+      items: fieldItems
+    };
+
+    // ── Section: document summaries ───────────────────────────────────────────
+    const docItems = DOC_SUMMARY_TYPES.map(d => ({
+      key: d.key,
+      label: d.label,
+      status: presentDocTypes.has(d.key) ? 'complete' : 'missing',
+      can_draft_from_briefing: d.canDraft && hasBriefing
+    }));
+    const docSection = {
+      key: 'document_summaries',
+      label: 'Document Summaries',
+      status: sectionStatus(docItems),
+      items: docItems
+    };
+
+    // ── Section: issue working notes ──────────────────────────────────────────
+    const issueItems = tracks.map(t => {
+      const notes = notesByTrack[t.id] ?? {};
+      const hasSummary  = !!summaryByTrack[t.id];
+      const hasRisk     = !!t.last_known_risk_level;
+      const hasPolicy   = !!(notes.policy_national || notes.policy_local);
+      const hasArgument = !!(notes.argument_for || notes.argument_against);
+      const allPresent  = hasSummary && hasRisk;
+      const anyPresent  = hasSummary || hasRisk || hasPolicy || hasArgument;
+      return {
+        key: `track_${t.id}`,
+        label: t.label,
+        status: allPresent ? 'complete' : anyPresent ? 'partial' : 'missing',
+        can_draft_from_briefing: !hasSummary && hasBriefing,
+        track_id: t.id
+      };
+    });
+    const issueSection = {
+      key: 'issue_notes',
+      label: 'Issue Working Notes',
+      status: tracks.length === 0 ? 'missing' : sectionStatus(issueItems),
+      items: issueItems
+    };
+
+    // ── Section: policies ─────────────────────────────────────────────────────
+    const policySection = {
+      key: 'policies',
+      label: 'Policies',
+      status: hasPolicies ? 'complete' : 'missing',
+      items: [{ key: 'policies', label: 'Local plan policies linked', status: hasPolicies ? 'complete' : 'missing', can_draft_from_briefing: false }]
+    };
+
+    // ── Section: document log ─────────────────────────────────────────────────
+    const docLogSection = {
+      key: 'document_log',
+      label: 'Document Log',
+      status: hasDocLog ? 'complete' : 'missing',
+      items: [{ key: 'document_log', label: 'Documents logged', status: hasDocLog ? 'complete' : 'missing', can_draft_from_briefing: false }]
+    };
+
+    // ── Section: planning history ─────────────────────────────────────────────
+    const historySection = {
+      key: 'planning_history',
+      label: 'Planning History',
+      status: hasHistory ? 'complete' : 'missing',
+      items: [{ key: 'planning_history', label: 'Planning history recorded', status: hasHistory ? 'complete' : 'missing', can_draft_from_briefing: false }]
+    };
+
+    const sections = [fieldSection, docSection, issueSection, policySection, docLogSection, historySection];
+
+    const allItems = sections.flatMap(s => s.items);
+    const completeCount = allItems.filter(i => i.status === 'complete').length;
+    const partialCount  = allItems.filter(i => i.status === 'partial').length;
+    const total = allItems.length;
+    const overall_percentage = total > 0
+      ? Math.round(((completeCount + partialCount * 0.5) / total) * 100)
+      : 0;
+
+    res.json({ overall_percentage, sections });
+  } catch (err) {
+    console.error('pa.getProjectCompleteness error:', err);
+    res.status(500).json({ error: 'Failed to fetch project completeness' });
+  }
+}
+
+function sectionStatus(items) {
+  if (items.every(i => i.status === 'complete')) return 'complete';
+  if (items.every(i => i.status === 'missing')) return 'missing';
+  return 'partial';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Populate from Briefing
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function populateFromBriefing(req, res) {
+  const projectId = parseInt(req.params.projectId);
+  try {
+    const [briefingResult, tracksResult] = await Promise.all([
+      pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+         ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT id, label, discipline, summary FROM admin_console.project_issue_tracks
+         WHERE project_id = $1 AND is_active = TRUE ORDER BY sort_order, id`,
+        [projectId]
+      )
+    ]);
+
+    if (!briefingResult.rows.length) {
+      return res.status(404).json({ error: 'No briefing transcript found for this project.' });
+    }
+
+    const briefingHtml = briefingResult.rows[0].summary_html;
+    const briefingText = briefingHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const tracks = tracksResult.rows;
+
+    const [docSuggestions, issueSuggestions] = await Promise.all([
+      suggestTranscriptUpdates(briefingText),
+      tracks.length > 0
+        ? draftKeyIssueSummariesFromBriefing({ briefingSummary: briefingHtml, issues: tracks })
+        : Promise.resolve([])
+    ]);
+
+    const DOC_LABELS = {
+      about_applicant:      'About the Applicant',
+      proposed_development: 'Proposed Development',
+      site_surroundings:    'Site and Surroundings',
+      pre_app:              'Pre-app Response'
+    };
+
+    const trackMap = Object.fromEntries(tracks.map(t => [t.id, t.label]));
+
+    const suggestions = [
+      ...docSuggestions.map(s => ({
+        type: 'document_summary',
+        doc_type: s.field,
+        label: DOC_LABELS[s.field] ?? s.label,
+        suggested_content: s.suggested_content,
+        reason: s.reason
+      })),
+      ...issueSuggestions.map(s => ({
+        type: 'issue_summary',
+        track_id: s.track_id,
+        label: trackMap[s.track_id] ?? `Track ${s.track_id}`,
+        suggested_content: s.summary,
+        reason: 'Drafted from briefing note'
+      }))
+    ];
+
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('pa.populateFromBriefing error:', err);
+    res.status(500).json({ error: err.message || 'Failed to populate from briefing' });
+  }
+}

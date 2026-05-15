@@ -53,7 +53,9 @@ import {
   suggestArgument,
   getSuggestTemplate,
   saveSuggestTemplate,
-  deleteSuggestTemplate
+  deleteSuggestTemplate,
+  getProjectCompleteness,
+  populateFromBriefing
 } from '../controllers/planningApplication.controller.js';
 
 const router = express.Router();
@@ -136,6 +138,10 @@ router.delete('/document-summaries/:summaryId', deleteDocumentSummary);
 router.get('/doc-type-prompts/:docType', getDocTypePrompt);
 router.put('/doc-type-prompts/:docType', saveDocTypePrompt);
 router.delete('/doc-type-prompts/:docType', deleteDocTypePrompt);
+
+// Project completeness + briefing population
+router.get('/projects/:projectId/completeness', getProjectCompleteness);
+router.post('/projects/:projectId/populate-from-briefing', populateFromBriefing);
 
 // Argument suggestion (prose chat flow)
 router.post('/projects/:projectId/suggest-argument', upload.single('file'), suggestArgument);
