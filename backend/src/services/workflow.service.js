@@ -578,7 +578,7 @@ export async function createProjectIssueTrack(projectId, { label, discipline, is
        (project_id, track_type, discipline, label, issue_type_id, sort_order, is_active, created_from_hlpv)
      VALUES ($1, 'custom', $2, $3, $4, $5, TRUE, FALSE)
      RETURNING *`,
-    [projectId, discipline || null, label || null, issue_type_id || null, order]
+    [projectId, discipline || null, label || discipline || null, issue_type_id || null, order]
   );
   const track = result.rows[0];
   await applyPolicyTemplate(projectId, track.id, track.discipline).catch(err =>

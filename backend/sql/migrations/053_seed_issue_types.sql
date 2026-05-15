@@ -2,7 +2,7 @@
 -- Generic issues have development_type = NULL.
 -- Renewables-specific variants are separate rows with development_type = 'Renewables'.
 
-TRUNCATE admin_console.issue_types RESTART IDENTITY CASCADE;
+TRUNCATE admin_console.issue_types RESTART IDENTITY;
 
 INSERT INTO admin_console.issue_types (label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text, sort_order) VALUES
 

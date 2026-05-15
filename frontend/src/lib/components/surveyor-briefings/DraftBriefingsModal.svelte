@@ -32,10 +32,10 @@
     try {
       const { suggestions: result } = await analyseDisciplines(projectId);
       suggestions = result;
-      // Default: accept all, select all surveyors
+      // Default: accept all disciplines, no surveyors pre-selected
       for (const s of suggestions) {
         accepted = new Set([...accepted, s.discipline]);
-        selectedSurveyors[s.discipline] = new Set(s.surveyors.map(sv => sv.id));
+        selectedSurveyors[s.discipline] = new Set();
       }
     } catch (err) {
       // Surface the actual server message if available
@@ -54,11 +54,10 @@
     accepted = n;
   }
 
-  function toggleSurveyor(discipline, surveyorId) {
-    const cur = new Set(selectedSurveyors[discipline] ?? []);
-    if (cur.has(surveyorId)) cur.delete(surveyorId);
-    else cur.add(surveyorId);
-    selectedSurveyors = { ...selectedSurveyors, [discipline]: cur };
+  function selectSurveyor(discipline, surveyorId) {
+    const cur = selectedSurveyors[discipline] ?? new Set();
+    const next = cur.has(surveyorId) ? new Set() : new Set([surveyorId]);
+    selectedSurveyors = { ...selectedSurveyors, [discipline]: next };
   }
 
   function handleProceed() {
@@ -80,6 +79,17 @@
     if (!n) return '—';
     const rounded = Math.round(n);
     return '★'.repeat(rounded) + '☆'.repeat(Math.max(0, 5 - rounded));
+  }
+
+  let detailSuggestion = null; // the suggestion being viewed in the detail popup
+
+  function openDetail(suggestion, e) {
+    e.stopPropagation();
+    detailSuggestion = suggestion;
+  }
+
+  function closeDetail() {
+    detailSuggestion = null;
   }
 </script>
 
@@ -159,7 +169,10 @@
 
               <div class="card-reasoning">
                 <i class="las la-info-circle"></i>
-                <span>{suggestion.reasoning}</span>
+                <span class="reasoning-text">{suggestion.reasoning}</span>
+                <button class="btn-view-detail" on:click={(e) => openDetail(suggestion, e)} title="View full details">
+                  <i class="las la-eye"></i> View
+                </button>
               </div>
 
               {#if isAccepted}
@@ -178,9 +191,10 @@
                         {@const isSelected = selectedSurveyors[suggestion.discipline]?.has(surveyor.id) ?? false}
                         <label class="surveyor-row" class:row-selected={isSelected}>
                           <input
-                            type="checkbox"
+                            type="radio"
+                            name="surveyor-{suggestion.discipline}"
                             checked={isSelected}
-                            on:change={() => toggleSurveyor(suggestion.discipline, surveyor.id)}
+                            on:change={() => selectSurveyor(suggestion.discipline, surveyor.id)}
                           />
                           <div class="surveyor-details">
                             <span class="surveyor-name">{surveyor.organisation}</span>
@@ -215,6 +229,77 @@
           </button>
         </div>
       {/if}
+
+      <!-- Detail popup — sits inside modal-content so it clips to the modal boundary -->
+      {#if detailSuggestion}
+        {@const ds = detailSuggestion}
+        {@const dsAccepted = accepted.has(ds.discipline)}
+        <div class="detail-overlay" on:click|self={closeDetail}>
+          <div class="detail-popup">
+            <div class="detail-header">
+              <h3>{ds.discipline}</h3>
+              <button class="close-btn" on:click={closeDetail}><i class="las la-times"></i></button>
+            </div>
+
+            {#if ds.template}
+              <div class="detail-meta">
+                <i class="las la-file-alt"></i>
+                <span>Template: {ds.template.template_name}</span>
+              </div>
+            {/if}
+
+            <div class="detail-section">
+              <div class="detail-section-label">Why this discipline is needed</div>
+              <p class="detail-reasoning">{ds.reasoning}</p>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-section-label">
+                Suggested surveyors (4★+)
+                {#if ds.surveyors.length === 0}
+                  <span class="no-surveyors-note">— none on record</span>
+                {/if}
+              </div>
+              {#if ds.surveyors.length > 0}
+                <div class="detail-surveyors">
+                  {#each ds.surveyors as surveyor}
+                    {@const isSel = selectedSurveyors[ds.discipline]?.has(surveyor.id) ?? false}
+                    <label class="detail-surveyor-row" class:row-selected={isSel}>
+                      <input
+                        type="radio"
+                        name="surveyor-{ds.discipline}"
+                        checked={isSel}
+                        on:change={() => selectSurveyor(ds.discipline, surveyor.id)}
+                      />
+                      <div class="surveyor-details">
+                        <span class="surveyor-name">{surveyor.organisation}</span>
+                        {#if surveyor.location}<span class="surveyor-location">{surveyor.location}</span>{/if}
+                      </div>
+                      <div class="detail-rating">
+                        <span class="surveyor-rating">{starRating(surveyor.avg_overall)}</span>
+                        {#if surveyor.avg_overall != null}
+                          <span class="rating-num">{parseFloat(surveyor.avg_overall).toFixed(1)}</span>
+                        {/if}
+                      </div>
+                    </label>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+
+            <div class="detail-footer">
+              <button class="btn btn-secondary" on:click={closeDetail}>Close</button>
+              <button
+                class="btn {dsAccepted ? 'btn-skip' : 'btn-primary'}"
+                on:click={() => { toggleAccept(ds.discipline); closeDetail(); }}
+              >
+                <i class="las {dsAccepted ? 'la-times-circle' : 'la-check-circle'}"></i>
+                {dsAccepted ? 'Skip this discipline' : 'Include this discipline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -237,9 +322,9 @@
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
     width: 100%;
     max-width: 720px;
-    max-height: 90vh;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
   .modal-header {
@@ -287,12 +372,9 @@
   }
 
   .modal-body {
-    flex: 1;
     overflow-y: auto;
+    max-height: 65vh;
     padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
   }
 
   .loading-state, .error-state, .empty-state {
@@ -339,6 +421,7 @@
     border-radius: 8px;
     overflow: hidden;
     transition: border-color 0.15s;
+    margin-bottom: 1rem;
   }
 
   .card-accepted {
@@ -443,23 +526,6 @@
     color: #94a3b8;
   }
 
-  .card-reasoning {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0 1.125rem 0.875rem;
-    font-size: 0.8rem;
-    color: #475569;
-    line-height: 1.5;
-  }
-
-  .card-reasoning i {
-    font-size: 0.9rem;
-    color: #94a3b8;
-    margin-top: 0.1rem;
-    flex-shrink: 0;
-  }
-
   /* ── Surveyors section ───────────────────────────────────────────────────── */
   .surveyors-section {
     border-top: 1px solid #e2e8f0;
@@ -515,7 +581,7 @@
     background: #ecfdf5;
   }
 
-  .surveyor-row input[type="checkbox"] {
+  .surveyor-row input[type="radio"] {
     width: 15px;
     height: 15px;
     cursor: pointer;
@@ -593,5 +659,199 @@
 
   .btn-secondary:hover:not(:disabled) {
     background: #f8fafc;
+  }
+
+  .btn-skip {
+    background: white;
+    color: #dc2626;
+    border: 1px solid #fca5a5;
+  }
+
+  .btn-skip:hover:not(:disabled) {
+    background: #fef2f2;
+  }
+
+  /* ── Card reasoning truncation + view button ─────────────────────────────── */
+  .card-reasoning {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0 1.125rem 0.875rem;
+    font-size: 0.8rem;
+    color: #475569;
+    line-height: 1.5;
+  }
+
+  .card-reasoning i {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+  }
+
+  .reasoning-text {
+    flex: 1;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .btn-view-detail {
+    flex-shrink: 0;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-view-detail:hover {
+    color: #7c3aed;
+  }
+
+  /* ── Detail popup ────────────────────────────────────────────────────────── */
+  .detail-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    z-index: 10;
+  }
+
+  .detail-popup {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+    width: 100%;
+    max-width: 520px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .detail-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+
+  .detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.625rem 1.25rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.8rem;
+    color: #4338ca;
+  }
+
+  .detail-section {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    overflow-y: auto;
+  }
+
+  .detail-section:last-of-type {
+    flex: 1;
+  }
+
+  .detail-section-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #94a3b8;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .detail-reasoning {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #334155;
+    line-height: 1.65;
+  }
+
+  .detail-surveyors {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .detail-surveyor-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .detail-surveyor-row:hover {
+    border-color: #a7f3d0;
+    background: #f0fdf4;
+  }
+
+  .detail-surveyor-row.row-selected {
+    border-color: #6ee7b7;
+    background: #ecfdf5;
+  }
+
+  .detail-surveyor-row input[type="radio"] {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    flex-shrink: 0;
+    accent-color: #10b981;
+  }
+
+  .detail-rating {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    flex-shrink: 0;
+  }
+
+  .rating-num {
+    font-size: 0.65rem;
+    color: #94a3b8;
+  }
+
+  .detail-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.625rem;
+    padding: 0.875rem 1.25rem;
+    border-top: 1px solid #e2e8f0;
   }
 </style>
