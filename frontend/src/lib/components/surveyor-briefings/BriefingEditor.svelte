@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import SelectSurveyorModal from './SelectSurveyorModal.svelte';
-  import { getTemplates, mergeTemplate, saveSentRequest, suggestEmailEditsForDiscipline } from '$lib/api/quoteRequests.js';
+  import { getTemplates, mergeTemplate, saveSentRequest, sendBriefingEmails, suggestEmailEditsForDiscipline } from '$lib/api/quoteRequests.js';
 
   export let show = false;
   export let projectId;
@@ -31,8 +31,10 @@
   let richTextEditor;
   let loading = false;
   let saving = false;
+  let sending = false;
   let merging = false;
   let error = null;
+  let sendResult = null; // { sent, failed, results }
   let currentSubject = '';
 
   // Flow 1: inline email edit suggestion
@@ -271,6 +273,48 @@
     }
   }
 
+  async function handleSendEmail() {
+    if (!richTextEditor || !projectId) return;
+    if (selectedSurveyors.length === 0) { alert('Please select at least one surveyor'); return; }
+    if (!currentSubject) { alert('No subject line — select a template first'); return; }
+
+    const surveyor = selectedSurveyors[0];
+    if (!surveyor.contactEmail) {
+      alert(`No email address on record for ${surveyor.contactName || surveyor.surveyorOrganisation}`);
+      return;
+    }
+
+    if (!confirm(`Send email to ${surveyor.contactEmail}?`)) return;
+
+    sending = true;
+    sendResult = null;
+    error = null;
+    try {
+      const emailContent = richTextEditor.getHTML();
+      const data = {
+        templateId: selectedTemplateId || null,
+        emailContent,
+        subject: currentSubject,
+        recipients: selectedSurveyors.map(s => ({
+          surveyorId: s.surveyorId,
+          contactId: s.contactId,
+          contactEmail: s.contactEmail,
+          contactName: s.contactName,
+          surveyorOrganisation: s.surveyorOrganisation
+        })),
+        notes: null
+      };
+      const result = await sendBriefingEmails(projectId, data);
+      sendResult = result;
+      dispatch('saved');
+    } catch (err) {
+      console.error('Error sending email:', err);
+      error = err.message;
+    } finally {
+      sending = false;
+    }
+  }
+
   function handleClose() {
     if (confirm('Close without saving?')) {
       dispatch('close');
@@ -443,6 +487,18 @@
         </div>
       </div>
 
+      {#if sendResult}
+        <div class="send-result-banner" class:result-success={sendResult.failed === 0} class:result-partial={sendResult.failed > 0}>
+          <i class="las {sendResult.failed === 0 ? 'la-check-circle' : 'la-exclamation-triangle'}"></i>
+          {#if sendResult.failed === 0}
+            Email sent successfully to {sendResult.sent} recipient{sendResult.sent !== 1 ? 's' : ''}.
+          {:else}
+            Sent {sendResult.sent}, failed {sendResult.failed}. Check email log for details.
+          {/if}
+          <button class="dismiss-result" on:click={() => sendResult = null}><i class="las la-times"></i></button>
+        </div>
+      {/if}
+
       <div class="modal-footer">
         <button class="btn btn-secondary" on:click={handleClose}>
           Cancel
@@ -450,7 +506,7 @@
         <button
           class="btn btn-secondary"
           on:click={handleCopyToClipboard}
-          disabled={saving || !richTextEditor || !hasSurveyorSelected}
+          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}
         >
           <i class="las la-copy"></i>
           Copy to Clipboard
@@ -458,15 +514,15 @@
         <button
           class="btn btn-secondary"
           on:click={handleOpenInEmail}
-          disabled={saving || !richTextEditor || !hasSurveyorSelected}
+          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}
         >
           <i class="las la-envelope"></i>
           Open in Email
         </button>
         <button
-          class="btn btn-primary"
+          class="btn btn-secondary"
           on:click={handleSaveAsSent}
-          disabled={saving || !richTextEditor || !hasSurveyorSelected}
+          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}
         >
           {#if saving}
             <div class="btn-spinner"></div>
@@ -474,6 +530,19 @@
           {:else}
             <i class="las la-save"></i>
             Save as Sent
+          {/if}
+        </button>
+        <button
+          class="btn btn-send"
+          on:click={handleSendEmail}
+          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}
+        >
+          {#if sending}
+            <div class="btn-spinner"></div>
+            Sending...
+          {:else}
+            <i class="las la-paper-plane"></i>
+            Send Email
           {/if}
         </button>
       </div>
@@ -971,4 +1040,48 @@
   .btn-apply-suggestion:hover {
     background: #6d28d9;
   }
+
+  .btn-send {
+    background: #059669;
+    color: white;
+  }
+
+  .btn-send:hover:not(:disabled) {
+    background: #047857;
+  }
+
+  .send-result-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .result-success {
+    background: #f0fdf4;
+    color: #166534;
+  }
+
+  .result-partial {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .dismiss-result {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.6;
+    font-size: 0.875rem;
+    padding: 0.125rem;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+  }
+
+  .dismiss-result:hover { opacity: 1; }
 </style>

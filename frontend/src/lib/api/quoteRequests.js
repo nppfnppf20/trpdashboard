@@ -161,6 +161,25 @@ export async function suggestEmailEditsForDiscipline(projectId, { briefingNoteId
 }
 
 /**
+ * Send briefing emails via Resend and record as sent.
+ * @param {string} projectId - Project UUID
+ * @param {Object} data - { templateId, emailContent, subject, recipients: [{surveyorId, contactId, contactEmail, contactName, surveyorOrganisation}], notes }
+ * @returns {Promise<{sentRequest, results, sent, failed}>}
+ */
+export async function sendBriefingEmails(projectId, data) {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/send-briefings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.details || error.error || 'Failed to send briefing emails');
+  }
+  return response.json();
+}
+
+/**
  * Update a template
  * @param {number} templateId - Template ID
  * @param {Object} updates - { templateName, description, subjectLine, templateContent }

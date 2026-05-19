@@ -1,6 +1,7 @@
 import * as quoteRequestsService from '../services/quoteRequests.service.js';
 import { pool } from '../db.js';
 import { analyseBriefingForDisciplines, suggestEmailEdits } from '../services/surveyorBriefing.service.js';
+import { sendEmail, sendBatch } from '../services/emailService.js';
 
 /**
  * GET /api/admin-console/quote-request-templates
@@ -285,6 +286,60 @@ export async function suggestEmailEditsForDiscipline(req, res) {
   } catch (err) {
     console.error('suggestEmailEditsForDiscipline error:', err);
     res.status(500).json({ error: 'Failed to suggest email edits', details: err.message });
+  }
+}
+
+/**
+ * POST /api/admin-console/quote-requests/projects/:projectId/send-briefings
+ * Send briefing emails via Resend and record in sent_quote_requests.
+ * Body: { templateId, emailContent, subject, recipients: [{surveyorId, contactId, contactEmail, contactName, surveyorOrganisation}], notes }
+ */
+export async function sendBriefingEmails(req, res) {
+  const { projectId } = req.params;
+  const { templateId, emailContent, subject, recipients, notes } = req.body;
+
+  if (!emailContent) return res.status(400).json({ error: 'emailContent is required' });
+  if (!subject) return res.status(400).json({ error: 'subject is required' });
+  if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ error: 'At least one recipient is required' });
+  }
+
+  try {
+    // Look up the integer project id for the email log
+    const { rows: projectRows } = await pool.query(
+      'SELECT id FROM public.projects WHERE unique_id = $1', [projectId]
+    );
+    const intProjectId = projectRows[0]?.id ?? null;
+
+    // Save the sent request record first
+    const sentRequest = await quoteRequestsService.createSentRequest({
+      projectId,
+      templateId: templateId || null,
+      emailContent,
+      recipients: recipients.map(r => ({ surveyorId: r.surveyorId, contactId: r.contactId })),
+      notes: notes || null
+    });
+
+    // Send emails - one per recipient that has an email address
+    const emailsToSend = recipients
+      .filter(r => r.contactEmail)
+      .map(r => ({
+        to: r.contactEmail,
+        subject,
+        html: emailContent,
+        type: 'surveyor_briefing',
+        projectId: intProjectId
+      }));
+
+    const results = await sendBatch(emailsToSend);
+
+    const sent = results.filter(r => r.status === 'sent').length;
+    const failed = results.filter(r => r.status === 'failed').length;
+
+    res.status(201).json({ sentRequest, results, sent, failed });
+  } catch (error) {
+    console.error('sendBriefingEmails error:', error);
+    res.status(500).json({ error: 'Failed to send briefing emails', details: error.message });
   }
 }
 

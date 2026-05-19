@@ -15,6 +15,9 @@ router.post('/projects/:projectId/sent-requests', quoteRequestsController.create
 router.get('/sent-requests/:id', quoteRequestsController.getSentRequestById);
 router.delete('/sent-requests/:id', quoteRequestsController.deleteSentRequest);
 
+// Email sending
+router.post('/projects/:projectId/send-briefings', quoteRequestsController.sendBriefingEmails);
+
 // LLM-assisted briefing routes
 router.post('/projects/:projectId/analyse-disciplines', quoteRequestsController.analyseDisciplines);
 router.post('/projects/:projectId/suggest-email-edits', quoteRequestsController.suggestEmailEditsForDiscipline);
