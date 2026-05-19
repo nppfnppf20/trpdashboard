@@ -18,19 +18,19 @@
 
   const DOC_LABEL = Object.fromEntries(DOCUMENT_TYPES.map(d => [d.value, d.label]));
 
-  let briefs = [];
-  let loading = true;
-  let error = null;
+  let briefs = $state([]);
+  let loading = $state(true);
+  let error = $state(null);
 
-  let modalOpen = false;
-  let modalSaving = false;
-  let modalError = null;
-  let isNew = false;
-  let activeId = null;
-  let activeTab = 'guidance';
-  let form = { name: '', document_type: '', development_type: '', guidance_content: '', review_checklist: '' };
+  let modalOpen = $state(false);
+  let modalSaving = $state(false);
+  let modalError = $state(null);
+  let isNew = $state(false);
+  let activeId = $state(null);
+  let activeTab = $state('guidance');
+  let form = $state({ name: '', document_type: '', development_type: '', guidance_content: '', review_checklist: '' });
 
-  let confirmDeleteId = null;
+  let confirmDeleteId = $state(null);
 
   onMount(load);
 

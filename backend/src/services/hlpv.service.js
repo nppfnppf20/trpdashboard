@@ -26,9 +26,39 @@ const HLPV_NARRATIVE_SYSTEM = `You are a specialist planning consultant writing 
 This is a professional site appraisal document that assesses the planning constraints affecting a proposed development. \
 Write with authority and precision in clear, professional planning language.`;
 
+/**
+ * Strip any document-level wrapper elements that the LLM might add despite instructions.
+ * A <style> block injected via innerHTML affects the entire page globally.
+ */
+function cleanHlpvHtml(raw) {
+  let html = raw.trim();
+
+  // Strip markdown code fences (```html ... ```)
+  html = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+
+  // If the LLM returned a full HTML document, extract just the body content
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    html = bodyMatch[1].trim();
+  }
+
+  // Strip any remaining structural / dangerous tags
+  html = html
+    .replace(/<!DOCTYPE[^>]*>/gi, '')
+    .replace(/<\/?html[^>]*>/gi, '')
+    .replace(/<\/?head[^>]*>/gi, '')
+    .replace(/<\/?body[^>]*>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<meta[^>]*\/?>/gi, '')
+    .replace(/<link[^>]*\/?>/gi, '');
+
+  return html.trim();
+}
+
 function buildHlpvCombinedPrompt(disciplines, briefingText) {
   const parts = [
-    'Write a complete HLPV (High-Level Planning View) narrative assessment as a single HTML document.',
+    'Write a complete HLPV (High-Level Planning View) narrative assessment.',
     '\n\nThe following disciplines have triggered planning risk rules:\n',
   ];
 
@@ -56,11 +86,11 @@ function buildHlpvCombinedPrompt(disciplines, briefingText) {
   parts.push(`\n\nInstructions:
 1. Write a professional HLPV narrative for each discipline listed above (2-3 paragraphs each).
 2. If a briefing note is provided, also identify any additional planning topics or constraints mentioned in it that are NOT already covered by the disciplines above (e.g. highways, drainage, flood risk, noise, ground conditions, utilities). For each additional topic found, write 1-2 professional paragraphs drawing only on briefing note content.
-3. Output as a single HTML document. For each section:
+3. Output as an HTML fragment — content elements only. For each section:
    - <h2>Discipline or topic name</h2>
    - For HLPV disciplines only: <p><strong>Overall risk: [risk level]</strong></p>
-   - Then the assessment paragraphs using <p> tags only
-4. Return ONLY the HTML — no preamble, no markdown fences, no explanation.
+   - Then the assessment paragraphs using <p> tags
+4. Return ONLY the raw HTML content — absolutely no <html>, <head>, <body>, <style>, or <script> tags, no markdown fences, no preamble, no explanation. Start directly with the first <h2> tag.
 5. Every fact about specific designations must come from the designation data provided — do not invent designations, distances, or names.
 6. Never reference "the briefing note" or "briefing" in the output — this is a client-facing document. Incorporate the information naturally as part of the planning assessment.
 7. Do not copy phrases verbatim from the suggested text or tone example — use them only to calibrate register.`);
@@ -76,5 +106,5 @@ export async function generateHlpvNarrative(disciplines, briefingText, guidingBr
   const system = HLPV_NARRATIVE_SYSTEM + HLPV_TONE_EXAMPLE_BLOCK + guidingBlock;
   const user = buildHlpvCombinedPrompt(disciplines, briefingText);
   const raw = await callClaude(system, user, MODEL_SONNET);
-  return noEmDash(raw.trim());
+  return cleanHlpvHtml(noEmDash(raw));
 }

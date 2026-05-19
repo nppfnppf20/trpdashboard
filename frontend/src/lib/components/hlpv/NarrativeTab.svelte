@@ -252,7 +252,7 @@
       </div>
     </div>
 
-    <!-- Combined narrative editor -->
+    <!-- Combined narrative editor + check results share the scrollable area -->
     <div class="editor-wrap">
       {#if hasNarrative}
         <div class="ai-bar">
