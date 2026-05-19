@@ -1,5 +1,7 @@
 <script>
   import { buildCombinedReport } from '$lib/services/reportGenerator.js';
+  import { generateFloodFindings } from '$lib/services/flood/floodFindings.js';
+  import { generateAviationFindings } from '$lib/services/aviation/aviationFindings.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import NarrativeBriefingSelector from './NarrativeBriefingSelector.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
@@ -40,6 +42,14 @@
   export let projectId = null;
   /** @type {string|null} */
   export let developmentType = null;
+  /** @type {any} */
+  export let floodData = null;
+  /** @type {any} */
+  export let aviationData = null;
+  /** @type {any} */
+  export let highwaysData = null;
+  /** @type {any} */
+  export let amenityData = null;
 
   const HLPV_DEV_TYPES = ['Solar', 'Wind', 'BESS', 'Solar + BESS', 'Other Renewable'];
 
@@ -193,10 +203,54 @@
     }
   }
 
-  $: disciplinesForGeneration = disciplines.map(d => {
-    const details = buildDesignationDetails(d.name);
-    return details ? { ...d, designationDetails: details } : d;
-  });
+  // Build user-assessed (frontend-only) discipline objects for narrative generation
+  $: frontendDisciplinesForNarrative = (() => {
+    const items = [];
+
+    if (floodData?.overallRisk) {
+      let details = '';
+      if (floodData.editedSummary) {
+        try {
+          const fs = JSON.parse(floodData.editedSummary);
+          details = generateFloodFindings(
+            fs.floodZones || {},
+            fs.floodZoneCoverage || {},
+            fs.siteOver1ha || '',
+            fs.surfaceWaterFlooding || ''
+          ) || '';
+        } catch {}
+      }
+      items.push({ name: 'Flood', overallRisk: floodData.overallRisk, triggeredRules: [], userAssessed: true, ...(details ? { designationDetails: details } : {}) });
+    }
+
+    if (aviationData?.overallRisk) {
+      let details = '';
+      if (aviationData.editedSummary) {
+        try {
+          details = generateAviationFindings(JSON.parse(aviationData.editedSummary)) || '';
+        } catch {}
+      }
+      items.push({ name: 'Aviation', overallRisk: aviationData.overallRisk, triggeredRules: [], userAssessed: true, ...(details ? { designationDetails: details } : {}) });
+    }
+
+    if (highwaysData?.overallRisk) {
+      items.push({ name: 'Highways', overallRisk: highwaysData.overallRisk, triggeredRules: [], userAssessed: true });
+    }
+
+    if (amenityData?.overallRisk) {
+      items.push({ name: 'Amenity', overallRisk: amenityData.overallRisk, triggeredRules: [], userAssessed: true });
+    }
+
+    return items;
+  })();
+
+  $: disciplinesForGeneration = [
+    ...disciplines.map(d => {
+      const details = buildDesignationDetails(d.name);
+      return details ? { ...d, designationDetails: details } : d;
+    }),
+    ...frontendDisciplinesForNarrative
+  ];
 </script>
 
 <div class="narrative-tab">

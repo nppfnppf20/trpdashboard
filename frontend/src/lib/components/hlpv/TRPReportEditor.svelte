@@ -33,6 +33,15 @@
   /** @type {any} */
   export let airfieldsData = null;
 
+  /** @type {any} */
+  export let floodData = null;
+  /** @type {any} */
+  export let aviationData = null;
+  /** @type {any} */
+  export let highwaysData = null;
+  /** @type {any} */
+  export let amenityData = null;
+
   /** @type {string|null} */
   export let analysisSessionId = null;
 
@@ -79,6 +88,42 @@
   // Generate aviation findings and risk reactively
   $: aviationFindings = generateAviationFindings(aerodromeCounts);
   $: aviationRiskLevel = calculateAviationRisk(aerodromeCounts);
+
+  // Restore frontend-only discipline state from saved session data
+  let floodLoaded = false;
+  let aviationLoaded = false;
+  let highwaysLoaded = false;
+  let amenityLoaded = false;
+
+  $: if (floodData && !floodLoaded) {
+    floodLoaded = true;
+    floodRiskLevel = floodData.overallRisk || '';
+    if (floodData.editedSummary) {
+      try {
+        const fs = JSON.parse(floodData.editedSummary);
+        if (fs.siteOver1ha != null) siteOver1ha = fs.siteOver1ha;
+        if (fs.floodZones) floodZones = { ...fs.floodZones };
+        if (fs.floodZoneCoverage) floodZoneCoverage = { ...fs.floodZoneCoverage };
+        if (fs.surfaceWaterFlooding != null) surfaceWaterFlooding = fs.surfaceWaterFlooding;
+      } catch {}
+    }
+  }
+  $: if (aviationData && !aviationLoaded) {
+    aviationLoaded = true;
+    if (aviationData.editedSummary) {
+      try {
+        aerodromeCounts = { ...JSON.parse(aviationData.editedSummary) };
+      } catch {}
+    }
+  }
+  $: if (highwaysData && !highwaysLoaded) {
+    highwaysLoaded = true;
+    highwaysRiskLevel = highwaysData.overallRisk || '';
+  }
+  $: if (amenityData && !amenityLoaded) {
+    amenityLoaded = true;
+    amenityRiskLevel = amenityData.overallRisk || '';
+  }
 
   // Track changes for audit trail
   /** @type {Array<{discipline: string, fieldPath: string, oldValue: any, newValue: any, reason?: string}>} */
@@ -610,6 +655,30 @@
           );
         }
       }
+
+      // Save frontend-only disciplines (Flood, Aviation, Highways, Amenity)
+      savePromises.push(
+        saveSessionEdit(
+          analysisSessionId, 'flood',
+          floodRiskLevel || null,
+          [], [],
+          JSON.stringify({ siteOver1ha, floodZones, floodZoneCoverage, surfaceWaterFlooding })
+        )
+      );
+      savePromises.push(
+        saveSessionEdit(
+          analysisSessionId, 'aviation',
+          aviationRiskLevel || null,
+          [], [],
+          JSON.stringify(aerodromeCounts)
+        )
+      );
+      savePromises.push(
+        saveSessionEdit(analysisSessionId, 'highways', highwaysRiskLevel || null, [], [], null)
+      );
+      savePromises.push(
+        saveSessionEdit(analysisSessionId, 'amenity', amenityRiskLevel || null, [], [], null)
+      );
 
       // Wait for all saves to complete
       const results = await Promise.all(savePromises);

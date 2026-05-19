@@ -48,6 +48,14 @@
   let analysisSessionId = null;
   /** @type {boolean} */
   let loadedFromSaved = false; // Track if we loaded from saved analysis (don't re-save)
+  /** @type {any} */
+  let floodEditData = null;
+  /** @type {any} */
+  let aviationEditData = null;
+  /** @type {any} */
+  let highwaysEditData = null;
+  /** @type {any} */
+  let amenityEditData = null;
   /** @type {any | null} */
   let currentPolygonGeometry = null;
   /** @type {any | null} */
@@ -236,6 +244,12 @@
         treesResult = createPlaceholderFromSaved(savedSession.treesData);
         airfieldsResult = createPlaceholderFromSaved(savedSession.airfieldsData);
 
+        // Restore frontend-only discipline edits
+        floodEditData = savedSession.floodData || null;
+        aviationEditData = savedSession.aviationData || null;
+        highwaysEditData = savedSession.highwaysData || null;
+        amenityEditData = savedSession.amenityData || null;
+
         console.log('✅ Saved findings displayed - now loading map features...');
       }
     } catch (checkError) {
@@ -359,6 +373,10 @@
     ecologyResult = null;
     treesResult = null;
     airfieldsResult = null;
+    floodEditData = null;
+    aviationEditData = null;
+    highwaysEditData = null;
+    amenityEditData = null;
     analysisSaved = false; // Reset saved state for new analysis
     analysisSessionId = null; // Reset original analysis ID for new analysis
     loadedFromSaved = false; // This is a fresh analysis, not loaded from saved
@@ -742,6 +760,10 @@
           agLandData={agLandResult}
           treesData={treesResult}
           airfieldsData={airfieldsResult}
+          floodData={floodEditData}
+          aviationData={aviationEditData}
+          highwaysData={highwaysEditData}
+          amenityData={amenityEditData}
           {analysisSessionId}
           projectId={selectedProject?.id || null}
         />
@@ -754,6 +776,10 @@
           agLandData={agLandResult}
           treesData={treesResult}
           airfieldsData={airfieldsResult}
+          floodData={floodEditData}
+          aviationData={aviationEditData}
+          highwaysData={highwaysEditData}
+          amenityData={amenityEditData}
           projectId={selectedProject?.id || null}
           developmentType={selectedProject?.development_type || null}
         />

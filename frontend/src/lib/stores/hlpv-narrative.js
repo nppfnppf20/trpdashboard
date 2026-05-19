@@ -41,7 +41,7 @@ export function selectBriefingNote(id) {
  * @param {Array} allDisciplines — full disciplines array; filtered internally to triggered rules only
  */
 export async function generateNarrative(projectId, allDisciplines, developmentType = null) {
-  const active = (allDisciplines ?? []).filter(d => d.triggeredRules?.length > 0);
+  const active = (allDisciplines ?? []).filter(d => d.triggeredRules?.length > 0 || (d.userAssessed === true && d.overallRisk));
   if (!active.length) return;
 
   narrativeLoading.set(true);

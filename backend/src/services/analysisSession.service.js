@@ -330,7 +330,7 @@ export async function getReconstructedAnalysisData(sessionId) {
   };
 
   // Group data by discipline
-  const disciplines = ['heritage', 'landscape', 'ecology', 'trees', 'renewables', 'airfields', 'ag_land'];
+  const disciplines = ['heritage', 'landscape', 'ecology', 'trees', 'renewables', 'airfields', 'ag_land', 'flood', 'aviation', 'highways', 'amenity'];
 
   for (const discipline of disciplines) {
     const summary = fullData.summaries.find(s => s.discipline === discipline);
@@ -338,7 +338,7 @@ export async function getReconstructedAnalysisData(sessionId) {
     const disciplineFindings = fullData.findings.filter(f => f.discipline === discipline);
     const edit = fullData.edits.find(e => e.discipline === discipline);
 
-    if (summary || disciplineRules.length > 0 || disciplineFindings.length > 0) {
+    if (summary || disciplineRules.length > 0 || disciplineFindings.length > 0 || edit) {
       result[`${discipline}Data`] = reconstructDisciplineData(
         discipline,
         summary,
