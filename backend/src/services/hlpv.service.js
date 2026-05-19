@@ -68,8 +68,12 @@ function buildHlpvCombinedPrompt(disciplines, briefingText) {
   return parts.join('');
 }
 
-export async function generateHlpvNarrative(disciplines, briefingText) {
-  const system = HLPV_NARRATIVE_SYSTEM + HLPV_TONE_EXAMPLE_BLOCK;
+export async function generateHlpvNarrative(disciplines, briefingText, guidingBrief = null) {
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\n## Practice Guidance\nThe following is practice guidance from this consultancy on approaching HLPV assessments. Use it only to inform how you structure, frame and prioritise the information already provided above — the discipline data and any briefing note. Do NOT introduce any topic, issue, observation, or recommendation that is not directly supported by the specific data you have been given. If the guidance refers to something that has no basis in the data provided, ignore it entirely. Every sentence in your output must be grounded in the designation data or briefing note above — the guidance is a professional reference, not a list of things to write about.\n\n${guidingBrief.guidance_content.trim()}`
+    : '';
+
+  const system = HLPV_NARRATIVE_SYSTEM + HLPV_TONE_EXAMPLE_BLOCK + guidingBlock;
   const user = buildHlpvCombinedPrompt(disciplines, briefingText);
   const raw = await callClaude(system, user, MODEL_SONNET);
   return noEmDash(raw.trim());

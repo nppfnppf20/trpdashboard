@@ -41,6 +41,11 @@
   /** @type {string|null} */
   export let developmentType = null;
 
+  const HLPV_DEV_TYPES = ['Solar', 'Wind', 'BESS', 'Solar + BESS', 'Other Renewable'];
+
+  let devType = developmentType ?? '';
+  $: devType = developmentType ?? '';
+
   let briefChecking = false;
   let briefCheckResults = null;
   let briefCheckError = null;
@@ -55,7 +60,7 @@
       const result = await reviewDraftAgainstBrief({
         draft_html: html,
         document_type: 'hlpv',
-        development_type: developmentType || null
+        development_type: devType || null
       });
       briefCheckResults = result;
     } catch (e) {
@@ -214,6 +219,12 @@
         {:else}
           <span class="no-project">Select a project above to include briefing note context</span>
         {/if}
+        <select class="devtype-select" bind:value={devType} title="Development type — used to select the right guiding brief">
+          <option value="">Dev type...</option>
+          {#each HLPV_DEV_TYPES as dt}
+            <option value={dt}>{dt}</option>
+          {/each}
+        </select>
       </div>
       <div class="toolbar-right">
         {#if $narrativeError}
@@ -229,7 +240,7 @@
         {/if}
         <button
           class="btn-generate"
-          on:click={() => generateNarrative(projectId, disciplinesForGeneration)}
+          on:click={() => generateNarrative(projectId, disciplinesForGeneration, devType || null)}
           disabled={$narrativeLoading}
         >
           {#if $narrativeLoading}
@@ -380,6 +391,22 @@
     font-size: 0.8rem;
     color: #94a3b8;
     font-style: italic;
+  }
+
+  .devtype-select {
+    padding: 0.375rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    color: #374151;
+    background: white;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .devtype-select:focus {
+    outline: none;
+    border-color: #0d9488;
   }
 
   .toolbar-error {

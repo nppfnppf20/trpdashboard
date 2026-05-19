@@ -59,11 +59,11 @@ app.use(cors({
 }));
 
 // 3. Body parsing with size limits
-app.use(express.json({ 
-  limit: '2mb', // Prevent huge payload attacks
+app.use(express.json({
+  limit: '10mb',
   strict: true  // Only parse arrays and objects
 }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 4. Rate limiting - apply to all routes (except health check)
 app.use('/api', apiLimiter);

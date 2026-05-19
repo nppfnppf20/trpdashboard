@@ -40,7 +40,7 @@ export function selectBriefingNote(id) {
  * @param {string|number|null} projectId
  * @param {Array} allDisciplines — full disciplines array; filtered internally to triggered rules only
  */
-export async function generateNarrative(projectId, allDisciplines) {
+export async function generateNarrative(projectId, allDisciplines, developmentType = null) {
   const active = (allDisciplines ?? []).filter(d => d.triggeredRules?.length > 0);
   if (!active.length) return;
 
@@ -49,7 +49,7 @@ export async function generateNarrative(projectId, allDisciplines) {
 
   try {
     const noteId = get(selectedBriefingNoteId);
-    const { narrative: result } = await generateHlpvNarrative(projectId, active, noteId);
+    const { narrative: result } = await generateHlpvNarrative(projectId, active, noteId, developmentType);
     narrative.set(result);
     narrativeGenerationId.update(n => n + 1);
   } catch (err) {
