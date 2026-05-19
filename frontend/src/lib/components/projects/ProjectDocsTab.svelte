@@ -13,6 +13,7 @@
     saveDocTypePrompt,
     deleteDocTypePrompt
   } from '$lib/api/projectDocs.js';
+  import { processMeetingNote } from '$lib/api/meetingNotes.js';
 
   export let project;
   $: projectId = project?.id;
@@ -25,6 +26,7 @@
     { value: 'sci',                  label: 'SCI' },
     { value: 'site_surroundings',    label: 'Site and Surroundings' },
     { value: 'briefing_transcript',  label: 'Briefing Transcript' },
+    { value: 'meeting_notes',        label: 'Meeting Notes' },
     { value: 'other',                label: 'Other' }
   ];
 
@@ -36,6 +38,7 @@
     sci:                 '#f59e0b',
     site_surroundings:   '#8b5cf6',
     briefing_transcript: '#f43f5e',
+    meeting_notes:       '#14b8a6',
     other:               '#64748b'
   };
 
@@ -118,6 +121,15 @@
   // Expanded summaries
   let expandedIds = new Set();
 
+  // Meeting notes extra fields
+  let meetingTitle = '';
+  let meetingDate = '';
+  let meetingAttendeesText = '';
+  let meetingUserNotes = '';
+  let meetingProcessing = false;
+  let meetingError = null;
+  let meetingResult = null; // { transcript, summary, actions }
+
   // Modal state
   let showPopulate = false;
   let showGuide = false;
@@ -149,6 +161,41 @@
     resultTitle = '';
     resultRef = '';
     resultSummaryHtml = '';
+    meetingTitle = '';
+    meetingDate = '';
+    meetingAttendeesText = '';
+    meetingUserNotes = '';
+    meetingError = null;
+    meetingResult = null;
+  }
+
+  async function runMeetingNote() {
+    if (!meetingTitle.trim()) { meetingError = 'Please enter a title.'; return; }
+    if (inputTab === 'upload' && !selectedFile) { meetingError = 'Please select a file.'; return; }
+    if (inputTab === 'paste' && !pasteText.trim()) { meetingError = 'Please paste some text.'; return; }
+
+    meetingProcessing = true;
+    meetingError = null;
+    meetingResult = null;
+    try {
+      const payload = {
+        title: meetingTitle,
+        meetingDate: meetingDate || null,
+        attendeesText: meetingAttendeesText || null,
+        userNotes: meetingUserNotes || null
+      };
+      if (inputTab === 'upload') {
+        payload.file = selectedFile;
+      } else {
+        payload.text = pasteText;
+        payload.fileName = 'Pasted text';
+      }
+      meetingResult = await processMeetingNote(projectId, payload);
+    } catch (err) {
+      meetingError = err.message;
+    } finally {
+      meetingProcessing = false;
+    }
   }
 
   // Upload handlers
@@ -351,16 +398,45 @@
       <div class="panel-row">
         <div class="field">
           <label>Document Type</label>
-          <select bind:value={docType}>
+          <select bind:value={docType} on:change={() => { showResult = false; meetingResult = null; meetingError = null; }}>
             {#each DOC_TYPES as t}
               <option value={t.value}>{t.label}</option>
             {/each}
           </select>
         </div>
-        <button class="btn-prompt" on:click={openPromptModal}>
-          <i class="las la-sliders-h"></i> Edit Prompt
-        </button>
+        {#if docType !== 'meeting_notes'}
+          <button class="btn-prompt" on:click={openPromptModal}>
+            <i class="las la-sliders-h"></i> Edit Prompt
+          </button>
+        {/if}
       </div>
+
+      {#if docType === 'meeting_notes'}
+        <!-- Meeting Notes extra fields -->
+        <div class="meeting-fields">
+          <div class="field">
+            <label>Title <span class="required">*</span></label>
+            <input type="text" bind:value={meetingTitle} placeholder="e.g. Project kick-off meeting" />
+          </div>
+          <div class="field">
+            <label>Meeting Date</label>
+            <input type="date" bind:value={meetingDate} />
+          </div>
+          <div class="field meeting-field-full">
+            <label>Attendees</label>
+            <input type="text" bind:value={meetingAttendeesText} placeholder="e.g. Josh Rogers, Sarah Jones, Client team" />
+          </div>
+          <div class="field meeting-field-full">
+            <label>Your Notes <span class="notes-hint">(key points, actions or headlines — always featured prominently)</span></label>
+            <textarea
+              class="meeting-notes-area"
+              bind:value={meetingUserNotes}
+              placeholder="e.g. Main outcome: planning permission unlikely without heritage consultant. Actions: instruct heritage consultant by end of month, revisit design to reduce height…"
+              rows="4"
+            ></textarea>
+          </div>
+        </div>
+      {/if}
 
       <div class="input-tabs">
         <button class="input-tab" class:active={inputTab === 'upload'} on:click={() => inputTab = 'upload'}>Upload File</button>
@@ -400,49 +476,74 @@
         ></textarea>
       {/if}
 
-      {#if summariseError}
-        <div class="error-msg">{summariseError}</div>
-      {/if}
-
-      <button class="btn-summarise" on:click={runSummarise} disabled={summarising}>
-        {#if summarising}
-          <span class="spinner-sm"></span> Summarising…
-        {:else}
-          <i class="las la-magic"></i> Summarise
+      {#if docType === 'meeting_notes'}
+        {#if meetingError}
+          <div class="error-msg">{meetingError}</div>
         {/if}
-      </button>
+        {#if meetingResult}
+          <div class="meeting-saved-notice">
+            <i class="las la-check-circle"></i>
+            <div>
+              <strong>Saved to Meeting Notes.</strong>
+              {meetingResult.actions.length} action{meetingResult.actions.length !== 1 ? 's' : ''} extracted.
+              View them in the <strong>Meeting Notes</strong> tab.
+            </div>
+            <button class="btn-cancel-sm" on:click={() => setMode(null)}>Done</button>
+          </div>
+        {:else}
+          <button class="btn-summarise" on:click={runMeetingNote} disabled={meetingProcessing}>
+            {#if meetingProcessing}
+              <span class="spinner-sm"></span> Processing…
+            {:else}
+              <i class="las la-magic"></i> Process & Save
+            {/if}
+          </button>
+        {/if}
+      {:else}
+        {#if summariseError}
+          <div class="error-msg">{summariseError}</div>
+        {/if}
 
-      {#if showResult}
-        <div class="result-panel">
-          <div class="result-fields">
-            <div class="field">
-              <label>Title <span class="required">*</span></label>
-              <input type="text" bind:value={resultTitle} placeholder="e.g. Pre-app Response – LPA Comments Jan 2025" />
-            </div>
-            <div class="field">
-              <label>Document Reference</label>
-              <input type="text" bind:value={resultRef} placeholder="e.g. PA/2025/001" />
-            </div>
-          </div>
-          <div class="summary-preview">
-            <div class="summary-label">Generated Summary <span class="editable-hint">(click to edit)</span></div>
-            <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div
-              class="summary-content"
-              contenteditable="true"
-              bind:innerHTML={resultSummaryHtml}
-            ></div>
-          </div>
-          {#if saveError}
-            <div class="error-msg">{saveError}</div>
+        <button class="btn-summarise" on:click={runSummarise} disabled={summarising}>
+          {#if summarising}
+            <span class="spinner-sm"></span> Summarising…
+          {:else}
+            <i class="las la-magic"></i> Summarise
           {/if}
-          <div class="result-actions">
-            <button class="btn-cancel-sm" on:click={() => showResult = false}>Discard</button>
-            <button class="btn-save" on:click={saveSummary} disabled={saving}>
-              {saving ? 'Saving…' : 'Save to Project Docs'}
-            </button>
+        </button>
+
+        {#if showResult}
+          <div class="result-panel">
+            <div class="result-fields">
+              <div class="field">
+                <label>Title <span class="required">*</span></label>
+                <input type="text" bind:value={resultTitle} placeholder="e.g. Pre-app Response – LPA Comments Jan 2025" />
+              </div>
+              <div class="field">
+                <label>Document Reference</label>
+                <input type="text" bind:value={resultRef} placeholder="e.g. PA/2025/001" />
+              </div>
+            </div>
+            <div class="summary-preview">
+              <div class="summary-label">Generated Summary <span class="editable-hint">(click to edit)</span></div>
+              <!-- svelte-ignore a11y-no-static-element-interactions -->
+              <div
+                class="summary-content"
+                contenteditable="true"
+                bind:innerHTML={resultSummaryHtml}
+              ></div>
+            </div>
+            {#if saveError}
+              <div class="error-msg">{saveError}</div>
+            {/if}
+            <div class="result-actions">
+              <button class="btn-cancel-sm" on:click={() => showResult = false}>Discard</button>
+              <button class="btn-save" on:click={saveSummary} disabled={saving}>
+                {saving ? 'Saving…' : 'Save to Project Docs'}
+              </button>
+            </div>
           </div>
-        </div>
+        {/if}
       {/if}
     </div>
   {/if}
@@ -1032,4 +1133,49 @@
   .suggestion-preview :global(h3:first-child) { margin-top: 0; }
   .suggestion-preview :global(p) { margin: 0 0 0.4rem; }
   .suggestion-preview :global(ul) { margin: 0 0 0.4rem; padding-left: 1.25rem; }
+
+  .meeting-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .meeting-field-full { grid-column: 1 / -1; }
+  input[type="date"] {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: #fff;
+    color: #1e293b;
+  }
+  .notes-hint { font-weight: 400; color: #94a3b8; font-style: italic; }
+  .meeting-notes-area {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: #fff;
+    color: #1e293b;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  .meeting-notes-area:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px #6366f120; }
+
+  .meeting-saved-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: #166534;
+  }
+  .meeting-saved-notice i { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .meeting-saved-notice div { flex: 1; line-height: 1.5; }
 </style>

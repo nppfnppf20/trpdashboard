@@ -8,6 +8,7 @@
   import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
   import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
   import ProjectDocsTab from '$lib/components/projects/ProjectDocsTab.svelte';
+  import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
@@ -537,6 +538,12 @@
           on:click={() => activeTab = 'project_docs'}
         >
           Project Docs
+        </button>
+        <button
+          class="tab-button {activeTab === 'meeting_notes' ? 'active' : ''}"
+          on:click={() => activeTab = 'meeting_notes'}
+        >
+          Meeting Notes
         </button>
         <button
           class="tab-button {activeTab === 'completeness' ? 'active' : ''}"
@@ -1365,6 +1372,8 @@
             <LpaDecisionAnalysisTab project={projectData} />
           {:else if activeTab === 'project_docs'}
             <ProjectDocsTab project={projectData} />
+          {:else if activeTab === 'meeting_notes'}
+            <MeetingNotesTab project={projectData} />
           {:else if activeTab === 'completeness'}
             <ProjectCompletenessTab project={projectData} />
           {/if}
