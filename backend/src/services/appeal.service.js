@@ -155,12 +155,16 @@ Respond ONLY with valid JSON in this exact shape (no markdown, no explanation):
 // Formal appeal draft document generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateDraftSection({ section, projectName, draftTypeName, issueContext }) {
+export async function generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief = null }) {
   const instructions = section.generation_prompt?.trim() ||
     `Write the "${section.name}" section of a ${draftTypeName}. Use formal planning language suitable for submission to the Planning Inspectorate. Produce clean HTML: <h2> for the section heading, <p> for body text, <ol>/<li> for numbered lists. Do not add placeholder text — write the full section from the material provided.`;
 
   const exampleBlock = section.example_text?.trim()
     ? `The following is an example of this section's tone and format. Match the style but use NO information from it — all content must come from the working argument notes:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n`
+    : '';
+
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
     : '';
 
   const prompt = `You are drafting the "${section.name}" section of a formal planning appeal document. Output HTML only — no markdown.
@@ -188,7 +192,7 @@ FORMAT RULES (mandatory):
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 2000,
-    system: 'You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.',
+    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${guidingBlock}`,
     messages: [{ role: 'user', content: prompt }]
   });
 
@@ -196,11 +200,15 @@ FORMAT RULES (mandatory):
   return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
-export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {} }) {
+export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {}, guidingBrief = null }) {
   const issueContext = buildIssueContext(issues, evidenceByTrack);
 
   if (!sections || sections.length === 0) {
-    const prompt = `${DEFAULT_DRAFT_PROMPT}
+    const guidingBlock = guidingBrief?.guidance_content?.trim()
+      ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
+      : '';
+
+    const prompt = `${DEFAULT_DRAFT_PROMPT}${guidingBlock}
 
 Project: ${projectName}
 Document type: ${draftTypeName}
@@ -222,7 +230,7 @@ Produce the complete ${draftTypeName} as HTML now.`;
   const parts = [];
   for (const section of sections) {
     console.log(`[generateAppealDraft] generating section: ${section.name}`);
-    const html = await generateDraftSection({ section, projectName, draftTypeName, issueContext });
+    const html = await generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief });
     parts.push(html);
   }
 

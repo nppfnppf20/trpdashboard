@@ -221,7 +221,7 @@ async function generateLlmSlot({ instruction, variables, briefingSummary }) {
 // Assessment generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack = {}, briefingSummary }) {
+export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack = {}, briefingSummary, guidingBrief = null }) {
   const parts = [`<h2>${section.name}</h2>`];
 
   for (const issue of issues) {
@@ -230,14 +230,14 @@ export async function generatePlanningStatementAssessment({ projectName, section
     const issueType = issueTypesByTrack[issue.id] ?? null;
     if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length && !issueType) continue;
     console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
-    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType, briefingSummary });
+    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType, briefingSummary, guidingBrief });
     parts.push(html);
   }
 
   return parts.join('\n\n');
 }
 
-export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType = null, briefingSummary }) {
+export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType = null, briefingSummary, guidingBrief = null }) {
   const exampleBlock = section.example_text?.trim()
     ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
     : '';
@@ -248,7 +248,11 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
     ? `\n\nBriefing context (use to inform strategic direction, planning arguments, and framing — do not reproduce verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
     : '';
 
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}`;
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
+    : '';
+
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}`;
 
   const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence, issueType);
 
@@ -294,7 +298,7 @@ IMPORTANT: There are no planning policies linked to this issue. Do NOT reference
 // Statement section generation (prompt-based)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generatePlanningStatementSection({ section, variables, sectionNumber, briefingSummary }) {
+export async function generatePlanningStatementSection({ section, variables, sectionNumber, briefingSummary, guidingBrief = null }) {
   let prompt = section.generation_prompt ?? '';
 
   for (const [key, value] of Object.entries(variables)) {
@@ -334,10 +338,14 @@ export async function generatePlanningStatementSection({ section, variables, sec
     ? `\n\nBriefing context (use this to inform strategic direction, framing, and planning arguments — do not reproduce it verbatim):\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}`
     : '';
 
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
+    : '';
+
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4096,
-    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${TONE_EXAMPLE_BLOCK}${briefingBlock}`,
+    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}`,
     messages: [{ role: 'user', content: fullPrompt }]
   });
 

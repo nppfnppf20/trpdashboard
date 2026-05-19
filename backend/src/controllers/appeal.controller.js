@@ -5,6 +5,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
+import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, summariseDocument } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -534,12 +535,12 @@ export async function generateSection(req, res) {
   const { projectId, typeId, sectionId } = req.params;
   try {
     const { rows: projectRows } = await pool.query(
-      `SELECT project_name FROM public.projects WHERE id = $1`, [projectId]
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
     const { rows: typeRows } = await pool.query(
-      `SELECT name FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+      `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
 
@@ -567,11 +568,14 @@ export async function generateSection(req, res) {
       return lines.join('\n');
     }).join('\n\n---\n\n');
 
+    const guidingBrief = await getGuidingBrief(typeRows[0].slug, projectRows[0].development_type);
+
     const html = await generateDraftSection({
       section: sectionRows[0],
       projectName: projectRows[0].project_name,
       draftTypeName: typeRows[0].name,
-      issueContext
+      issueContext,
+      guidingBrief
     });
 
     res.json({ html, section_id: sectionRows[0].id, section_name: sectionRows[0].name });
@@ -739,12 +743,12 @@ export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
   try {
     const { rows: projectRows } = await pool.query(
-      `SELECT project_name FROM public.projects WHERE id = $1`, [projectId]
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
     const { rows: typeRows } = await pool.query(
-      `SELECT id, name FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+      `SELECT id, name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
     const draftType = typeRows[0];
@@ -765,11 +769,14 @@ export async function generateDraft(req, res) {
       [typeId]
     );
 
+    const guidingBrief = await getGuidingBrief(draftType.slug, projectRows[0].development_type);
+
     const contentHtml = await generateAppealDraft({
       projectName: projectRows[0].project_name,
       draftTypeName: draftType.name,
       sections,
-      issues
+      issues,
+      guidingBrief
     });
 
     // Persist

@@ -4,9 +4,9 @@
   const navItems = [
     { path: '/admin-console/surveyors', label: 'Surveyors', icon: 'la-users' },
     { path: '/admin-console/clients', label: 'Clients', icon: 'la-building' },
-    { path: '/admin-console/policy-templates', label: 'Policy Templates', icon: 'la-file-alt' },
-    { path: '/admin-console/planning-templates', label: 'Planning Statement Templates', icon: 'la-clipboard-list' },
-    { path: '/admin-console/issue-templates', label: 'Issue Policy Templates', icon: 'la-tags' },
+    { path: '/admin-console/planning-templates', label: 'Policy Templates', icon: 'la-clipboard-list' },
+    { path: '/admin-console/issue-templates', label: 'Per Issue Planning Assessment Templates', icon: 'la-tags' },
+    { path: '/admin-console/guiding-briefs', label: 'Guiding Briefs', icon: 'la-book-open' },
     { path: '/admin-console/prompt-map', label: 'Prompt Map', icon: 'la-project-diagram' }
   ];
 </script>
@@ -52,9 +52,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1.5rem;
+    padding: 0.75rem 1.5rem 0;
     background: white;
-    border-bottom: 2px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   }
 
@@ -62,6 +62,7 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+    padding-bottom: 1rem;
   }
 
   .home-button {
@@ -104,29 +105,30 @@
 
   .admin-nav {
     display: flex;
-    gap: 0.5rem;
+    gap: 0;
   }
 
   .nav-tab {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
+    padding: 1rem 1.25rem;
     color: #64748b;
     text-decoration: none;
-    border-radius: 6px;
+    border-bottom: 2px solid transparent;
+    font-size: 0.875rem;
     font-weight: 500;
     transition: all 0.2s;
   }
 
   .nav-tab:hover {
-    background: #f1f5f9;
     color: #1e293b;
+    background: #f8fafc;
   }
 
   .nav-tab.active {
-    background: #3b82f6;
-    color: white;
+    color: #9333ea;
+    border-bottom-color: #9333ea;
   }
 
   .nav-tab i {

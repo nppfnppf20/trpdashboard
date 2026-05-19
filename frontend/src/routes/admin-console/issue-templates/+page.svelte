@@ -126,7 +126,7 @@
 <div class="page">
   <div class="page-header">
     <div>
-      <h1>Issue Policy Templates</h1>
+      <h1>Per Issue Planning Assessment Templates</h1>
       <p>Per-issue NPPF/NPPG text injected into Planning Statement policy assessment sections. Assign an issue type to a project issue track to apply the template.</p>
     </div>
     <button class="btn-add" on:click={openNew}><i class="las la-plus"></i> New Issue Type</button>

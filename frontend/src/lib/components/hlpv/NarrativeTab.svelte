@@ -3,6 +3,7 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import NarrativeBriefingSelector from './NarrativeBriefingSelector.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
   import { tick } from 'svelte';
   import {
     narrative, narrativeGenerationId, narrativeLoading, narrativeError,
@@ -37,6 +38,32 @@
   export let airfieldsData = null;
   /** @type {number|null} */
   export let projectId = null;
+  /** @type {string|null} */
+  export let developmentType = null;
+
+  let briefChecking = false;
+  let briefCheckResults = null;
+  let briefCheckError = null;
+
+  async function checkBrief() {
+    const html = editorRef?.getHTML();
+    if (!html) return;
+    briefChecking = true;
+    briefCheckResults = null;
+    briefCheckError = null;
+    try {
+      const result = await reviewDraftAgainstBrief({
+        draft_html: html,
+        document_type: 'hlpv',
+        development_type: developmentType || null
+      });
+      briefCheckResults = result;
+    } catch (e) {
+      briefCheckError = e.message || 'Failed to check brief';
+    } finally {
+      briefChecking = false;
+    }
+  }
 
   $: if (projectId) loadBriefingNotes(projectId);
 
@@ -193,6 +220,9 @@
           <span class="toolbar-error">{$narrativeError}</span>
         {/if}
         {#if hasNarrative}
+          <button class="btn-check-brief" disabled={briefChecking} on:click={checkBrief}>
+            {#if briefChecking}<span class="spinner-xs spinner-teal"></span> Checking...{:else}<i class="las la-clipboard-check"></i> Check brief{/if}
+          </button>
           <button class="btn-generate" disabled={exportingWord} on:click={handleExportToWord}>
             {#if exportingWord}<span class="spinner-xs"></span> Exporting...{:else}<i class="las la-file-word"></i> Export{/if}
           </button>
@@ -232,6 +262,44 @@
         </div>
       {/if}
     </div>
+
+    {#if briefCheckError}
+      <div class="brief-check-panel brief-check-error">
+        <span><i class="las la-exclamation-circle"></i> {briefCheckError}</span>
+        <button class="brief-dismiss" on:click={() => briefCheckError = null}>Dismiss</button>
+      </div>
+    {/if}
+
+    {#if briefCheckResults}
+      <div class="brief-check-panel">
+        <div class="brief-check-header">
+          <span class="brief-check-title"><i class="las la-clipboard-check"></i> Brief check results</span>
+          <button class="brief-dismiss" on:click={() => briefCheckResults = null}>Dismiss</button>
+        </div>
+        {#if briefCheckResults.no_brief}
+          <p class="brief-info">No guiding brief found for this document type. Add one in the admin console under Guiding Briefs.</p>
+        {:else if briefCheckResults.no_checklist}
+          <p class="brief-info">A guiding brief exists but has no review checklist configured.</p>
+        {:else if briefCheckResults.items?.length === 0}
+          <p class="brief-info">No checklist items to review.</p>
+        {:else}
+          <ul class="brief-check-list">
+            {#each briefCheckResults.items as item}
+              <li class="brief-check-item brief-check-item--{item.status}">
+                <div class="brief-item-header">
+                  <span class="brief-status-dot"></span>
+                  <span class="brief-item-topic">{item.topic}</span>
+                  <span class="brief-item-badge">{item.status}</span>
+                </div>
+                {#if item.suggestion}
+                  <p class="brief-item-suggestion">{item.suggestion}</p>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -417,5 +485,171 @@
     font-size: 1rem;
     color: #9ca3af;
     flex-shrink: 0;
+  }
+
+  .btn-check-brief {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    background: #0d9488;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-check-brief:hover:not(:disabled) {
+    background: #0f766e;
+  }
+
+  .btn-check-brief:disabled {
+    background: #5eead4;
+    cursor: not-allowed;
+  }
+
+  .btn-check-brief i {
+    font-size: 1rem;
+  }
+
+  .spinner-teal {
+    border-color: rgba(255, 255, 255, 0.35);
+    border-top-color: white;
+  }
+
+  .brief-check-panel {
+    margin: 0 1.5rem 1.5rem;
+    border: 1px solid #d1fae5;
+    border-radius: 8px;
+    background: #f0fdfa;
+    padding: 1rem 1.125rem;
+    flex-shrink: 0;
+  }
+
+  .brief-check-panel.brief-check-error {
+    background: #fef2f2;
+    border-color: #fecaca;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    color: #dc2626;
+    font-size: 0.875rem;
+  }
+
+  .brief-check-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .brief-check-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #0f766e;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .brief-dismiss {
+    background: none;
+    border: none;
+    font-size: 0.8rem;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-family: inherit;
+  }
+
+  .brief-dismiss:hover {
+    background: #e5e7eb;
+  }
+
+  .brief-info {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #4b5563;
+  }
+
+  .brief-check-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .brief-check-item {
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid transparent;
+  }
+
+  .brief-check-item--present {
+    background: #f0fdf4;
+    border-left-color: #16a34a;
+  }
+
+  .brief-check-item--partial {
+    background: #fffbeb;
+    border-left-color: #d97706;
+  }
+
+  .brief-check-item--missing {
+    background: #fef2f2;
+    border-left-color: #dc2626;
+  }
+
+  .brief-item-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .brief-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .brief-check-item--present .brief-status-dot { background: #16a34a; }
+  .brief-check-item--partial .brief-status-dot { background: #d97706; }
+  .brief-check-item--missing .brief-status-dot { background: #dc2626; }
+
+  .brief-item-topic {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1f2937;
+    flex: 1;
+  }
+
+  .brief-item-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+  }
+
+  .brief-check-item--present .brief-item-badge { background: #dcfce7; color: #16a34a; }
+  .brief-check-item--partial .brief-item-badge { background: #fef9c3; color: #92400e; }
+  .brief-check-item--missing .brief-item-badge { background: #fee2e2; color: #dc2626; }
+
+  .brief-item-suggestion {
+    margin: 0.25rem 0 0 1.25rem;
+    font-size: 0.8rem;
+    color: #4b5563;
+    line-height: 1.4;
   }
 </style>

@@ -10,6 +10,7 @@
     tone:     { label: 'Tone',     color: '#8b5cf6', bg: '#f5f3ff', border: '#ddd6fe' },
     template: { label: 'Template', color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
     format:   { label: 'Format',   color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+    guide:    { label: 'Guide',    color: '#0d9488', bg: '#f0fdfa', border: '#99f6e4' },
     runtime:  { label: 'Runtime',  color: '#64748b', bg: '#f8fafc', border: '#cbd5e1' },
   };
 
@@ -105,7 +106,7 @@
                     <button
                       class="component-node"
                       class:selected={isSelected}
-                      style="--c-color:{meta.color}; --c-bg:{meta.bg}; --c-border:{meta.border}; {component.type === 'runtime' ? 'border-style: dashed;' : ''}"
+                      style="--c-color:{meta.color}; --c-bg:{meta.bg}; --c-border:{meta.border}; {(component.type === 'runtime' || component.type === 'guide') ? 'border-style: dashed;' : ''}"
                       onclick={() => selectComponent(component, operation, selectedTool)}
                       title={component.source || component.description || ''}
                     >

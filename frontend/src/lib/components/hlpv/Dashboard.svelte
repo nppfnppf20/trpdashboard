@@ -755,6 +755,7 @@
           treesData={treesResult}
           airfieldsData={airfieldsResult}
           projectId={selectedProject?.id || null}
+          developmentType={selectedProject?.development_type || null}
         />
       {/if}
     </div>

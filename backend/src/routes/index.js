@@ -28,6 +28,7 @@ import hlpvNarrativeRoutes from './hlpvNarrative.routes.js';
 import policyTemplatesRoutes from './policyTemplates.routes.js';
 import policyContextTemplatesRoutes from './policyContextTemplates.routes.js';
 import issueTypesRoutes from './issueTypes.routes.js';
+import guidingBriefsRoutes from './guidingBriefs.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -101,6 +102,7 @@ router.use('/api/hlpv', hlpvNarrativeRoutes);
 router.use('/api/admin-console/policy-templates', policyTemplatesRoutes);
 router.use('/api/admin-console/planning-templates', policyContextTemplatesRoutes);
 router.use('/api/issue-types', issueTypesRoutes);
+router.use('/api/guiding-briefs', guidingBriefsRoutes);
 
 export default router;
 

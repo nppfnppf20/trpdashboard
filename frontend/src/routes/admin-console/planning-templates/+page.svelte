@@ -100,7 +100,7 @@
 <div class="page">
   <div class="page-header">
     <div>
-      <h1>Planning Statement Templates</h1>
+      <h1>Policy Templates</h1>
       <p>Policy context text injected into Planning Statement drafts by development type. Edit each development type to add NPPF, NPPG, other national policy, and other guidance text.</p>
     </div>
   </div>

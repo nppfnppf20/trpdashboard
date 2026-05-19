@@ -5,6 +5,7 @@
 
 import { pool } from '../db.js';
 import { parseFile, chunkText } from '../services/parser.service.js';
+import { getGuidingBrief } from './guidingBriefs.controller.js';
 import {
   extractPointsFromDocument,
   buildExtractPointsTemplate,
@@ -950,14 +951,14 @@ ${history.map(h => {
     FULL_STATEMENT:            '',
   };
 
-  return { variables, briefingSummary: summaryByType.briefing_transcript ?? null };
+  return { variables, briefingSummary: summaryByType.briefing_transcript ?? null, developmentType: project.development_type ?? null };
 }
 
 export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
   try {
     const { rows: projectRows } = await pool.query(
-      `SELECT project_name FROM public.projects WHERE id = $1`, [projectId]
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
@@ -992,6 +993,8 @@ export async function generateDraft(req, res) {
     const hasTemplatedSections = sections.some(s => s.generation_prompt?.includes('{{') || !!s.template_html);
     let contentHtml;
 
+    const guidingBrief = await getGuidingBrief('planning_statement', projectRows[0].development_type);
+
     if (hasTemplatedSections) {
       const { variables, briefingSummary } = await resolvePlanningStatementVariables(projectId);
       const issueContext = buildIssueContext(issues, evidenceByTrack);
@@ -1008,16 +1011,17 @@ export async function generateDraft(req, res) {
         } else if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary, guidingBrief
           });
         } else if (section.generation_prompt?.includes('{{')) {
-          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary });
+          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief });
         } else {
           html = await generateDraftSection({
             section,
             projectName: projectRows[0].project_name,
             draftTypeName: typeRows[0].name,
-            issueContext
+            issueContext,
+            guidingBrief
           });
         }
         sectionHtmlMap.set(section.id, html);
@@ -1031,7 +1035,7 @@ export async function generateDraft(req, res) {
           console.log(`[generateDraft] generating runs_last section: ${section.name}`);
           const html = section.template_html
             ? await generateFromTemplate({ section, variables: runsLastVariables, briefingSummary })
-            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary });
+            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief });
           sectionHtmlMap.set(section.id, html);
         }
       }
@@ -1052,14 +1056,15 @@ export async function generateDraft(req, res) {
         if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary: fallbackBriefingSummary
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary: fallbackBriefingSummary, guidingBrief
           });
         } else {
           html = await generateDraftSection({
             section,
             projectName: projectRows[0].project_name,
             draftTypeName: typeRows[0].name,
-            issueContext
+            issueContext,
+            guidingBrief
           });
         }
         sectionParts.push(html);

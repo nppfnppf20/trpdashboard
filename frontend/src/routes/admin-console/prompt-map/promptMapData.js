@@ -7,6 +7,7 @@
  *   tone     — tone/style example loaded from file (purple)
  *   template — generation prompt or instruction template, DB or hardcoded (orange)
  *   format   — output format / HTML rules (red)
+ *   guide    — guiding brief fetched from DB by document+development type (teal, dashed)
  *   runtime  — assembled at runtime from DB or user input (grey, dashed)
  *
  * For runtime components, `content` is null and `description` explains what gets injected.
@@ -70,6 +71,18 @@ export const PROMPT_MAP = [
 
 Injected as:
 "The following is a real High-Level Planning View written by this consultancy. Use it ONLY as a style reference — to learn the professional register, the way conclusions are phrased, the level of detail, and the types of recommendations typically made. Do NOT reproduce any place names, designation names, distances, policy references, or factual content from it. Every fact in your output must come solely from the designation data provided in the user message."`
+          },
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=hlpv, matched by project development type)',
+            content: `Fetched from the guiding briefs library at call time using document_type='hlpv' and the project's development type. Falls back to the generic (null development type) brief if no specific match exists.
+
+If found, guidance_content is injected after the tone example as:
+"## Document Guidance
+[guidance_content]"
+
+The review_checklist is used in a separate post-generation review call to flag missing or underdeveloped topics.`
           },
           {
             type: 'runtime',
@@ -465,6 +478,15 @@ Issues:
         output: 'HTML appeal document — stitched from per-section calls, or single call if no sections defined',
         components: [
           {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=draft_type slug, matched by project development type)',
+            content: `Fetched at call time using the appeal draft type slug (e.g. 'statement_of_case', 'statement_of_common_ground') and the project's development type.
+
+guidance_content injected after the system role as "## Document Guidance [guidance_content]".
+review_checklist used in a post-generation review call to flag missing sections or topics.`
+          },
+          {
             type: 'system',
             label: 'System Role',
             source: 'appeal.service.js — generateDraftSection()',
@@ -572,6 +594,15 @@ Output variables written literally by Claude, substituted after:
             content: `Per-section example from the database. If present, injected as:
 "The following example shows the target tone and structure. Match the style — do NOT use any content from it."
 Stripped to plain text, truncated to 3,000 chars.`
+          },
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=planning_statement, matched by project development type)',
+            content: `Fetched at call time using document_type='planning_statement' and the project's development type. Falls back to a generic brief if no specific match exists.
+
+guidance_content injected after the tone example as "## Document Guidance [guidance_content]".
+review_checklist used in a post-generation review call.`
           },
           {
             type: 'runtime',
