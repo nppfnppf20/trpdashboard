@@ -232,7 +232,7 @@
         {/if}
         {#if hasNarrative}
           <button class="btn-check-brief" disabled={briefChecking} on:click={checkBrief}>
-            {#if briefChecking}<span class="spinner-xs spinner-teal"></span> Checking...{:else}<i class="las la-clipboard-check"></i> Check brief{/if}
+            {#if briefChecking}<span class="spinner-xs spinner-teal"></span> Checking...{:else}<i class="las la-clipboard-check"></i> Check{/if}
           </button>
           <button class="btn-generate" disabled={exportingWord} on:click={handleExportToWord}>
             {#if exportingWord}<span class="spinner-xs"></span> Exporting...{:else}<i class="las la-file-word"></i> Export{/if}

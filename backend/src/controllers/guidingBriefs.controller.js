@@ -155,19 +155,30 @@ Rules:
 
     const response = await client.messages.create({
       model: MODEL_FAST,
-      max_tokens: 1500,
+      max_tokens: 2500,
       system: 'You are a planning consultant reviewing a draft document. Return only valid JSON.',
       messages: [{ role: 'user', content: prompt }]
     });
 
     let raw = response.content[0].text.trim()
-      .replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
+      .replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
 
     let items;
     try {
       items = JSON.parse(raw);
     } catch {
-      return res.status(500).json({ error: 'Failed to parse review response' });
+      // Fallback: extract the first [...] array block from the response
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (match) {
+        try { items = JSON.parse(match[0]); }
+        catch {
+          console.error('[guidingBriefs.reviewDraft] parse fallback failed. raw:', raw.slice(0, 400));
+          return res.status(500).json({ error: 'Failed to parse review response' });
+        }
+      } else {
+        console.error('[guidingBriefs.reviewDraft] no JSON array found. raw:', raw.slice(0, 400));
+        return res.status(500).json({ error: 'Failed to parse review response' });
+      }
     }
 
     res.json({ items });
