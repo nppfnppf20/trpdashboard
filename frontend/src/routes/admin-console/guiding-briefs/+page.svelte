@@ -13,7 +13,7 @@
 
   const DEVELOPMENT_TYPES = [
     'Residential', 'Co-Living', 'Commercial', 'Solar', 'Wind',
-    'Mixed Use', 'Industrial', 'Change of Use', 'Agricultural', 'Other',
+    'Mixed Use', 'Industrial', 'Change of Use', 'Agricultural', 'Urban Site', 'Other',
   ];
 
   const DOC_LABEL = Object.fromEntries(DOCUMENT_TYPES.map(d => [d.value, d.label]));

@@ -51,7 +51,7 @@
   /** @type {any} */
   export let amenityData = null;
 
-  const HLPV_DEV_TYPES = ['Solar', 'Wind', 'BESS', 'Solar + BESS', 'Other Renewable'];
+  const HLPV_DEV_TYPES = ['Solar', 'Wind', 'BESS', 'Solar + BESS', 'Other Renewable', 'Urban Site'];
 
   let devType = developmentType ?? '';
   $: devType = developmentType ?? '';
