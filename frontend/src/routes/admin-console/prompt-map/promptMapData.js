@@ -1225,6 +1225,86 @@ Extracted chunk summaries: [RUNTIME: all chunk summaries for this issue]
 [FORMAT: ~400–1,000 word professional prose stage notes]`
       }
     ]
+  },
+
+  // ── Meeting Notes ───────────────────────────────────────────────────────────
+  {
+    id: 'meeting-notes',
+    name: 'Meeting Notes',
+    icon: 'la-clipboard-list',
+    description: 'Processes a meeting transcript into a structured HTML summary and extracts action items with owners and due dates. Structure adapts based on whether an agenda is provided.',
+    operations: [
+      {
+        id: 'process-transcript',
+        name: 'Process Transcript',
+        output: 'JSON object — { summary_html: HTML string, actions: [{ action_text, owner, due_date, notes }] }',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role + Structure Rules',
+            source: 'meeting.service.js — MEETING_SYSTEM_PROMPT',
+            content: `You are a planning consultant assistant. Your job is to process a meeting transcript into a structured, professional record.
+
+PRECEDENCE RULES:
+1. CONSULTANT NOTES (if provided) take absolute precedence. Every point must appear in the summary. Actions mentioned must appear in the actions list.
+2. AGENDA (if provided) defines the structure of the summary — organise the main body under agenda items as headings.
+3. TRANSCRIPT is the primary source for all other content.
+
+SUMMARY STRUCTURE (summary_html) — always in this order:
+
+1. OVERVIEW (always): Opening <p> covering purpose, attendees, date context, headline outcome.
+
+2. CONSULTANT NOTES (if provided):
+   <h3>Consultant Notes</h3>
+   Reproduce faithfully as a <ul>. Do not paraphrase.
+
+3. MAIN BODY — two variants:
+   IF AGENDA PROVIDED: Each agenda item as <h3>. Under each: discussion <p>/<ul>, decisions (<strong>Decision:</strong>), risks (<strong>Note:</strong>). Add <h3>Any Other Business</h3> for off-agenda items if any.
+   IF NO AGENDA: Fixed headings — <h3>Key Decisions</h3>, <h3>Discussion Points</h3>, <h3>Risks and Issues</h3>, <h3>Next Steps</h3> (omit irrelevant ones).
+
+4. ACTIONS SUMMARY (if any actions exist):
+   <h3>Actions</h3>
+   <ul><li><strong>[Owner]</strong> — [action] (due: [date or TBC])</li></ul>`
+          },
+          {
+            type: 'format',
+            label: 'Actions Array Rules',
+            source: 'meeting.service.js — MEETING_SYSTEM_PROMPT',
+            content: `- Extract every action/task/commitment — from consultant notes first, then transcript
+- action_text: clear, specific, starts with a verb (e.g. "Instruct heritage consultant", "Circulate draft planning statement")
+- owner: person named as responsible; null if not stated
+- due_date: YYYY-MM-DD if a date is given; parse relative dates against meeting date if known; null if unclear
+- notes: useful context (e.g. "contingent on design review outcome"); null if nothing to add
+- If no actions, return []`
+          },
+          {
+            type: 'runtime',
+            label: 'Consultant Notes',
+            description: 'Optional free-text notes entered by the user. Injected first, labelled "CONSULTANT NOTES (take absolute precedence)". Omitted if blank.'
+          },
+          {
+            type: 'runtime',
+            label: 'Agenda',
+            description: 'Optional agenda entered by the user. Injected after consultant notes, labelled "MEETING AGENDA". When present, the summary main body is structured under each agenda item as headings. Omitted if blank.'
+          },
+          {
+            type: 'runtime',
+            label: 'Meeting Transcript',
+            description: 'Full transcript text from uploaded file (PDF, TXT, MD) or pasted text. Truncated to 80,000 characters. Prefixed with the file name if available.'
+          }
+        ],
+        assembledPreview: `[SYSTEM ROLE: meeting notes assistant — structure rules, JSON output format]
+
+CONSULTANT NOTES (take absolute precedence):
+[RUNTIME: user notes, if provided]
+
+MEETING AGENDA:
+[RUNTIME: agenda items, if provided]
+
+Meeting transcript (filename.pdf):
+[RUNTIME: full transcript text, up to 80,000 chars]`
+      }
+    ]
   }
 
 ];

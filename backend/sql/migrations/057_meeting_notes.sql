@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS planning_applications.meeting_transcripts (
   file_name       TEXT,
   transcript_text TEXT NOT NULL,
   user_notes      TEXT,
+  agenda          TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

@@ -1,14 +1,8 @@
 import { callClaude, parseJSON } from './llm.shared.js';
 
-const MEETING_SYSTEM_PROMPT = `You are a planning consultant assistant processing a meeting transcript.
+const MEETING_SYSTEM_PROMPT = `You are a planning consultant assistant. Your job is to process a meeting transcript into a structured, professional record.
 
-Your task is to produce two things:
-1. A structured HTML summary of the meeting
-2. A list of action items extracted from the transcript
-
-IMPORTANT: If consultant notes are provided, they take precedence over the transcript. Key points from the notes must be prominently featured in the summary and any actions they reference must appear in the actions list — do not omit or downplay them.
-
-Return ONLY a valid JSON object with exactly these two fields — no preamble, explanation, or code fences:
+You must return ONLY a valid JSON object with exactly these two fields — no preamble, explanation, or code fences:
 
 {
   "summary_html": "<html string>",
@@ -22,25 +16,83 @@ Return ONLY a valid JSON object with exactly these two fields — no preamble, e
   ]
 }
 
-For summary_html:
-- Use only <h3>, <p>, <ul>, <li> tags
-- Structure the summary with these headings where relevant: Key Decisions, Discussion Points, Context and Background, Next Steps
-- If consultant notes were provided, open with a "Consultant Notes" section that captures those points verbatim before the transcript summary
-- Be comprehensive — this will be used as a project record
-- Write in clear professional prose
+════════════════════════════════════════
+PRECEDENCE RULES
+════════════════════════════════════════
 
-For actions:
-- Extract every action, task, or commitment mentioned — in the consultant notes first, then the transcript
-- owner: the person named as responsible, or null if unclear
-- due_date: only populate if a specific date or clear deadline is mentioned; parse relative dates (e.g. "end of June 2025" → "2025-06-30"); use null if ambiguous
-- notes: any relevant context for the action, or null
-- If there are no actions, return an empty array`;
+1. CONSULTANT NOTES (if provided) take absolute precedence. Every point in the notes must appear in the summary. Actions mentioned in the notes must appear in the actions list. Do not omit, compress, or deprioritise them.
 
-export async function processMeetingTranscript(text, fileName, userNotes = null) {
-  const noteSection = userNotes?.trim()
-    ? `CONSULTANT NOTES (take precedence — must be reflected prominently):\n${userNotes.trim()}\n\n`
-    : '';
-  const user = `${noteSection}Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`;
+2. AGENDA (if provided) defines the structure of the summary. Organise the main body under the agenda items as headings. Do not invent agenda items.
+
+3. TRANSCRIPT is the primary source for all other content.
+
+════════════════════════════════════════
+SUMMARY STRUCTURE (summary_html)
+════════════════════════════════════════
+
+Use only <h3>, <p>, <ul>, <li>, <strong> tags.
+
+Always include these sections in this order:
+
+─ 1. OVERVIEW (always present)
+Open with a single <p> covering: the purpose of the meeting, who attended (if known), date context if mentioned, and the headline outcome in one sentence. Do not use a heading for this — it is the opening paragraph.
+
+─ 2. CONSULTANT NOTES (only if consultant notes were provided)
+<h3>Consultant Notes</h3>
+Reproduce the consultant's notes faithfully as a <ul> list. Do not paraphrase or summarise — these are authoritative. If the notes contain actions, flag them here too.
+
+─ 3. MAIN BODY
+Structure depends on whether an agenda was provided:
+
+  IF AGENDA PROVIDED:
+  Use each agenda item as an <h3> heading (in the order given).
+  Under each heading write:
+  - A <p> or <ul> summarising what was discussed on that point
+  - Any decisions made, clearly labelled with <strong>Decision:</strong>
+  - Any risks or concerns raised, clearly labelled with <strong>Note:</strong>
+  Do not include the action list here — actions go in the actions array only.
+  After all agenda items, add:
+  <h3>Any Other Business</h3>
+  Cover anything discussed that was not on the agenda. If nothing, omit this section.
+
+  IF NO AGENDA PROVIDED:
+  Use these fixed headings in this order (omit any that are not relevant):
+  <h3>Key Decisions</h3>
+  <h3>Discussion Points</h3>
+  <h3>Risks and Issues</h3>
+  <h3>Next Steps</h3>
+
+─ 4. ACTIONS SUMMARY (always present if any actions exist)
+<h3>Actions</h3>
+A <ul> list of all actions in the format:
+<li><strong>[Owner]</strong> — [action] (due: [date or TBC])</li>
+This is a summary only — full detail lives in the actions array.
+
+════════════════════════════════════════
+ACTIONS ARRAY
+════════════════════════════════════════
+
+- Extract every action, task, or commitment — from consultant notes first, then the transcript
+- action_text: clear, specific description starting with a verb (e.g. "Instruct heritage consultant", "Circulate draft planning statement")
+- owner: the person named as responsible; null if not stated
+- due_date: YYYY-MM-DD if a date or deadline is given; parse relative dates against the meeting date if known (e.g. "end of month", "by Friday"); null if genuinely unclear
+- notes: any useful context (e.g. "contingent on design review outcome"); null if nothing to add
+- If there are no actions, return []`;
+
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null) {
+  const parts = [];
+
+  if (userNotes?.trim()) {
+    parts.push(`CONSULTANT NOTES (take absolute precedence):\n${userNotes.trim()}`);
+  }
+
+  if (agenda?.trim()) {
+    parts.push(`MEETING AGENDA:\n${agenda.trim()}`);
+  }
+
+  parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
+
+  const user = parts.join('\n\n');
   const raw = await callClaude(MEETING_SYSTEM_PROMPT, user);
 
   let parsed;

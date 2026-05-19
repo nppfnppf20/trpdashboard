@@ -125,6 +125,7 @@
   let meetingTitle = '';
   let meetingDate = '';
   let meetingAttendeesText = '';
+  let meetingAgenda = '';
   let meetingUserNotes = '';
   let meetingProcessing = false;
   let meetingError = null;
@@ -164,6 +165,7 @@
     meetingTitle = '';
     meetingDate = '';
     meetingAttendeesText = '';
+    meetingAgenda = '';
     meetingUserNotes = '';
     meetingError = null;
     meetingResult = null;
@@ -182,6 +184,7 @@
         title: meetingTitle,
         meetingDate: meetingDate || null,
         attendeesText: meetingAttendeesText || null,
+        agenda: meetingAgenda || null,
         userNotes: meetingUserNotes || null
       };
       if (inputTab === 'upload') {
@@ -425,6 +428,15 @@
           <div class="field meeting-field-full">
             <label>Attendees</label>
             <input type="text" bind:value={meetingAttendeesText} placeholder="e.g. Josh Rogers, Sarah Jones, Client team" />
+          </div>
+          <div class="field meeting-field-full">
+            <label>Agenda <span class="notes-hint">(optional — if provided, summary will be structured under each item)</span></label>
+            <textarea
+              class="meeting-notes-area"
+              bind:value={meetingAgenda}
+              placeholder="e.g.&#10;1. Project programme update&#10;2. Design review feedback&#10;3. Planning strategy&#10;4. AOB"
+              rows="4"
+            ></textarea>
           </div>
           <div class="field meeting-field-full">
             <label>Your Notes <span class="notes-hint">(key points, actions or headlines — always featured prominently)</span></label>

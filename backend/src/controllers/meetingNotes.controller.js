@@ -9,7 +9,7 @@ import { processMeetingTranscript } from '../services/meeting.service.js';
 export async function processMeetingNote(req, res) {
   try {
     const { projectId } = req.params;
-    const { title, meeting_date, attendees_text, user_notes } = req.body;
+    const { title, meeting_date, attendees_text, user_notes, agenda } = req.body;
 
     if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
 
@@ -25,7 +25,7 @@ export async function processMeetingNote(req, res) {
       return res.status(400).json({ error: 'No file or text provided' });
     }
 
-    const { summary_html, actions } = await processMeetingTranscript(text, fileName, user_notes || null);
+    const { summary_html, actions } = await processMeetingTranscript(text, fileName, user_notes || null, agenda || null);
 
     const client = await pool.connect();
     try {
@@ -33,9 +33,9 @@ export async function processMeetingNote(req, res) {
 
       const { rows: [transcript] } = await client.query(
         `INSERT INTO planning_applications.meeting_transcripts
-           (project_id, title, meeting_date, attendees_text, file_name, transcript_text, user_notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [projectId, title.trim(), meeting_date || null, attendees_text?.trim() || null, fileName, text, user_notes?.trim() || null]
+           (project_id, title, meeting_date, attendees_text, file_name, transcript_text, user_notes, agenda)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [projectId, title.trim(), meeting_date || null, attendees_text?.trim() || null, fileName, text, user_notes?.trim() || null, agenda?.trim() || null]
       );
 
       const { rows: [summary] } = await client.query(
