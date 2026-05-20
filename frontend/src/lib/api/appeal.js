@@ -381,6 +381,16 @@ export async function evolveArgument(projectId, { trackId, newInformation, conve
   return res.json();
 }
 
+export async function chatArgument(projectId, { trackId, briefingNoteId, conversation }) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/chat-argument`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: trackId, briefing_note_id: briefingNoteId, conversation })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to chat argument'); }
+  return res.json();
+}
+
 export async function updateDocumentStatus(docId, reviewStatus) {
   const res = await authFetch(`/api/appeal/documents/${docId}/status`, {
     method: 'PUT',

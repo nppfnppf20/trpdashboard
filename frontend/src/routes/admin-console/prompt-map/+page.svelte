@@ -1,9 +1,29 @@
 <script>
+  import { onMount } from 'svelte';
   import { PROMPT_MAP } from './promptMapData.js';
+  import { getScraperFilterPrompts } from '$lib/services/projectmap/projectMapApi.js';
 
   let selectedToolId = $state(PROMPT_MAP[0].id);
   let openOperations = $state(new Set([PROMPT_MAP[0].operations[0].id]));
   let selectedComponent = $state(null); // { component, operationName, toolName }
+
+  let liveScraperPrompts = $state({}); // { renewables: '...', datacentres: '...', contracts_finder: '...' }
+
+  onMount(async () => {
+    try {
+      const rows = await getScraperFilterPrompts();
+      liveScraperPrompts = Object.fromEntries(rows.map(r => [r.category, r.prompt]));
+    } catch (e) {
+      console.warn('[prompt-map] Could not load scraper prompts:', e.message);
+    }
+  });
+
+  function resolveContent(component) {
+    if (component.liveCategory) {
+      return liveScraperPrompts[component.liveCategory] ?? '(loading…)';
+    }
+    return component.content;
+  }
 
   const TYPE_META = {
     system:   { label: 'System',   color: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe' },
@@ -198,10 +218,10 @@
             <div class="panel-description">{c.description}</div>
           </div>
         {/if}
-        {#if c.content}
+        {#if resolveContent(c)}
           <div class="panel-section">
             <div class="panel-section-label">{c.type === 'assembled' ? 'Prompt template' : 'Content'}</div>
-            <pre class="panel-content">{c.content}</pre>
+            <pre class="panel-content">{resolveContent(c)}</pre>
           </div>
         {/if}
       </div>

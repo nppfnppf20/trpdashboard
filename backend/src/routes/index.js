@@ -31,6 +31,7 @@ import issueTypesRoutes from './issueTypes.routes.js';
 import guidingBriefsRoutes from './guidingBriefs.routes.js';
 import meetingNotesRoutes from './meetingNotes.routes.js';
 import emailDigestRoutes from './emailDigest.routes.js';
+import scraperFiltersRoutes from './scraperFilters.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -107,6 +108,7 @@ router.use('/api/issue-types', issueTypesRoutes);
 router.use('/api/guiding-briefs', guidingBriefsRoutes);
 router.use('/api/meeting-notes', meetingNotesRoutes);
 router.use('/api/admin-console/email', emailDigestRoutes);
+router.use('/api/scraper-filters', scraperFiltersRoutes);
 
 export default router;
 

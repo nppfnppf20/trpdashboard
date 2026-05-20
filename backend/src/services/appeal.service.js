@@ -325,6 +325,29 @@ Write only the revised argument text. No preamble, no explanation of what change
   return noEmDash(response.content[0].text.trim());
 }
 
+export async function chatArgumentWithBriefing({ issueLabel, existingArgument, briefingContent, conversation }) {
+  const systemPrompt = `You are a planning consultant helping to refine a planning argument for a specific planning appeal issue. You have been given the issue label, the current argument text, and the content of a briefing note as context.
+
+The user will ask you to amend or refine the argument based on their instructions. Always respond with ONLY the revised argument text — no preamble, no explanation, no commentary. Write in formal planning language. Do not use em dashes (—).
+
+Issue: ${issueLabel}
+
+Current argument:
+${existingArgument?.trim() || '(none yet)'}
+
+Briefing note content:
+${briefingContent?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000) || '(no briefing content available)'}`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    system: systemPrompt,
+    max_tokens: 2000,
+    messages: conversation
+  });
+
+  return noEmDash(response.content[0].text.trim());
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Argument suggestion (prose chat)
 // ─────────────────────────────────────────────────────────────────────────────

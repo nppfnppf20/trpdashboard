@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getArgumentPoints } from '$lib/api/appeal.js';
-  import { issueNotes, noteStatus, initNotes, handleNoteInput, loadBriefingNotes, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, openBriefingUpload, submitBriefingUpload, selectBriefingNote, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/appeal-notes.js';
+  import { issueNotes, noteStatus, initNotes, handleNoteInput, loadBriefingNotes, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, openBriefingUpload, submitBriefingUpload, selectBriefingNote, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, applyEvolvedArgument, acceptBriefingDraftSuggestion, skipBriefingDraftSuggestion, closeBriefingDraft, sendChatMessage, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/appeal-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/appeal-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
   import { suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestDirection, suggestUserNotes, suggestTrackIds, suggestState, conversation, suggestError, refinementInput, refinementLoading, acceptLoading, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, runSuggestion, sendRefinement, acceptSuggestion, resetSuggestion, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt, openSuggestionLogModal } from '$lib/stores/appeal-suggestion.js';
@@ -1142,7 +1142,10 @@
                     <span class="bd-status bd-status-skipped">Skipped</span>
                   {:else if !evolve}
                     <div class="bd-actions">
-                      <button class="bd-btn-accept" on:click={() => startEvolveArgument(project.id, s.track_id, s.argument_for)}>
+                      <button class="bd-btn-accept" on:click={() => acceptBriefingDraftSuggestion(s.track_id, s.argument_for)}>
+                        <i class="las la-check"></i> Accept as is
+                      </button>
+                      <button class="bd-btn-evolve" on:click={() => startEvolveArgument(s.track_id)}>
                         <i class="las la-magic"></i> Evolve argument
                       </button>
                       <button class="bd-btn-skip" on:click={() => skipBriefingDraftSuggestion(s.track_id)}>Skip</button>
@@ -1155,32 +1158,36 @@
                 </div>
                 {#if evolve && !evolve.applied}
                   <div class="bd-evolve-panel">
-                    {#if evolve.loading}
-                      <div class="bd-evolve-loading"><div class="mini-spinner"></div><span>Reworking argument…</span></div>
-                    {:else if evolve.evolved}
+                    {#if evolve.evolved}
                       <div class="bd-evolve-result">
                         <span class="bd-evolved-label">Proposed argument</span>
                         <p class="bd-evolved-text">{evolve.evolved}</p>
                       </div>
-                      <div class="bd-evolve-chat">
+                    {/if}
+                    <div class="bd-evolve-chat">
+                      {#if evolve.loading}
+                        <div class="bd-evolve-loading"><div class="mini-spinner"></div><span>Reworking argument…</span></div>
+                      {:else}
                         <textarea
                           class="bd-chat-input"
-                          placeholder="Ask for changes…"
+                          placeholder={evolve.evolved ? 'Ask for further changes…' : 'What changes do you want? e.g. focus more on heritage impacts, make it more concise…'}
                           rows="2"
                           value={evolve.input}
                           on:input={(e) => briefingEvolveState.update(st => ({ ...st, [s.track_id]: { ...st[s.track_id], input: e.target.value } }))}
-                          on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendEvolveRefinement(project.id, s.track_id, s.argument_for); } }}
+                          on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(project.id, s.track_id); } }}
                         ></textarea>
-                        <div class="bd-evolve-actions">
-                          <button class="bd-chat-send" disabled={!evolve.input?.trim() || evolve.loading} on:click={() => sendEvolveRefinement(project.id, s.track_id, s.argument_for)}>
-                            <i class="las la-paper-plane"></i>
-                          </button>
+                      {/if}
+                      <div class="bd-evolve-actions">
+                        <button class="bd-chat-send" disabled={!evolve.input?.trim() || evolve.loading} on:click={() => sendChatMessage(project.id, s.track_id)}>
+                          <i class="las la-paper-plane"></i>
+                        </button>
+                        {#if evolve.evolved}
                           <button class="bd-btn-apply" on:click={() => applyEvolvedArgument(s.track_id)}>
                             <i class="las la-check"></i> Apply
                           </button>
-                        </div>
+                        {/if}
                       </div>
-                    {/if}
+                    </div>
                   </div>
                 {/if}
               </div>
@@ -3178,6 +3185,7 @@
 
   /* ── Briefing draft modal ── */
   .modal-briefing-draft { width: 680px; }
+  .modal-briefing-draft .modal-body { overflow-y: auto; }
 
   .briefing-draft-loading {
     display: flex;
@@ -3243,6 +3251,23 @@
   }
 
   .bd-btn-accept:hover { background: #6d28d9; }
+
+  .bd-btn-evolve {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.75rem;
+    background: #1d4ed8;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .bd-btn-evolve:hover { background: #1e40af; }
 
   .bd-btn-skip {
     padding: 0.3rem 0.625rem;

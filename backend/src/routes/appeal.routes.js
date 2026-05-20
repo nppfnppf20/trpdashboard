@@ -43,7 +43,8 @@ import {
   draftArgumentsFromBriefing,
   draftArgumentsFromIssueNotes,
   draftKeySummariesFromBriefing,
-  evolveArgument
+  evolveArgument,
+  chatArgument
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -108,6 +109,7 @@ router.post('/projects/:projectId/draft-arguments-from-briefing', draftArguments
 router.post('/projects/:projectId/draft-arguments-from-issue-notes', draftArgumentsFromIssueNotes);
 router.post('/projects/:projectId/draft-key-summaries-from-briefing', draftKeySummariesFromBriefing);
 router.post('/projects/:projectId/evolve-argument', evolveArgument);
+router.post('/projects/:projectId/chat-argument', chatArgument);
 
 // Document log
 router.get('/projects/:projectId/document-log', getDocumentLog);

@@ -7,7 +7,8 @@ import {
   draftArgumentsFromBriefing,
   draftArgumentsFromIssueNotes,
   draftKeySummariesFromBriefing,
-  evolveArgument
+  evolveArgument,
+  chatArgument
 } from '$lib/api/appeal.js';
 
 // ── Issue notes ───────────────────────────────────────────────────────────────
@@ -161,29 +162,23 @@ export async function runDraftFromBriefing(projectId, briefingNoteId = null) {
   }
 }
 
-export async function startEvolveArgument(projectId, trackId, newInformation) {
-  briefingEvolveState.update(s => ({ ...s, [trackId]: { loading: true, evolved: null, conversation: [], input: '', applied: false } }));
-  try {
-    const { evolved } = await evolveArgument(projectId, { trackId, newInformation, conversation: [] });
-    briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: false, evolved } }));
-  } catch (err) {
-    console.error('evolveArgument failed:', err);
-    alert(err.message);
-    briefingEvolveState.update(s => { const n = { ...s }; delete n[trackId]; return n; });
-  }
+export function startEvolveArgument(trackId) {
+  briefingEvolveState.update(s => ({ ...s, [trackId]: { loading: false, evolved: null, conversation: [], input: '', applied: false } }));
 }
 
-export async function sendEvolveRefinement(projectId, trackId, newInformation) {
+export async function sendChatMessage(projectId, trackId) {
   const state = get(briefingEvolveState)[trackId];
-  if (!state?.input?.trim()) return;
+  if (!state?.input?.trim() || state.loading) return;
+  const briefingNoteId = get(selectedBriefingNoteId);
   const userMsg = { role: 'user', content: state.input.trim() };
-  const updatedConv = [...state.conversation, { role: 'assistant', content: state.evolved }, userMsg];
+  const updatedConv = [...state.conversation, userMsg];
   briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: true, input: '', conversation: updatedConv } }));
   try {
-    const { evolved } = await evolveArgument(projectId, { trackId, newInformation, conversation: updatedConv });
+    const { evolved } = await chatArgument(projectId, { trackId, briefingNoteId, conversation: updatedConv });
     briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: false, evolved, conversation: [...updatedConv, { role: 'assistant', content: evolved }] } }));
   } catch (err) {
-    console.error('sendEvolveRefinement failed:', err);
+    console.error('sendChatMessage failed:', err);
+    alert(err.message);
     briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], loading: false } }));
   }
 }
@@ -193,6 +188,11 @@ export function applyEvolvedArgument(trackId) {
   if (!state?.evolved) return;
   replaceNote(trackId, 'argument_for', state.evolved);
   briefingEvolveState.update(s => ({ ...s, [trackId]: { ...s[trackId], applied: true } }));
+}
+
+export function acceptBriefingDraftSuggestion(trackId, argumentFor) {
+  replaceNote(trackId, 'argument_for', argumentFor);
+  briefingEvolveState.update(s => ({ ...s, [trackId]: { ...(s[trackId] ?? {}), applied: true } }));
 }
 
 export function skipBriefingDraftSuggestion(trackId) {

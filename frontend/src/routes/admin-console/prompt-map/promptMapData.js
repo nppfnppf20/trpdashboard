@@ -1307,4 +1307,131 @@ Meeting transcript (filename.pdf):
     ]
   }
 
+  // ── Web Scraper Filters ────────────────────────────────────────────────────
+  {
+    id: 'scrapers',
+    name: 'Web Scraper Filters',
+    icon: 'la-filter',
+    description: 'LLM relevance filters for scraped data. Each category has an editable prompt stored in scraper.llm_filter_prompts. Prompts are loaded live from the DB — what you see here is the current active value.',
+    operations: [
+      {
+        id: 'filter-renewables',
+        name: 'Filter: Renewables',
+        output: 'JSON array — [{id, relevant, reason}] for each non-dismissed application',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role',
+            source: 'scraperFilters.controller.js',
+            content: `You are a relevance filter assistant. You will be given a list of scraped items and a relevance criterion. For each item, decide if it is relevant based on the criterion provided. Respond ONLY with a valid JSON array — no markdown, no explanation.`
+          },
+          {
+            type: 'template',
+            label: 'Relevance Prompt',
+            source: 'scraper.llm_filter_prompts WHERE category = \'renewables\' (DB — editable)',
+            liveCategory: 'renewables',
+            content: null
+          },
+          {
+            type: 'runtime',
+            label: 'Scraped Items Batch',
+            description: 'Up to 25 non-dismissed records per batch from scraper.planit_renewables. Each item includes: id, uid (title), description (truncated to 500 chars).'
+          }
+        ],
+        assembledPreview: `Relevance criterion:
+[TEMPLATE: renewables prompt from DB]
+
+Items to evaluate:
+[0] id:123
+Title: Solar farm application
+Description: ...
+
+[1] id:124
+...
+
+Respond with a JSON array:
+[
+  { "id": 123, "relevant": true, "reason": "..." },
+  ...
+]`
+      },
+      {
+        id: 'filter-datacentres',
+        name: 'Filter: Data Centres',
+        output: 'JSON array — [{id, relevant, reason}] for each non-dismissed application',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role',
+            source: 'scraperFilters.controller.js',
+            content: `You are a relevance filter assistant. You will be given a list of scraped items and a relevance criterion. For each item, decide if it is relevant based on the criterion provided. Respond ONLY with a valid JSON array — no markdown, no explanation.`
+          },
+          {
+            type: 'template',
+            label: 'Relevance Prompt',
+            source: 'scraper.llm_filter_prompts WHERE category = \'datacentres\' (DB — editable)',
+            liveCategory: 'datacentres',
+            content: null
+          },
+          {
+            type: 'runtime',
+            label: 'Scraped Items Batch',
+            description: 'Up to 25 non-dismissed records per batch from scraper.planit_datacentres. Each item includes: id, uid (title), description (truncated to 500 chars).'
+          }
+        ],
+        assembledPreview: `Relevance criterion:
+[TEMPLATE: datacentres prompt from DB]
+
+Items to evaluate:
+[0] id:456
+Title: Data centre planning application
+Description: ...
+
+Respond with a JSON array:
+[
+  { "id": 456, "relevant": true, "reason": "..." },
+  ...
+]`
+      },
+      {
+        id: 'filter-contracts',
+        name: 'Filter: Contracts Finder',
+        output: 'JSON array — [{id, relevant, reason}] for each non-dismissed contract',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role',
+            source: 'scraperFilters.controller.js',
+            content: `You are a relevance filter assistant. You will be given a list of scraped items and a relevance criterion. For each item, decide if it is relevant based on the criterion provided. Respond ONLY with a valid JSON array — no markdown, no explanation.`
+          },
+          {
+            type: 'template',
+            label: 'Relevance Prompt',
+            source: 'scraper.llm_filter_prompts WHERE category = \'contracts_finder\' (DB — editable)',
+            liveCategory: 'contracts_finder',
+            content: null
+          },
+          {
+            type: 'runtime',
+            label: 'Scraped Items Batch',
+            description: 'Up to 25 non-dismissed records per batch from scraper.contracts_finder. Each item includes: id, title, description (truncated to 500 chars).'
+          }
+        ],
+        assembledPreview: `Relevance criterion:
+[TEMPLATE: contracts_finder prompt from DB]
+
+Items to evaluate:
+[0] id:789
+Title: Planning consultancy services
+Description: ...
+
+Respond with a JSON array:
+[
+  { "id": 789, "relevant": true, "reason": "..." },
+  ...
+]`
+      }
+    ]
+  }
+
 ];

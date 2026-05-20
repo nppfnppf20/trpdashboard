@@ -260,6 +260,28 @@ export async function getContractsFinder() {
   }
 }
 
+export async function getScraperFilterPrompts() {
+  const response = await authFetch('/api/scraper-filters');
+  if (!response.ok) throw new Error(`Failed to load filter prompts: ${response.statusText}`);
+  return response.json();
+}
+
+export async function updateScraperFilterPrompt(category, prompt) {
+  const response = await authFetch(`/api/scraper-filters/${category}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  });
+  if (!response.ok) throw new Error(`Failed to update prompt: ${response.statusText}`);
+  return response.json();
+}
+
+export async function applyScraperFilter(category) {
+  const response = await authFetch(`/api/scraper-filters/${category}/apply`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Failed to apply filter: ${response.statusText}`);
+  return response.json();
+}
+
 /**
  * Toggle dismissed status for a contract
  * @param {number} id - Contract ID

@@ -6,7 +6,7 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, summariseDocument } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -1129,5 +1129,44 @@ export async function evolveArgument(req, res) {
   } catch (err) {
     console.error('appeal.evolveArgument error:', err);
     res.status(500).json({ error: err.message || 'Failed to evolve argument' });
+  }
+}
+
+export async function chatArgument(req, res) {
+  const { projectId } = req.params;
+  const { track_id, briefing_note_id, conversation } = req.body;
+  if (!track_id || !Array.isArray(conversation) || !conversation.length) {
+    return res.status(400).json({ error: 'track_id and conversation are required' });
+  }
+  try {
+    const briefingNoteId = briefing_note_id ? parseInt(briefing_note_id) : null;
+    const briefingQuery = briefingNoteId
+      ? pool.query(
+          `SELECT summary_html FROM planning_applications.document_summaries WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
+          [projectId, briefingNoteId]
+        )
+      : pool.query(
+          `SELECT summary_html FROM planning_applications.document_summaries WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
+          [projectId]
+        );
+
+    const [{ rows: issueRows }, { rows: noteRows }, { rows: bRows }] = await Promise.all([
+      pool.query(`SELECT label FROM admin_console.project_issue_tracks WHERE id = $1 AND project_id = $2`, [track_id, projectId]),
+      pool.query(`SELECT argument_for FROM public.appeal_issue_notes WHERE track_id = $1 AND project_id = $2`, [track_id, projectId]),
+      briefingQuery
+    ]);
+
+    if (!issueRows.length) return res.status(404).json({ error: 'Issue not found' });
+
+    const evolved = await chatArgumentWithBriefing({
+      issueLabel: issueRows[0].label,
+      existingArgument: noteRows[0]?.argument_for ?? '',
+      briefingContent: bRows[0]?.summary_html ?? '',
+      conversation
+    });
+    res.json({ evolved });
+  } catch (err) {
+    console.error('appeal.chatArgument error:', err);
+    res.status(500).json({ error: err.message || 'Failed to chat argument' });
   }
 }
