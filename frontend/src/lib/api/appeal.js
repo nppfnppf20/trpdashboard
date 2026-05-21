@@ -20,22 +20,6 @@ export async function updateKeyIssueSummary(trackId, summary) {
   return res.json();
 }
 
-export async function getArgument(projectId) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/argument`);
-  if (!res.ok) throw new Error('Failed to fetch argument');
-  return res.json();
-}
-
-export async function saveArgument(projectId, argumentHtml) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/argument`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ argument_html: argumentHtml })
-  });
-  if (!res.ok) throw new Error('Failed to save argument');
-  return res.json();
-}
-
 export async function getIssueNotes(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/issue-notes`);
   if (!res.ok) throw new Error('Failed to fetch issue notes');
@@ -86,16 +70,6 @@ export async function analyseDocument(projectId, { file, text, documentType, doc
   }
 }
 
-export async function generateArgument(projectId, initialNotes) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ initial_notes: initialNotes })
-  });
-  if (!res.ok) throw new Error('Failed to generate argument');
-  return res.json();
-}
-
 export async function getDocuments(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/documents`);
   if (!res.ok) throw new Error('Failed to fetch documents');
@@ -119,7 +93,7 @@ export async function getPromptTemplate(projectId) {
     const body = await res.text().catch(() => '');
     throw new Error(`GET prompt-template ${res.status}: ${body.slice(0, 200)}`);
   }
-  return res.json(); // null if none saved
+  return res.json();
 }
 
 export async function savePromptTemplate(projectId, template) {
@@ -135,56 +109,6 @@ export async function savePromptTemplate(projectId, template) {
 export async function deletePromptTemplate(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/prompt-template`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete prompt template');
-  return res.json();
-}
-
-// ── Argument suggestion ────────────────────────────────────────────────────
-
-export async function suggestArgument(projectId, { file, text, documentType, documentTitle, documentDirection, userNotes, relevantTrackIds, conversation, customPrompt, preview = false }) {
-  const qs = preview ? '?preview=true' : '';
-  if (file) {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('document_type', documentType);
-    fd.append('document_title', documentTitle || '');
-    if (documentDirection) fd.append('document_direction', documentDirection);
-    if (userNotes) fd.append('user_notes', userNotes);
-    if (relevantTrackIds?.length) fd.append('relevant_track_ids', JSON.stringify(relevantTrackIds));
-    if (conversation?.length) fd.append('conversation', JSON.stringify(conversation));
-    if (customPrompt) fd.append('custom_prompt', customPrompt);
-    const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-argument${qs}`, { method: 'POST', body: fd });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate suggestion'); }
-    return res.json();
-  } else {
-    const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-argument${qs}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, document_type: documentType, document_title: documentTitle || '', document_direction: documentDirection, user_notes: userNotes, relevant_track_ids: relevantTrackIds ?? [], conversation: conversation ?? [], custom_prompt: customPrompt ?? null })
-    });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate suggestion'); }
-    return res.json();
-  }
-}
-
-export async function getSuggestTemplate(projectId) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-template`);
-  if (!res.ok) throw new Error('Failed to fetch suggest template');
-  return res.json();
-}
-
-export async function saveSuggestTemplate(projectId, template) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-template`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template })
-  });
-  if (!res.ok) throw new Error('Failed to save suggest template');
-  return res.json();
-}
-
-export async function deleteSuggestTemplate(projectId) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/suggest-template`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete suggest template');
   return res.json();
 }
 
@@ -318,76 +242,13 @@ export async function createArgumentPoint(projectId, point) {
   return res.json();
 }
 
-// ── Briefing notes ─────────────────────────────────────────────────────────
-
-export async function getBriefingNotes(projectId) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-notes`);
-  if (!res.ok) throw new Error('Failed to fetch briefing notes');
-  return res.json();
-}
-
-export async function uploadBriefingNote(projectId, { file, text, title }) {
-  if (file) {
-    const fd = new FormData();
-    fd.append('file', file);
-    if (title) fd.append('title', title);
-    const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-notes`, { method: 'POST', body: fd });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to upload briefing note'); }
-    return res.json();
-  } else {
-    const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-notes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, title })
-    });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to upload briefing note'); }
-    return res.json();
-  }
-}
-
-export async function draftArgumentsFromBriefing(projectId, briefingNoteId = null) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/draft-arguments-from-briefing`, {
+export async function generateDraftFromDocuments(projectId, typeId, documentIds) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/generate-from-docs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ briefing_note_id: briefingNoteId })
+    body: JSON.stringify({ document_ids: documentIds })
   });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to draft arguments'); }
-  return res.json();
-}
-
-export async function draftArgumentsFromIssueNotes(projectId) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/draft-arguments-from-issue-notes`, { method: 'POST' });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to draft arguments from issue notes'); }
-  return res.json();
-}
-
-export async function draftKeySummariesFromBriefing(projectId, briefingNoteId = null) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/draft-key-summaries-from-briefing`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ briefing_note_id: briefingNoteId })
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to draft key summaries'); }
-  return res.json();
-}
-
-export async function evolveArgument(projectId, { trackId, newInformation, conversation }) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/evolve-argument`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ track_id: trackId, new_information: newInformation, conversation })
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to evolve argument'); }
-  return res.json();
-}
-
-export async function chatArgument(projectId, { trackId, briefingNoteId, conversation }) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/chat-argument`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ track_id: trackId, briefing_note_id: briefingNoteId, conversation })
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to chat argument'); }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate draft'); }
   return res.json();
 }
 

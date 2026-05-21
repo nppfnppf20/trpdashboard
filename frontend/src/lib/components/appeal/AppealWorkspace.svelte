@@ -1,31 +1,16 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getArgumentPoints } from '$lib/api/appeal.js';
-  import { issueNotes, noteStatus, initNotes, handleNoteInput, loadBriefingNotes, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, openBriefingUpload, submitBriefingUpload, selectBriefingNote, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, applyEvolvedArgument, acceptBriefingDraftSuggestion, skipBriefingDraftSuggestion, closeBriefingDraft, sendChatMessage, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/appeal-notes.js';
+  import { getKeyIssues, updateKeyIssueSummary, getDocumentLog, getDocuments, uploadDocument } from '$lib/api/appeal.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/appeal-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
-  import { suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestDirection, suggestUserNotes, suggestTrackIds, suggestState, conversation, suggestError, refinementInput, refinementLoading, acceptLoading, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, runSuggestion, sendRefinement, acceptSuggestion, resetSuggestion, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt, openSuggestionLogModal } from '$lib/stores/appeal-suggestion.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/appeal-drafts.js';
+  import { draftTypes, drafts, draftGenerating, draftGeneratingFromDocs, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, handleGenerateFromDocs, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/appeal-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import AppealDocReviewModal from '$lib/components/appeal/AppealDocReviewModal.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
 
-  const DOC_TYPES = [
-    'Officer Report',
-    'Refusal Notice',
-    'Appeal Decision',
-    'Planning Statement',
-    'Proof of Evidence',
-    'Expert Report',
-    'Consultation Response',
-    'Other'
-  ];
-
   let fileInput;
-  let suggestFileInput;
-  let chatEndEl;
-
-  $: if ($conversation.length && chatEndEl) setTimeout(() => chatEndEl?.scrollIntoView({ behavior: 'smooth' }), 50);
+  let docFileInput;
 
   let draftEditor;
   let sectionExampleEditor;
@@ -40,12 +25,6 @@
   let keyIssues = [];
   let loading = true;
   let loadError = null;
-  let argumentPointsByTrack = {};
-  let expandedPoints = {};
-
-  function toggleExpanded(id) {
-    expandedPoints = { ...expandedPoints, [id]: !expandedPoints[id] };
-  }
 
   onMount(load);
 
@@ -53,31 +32,20 @@
     loading = true;
     loadError = null;
     try {
-      const [issues, notes, log, points] = await Promise.all([
+      const [issues, log] = await Promise.all([
         getKeyIssues(project.id),
-        getIssueNotes(project.id),
-        getDocumentLog(project.id),
-        getArgumentPoints(project.id).catch(() => [])
+        getDocumentLog(project.id)
       ]);
       keyIssues = issues;
       initAnalysis(project.id);
-      initSuggestion(project.id);
       initDrafts(project.id);
-      initNotes(project.id, notes);
       initLog(log);
-      const grouped = {};
-      for (const pt of points) {
-        if (!grouped[pt.track_id]) grouped[pt.track_id] = [];
-        grouped[pt.track_id].push(pt);
-      }
-      argumentPointsByTrack = grouped;
     } catch (err) {
       loadError = err.message;
     } finally {
       loading = false;
     }
-    // Run independently — failures must not block the rest of the workspace
-    await Promise.all([loadDraftTypes(), loadBriefingNotes(project.id)]);
+    await Promise.all([loadDraftTypes(), loadDocuments()]);
   }
 
   function clickOutside(node, handler) {
@@ -111,6 +79,66 @@
   };
 
   let exportingWord = false;
+
+  // ── Documents tab ──────────────────────────────────────────────────────────
+  let documents = [];
+  let docUploading = false;
+  let docUploadError = null;
+  let docDragOver = false;
+  let reviewingDoc = null;
+
+  async function loadDocuments() {
+    try {
+      documents = await getDocuments(project.id);
+    } catch (err) {
+      console.error('Failed to load documents:', err);
+    }
+  }
+
+  async function handleDocUpload(file) {
+    if (!file) return;
+    docUploading = true;
+    docUploadError = null;
+    try {
+      const doc = await uploadDocument(project.id, file);
+      documents = [doc, ...documents];
+    } catch (err) {
+      docUploadError = err.message;
+    } finally {
+      docUploading = false;
+    }
+  }
+
+  function onDocDrop(e) {
+    e.preventDefault();
+    docDragOver = false;
+    const file = e.dataTransfer?.files[0];
+    if (file) handleDocUpload(file);
+  }
+
+  function onDocFileChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) handleDocUpload(file);
+  }
+
+  const statusLabels = {
+    reviewed: { label: 'Reviewed', colour: '#16a34a', bg: '#f0fdf4' },
+    pending:  { label: 'Pending',  colour: '#d97706', bg: '#fffbeb' },
+    skipped:  { label: 'Skipped',  colour: '#94a3b8', bg: '#f8fafc' }
+  };
+
+  // keyed by draft type id → Set of doc ids
+  let selectedDocIds = {};
+
+  function toggleDocForType(typeId, docId) {
+    const current = selectedDocIds[typeId] ?? new Set();
+    const next = new Set(current);
+    if (next.has(docId)) next.delete(docId); else next.add(docId);
+    selectedDocIds = { ...selectedDocIds, [typeId]: next };
+  }
+
+  $: reviewedDocs = documents.filter(d => d.ai_review);
 
   let briefCheckResults = null;
   let briefChecking = false;
@@ -164,8 +192,9 @@
     <button class="tab" class:active={activeTab === 'key-issues'} on:click={() => activeTab = 'key-issues'}>
       Key Issues
     </button>
-    <button class="tab" class:active={activeTab === 'argument'} on:click={() => activeTab = 'argument'}>
-      Argument Structure
+    <button class="tab" class:active={activeTab === 'documents'} on:click={() => activeTab = 'documents'}>
+      Documents
+      {#if documents.length > 0}<span class="tab-count">{documents.length}</span>{/if}
     </button>
     <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
       Draft Document
@@ -192,38 +221,6 @@
   {:else if activeTab === 'key-issues'}
     <!-- ── Tab 1: Key Issues ── -->
     <div class="tab-body">
-      {#if keyIssues.length > 0}
-        <div class="key-issues-toolbar">
-          <div class="briefing-btn-group" use:clickOutside={() => $keyIssueDropdownOpen = false}>
-            <button class="btn-draft-from-briefing" on:click={() => runKeyIssueDraftFromBriefing(project.id, $keyIssueSelectedNoteId)}>
-              <i class="las la-lightbulb"></i> Draft issue notes from briefing
-              {#if $keyIssueSelectedNoteId}
-                {@const note = $briefingNotes.find(n => n.id === $keyIssueSelectedNoteId)}
-                {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
-              {/if}
-            </button>
-            <button class="btn-briefing-chevron" on:click={() => $keyIssueDropdownOpen = !$keyIssueDropdownOpen} title="Select briefing note">
-              <i class="las la-angle-down"></i>
-            </button>
-            {#if $keyIssueDropdownOpen}
-              <div class="briefing-dropdown">
-                <button class="briefing-dropdown-item" class:active={$keyIssueSelectedNoteId === null} on:click={() => { $keyIssueSelectedNoteId = null; $keyIssueDropdownOpen = false; }}>
-                  <span>Latest briefing note</span>
-                </button>
-                {#each $briefingNotes as note}
-                  <button class="briefing-dropdown-item" class:active={$keyIssueSelectedNoteId === note.id} on:click={() => { $keyIssueSelectedNoteId = note.id; $keyIssueDropdownOpen = false; }}>
-                    <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
-                    <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  </button>
-                {/each}
-                <button class="briefing-dropdown-item briefing-dropdown-upload" on:click={openBriefingUpload}>
-                  <i class="las la-plus"></i> Upload new briefing note
-                </button>
-              </div>
-            {/if}
-          </div>
-        </div>
-      {/if}
       {#if keyIssues.length === 0}
         <div class="empty-state">
           <i class="las la-list-alt"></i>
@@ -260,365 +257,65 @@
       {/if}
     </div>
 
-  {:else if activeTab === 'argument'}
-    <!-- ── Tab 2: Argument Structure ── -->
-    <div class="argument-body">
+  {:else if activeTab === 'documents'}
+    <!-- ── Tab: Documents ── -->
+    <div class="tab-body">
 
-      <!-- Left: per-issue notes -->
-      <div class="argument-panel">
-        <div class="argument-panel-toolbar">
-          <button class="btn-from-issue-notes" on:click={() => runDraftFromIssueSummaries(project.id)}>
-            <i class="las la-file-alt"></i> Build from issue notes
-          </button>
-          <div class="briefing-btn-group" use:clickOutside={() => $briefingDropdownOpen = false}>
-            <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id, $selectedBriefingNoteId)}>
-              <i class="las la-lightbulb"></i> Draft from briefing
-              {#if $selectedBriefingNoteId}
-                {@const note = $briefingNotes.find(n => n.id === $selectedBriefingNoteId)}
-                {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
-              {/if}
-            </button>
-            <button class="btn-briefing-chevron" on:click={() => $briefingDropdownOpen = !$briefingDropdownOpen} title="Select briefing note">
-              <i class="las la-angle-down"></i>
-            </button>
-            {#if $briefingDropdownOpen}
-              <div class="briefing-dropdown">
-                <button class="briefing-dropdown-item" class:active={$selectedBriefingNoteId === null} on:click={() => selectBriefingNote(null)}>
-                  <span>Latest briefing note</span>
-                </button>
-                {#each $briefingNotes as note}
-                  <button class="briefing-dropdown-item" class:active={$selectedBriefingNoteId === note.id} on:click={() => selectBriefingNote(note.id)}>
-                    <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
-                    <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  </button>
-                {/each}
-                <button class="briefing-dropdown-item briefing-dropdown-upload" on:click={openBriefingUpload}>
-                  <i class="las la-plus"></i> Upload new briefing note
-                </button>
-              </div>
-            {/if}
-          </div>
+      <!-- Upload zone -->
+      <div
+        class="doc-upload-zone"
+        class:drag-over={docDragOver}
+        class:uploading={docUploading}
+        on:dragover|preventDefault={() => docDragOver = true}
+        on:dragleave={() => docDragOver = false}
+        on:drop={onDocDrop}
+        on:click={() => !docUploading && docFileInput.click()}
+        role="button"
+        tabindex="0"
+        on:keydown={(e) => e.key === 'Enter' && !docUploading && docFileInput.click()}
+      >
+        {#if docUploading}
+          <div class="spinner"></div>
+          <span>Uploading and analysing document...</span>
+          <span class="doc-upload-sub">This may take a moment</span>
+        {:else}
+          <i class="las la-cloud-upload-alt"></i>
+          <span>Drop a document or click to upload</span>
+          <span class="doc-upload-sub">PDF, TXT or MD · The document will be stored and analysed against this appeal</span>
+        {/if}
+      </div>
+      <input type="file" accept=".pdf,.txt,.md" bind:this={docFileInput} on:change={onDocFileChange} style="display:none" />
+
+      {#if docUploadError}
+        <p class="doc-upload-error">{docUploadError}</p>
+      {/if}
+
+      <!-- Document list -->
+      {#if documents.length === 0 && !docUploading}
+        <div class="empty-state" style="padding-top:2rem">
+          <i class="las la-file-alt"></i>
+          <p>No documents uploaded yet. Add officer reports, surveys, and other relevant documents above.</p>
         </div>
-        {#if keyIssues.length === 0}
-          <div class="empty-state">
-            <i class="las la-list-alt"></i>
-            <p>No key issues found. Add them in the Key Issues tab first.</p>
-          </div>
-        {:else}
-          <div class="argument-list">
-            {#each keyIssues as issue (issue.id)}
-              {@const risk = riskColours[issue.last_known_risk_level]}
-              {@const issuePoints = argumentPointsByTrack[issue.id] ?? []}
-              {@const againstPoints = issuePoints.filter(p => p.field === 'argument_against')}
-              {@const forPoints = issuePoints.filter(p => p.field === 'argument_for')}
-              <div class="argument-section">
-                <div class="argument-heading">
-                  <div class="argument-title-row">
-                    {#if issue.discipline}
-                      <span class="discipline-tag">{issue.discipline.replace(/_/g, ' ')}</span>
-                    {/if}
-                    <h2 class="argument-issue-title">{issue.label}</h2>
-                    {#if issue.last_known_risk_level}
-                      <span class="risk-chip" style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}">
-                        {issue.last_known_risk_level.replace(/_/g, ' ')}
-                      </span>
-                    {/if}
-                  </div>
-                  {#if $noteStatus[issue.id] === 'saving'}
-                    <span class="note-status saving"><div class="mini-spinner"></div> Saving</span>
-                  {:else if $noteStatus[issue.id] === 'saved'}
-                    <span class="note-status saved"><i class="las la-check"></i> Saved</span>
-                  {/if}
-                </div>
-                <div class="note-fields">
-                  <div class="note-field-group against">
-                    <label class="note-label against-label">Argument Against</label>
-                    {#if againstPoints.length > 0}
-                      <div class="arg-points-list">
-                        {#each againstPoints as pt (pt.id)}
-                          {@const ev = pt.evidence?.[0]}
-                          <div class="arg-point-row">
-                            <span class="arg-point-headline">{pt.headline}</span>
-                            {#if pt.detailed_summary || ev?.relevance_note}
-                              <button class="arg-point-info" title="View detail" on:click={() => toggleExpanded(pt.id)}>
-                                <i class="las la-info-circle"></i>
-                              </button>
-                            {/if}
-                          </div>
-                          {#if expandedPoints[pt.id] && (pt.detailed_summary || ev?.relevance_note)}
-                            <div class="arg-point-detail">
-                              {#if pt.detailed_summary}<p>{pt.detailed_summary}</p>{/if}
-                              {#if ev?.relevance_note}
-                                <span class="citation-ref-strong">{ev.relevance_note}</span>
-                              {/if}
-                            </div>
-                          {/if}
-                        {/each}
-                      </div>
-                    {/if}
-                    <textarea
-                      class="notes-field against-field"
-                      placeholder="Paste the refusal reason, inspector's objection, or opposing position..."
-                      value={$issueNotes[issue.id]?.argument_against ?? ''}
-                      use:autoresize={$issueNotes[issue.id]?.argument_against}
-                      on:input={(e) => handleNoteInput(issue.id, 'argument_against', e.target.value)}
-                    ></textarea>
-                  </div>
-                  <div class="note-field-group for">
-                    <label class="note-label for-label">Argument For</label>
-                    {#if forPoints.length > 0}
-                      <div class="arg-points-list">
-                        {#each forPoints as pt (pt.id)}
-                          {@const ev = pt.evidence?.[0]}
-                          <div class="arg-point-row">
-                            <span class="arg-point-headline">{pt.headline}</span>
-                            {#if pt.detailed_summary || ev?.relevance_note}
-                              <button class="arg-point-info" title="View detail" on:click={() => toggleExpanded(pt.id)}>
-                                <i class="las la-info-circle"></i>
-                              </button>
-                            {/if}
-                          </div>
-                          {#if expandedPoints[pt.id] && (pt.detailed_summary || ev?.relevance_note)}
-                            <div class="arg-point-detail">
-                              {#if pt.detailed_summary}<p>{pt.detailed_summary}</p>{/if}
-                              {#if ev?.relevance_note}
-                                <span class="citation-ref-strong">{ev.relevance_note}</span>
-                              {/if}
-                            </div>
-                          {/if}
-                        {/each}
-                      </div>
-                    {/if}
-                    <textarea
-                      class="notes-field for-field"
-                      placeholder="Our response — evidence, policy hooks, expert position, how we address the objection..."
-                      value={$issueNotes[issue.id]?.argument_for ?? ''}
-                      use:autoresize={$issueNotes[issue.id]?.argument_for}
-                      on:input={(e) => handleNoteInput(issue.id, 'argument_for', e.target.value)}
-                    ></textarea>
-                  </div>
-                </div>
+      {:else}
+        <div class="doc-list">
+          {#each documents as doc (doc.id)}
+            {@const status = statusLabels[doc.review_status] ?? statusLabels.pending}
+            <div class="doc-card">
+              <div class="doc-card-icon"><i class="las la-file-pdf"></i></div>
+              <div class="doc-card-info">
+                <span class="doc-card-name">{doc.filename}</span>
+                <span class="doc-card-date">{new Date(doc.uploaded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <!-- Right: argument suggestion panel -->
-      <div class="input-panel">
-
-        {#if $suggestState === 'loading'}
-          <div class="analysis-loading">
-            <div class="spinner"></div>
-            <p>Reading document and building suggestion...</p>
-          </div>
-
-        {:else if $suggestState === 'chat'}
-          <!-- Chat thread -->
-          <div class="chat-header">
-            <span class="results-title">Argument suggestion</span>
-            <div class="results-header-actions">
-              {#if Object.keys($acceptedIssues).length > 0}
-                <button class="log-btn" on:click={openSuggestionLogModal}>
-                  <i class="las la-save"></i> Log document
+              <span class="doc-status-chip" style="background:{status.bg};color:{status.colour}">{status.label}</span>
+              {#if doc.ai_review}
+                <button class="doc-review-btn" on:click={() => reviewingDoc = doc}>
+                  <i class="las la-search"></i> Review
                 </button>
               {/if}
-              <button class="reset-btn" on:click={resetSuggestion}><i class="las la-arrow-left"></i> New document</button>
             </div>
-          </div>
-
-          <div class="chat-thread">
-            {#each $conversation as msg, i}
-              {#if msg.role === 'assistant'}
-                {@const isLast = i === $conversation.length - 1 || $conversation.slice(i + 1).every(m => m.role === 'user')}
-                {@const field = $suggestDirection === 'for' ? 'argument_for' : 'argument_against'}
-                <div class="chat-msg assistant">
-                  <div class="chat-prose">{msg.content}</div>
-                  {#if isLast}
-                    <div class="chat-msg-actions">
-                      {#if $suggestTrackIds.length === 1}
-                        {@const issue = keyIssues.find(i => i.id === $suggestTrackIds[0])}
-                        <button
-                          class="accept-btn"
-                          class:accepted={$acceptedIssues[$suggestTrackIds[0]]}
-                          on:click={() => acceptSuggestion($suggestTrackIds[0], field, msg.content, issue?.label ?? '')}
-                        >
-                          {#if $acceptedIssues[$suggestTrackIds[0]]}
-                            <i class="las la-check"></i> Accepted into {issue?.label ?? 'issue'}
-                          {:else}
-                            <i class="las la-check"></i> Accept into {issue?.label ?? 'issue'} ({$suggestDirection === 'for' ? 'for' : 'against'})
-                          {/if}
-                        </button>
-                      {:else}
-                        <div class="accept-multi">
-                          {#each ($suggestTrackIds.length > 0 ? keyIssues.filter(i => $suggestTrackIds.includes(i.id)) : keyIssues) as issue}
-                            <button
-                              class="accept-btn accept-btn-sm"
-                              class:accepted={$acceptedIssues[issue.id]}
-                              on:click={() => acceptSuggestion(issue.id, field, msg.content, issue.label)}
-                            >
-                              {#if $acceptedIssues[issue.id]}
-                                <i class="las la-check"></i> {issue.label}
-                              {:else}
-                                Accept → {issue.label}
-                              {/if}
-                            </button>
-                          {/each}
-                        </div>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              {:else}
-                <div class="chat-msg user">
-                  <p>{msg.content}</p>
-                </div>
-              {/if}
-            {/each}
-            {#if $refinementLoading}
-              <div class="chat-msg assistant loading-msg">
-                <div class="mini-spinner"></div><span>Revising...</span>
-              </div>
-            {/if}
-            <div bind:this={chatEndEl}></div>
-          </div>
-
-          <div class="chat-input-row">
-            <textarea
-              class="chat-input"
-              bind:value={$refinementInput}
-              placeholder="Ask for changes — e.g. 'make the first paragraph more specific to heritage impact'..."
-              rows="2"
-              on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefinement(); } }}
-            ></textarea>
-            <button class="chat-send-btn" disabled={!$refinementInput.trim() || $refinementLoading} on:click={sendRefinement}>
-              <i class="las la-paper-plane"></i>
-            </button>
-          </div>
-
-          {#if $suggestError}
-            <p class="analysis-error">{$suggestError}</p>
-          {/if}
-
-        {:else}
-          <!-- Idle: upload / paste form -->
-          <div class="input-tabs">
-            <button class="input-tab" class:active={$suggestInputTab === 'upload'} on:click={() => $suggestInputTab = 'upload'}>
-              <i class="las la-file-upload"></i> Upload
-            </button>
-            <button class="input-tab" class:active={$suggestInputTab === 'paste'} on:click={() => $suggestInputTab = 'paste'}>
-              <i class="las la-paste"></i> Paste Text
-            </button>
-          </div>
-
-          <div class="idle-form">
-
-            <div class="form-row">
-              <label class="form-label">Document is</label>
-              <div class="direction-toggle">
-                <button class="direction-btn" class:active={$suggestDirection === 'for'} on:click={() => $suggestDirection = 'for'}>
-                  In favour of appellant's case
-                </button>
-                <button class="direction-btn" class:active={$suggestDirection === 'against'} on:click={() => $suggestDirection = 'against'}>
-                  Against appellant's case
-                </button>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <label class="form-label">Document type</label>
-              <select class="doc-type-select" bind:value={$suggestDocumentType}>
-                {#each DOC_TYPES as t}<option>{t}</option>{/each}
-              </select>
-            </div>
-
-            <div class="form-row">
-              <label class="form-label">Document title <span class="form-label-hint">(used in prose references)</span></label>
-              <input class="add-section-input" type="text" bind:value={$suggestDocumentTitle} placeholder="e.g. Officer's Report, Land at Station Road" />
-            </div>
-
-            {#if $suggestInputTab === 'upload'}
-              <div
-                class="upload-zone"
-                class:has-file={$suggestFile}
-                on:dragover|preventDefault
-                on:drop={onSuggestDrop}
-                on:click={() => suggestFileInput.click()}
-                role="button"
-                tabindex="0"
-                on:keydown={(e) => e.key === 'Enter' && suggestFileInput.click()}
-              >
-                {#if $suggestFile}
-                  <i class="las la-file-alt"></i>
-                  <span>{$suggestFile.name}</span>
-                  <span class="upload-sub">Click to change</span>
-                {:else}
-                  <i class="las la-cloud-upload-alt"></i>
-                  <span>Drop a PDF or click to upload</span>
-                  <span class="upload-sub">PDF, TXT or MD · max 20MB</span>
-                {/if}
-              </div>
-              <input type="file" accept=".pdf,.txt,.md" bind:this={suggestFileInput} on:change={onSuggestFileChange} style="display:none" />
-            {:else}
-              <textarea
-                class="paste-area"
-                bind:value={$suggestPasteText}
-                placeholder="Paste text from a document, report or meeting notes here..."
-              ></textarea>
-            {/if}
-
-            <div class="form-row">
-              <label class="form-label">Your guidance <span class="form-label-hint">(optional)</span></label>
-              <textarea
-                class="user-notes-field"
-                bind:value={$suggestUserNotes}
-                placeholder="e.g. Focus on paragraph 5.3, the officer accepts the heritage impact is less than substantial..."
-              ></textarea>
-            </div>
-
-            {#if keyIssues.length > 0}
-              <div class="form-row">
-                <label class="form-label">Issues <span class="form-label-hint">(leave blank for all)</span></label>
-                <div class="issue-checks">
-                  {#each keyIssues as issue}
-                    <label class="issue-check-label">
-                      <input
-                        type="checkbox"
-                        checked={$suggestTrackIds.includes(issue.id)}
-                        on:change={() => toggleSuggestTrack(issue.id)}
-                      />
-                      <span>{issue.label}</span>
-                    </label>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            <div class="analyse-row">
-              <button
-                class="analyse-btn"
-                disabled={$suggestInputTab === 'upload' ? !$suggestFile : !$suggestPasteText.trim()}
-                on:click={runSuggestion}
-              >
-                <i class="las la-magic"></i> Get suggestion
-              </button>
-              <button
-                class="prompt-btn"
-                on:click={openSuggestPromptModal}
-                title="View and edit the prompt before running"
-              >
-                <i class="las la-code"></i> Edit prompt
-              </button>
-            </div>
-
-            {#if $suggestError}
-              <p class="analysis-error">{$suggestError}</p>
-            {/if}
-
-          </div>
-        {/if}
-
-      </div>
+          {/each}
+        </div>
+      {/if}
 
     </div>
 
@@ -772,6 +469,38 @@
                   <i class="las la-layer-group"></i> Configure sections
                 </button>
               </div>
+
+              {#if reviewedDocs.length > 0}
+                <div class="draft-doc-selector">
+                  <span class="draft-doc-selector-label">Generate using documents</span>
+                  <div class="draft-doc-checkboxes">
+                    {#each reviewedDocs as doc (doc.id)}
+                      {@const checked = (selectedDocIds[type.id] ?? new Set()).has(doc.id)}
+                      <label class="draft-doc-check-label" class:checked>
+                        <input
+                          type="checkbox"
+                          {checked}
+                          on:change={() => toggleDocForType(type.id, doc.id)}
+                        />
+                        <span class="draft-doc-check-name">{doc.filename}</span>
+                      </label>
+                    {/each}
+                  </div>
+                  {#if (selectedDocIds[type.id]?.size ?? 0) > 0}
+                    <button
+                      class="draft-generate-from-docs-btn"
+                      disabled={$draftGeneratingFromDocs}
+                      on:click={() => handleGenerateFromDocs(type.id, [...(selectedDocIds[type.id] ?? [])])}
+                    >
+                      {#if $draftGeneratingFromDocs}
+                        <div class="mini-spinner"></div> Generating from documents...
+                      {:else}
+                        <i class="las la-file-medical-alt"></i> Generate from {selectedDocIds[type.id].size} document{selectedDocIds[type.id].size !== 1 ? 's' : ''}
+                      {/if}
+                    </button>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -1008,240 +737,9 @@
   </div>
 {/if}
 
-<!-- Suggestion prompt modal -->
-{#if $suggestPromptOpen}
-  <div class="modal-overlay" on:click|self={() => $suggestPromptOpen = false} role="dialog" aria-modal="true">
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-header-left">
-          <span class="modal-title">Argument Suggestion Prompt</span>
-          {#if $suggestPromptIsCustom}
-            <span class="prompt-custom-badge">Custom saved</span>
-          {:else}
-            <span class="prompt-default-badge">Default</span>
-          {/if}
-        </div>
-        <button class="modal-close" on:click={() => $suggestPromptOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        {#if $suggestPromptLoading}
-          <div class="prompt-loading"><div class="spinner"></div><span>Loading prompt...</span></div>
-        {:else}
-          <p class="prompt-hint"><code>&#123;&#123;DOCUMENT&#125;&#125;</code> is replaced with the full document text when running.</p>
-          <textarea class="prompt-editor" bind:value={$suggestPromptText}></textarea>
-        {/if}
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left">
-          {#if $suggestPromptIsCustom}
-            <button class="modal-reset" on:click={resetSuggestPromptToDefault} disabled={$suggestPromptLoading}>
-              Reset to default
-            </button>
-          {/if}
-        </div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => $suggestPromptOpen = false}>Cancel</button>
-          <button class="modal-save" disabled={$suggestPromptLoading || $suggestPromptSaving || !$suggestPromptText} on:click={saveSuggestPrompt}>
-            {#if $suggestPromptSaving}Saving...{:else if $suggestPromptSaved}<i class="las la-check"></i> Saved{:else}Save as default{/if}
-          </button>
-          <button class="modal-run" disabled={$suggestPromptLoading || !$suggestPromptText} on:click={runSuggestionWithPrompt}>
-            Run with this prompt
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Briefing upload modal -->
-{#if $briefingUploadOpen}
-  <div class="modal-overlay" on:click|self={() => $briefingUploadOpen = false} role="dialog" aria-modal="true">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title">Upload Briefing Note</span>
-        <button class="modal-close" on:click={() => $briefingUploadOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        <div class="input-tabs" style="margin: -1rem -1.5rem 1rem; padding: 0 1.5rem;">
-          <button class="input-tab" class:active={$briefingUploadTab === 'upload'} on:click={() => $briefingUploadTab = 'upload'}>
-            <i class="las la-file-upload"></i> Upload file
-          </button>
-          <button class="input-tab" class:active={$briefingUploadTab === 'paste'} on:click={() => $briefingUploadTab = 'paste'}>
-            <i class="las la-paste"></i> Paste text
-          </button>
-        </div>
-        <div class="form-row" style="margin-bottom:0.75rem">
-          <label class="section-field-label">Title <span class="form-label-hint">(optional)</span></label>
-          <input class="add-section-input" type="text" bind:value={$briefingUploadTitle} placeholder="e.g. Pre-app meeting notes — Jan 2025" />
-        </div>
-        {#if $briefingUploadTab === 'upload'}
-          <div
-            class="upload-zone"
-            class:has-file={$briefingUploadFile}
-            on:dragover|preventDefault
-            on:drop={(e) => { e.preventDefault(); $briefingUploadFile = e.dataTransfer?.files[0] ?? null; }}
-            on:click={() => { const el = document.createElement('input'); el.type='file'; el.accept='.pdf,.txt,.md'; el.onchange = (e) => { $briefingUploadFile = e.target.files?.[0] ?? null; }; el.click(); }}
-            role="button" tabindex="0"
-            on:keydown={(e) => e.key === 'Enter' && e.currentTarget.click()}
-          >
-            {#if $briefingUploadFile}
-              <i class="las la-file-alt"></i>
-              <span>{$briefingUploadFile.name}</span>
-              <span class="upload-sub">Click to change</span>
-            {:else}
-              <i class="las la-cloud-upload-alt"></i>
-              <span>Drop a PDF or click to upload</span>
-              <span class="upload-sub">PDF, TXT or MD · max 20MB</span>
-            {/if}
-          </div>
-        {:else}
-          <textarea class="paste-area" style="min-height:180px" bind:value={$briefingUploadText} placeholder="Paste meeting notes, transcript, or briefing text here..."></textarea>
-        {/if}
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left"></div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => $briefingUploadOpen = false}>Cancel</button>
-          <button class="modal-run" disabled={$briefingUploadLoading || ($briefingUploadTab === 'upload' ? !$briefingUploadFile : !$briefingUploadText.trim())} on:click={() => submitBriefingUpload(project.id)}>
-            {$briefingUploadLoading ? 'Uploading...' : 'Upload & analyse'}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Draft arguments from briefing modal -->
-{#if $briefingDraftOpen}
-  <div class="modal-overlay" on:click|self={closeBriefingDraft} role="dialog" aria-modal="true">
-    <div class="modal modal-briefing-draft">
-      <div class="modal-header">
-        <span class="modal-title">Draft arguments from briefing</span>
-        <button class="modal-close" on:click={closeBriefingDraft}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        {#if $briefingDraftLoading}
-          <div class="briefing-draft-loading">
-            <div class="mini-spinner"></div>
-            <span>Analysing briefing and drafting arguments…</span>
-          </div>
-        {:else if $briefingDraftSuggestions.length === 0}
-          <p class="briefing-draft-empty">No suggestions returned.</p>
-        {:else}
-          <p class="briefing-draft-intro">Review the suggested changes below. Click "Evolve argument" to see how the AI proposes to rework the existing argument, then refine or apply it.</p>
-          <div class="briefing-draft-list">
-            {#each $briefingDraftSuggestions as s (s.track_id)}
-              {@const skipped = $briefingDraftSkipped.has(s.track_id)}
-              {@const evolve = $briefingEvolveState[s.track_id]}
-              <div class="briefing-draft-card" class:bd-skipped={skipped} class:bd-applied={evolve?.applied}>
-                <div class="bd-card-header">
-                  <span class="bd-issue-label">{s.label}</span>
-                  {#if evolve?.applied}
-                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Applied</span>
-                  {:else if skipped}
-                    <span class="bd-status bd-status-skipped">Skipped</span>
-                  {:else if !evolve}
-                    <div class="bd-actions">
-                      <button class="bd-btn-accept" on:click={() => acceptBriefingDraftSuggestion(s.track_id, s.argument_for)}>
-                        <i class="las la-check"></i> Accept as is
-                      </button>
-                      <button class="bd-btn-evolve" on:click={() => startEvolveArgument(s.track_id)}>
-                        <i class="las la-magic"></i> Evolve argument
-                      </button>
-                      <button class="bd-btn-skip" on:click={() => skipBriefingDraftSuggestion(s.track_id)}>Skip</button>
-                    </div>
-                  {/if}
-                </div>
-                <div class="bd-new-info">
-                  <span class="bd-new-info-label">From briefing</span>
-                  <p class="bd-argument-text">{s.argument_for}</p>
-                </div>
-                {#if evolve && !evolve.applied}
-                  <div class="bd-evolve-panel">
-                    {#if evolve.evolved}
-                      <div class="bd-evolve-result">
-                        <span class="bd-evolved-label">Proposed argument</span>
-                        <p class="bd-evolved-text">{evolve.evolved}</p>
-                      </div>
-                    {/if}
-                    <div class="bd-evolve-chat">
-                      {#if evolve.loading}
-                        <div class="bd-evolve-loading"><div class="mini-spinner"></div><span>Reworking argument…</span></div>
-                      {:else}
-                        <textarea
-                          class="bd-chat-input"
-                          placeholder={evolve.evolved ? 'Ask for further changes…' : 'What changes do you want? e.g. focus more on heritage impacts, make it more concise…'}
-                          rows="2"
-                          value={evolve.input}
-                          on:input={(e) => briefingEvolveState.update(st => ({ ...st, [s.track_id]: { ...st[s.track_id], input: e.target.value } }))}
-                          on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(project.id, s.track_id); } }}
-                        ></textarea>
-                      {/if}
-                      <div class="bd-evolve-actions">
-                        <button class="bd-chat-send" disabled={!evolve.input?.trim() || evolve.loading} on:click={() => sendChatMessage(project.id, s.track_id)}>
-                          <i class="las la-paper-plane"></i>
-                        </button>
-                        {#if evolve.evolved}
-                          <button class="bd-btn-apply" on:click={() => applyEvolvedArgument(s.track_id)}>
-                            <i class="las la-check"></i> Apply
-                          </button>
-                        {/if}
-                      </div>
-                    </div>
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Key issue draft modal -->
-{#if $keyIssueDraftOpen}
-  <div class="modal-overlay" on:click|self={closeKeyIssueDraft} role="dialog" aria-modal="true">
-    <div class="modal modal-briefing-draft">
-      <div class="modal-header">
-        <span class="modal-title">Draft issue notes from briefing</span>
-        <button class="modal-close" on:click={closeKeyIssueDraft}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        {#if $keyIssueDraftLoading}
-          <div class="briefing-draft-loading"><div class="mini-spinner"></div><span>Analysing briefing and drafting notes…</span></div>
-        {:else if $keyIssueDraftSuggestions.length === 0}
-          <p class="briefing-draft-empty">No suggestions returned.</p>
-        {:else}
-          <p class="briefing-draft-intro">Review the suggested notes below. Accept the ones you want to apply to your key issues.</p>
-          <div class="briefing-draft-list">
-            {#each $keyIssueDraftSuggestions as s (s.track_id)}
-              {@const accepted = $keyIssueDraftAccepted.has(s.track_id)}
-              {@const skipped = $keyIssueDraftSkipped.has(s.track_id)}
-              <div class="briefing-draft-card" class:bd-applied={accepted} class:bd-skipped={skipped}>
-                <div class="bd-card-header">
-                  <span class="bd-issue-label">{s.label}</span>
-                  {#if accepted}
-                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Applied</span>
-                  {:else if skipped}
-                    <span class="bd-status bd-status-skipped">Skipped</span>
-                  {:else}
-                    <div class="bd-actions">
-                      <button class="bd-btn-accept" on:click={() => acceptKeyIssueSummary(s.track_id, s.summary)}>
-                        <i class="las la-check"></i> Accept
-                      </button>
-                      <button class="bd-btn-skip" on:click={() => skipKeyIssueSummary(s.track_id)}>Skip</button>
-                    </div>
-                  {/if}
-                </div>
-                <p class="bd-argument-text">{s.summary}</p>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    </div>
-  </div>
+<!-- Document review modal -->
+{#if reviewingDoc}
+  <AppealDocReviewModal doc={reviewingDoc} on:close={() => reviewingDoc = null} on:action={() => reviewingDoc = null} />
 {/if}
 
 <!-- Prompt modal -->
@@ -1398,375 +896,6 @@
     color: #1e293b;
   }
 
-  /* ── Argument Structure two-panel ── */
-  .argument-body {
-    display: grid;
-    grid-template-columns: 3fr 2fr;
-    align-items: start;
-    padding: 1.5rem;
-    gap: 1.5rem;
-    min-height: 600px;
-  }
-
-  .argument-panel {
-    padding: 0;
-    background: transparent;
-  }
-
-  .input-panel {
-    display: flex;
-    flex-direction: column;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-    position: sticky;
-    top: 1.5rem;
-  }
-
-  .input-tabs {
-    display: flex;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
-    flex-shrink: 0;
-  }
-
-  .input-tab {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.375rem;
-    padding: 0.75rem 0.5rem;
-    border: none;
-    background: transparent;
-    color: #64748b;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all 0.15s;
-    font-family: inherit;
-  }
-
-  .input-tab.active { color: #7c3aed; border-bottom-color: #7c3aed; }
-  .input-tab:hover:not(.active) { color: #374151; }
-
-  .upload-zone {
-    margin: 1.25rem;
-    border: 2px dashed #cbd5e1;
-    border-radius: 10px;
-    padding: 2.5rem 1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-    transition: all 0.15s;
-    background: white;
-    text-align: center;
-  }
-
-  .upload-zone:hover, .upload-zone.drag-over { border-color: #7c3aed; background: #faf5ff; }
-  .upload-zone i { font-size: 2.25rem; color: #94a3b8; }
-  .upload-zone span { font-size: 0.875rem; color: #475569; font-weight: 500; }
-  .upload-sub { font-size: 0.8rem !important; color: #94a3b8 !important; font-weight: 400 !important; }
-
-  .paste-area {
-    flex: 1;
-    margin: 1.25rem;
-    padding: 0.875rem;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    resize: none;
-    min-height: 200px;
-    transition: border-color 0.15s;
-    background: white;
-  }
-
-  .paste-area:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.08); }
-
-  .analyse-btn {
-    padding: 0.625rem 1rem;
-    background: #7c3aed;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s;
-  }
-
-  .analyse-btn:hover:not(:disabled) { background: #6d28d9; }
-  .analyse-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .idle-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding: 1rem;
-    overflow-y: auto;
-  }
-
-  .form-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .form-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #64748b;
-  }
-
-  .form-label-hint {
-    font-weight: 400;
-    color: #94a3b8;
-  }
-
-  .doc-type-select {
-    padding: 0.5rem 0.625rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    background: white;
-    color: #1e293b;
-  }
-
-  .doc-type-select:focus { outline: none; border-color: #7c3aed; }
-
-  .direction-toggle {
-    display: flex;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    overflow: hidden;
-  }
-
-  .direction-btn {
-    flex: 1;
-    padding: 0.5rem 0.75rem;
-    border: none;
-    background: white;
-    font-size: 0.8125rem;
-    font-family: inherit;
-    color: #64748b;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .direction-btn:first-child { border-right: 1px solid #e2e8f0; }
-
-  .direction-btn.active {
-    background: #1e293b;
-    color: white;
-    font-weight: 600;
-  }
-
-  .user-notes-field {
-    padding: 0.625rem 0.75rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    font-family: inherit;
-    color: #374151;
-    background: white;
-    resize: vertical;
-    min-height: 80px;
-    line-height: 1.5;
-  }
-
-  .user-notes-field:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.07); }
-  .user-notes-field::placeholder { color: #94a3b8; }
-
-  .issue-checks {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .issue-check-label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: #374151;
-    cursor: pointer;
-  }
-
-  .issue-check-label input[type="checkbox"] { cursor: pointer; accent-color: #7c3aed; }
-
-  .upload-zone.has-file { border-color: #7c3aed; background: #faf5ff; }
-  .upload-zone.has-file i { color: #7c3aed; }
-
-  .analysis-loading {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 1rem;
-    color: #64748b;
-    padding: 2rem;
-  }
-
-  .analysis-loading p { margin: 0; font-size: 0.875rem; }
-
-  .analysis-error {
-    margin: 0.75rem 1rem 0;
-    font-size: 0.8125rem;
-    color: #ef4444;
-  }
-
-  .results-header, .chat-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.875rem 1rem;
-    border-bottom: 1px solid #e2e8f0;
-    flex-shrink: 0;
-  }
-
-  /* Chat thread */
-  .chat-thread {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .chat-msg {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    max-width: 100%;
-  }
-
-  .chat-msg.assistant .chat-prose {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 0.875rem 1rem;
-    font-size: 0.875rem;
-    line-height: 1.65;
-    color: #1e293b;
-    white-space: pre-wrap;
-  }
-
-  .chat-msg.user {
-    align-items: flex-end;
-  }
-
-  .chat-msg.user p {
-    background: #7c3aed;
-    color: white;
-    border-radius: 8px;
-    padding: 0.625rem 0.875rem;
-    font-size: 0.8125rem;
-    line-height: 1.5;
-    max-width: 85%;
-    margin: 0;
-    white-space: pre-wrap;
-  }
-
-  .chat-msg.loading-msg {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.5rem;
-    color: #64748b;
-    font-size: 0.8125rem;
-    padding: 0.5rem 0;
-  }
-
-  .chat-msg-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    padding-top: 0.25rem;
-  }
-
-  .accept-multi {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .accept-btn {
-    padding: 0.4rem 0.875rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1.5px solid #16a34a;
-    background: white;
-    color: #16a34a;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-
-  .accept-btn:hover { background: #f0fdf4; }
-
-  .accept-btn.accepted {
-    background: #dcfce7;
-    border-color: #16a34a;
-    color: #15803d;
-    cursor: default;
-  }
-
-  .accept-btn-sm {
-    font-size: 0.75rem;
-    padding: 0.3rem 0.625rem;
-  }
-
-  .chat-input-row {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid #e2e8f0;
-    align-items: flex-end;
-    flex-shrink: 0;
-  }
-
-  .chat-input {
-    flex: 1;
-    resize: none;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8125rem;
-    font-family: inherit;
-    line-height: 1.5;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-
-  .chat-input:focus { border-color: #7c3aed; }
-
-  .chat-send-btn {
-    padding: 0.5rem 0.75rem;
-    background: #7c3aed;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 1rem;
-    line-height: 1;
-    flex-shrink: 0;
-    transition: background 0.15s;
-  }
-
-  .chat-send-btn:hover:not(:disabled) { background: #6d28d9; }
-  .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .results-title { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
 
   .reset-btn {
     display: flex;
@@ -1784,89 +913,6 @@
 
   .reset-btn:hover { background: #f1f5f9; }
 
-  .results-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 3rem 1rem;
-    color: #94a3b8;
-    text-align: center;
-  }
-
-  .results-empty i { font-size: 2rem; color: #16a34a; }
-  .results-empty p { margin: 0; font-size: 0.875rem; }
-
-  .results-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    padding: 1rem;
-    overflow-y: auto;
-  }
-
-  .result-summary {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 7px;
-    padding: 0.875rem 1rem;
-  }
-
-  .result-summary p {
-    margin: 0;
-    font-size: 0.875rem;
-    color: #374151;
-    line-height: 1.6;
-  }
-
-  .result-group { display: flex; flex-direction: column; gap: 0.625rem; }
-
-  .result-group-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #64748b;
-  }
-
-  .result-subgroup { display: flex; flex-direction: column; gap: 0.5rem; }
-
-  .result-subgroup-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #1e293b;
-    padding-top: 0.25rem;
-  }
-
-  .coverage-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.5rem 0.75rem;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-  }
-
-  .coverage-issue { font-size: 0.8rem; font-weight: 600; color: #1e293b; }
-  .coverage-text  { font-size: 0.8rem; color: #64748b; line-height: 1.4; }
-
-  .result-card {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 7px;
-    padding: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .result-card-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
   .result-field-tag {
     font-size: 0.7rem;
     font-weight: 700;
@@ -1878,161 +924,6 @@
 
   .result-field-tag.against { background: #fee2e2; color: #b91c1c; }
   .result-field-tag.for     { background: #ede9fe; color: #6d28d9; }
-
-  .result-point-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.5rem;
-    width: 100%;
-    background: none;
-    border: none;
-    padding: 0;
-    text-align: left;
-    font-family: inherit;
-    cursor: pointer;
-  }
-
-  .result-point-row:disabled { cursor: default; }
-
-  .result-expand-icon {
-    font-size: 0.7rem;
-    color: #94a3b8;
-    flex-shrink: 0;
-    margin-top: 0.25rem;
-  }
-
-  .result-point-detail {
-    margin: 0.375rem 0 0;
-    font-size: 0.8rem;
-    color: #475569;
-    line-height: 1.55;
-    padding: 0.5rem 0.625rem;
-    background: #f8fafc;
-    border-radius: 4px;
-    border: 1px solid #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-
-  .result-point-detail p { margin: 0; }
-
-  .arg-point-detail {
-    padding: 0.5rem 0.75rem 0.625rem;
-    background: white;
-    border-top: 1px solid #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-
-  .arg-point-detail p { margin: 0; font-size: 0.8rem; color: #475569; line-height: 1.55; }
-
-  .citation-block {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.375rem;
-  }
-
-  .citation-quote {
-    font-size: 0.75rem;
-    color: #64748b;
-    font-style: italic;
-    line-height: 1.4;
-  }
-
-  .citation-ref {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #94a3b8;
-    white-space: nowrap;
-  }
-
-  .citation-ref-strong {
-    font-size: 0.78rem;
-    font-weight: 700;
-    font-style: italic;
-    color: #475569;
-  }
-
-  .result-point {
-    margin: 0;
-    font-size: 0.8125rem;
-    color: #374151;
-    line-height: 1.5;
-    flex: 1;
-  }
-
-  .result-actions { display: flex; gap: 0.4rem; }
-
-  .result-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 5px;
-    background: white;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.15s;
-  }
-
-  .result-btn.info { color: #7c3aed; }
-  .result-btn.info:hover { background: #f5f3ff; border-color: #c4b5fd; }
-  .result-btn.accept { color: #16a34a; }
-  .result-btn.accept:hover { background: #f0fdf4; border-color: #86efac; }
-  .result-btn.dismiss { color: #94a3b8; }
-  .result-btn.dismiss:hover { background: #f8fafc; border-color: #cbd5e1; }
-
-  /* ── Argument Structure ── */
-  .argument-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-    max-width: 800px;
-  }
-
-  .argument-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .argument-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .argument-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    min-width: 0;
-  }
-
-  .argument-issue-title {
-    margin: 0;
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: #1e293b;
-  }
-
-  .note-status {
-    font-size: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    flex-shrink: 0;
-  }
-
-  .note-status.saving { color: #94a3b8; }
-  .note-status.saved  { color: #16a34a; }
 
   /* Shared chips */
   .discipline-tag {
@@ -2078,24 +969,6 @@
   .summary-field { min-height: 72px; }
   .notes-field   { min-height: 100px; }
 
-  .note-fields {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .note-field-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-  }
-
-  .note-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #64748b;
-  }
-
   .summary-field:focus,
   .notes-field:focus {
     outline: none;
@@ -2106,49 +979,6 @@
 
   .summary-field::placeholder,
   .notes-field::placeholder { color: #94a3b8; }
-
-  /* Structured argument points */
-  .arg-points-list {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    overflow: hidden;
-  }
-
-  .arg-point-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
-  }
-
-  .arg-point-row:first-child { border-top: none; }
-
-  .arg-point-headline {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #1e293b;
-    line-height: 1.4;
-    flex: 1;
-  }
-
-  .arg-point-info {
-    flex-shrink: 0;
-    background: none;
-    border: none;
-    padding: 0.1rem 0.2rem;
-    cursor: pointer;
-    color: #94a3b8;
-    font-size: 0.95rem;
-    line-height: 1;
-    transition: color 0.12s;
-  }
-
-  .arg-point-info:hover { color: #7c3aed; }
 
 
   /* Loading / error / empty */
@@ -2440,38 +1270,6 @@
     overflow: hidden;
     min-height: 400px;
   }
-
-  /* Analyse row */
-  .analyse-row {
-    display: flex;
-    gap: 0.5rem;
-    margin: 0 1.25rem 1.25rem;
-  }
-
-  .analyse-row .analyse-btn {
-    margin: 0;
-    flex: 1;
-  }
-
-  .prompt-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.625rem 0.875rem;
-    background: white;
-    color: #64748b;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-    transition: all 0.15s;
-  }
-
-  .prompt-btn:hover:not(:disabled) { background: #f1f5f9; border-color: #cbd5e1; color: #374151; }
-  .prompt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Modal */
   .modal-overlay {
@@ -2878,30 +1676,6 @@
   .add-section-btn:hover:not(:disabled) { background: #6d28d9; }
   .add-section-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* ── Results header actions ── */
-  .results-header-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .log-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.625rem;
-    background: #ede9fe;
-    border: 1px solid #c4b5fd;
-    border-radius: 5px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #6d28d9;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .log-btn:hover { background: #ddd6fe; }
-
   /* ── Document log tab ── */
   .log-list {
     display: flex;
@@ -3058,294 +1832,6 @@
     gap: 0.5rem;
   }
 
-  /* ── Key Issues toolbar ── */
-  .key-issues-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    max-width: 800px;
-  }
-
-  /* ── Argument panel toolbar ── */
-  .argument-panel-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .btn-from-issue-notes {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.875rem;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: #374151;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-  }
-
-  .btn-from-issue-notes:hover { background: #f8fafc; border-color: #cbd5e1; }
-
-  /* ── Briefing button group ── */
-  .briefing-btn-group {
-    position: relative;
-    display: flex;
-  }
-
-  .btn-draft-from-briefing {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.75rem;
-    background: #f5f3ff;
-    border: 1px solid #ddd6fe;
-    border-right: none;
-    border-radius: 6px 0 0 6px;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: #5b21b6;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-  }
-
-  .btn-draft-from-briefing:hover { background: #ede9fe; }
-
-  .btn-briefing-chevron {
-    display: flex;
-    align-items: center;
-    padding: 0.4rem 0.5rem;
-    background: #f5f3ff;
-    border: 1px solid #ddd6fe;
-    border-radius: 0 6px 6px 0;
-    color: #7c3aed;
-    cursor: pointer;
-    font-size: 0.75rem;
-  }
-
-  .btn-briefing-chevron:hover { background: #ede9fe; }
-
-  .briefing-note-pill {
-    display: inline-block;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    background: #ddd6fe;
-    color: #4c1d95;
-    border-radius: 4px;
-    padding: 0.05rem 0.4rem;
-    font-size: 0.7rem;
-    vertical-align: middle;
-  }
-
-  .briefing-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    min-width: 240px;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    z-index: 100;
-    overflow: hidden;
-  }
-
-  .briefing-dropdown-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.6rem 1rem;
-    background: none;
-    border: none;
-    font-size: 0.8125rem;
-    color: #374151;
-    cursor: pointer;
-    text-align: left;
-    font-family: inherit;
-    border-bottom: 1px solid #f1f5f9;
-  }
-
-  .briefing-dropdown-item:last-child { border-bottom: none; }
-  .briefing-dropdown-item:hover, .briefing-dropdown-item.active { background: #f8fafc; }
-  .briefing-dropdown-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .briefing-dropdown-date { font-size: 0.75rem; color: #94a3b8; flex-shrink: 0; }
-  .briefing-dropdown-upload { color: #7c3aed; font-weight: 500; }
-
-  /* ── Briefing draft modal ── */
-  .modal-briefing-draft { width: 680px; }
-  .modal-briefing-draft .modal-body { overflow-y: auto; }
-
-  .briefing-draft-loading {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 2rem;
-    color: #64748b;
-    font-size: 0.875rem;
-  }
-
-  .briefing-draft-intro {
-    font-size: 0.875rem;
-    color: #64748b;
-    margin: 0 0 1rem;
-    line-height: 1.5;
-  }
-
-  .briefing-draft-empty {
-    color: #94a3b8;
-    font-size: 0.875rem;
-    padding: 1rem 0;
-  }
-
-  .briefing-draft-list { display: flex; flex-direction: column; gap: 0.75rem; }
-
-  .briefing-draft-card {
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-    transition: opacity 0.2s;
-  }
-
-  .briefing-draft-card.bd-skipped { opacity: 0.45; }
-  .briefing-draft-card.bd-applied { border-color: #bbf7d0; background: #f0fdf4; }
-
-  .bd-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.625rem 0.875rem;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
-  }
-
-  .bd-issue-label { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
-
-  .bd-actions { display: flex; align-items: center; gap: 0.5rem; }
-
-  .bd-btn-accept {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.3rem 0.75rem;
-    background: #7c3aed;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .bd-btn-accept:hover { background: #6d28d9; }
-
-  .bd-btn-evolve {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.3rem 0.75rem;
-    background: #1d4ed8;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .bd-btn-evolve:hover { background: #1e40af; }
-
-  .bd-btn-skip {
-    padding: 0.3rem 0.625rem;
-    background: none;
-    border: 1px solid #e2e8f0;
-    border-radius: 5px;
-    font-size: 0.8rem;
-    color: #64748b;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .bd-btn-skip:hover { background: #f1f5f9; }
-
-  .bd-status {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.8rem;
-    font-weight: 500;
-    padding: 0.25rem 0.625rem;
-    border-radius: 4px;
-  }
-
-  .bd-status-accepted { background: #dcfce7; color: #15803d; }
-  .bd-status-skipped { background: #f1f5f9; color: #64748b; }
-
-  .bd-new-info { padding: 0.625rem 0.875rem; }
-  .bd-new-info-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
-  .bd-argument-text { margin: 0.25rem 0 0; font-size: 0.875rem; color: #374151; line-height: 1.6; white-space: pre-wrap; }
-
-  .bd-evolve-panel {
-    border-top: 1px solid #e2e8f0;
-    padding: 0.75rem 0.875rem;
-    background: #fafafa;
-  }
-
-  .bd-evolve-loading { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: #64748b; }
-  .bd-evolved-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #7c3aed; }
-  .bd-evolved-text { margin: 0.25rem 0 0.75rem; font-size: 0.875rem; color: #1e293b; line-height: 1.6; white-space: pre-wrap; }
-
-  .bd-evolve-chat { display: flex; gap: 0.5rem; align-items: flex-end; }
-  .bd-chat-input { flex: 1; resize: none; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.5rem 0.625rem; font-size: 0.8125rem; font-family: inherit; line-height: 1.4; }
-  .bd-chat-input:focus { outline: none; border-color: #7c3aed; }
-
-  .bd-evolve-actions { display: flex; gap: 0.5rem; align-items: center; }
-
-  .bd-chat-send {
-    padding: 0.45rem 0.625rem;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    cursor: pointer;
-    color: #64748b;
-    font-size: 0.9rem;
-  }
-
-  .bd-chat-send:hover:not(:disabled) { background: #e2e8f0; }
-  .bd-chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .bd-btn-apply {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.4rem 0.875rem;
-    background: #16a34a;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-  }
-
-  .bd-btn-apply:hover { background: #15803d; }
-
   /* ── Misc ── */
   .add-section-input {
     padding: 0.5rem 0.625rem;
@@ -3359,4 +1845,181 @@
 
   .add-section-input:focus { outline: none; border-color: #7c3aed; }
   .section-field-label { font-size: 0.75rem; font-weight: 600; color: #374151; display: block; margin-bottom: 0.25rem; }
+
+  /* ── Documents tab ── */
+  .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.3rem;
+    background: #ede9fe;
+    color: #6d28d9;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-left: 0.35rem;
+    vertical-align: middle;
+  }
+
+  .doc-upload-zone {
+    max-width: 800px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: white;
+    text-align: center;
+    margin-bottom: 1.5rem;
+  }
+
+  .doc-upload-zone:hover, .doc-upload-zone.drag-over { border-color: #7c3aed; background: #faf5ff; }
+  .doc-upload-zone.uploading { cursor: default; border-color: #c4b5fd; background: #faf5ff; }
+  .doc-upload-zone i { font-size: 2rem; color: #94a3b8; }
+  .doc-upload-zone span { font-size: 0.875rem; color: #475569; font-weight: 500; }
+  .doc-upload-sub { font-size: 0.8rem !important; color: #94a3b8 !important; font-weight: 400 !important; }
+
+  .doc-upload-error {
+    margin: -1rem 0 1rem;
+    font-size: 0.8125rem;
+    color: #ef4444;
+  }
+
+  .doc-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 800px;
+  }
+
+  .doc-card {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.75rem 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+  }
+
+  .doc-card-icon { color: #94a3b8; font-size: 1.25rem; flex-shrink: 0; }
+
+  .doc-card-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .doc-card-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .doc-card-date { font-size: 0.75rem; color: #94a3b8; }
+
+  .doc-status-chip {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .doc-review-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.625rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .doc-review-btn:hover { background: #f1f5f9; color: #374151; }
+
+  /* ── Draft doc selector ── */
+  .draft-doc-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .draft-doc-selector-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+  }
+
+  .draft-doc-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .draft-doc-check-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    color: #475569;
+    background: #f8fafc;
+    transition: all 0.15s;
+    user-select: none;
+  }
+
+  .draft-doc-check-label:hover { background: #f1f5f9; border-color: #cbd5e1; }
+  .draft-doc-check-label.checked { background: #faf5ff; border-color: #c4b5fd; color: #6d28d9; }
+
+  .draft-doc-check-label input[type="checkbox"] { flex-shrink: 0; accent-color: #7c3aed; }
+
+  .draft-doc-check-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  .draft-generate-from-docs-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    align-self: flex-start;
+    padding: 0.4rem 0.875rem;
+    background: #4f46e5;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .draft-generate-from-docs-btn:hover:not(:disabled) { background: #4338ca; }
+  .draft-generate-from-docs-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

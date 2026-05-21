@@ -1,10 +1,10 @@
 /**
  * Appeal tool service.
  * Handles appeal argument generation, document review, point extraction,
- * briefing-driven argument drafting, and prose suggestion flows.
+ * and formal draft document generation.
  */
 
-import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock } from './llm.shared.js';
+import { client, noEmDash, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants
@@ -238,7 +238,83 @@ Produce the complete ${draftTypeName} as HTML now.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Briefing-driven argument drafting
+// Sequential doc-summary draft pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function generateDraftFromDocSummaries({ projectName, draftTypeName, issueContext, documents, guidingBrief = null }) {
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\nGuiding brief for this document type:\n${guidingBrief.guidance_content.trim()}`
+    : '';
+
+  // Step 1: initial draft from issue notes
+  const initPrompt = `You are drafting a formal planning appeal document. Output HTML only — no markdown.
+
+Project: ${projectName}
+Document type: ${draftTypeName}${guidingBlock}
+
+Working argument notes by issue:
+${issueContext}
+
+Write the complete ${draftTypeName} as clean HTML. Use <h2> for main sections, <h3> for sub-sections, <p> for body text, <ol>/<li> for numbered lists, <strong> for bold. Do not use markdown characters or em dashes.`;
+
+  let response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: initPrompt }]
+  });
+
+  let draft = noEmDash(response.content[0].text.trim()
+    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+
+  // Step 2: refine sequentially with each document summary
+  for (const doc of documents) {
+    const review = doc.ai_review;
+    if (!review?.relevant) continue;
+
+    const helpful = review.extracted_points?.helpful?.map(p => `- ${p}`).join('\n') || '';
+    const harmful = review.extracted_points?.harmful?.map(p => `- ${p}`).join('\n') || '';
+    const suggestions = review.bullet_suggestions?.map(p => `- ${p}`).join('\n') || '';
+
+    const docBlock = [
+      `Document: ${doc.filename}`,
+      `Summary: ${review.relevance_summary}`,
+      review.affected_issues?.length ? `Relevant to: ${review.affected_issues.join(', ')}` : '',
+      helpful ? `Points in favour:\n${helpful}` : '',
+      harmful ? `Points against (to acknowledge and address):\n${harmful}` : '',
+      suggestions ? `Suggested additions:\n${suggestions}` : '',
+      review.draft_paragraph ? `Suggested paragraph:\n${review.draft_paragraph}` : '',
+      review.caution_note ? `Caution: ${review.caution_note}` : ''
+    ].filter(Boolean).join('\n');
+
+    const refinePrompt = `You are updating a formal planning appeal document to incorporate evidence from a new document. Output the complete updated HTML only — no markdown, no explanation.
+
+Project: ${projectName}
+Document type: ${draftTypeName}
+
+New document to incorporate:
+${docBlock}
+
+Current draft:
+${draft}
+
+Update the draft to naturally incorporate the relevant evidence from this document. Where it strengthens existing arguments, reinforce them. Where it raises points against the case, acknowledge and address them. Where it introduces new relevant points, add them. Preserve the document's structure and formal tone. Output the complete updated draft HTML.`;
+
+    response = await client.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: 5000,
+      messages: [{ role: 'user', content: refinePrompt }]
+    });
+
+    draft = noEmDash(response.content[0].text.trim()
+      .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+  }
+
+  return draft;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Planning application briefing-driven argument drafting
+// (used by planning application controller — kept here as it shares LLM config)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues }) {
@@ -252,7 +328,7 @@ For each issue listed, identify whether the briefing contains any information th
 
 If the briefing contains relevant material for an issue, write 2–5 sentences formulating the argument. Write as argument starters that can be developed further — not as a summary of what was discussed. Do not reference "the briefing" or "the transcript" in your output; simply state the argument as if it is your working position ("The proposals...", "It is considered...", "In terms of [issue], the development...").
 
-Only include issues where the briefing genuinely provides something to work with. If there is nothing relevant for an issue, omit it from your response entirely — do not include placeholders or notes about what is missing.
+Only include issues where the briefing genuinely provides something to work with. If there is nothing relevant for an issue, omit it from your response entirely.
 
 Where an issue already has existing notes, supplement rather than replace — add new angles from the briefing not already captured.
 
@@ -266,8 +342,6 @@ Respond ONLY with valid JSON — no markdown, no explanation:
 [
   { "track_id": 42, "argument_for": "The proposals..." }
 ]
-
-Only include issues where you have substantive argument content to contribute. Omit issues entirely if the briefing has nothing relevant.
 
 Do not use em dashes (—) anywhere in your output; use a comma, colon, or rewrite the sentence instead.`;
 
@@ -296,9 +370,7 @@ export async function evolveArgumentFromBriefing({ issueLabel, existingArgument,
 
   const userPrompt = `Issue: ${issueLabel}
 
-${hasExisting
-  ? `Current argument:\n${existingArgument.trim()}`
-  : `Current argument: (none yet)`}
+${hasExisting ? `Current argument:\n${existingArgument.trim()}` : `Current argument: (none yet)`}
 
 New information from briefing note:\n${newInformation.trim()}
 
@@ -319,142 +391,6 @@ Write only the revised argument text. No preamble, no explanation of what change
     model: MODEL_SONNET,
     system: systemPrompt,
     max_tokens: 2000,
-    messages
-  });
-
-  return noEmDash(response.content[0].text.trim());
-}
-
-export async function chatArgumentWithBriefing({ issueLabel, existingArgument, briefingContent, conversation }) {
-  const systemPrompt = `You are a planning consultant helping to refine a planning argument for a specific planning appeal issue. You have been given the issue label, the current argument text, and the content of a briefing note as context.
-
-The user will ask you to amend or refine the argument based on their instructions. Always respond with ONLY the revised argument text — no preamble, no explanation, no commentary. Write in formal planning language. Do not use em dashes (—).
-
-Issue: ${issueLabel}
-
-Current argument:
-${existingArgument?.trim() || '(none yet)'}
-
-Briefing note content:
-${briefingContent?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000) || '(no briefing content available)'}`;
-
-  const response = await client.messages.create({
-    model: MODEL_SONNET,
-    system: systemPrompt,
-    max_tokens: 2000,
-    messages: conversation
-  });
-
-  return noEmDash(response.content[0].text.trim());
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Argument suggestion (prose chat)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function buildArgumentSuggestionPrompt({
-  text,
-  documentBlock,
-  documentType,
-  documentTitle,
-  documentDirection,
-  issues,
-  briefingNote,
-  refusalReasons,
-  userNotes
-}) {
-  const docBlock = documentBlock ?? buildFullDocumentBlock(text);
-
-  const directionLabel = documentDirection === 'for'
-    ? 'in favour of the appellant\'s case'
-    : 'against the appellant\'s case (e.g. officer report, refusal notice, LPA submission)';
-
-  const briefingSection = briefingNote
-    ? `## Project Briefing Note\nThis is background and strategic context for the project — use it to understand the client's overall position, objectives, and sensitivities. Not every part will be relevant to every issue; draw on it where it informs the argument but do not force it in where it does not apply.\n\n${briefingNote.trim()}`
-    : '## Project Briefing Note\nNo briefing note on file.';
-
-  const refusalSection = refusalReasons?.length
-    ? `## Reasons for Refusal\nThese are the grounds on which planning permission was refused. They define the core issues the appeal must address — use them to understand what the LPA's case rests on and what this document needs to speak to.\n\n` +
-      refusalReasons.map(r => {
-        const risk = r.risk_level ? ` [${r.risk_level.replace(/_/g, ' ')}]` : '';
-        const key  = r.is_key_issue ? ' ★ KEY ISSUE' : '';
-        const body = r.summary?.trim() ? `\n${r.summary.trim()}` : '';
-        return `- ${r.title}${risk}${key}${body}`;
-      }).join('\n')
-    : '';
-
-  const issuesSection = issues.map(issue => {
-    const forText  = issue.argument_for?.trim()      || 'Nothing recorded yet.';
-    const agText   = issue.argument_against?.trim()  || 'Nothing recorded yet.';
-    return `### Issue: ${issue.label} (id:${issue.id})\n**Current argument FOR the appellant:**\n${forText}\n\n**Current argument AGAINST (LPA position):**\n${agText}`;
-  }).join('\n\n---\n\n');
-
-  const userNotesSection = userNotes
-    ? `## User Guidance (high priority — follow this where it conflicts with your judgement)\n${userNotes.trim()}`
-    : '';
-
-  const fieldLabel = documentDirection === 'for' ? 'argument FOR the appellant' : 'argument AGAINST (LPA position)';
-
-  const issueOutputBlock = issues.map(i =>
-    `**Issue: ${i.label}**\n[New sentences or paragraphs to add — or "Nothing to add." if this document does not contribute anything new for this issue]`
-  ).join('\n\n');
-
-  return `You are a planning appeal consultant helping to build the working argument for a planning appeal.
-
-${briefingSection}
-${refusalSection ? '\n' + refusalSection : ''}
-## Issues to Address
-${issuesSection}
-
-${userNotesSection}
-
-## Document Being Reviewed
-Type: ${documentType}
-Title: ${documentTitle || 'Unknown'}
-Direction: This document is ${directionLabel}.
-
-Read the document carefully — conclusions and summaries first, then the supporting detail. Then read the current argument notes for each issue above.
-
-Your task is to suggest **additions only** — new sentences or short paragraphs that this document contributes to the **${fieldLabel}** for each issue. Do not restate, rewrite, or repeat anything already covered in the existing argument. Only output content that is genuinely new: new evidence, findings, technical conclusions, or expert positions that the existing notes do not already capture.
-
-Requirements:
-- Write in flowing prose — brief, note-like but in full sentences and paragraphs
-- Reference the document inline: name it by title, cite paragraph/section numbers where available (e.g. "At paragraph 7.3 of the ${documentTitle || 'document'}...")
-- Where an author or expert is named in the document, reference them (e.g. "The heritage consultant concludes...")
-- Do not use bullet points or numbered lists — prose only
-- Keep additions concise: 1–4 sentences per issue unless the document warrants more
-- If this document adds nothing new for a particular issue, write exactly: "Nothing to add."
-- Output ONLY the additions — no preamble, no explanation, no headings other than the issue labels below
-- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead
-${TONE_EXAMPLE_BLOCK}
-
-Document (conclusions and summaries shown first):
-<document>
-${docBlock}
-</document>
-
-Suggest additions to the ${fieldLabel} for each issue:
-
-${issueOutputBlock}`;
-}
-
-export function buildArgumentSuggestionTemplate({ documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes }) {
-  return buildArgumentSuggestionPrompt({ documentBlock: '{{DOCUMENT}}', documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes });
-}
-
-export async function suggestArgumentAddition({ text, documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes, conversation = [], customPrompt }) {
-  const initialPrompt = customPrompt ?? buildArgumentSuggestionPrompt({ text, documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes });
-
-  const messages = [
-    { role: 'user', content: initialPrompt },
-    ...conversation
-  ];
-
-  console.log('[suggestArgumentAddition] turns:', messages.length, 'doc chunks approx:', Math.ceil(text.length / 6000));
-
-  const response = await client.messages.create({
-    model: MODEL_SONNET,
-    max_tokens: 3000,
     messages
   });
 

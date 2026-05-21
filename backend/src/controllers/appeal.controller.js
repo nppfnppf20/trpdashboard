@@ -6,7 +6,7 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument } from '../services/llm.service.js';
+import { reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, generateDraftFromDocSummaries, buildIssueContext, summariseDocument } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -204,105 +204,6 @@ export async function analyseDocument(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Argument document
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getArgument(req, res) {
-  const { projectId } = req.params;
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, project_id, argument_html, initial_notes, created_at, updated_at
-       FROM public.appeal_arguments
-       WHERE project_id = $1`,
-      [projectId]
-    );
-    res.json(rows[0] ?? null);
-  } catch (err) {
-    console.error('getArgument error:', err);
-    res.status(500).json({ error: 'Failed to fetch argument' });
-  }
-}
-
-export async function saveArgument(req, res) {
-  const { projectId } = req.params;
-  const { argument_html } = req.body;
-
-  if (argument_html === undefined) {
-    return res.status(400).json({ error: 'argument_html is required' });
-  }
-
-  try {
-    const { rows } = await pool.query(
-      `INSERT INTO public.appeal_arguments (project_id, argument_html)
-       VALUES ($1, $2)
-       ON CONFLICT (project_id)
-       DO UPDATE SET argument_html = $2, updated_at = NOW()
-       RETURNING *`,
-      [projectId, argument_html]
-    );
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('saveArgument error:', err);
-    res.status(500).json({ error: 'Failed to save argument' });
-  }
-}
-
-export async function generateArgument(req, res) {
-  const { projectId } = req.params;
-  const { initial_notes } = req.body;
-
-  try {
-    // Fetch project name
-    const { rows: projectRows } = await pool.query(
-      `SELECT project_name FROM public.projects WHERE id = $1`,
-      [projectId]
-    );
-    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
-    const projectName = projectRows[0].project_name;
-
-    // Fetch refusal reasons
-    const { rows: refusalRows } = await pool.query(
-      `SELECT title, summary, risk_level
-       FROM admin_console.refusal_reasons
-       WHERE project_id = $1
-       ORDER BY sort_order, id`,
-      [projectId]
-    );
-
-    // Fetch key issues
-    const { rows: issueRows } = await pool.query(
-      `SELECT label, discipline_group
-       FROM admin_console.project_key_issues
-       WHERE project_id = $1 AND is_active = TRUE
-       ORDER BY sort_order, id`,
-      [projectId]
-    );
-
-    const argumentHtml = await generateAppealArgument({
-      projectName,
-      refusalReasons: refusalRows,
-      keyIssues: issueRows,
-      initialNotes: initial_notes ?? null
-    });
-
-    // Persist
-    const { rows } = await pool.query(
-      `INSERT INTO public.appeal_arguments (project_id, argument_html, initial_notes)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (project_id)
-       DO UPDATE SET argument_html = $2, initial_notes = $3, updated_at = NOW()
-       RETURNING *`,
-      [projectId, argumentHtml, initial_notes ?? null]
-    );
-
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('generateArgument error:', err);
-    res.status(500).json({ error: 'Failed to generate argument' });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Documents
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -332,34 +233,25 @@ export async function uploadDocument(req, res) {
     // Parse PDF/text to plain text
     const { text } = await parseFile(req.file);
 
-    // Fetch current argument
-    const { rows: argRows } = await pool.query(
-      `SELECT argument_html FROM public.appeal_arguments WHERE project_id = $1`,
-      [projectId]
-    );
-    const currentArgument = argRows[0]?.argument_html ?? '';
-
-    // Fetch key issues + refusal reasons for context
+    // Fetch issues with argument notes (same query as generateDraftFromDocs)
     const { rows: issueRows } = await pool.query(
-      `SELECT label, discipline_group
-       FROM admin_console.project_key_issues
-       WHERE project_id = $1 AND is_active = TRUE
-       ORDER BY sort_order, id`,
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
       [projectId]
     );
-    const { rows: refusalRows } = await pool.query(
-      `SELECT title FROM admin_console.refusal_reasons
-       WHERE project_id = $1
-       ORDER BY sort_order, id`,
-      [projectId]
-    );
+
+    const currentArgument = buildIssueContext(issueRows);
 
     // Run AI review
     const aiReview = await reviewDocumentAgainstArgument({
       documentText: text,
       currentArgument,
       keyIssues: issueRows,
-      refusalReasons: refusalRows,
+      refusalReasons: [],
       filename: req.file.originalname
     });
 
@@ -739,6 +631,68 @@ export async function saveDraft(req, res) {
   }
 }
 
+export async function generateDraftFromDocs(req, res) {
+  const { projectId, typeId } = req.params;
+  const { document_ids = [] } = req.body;
+
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const { rows: typeRows } = await pool.query(
+      `SELECT id, name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+    const draftType = typeRows[0];
+
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    let documents = [];
+    if (document_ids.length) {
+      const { rows } = await pool.query(
+        `SELECT id, filename, ai_review FROM public.appeal_documents
+         WHERE id = ANY($1::int[]) AND project_id = $2 ORDER BY uploaded_at ASC`,
+        [document_ids, projectId]
+      );
+      documents = rows.map(r => ({ ...r, ai_review: typeof r.ai_review === 'string' ? JSON.parse(r.ai_review) : r.ai_review }));
+    }
+
+    const guidingBrief = await getGuidingBrief(draftType.slug, projectRows[0].development_type);
+    const issueContext = buildIssueContext(issues);
+
+    const contentHtml = await generateDraftFromDocSummaries({
+      projectName: projectRows[0].project_name,
+      draftTypeName: draftType.name,
+      issueContext,
+      documents,
+      guidingBrief
+    });
+
+    const { rows } = await pool.query(
+      `INSERT INTO appeals.appeal_drafts (project_id, draft_type_id, content_html, generated_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (project_id, draft_type_id)
+       DO UPDATE SET content_html = $3, generated_at = NOW(), updated_at = NOW()
+       RETURNING *`,
+      [projectId, typeId, contentHtml]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('generateDraftFromDocs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
   try {
@@ -795,378 +749,3 @@ export async function generateDraft(req, res) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Argument suggestion — prose chat flow
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function suggestArgument(req, res) {
-  try {
-    const { projectId } = req.params;
-    const documentType      = req.body.document_type      || 'Other';
-    const documentTitle     = req.body.document_title     || '';
-    const documentDirection = req.body.document_direction || 'against';
-    const userNotes         = req.body.user_notes         || null;
-    const customPrompt      = req.body.custom_prompt      || null;
-    const preview           = req.query.preview === 'true';
-
-    const rawIds = req.body.relevant_track_ids;
-    let relevantTrackIds = [];
-    if (Array.isArray(rawIds)) {
-      relevantTrackIds = rawIds;
-    } else if (typeof rawIds === 'string' && rawIds.trim()) {
-      relevantTrackIds = JSON.parse(rawIds);
-    }
-
-    let conversation = [];
-    const rawConv = req.body.conversation;
-    if (typeof rawConv === 'string' && rawConv.trim()) {
-      conversation = JSON.parse(rawConv);
-    } else if (Array.isArray(rawConv)) {
-      conversation = rawConv;
-    }
-
-    let text;
-    if (req.file) {
-      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
-    } else if (req.body.text) {
-      text = req.body.text;
-    } else if (!preview) {
-      return res.status(400).json({ error: 'No file or text provided' });
-    }
-
-    // Fetch all active issues with their current argument notes
-    const { rows: allIssues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN public.appeal_issue_notes ain
-         ON ain.track_id = pit.id AND ain.project_id = $1
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
-
-    const issues = relevantTrackIds.length > 0
-      ? allIssues.filter(i => relevantTrackIds.includes(i.id))
-      : allIssues;
-
-    // Fetch briefing note
-    const { rows: briefingRows } = await pool.query(
-      `SELECT summary_html FROM planning_applications.document_summaries
-       WHERE project_id = $1 AND doc_type = 'briefing_note'
-       ORDER BY created_at DESC LIMIT 1`,
-      [projectId]
-    );
-    const briefingNote = briefingRows[0]?.summary_html ?? null;
-
-    // Fetch refusal reasons
-    const { rows: refusalRows } = await pool.query(
-      `SELECT title, summary, risk_level, is_key_issue
-       FROM admin_console.refusal_reasons
-       WHERE project_id = $1
-       ORDER BY sort_order, id`,
-      [projectId]
-    );
-    const refusalReasons = refusalRows;
-
-    // Fetch saved suggest template for this project
-    const { rows: templateRows } = await pool.query(
-      `SELECT suggest_argument_template FROM public.appeal_prompt_settings WHERE project_id = $1`,
-      [projectId]
-    );
-    const savedTemplate = templateRows[0]?.suggest_argument_template ?? null;
-
-    if (preview) {
-      const template = savedTemplate
-        ?? buildArgumentSuggestionTemplate({ documentType, documentTitle, documentDirection, issues, briefingNote, refusalReasons, userNotes });
-      return res.json({ template });
-    }
-
-    let resolvedCustomPrompt = null;
-    if (customPrompt) {
-      resolvedCustomPrompt = customPrompt.replace('{{DOCUMENT}}', text.slice(0, 120000));
-    } else if (savedTemplate) {
-      resolvedCustomPrompt = savedTemplate.replace('{{DOCUMENT}}', text.slice(0, 120000));
-    }
-
-    const suggestion = await suggestArgumentAddition({
-      text,
-      documentType,
-      documentTitle,
-      documentDirection,
-      issues,
-      briefingNote,
-      refusalReasons,
-      userNotes,
-      conversation,
-      customPrompt: resolvedCustomPrompt
-    });
-
-    res.json({ suggestion });
-  } catch (err) {
-    console.error('suggestArgument error:', err.message, err.stack);
-    res.status(500).json({ error: err.message });
-  }
-}
-
-export async function getSuggestTemplate(req, res) {
-  const { projectId } = req.params;
-  try {
-    const { rows } = await pool.query(
-      `SELECT suggest_argument_template, updated_at FROM public.appeal_prompt_settings WHERE project_id = $1`,
-      [projectId]
-    );
-    res.json(rows[0] ?? null);
-  } catch (err) {
-    console.error('getSuggestTemplate error:', err);
-    res.status(500).json({ error: 'Failed to fetch suggest template' });
-  }
-}
-
-export async function saveSuggestTemplate(req, res) {
-  const { projectId } = req.params;
-  const { template } = req.body;
-  if (!template?.trim()) return res.status(400).json({ error: 'template is required' });
-  try {
-    const { rows } = await pool.query(
-      `INSERT INTO public.appeal_prompt_settings (project_id, suggest_argument_template, updated_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (project_id)
-       DO UPDATE SET suggest_argument_template = $2, updated_at = NOW()
-       RETURNING suggest_argument_template, updated_at`,
-      [projectId, template.trim()]
-    );
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('saveSuggestTemplate error:', err);
-    res.status(500).json({ error: 'Failed to save suggest template' });
-  }
-}
-
-export async function deleteSuggestTemplate(req, res) {
-  const { projectId } = req.params;
-  try {
-    await pool.query(
-      `UPDATE public.appeal_prompt_settings SET suggest_argument_template = NULL, updated_at = NOW() WHERE project_id = $1`,
-      [projectId]
-    );
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('deleteSuggestTemplate error:', err);
-    res.status(500).json({ error: 'Failed to delete suggest template' });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Briefing notes (shared storage with planning-application)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getBriefingNotes(req, res) {
-  const { projectId } = req.params;
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, title, file_name, created_at FROM planning_applications.document_summaries
-       WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-       ORDER BY created_at DESC`,
-      [projectId]
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error('appeal.getBriefingNotes error:', err);
-    res.status(500).json({ error: 'Failed to fetch briefing notes' });
-  }
-}
-
-export async function uploadBriefingNote(req, res) {
-  const { projectId } = req.params;
-  try {
-    let text, fileName;
-    if (req.file) {
-      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
-      fileName = req.file.originalname;
-    } else if (req.body.text) {
-      text = req.body.text;
-      fileName = null;
-    } else {
-      return res.status(400).json({ error: 'No file or text provided' });
-    }
-    const title = req.body.title?.trim() || fileName || 'Briefing note';
-    const { rows: promptRows } = await pool.query(
-      `SELECT prompt_template FROM planning_applications.doc_type_prompts WHERE doc_type = $1`,
-      ['briefing_transcript']
-    );
-    const customPrompt = promptRows[0]?.prompt_template ?? null;
-    const summaryHtml = await summariseDocument(text, fileName, 'briefing_transcript', customPrompt);
-    const { rows } = await pool.query(
-      `INSERT INTO planning_applications.document_summaries
-         (project_id, title, file_name, doc_type, summary_html)
-       VALUES ($1, $2, $3, 'briefing_transcript', $4) RETURNING id, title, file_name, created_at`,
-      [projectId, title, fileName, summaryHtml]
-    );
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error('appeal.uploadBriefingNote error:', err);
-    res.status(500).json({ error: err.message || 'Failed to upload briefing note' });
-  }
-}
-
-export async function draftArgumentsFromBriefing(req, res) {
-  const { projectId } = req.params;
-  try {
-    const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
-    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
-      briefingNoteId
-        ? pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
-            [projectId, briefingNoteId]
-          )
-        : pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-            [projectId]
-          ),
-      pool.query(
-        `SELECT pit.id, pit.label, pit.discipline, ain.argument_for
-         FROM admin_console.project_issue_tracks pit
-         LEFT JOIN public.appeal_issue_notes ain
-           ON ain.track_id = pit.id AND ain.project_id = $1
-         WHERE pit.project_id = $1 AND pit.is_active = TRUE
-         ORDER BY pit.sort_order, pit.id`,
-        [projectId]
-      )
-    ]);
-    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project. Upload a briefing note first.' });
-    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
-    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
-    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
-  } catch (err) {
-    console.error('appeal.draftArgumentsFromBriefing error:', err);
-    res.status(500).json({ error: err.message || 'Failed to draft arguments' });
-  }
-}
-
-export async function draftArgumentsFromIssueNotes(req, res) {
-  const { projectId } = req.params;
-  try {
-    const { rows: issues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline, pit.summary, ain.argument_for
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN public.appeal_issue_notes ain
-         ON ain.track_id = pit.id AND ain.project_id = $1
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE AND pit.summary IS NOT NULL AND pit.summary != ''
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
-    if (!issues.length) return res.status(404).json({ error: 'No key issue notes found. Add position notes in the Key Issues tab first.' });
-    const suggestions = await draftArgumentsFromIssueSummaries({ issues, policiesByTrack: {} });
-    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
-    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
-  } catch (err) {
-    console.error('appeal.draftArgumentsFromIssueNotes error:', err);
-    res.status(500).json({ error: err.message || 'Failed to draft arguments from issue notes' });
-  }
-}
-
-export async function draftKeySummariesFromBriefing(req, res) {
-  const { projectId } = req.params;
-  try {
-    const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
-    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
-      briefingNoteId
-        ? pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
-            [projectId, briefingNoteId]
-          )
-        : pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-            [projectId]
-          ),
-      pool.query(
-        `SELECT id, label, discipline, summary
-         FROM admin_console.project_issue_tracks
-         WHERE project_id = $1 AND is_active = TRUE
-         ORDER BY sort_order, id`,
-        [projectId]
-      )
-    ]);
-    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project.' });
-    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
-    const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
-    res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
-  } catch (err) {
-    console.error('appeal.draftKeySummariesFromBriefing error:', err);
-    res.status(500).json({ error: err.message || 'Failed to draft key issue summaries' });
-  }
-}
-
-export async function evolveArgument(req, res) {
-  const { projectId } = req.params;
-  const { track_id, new_information, conversation } = req.body;
-  if (!track_id || !new_information?.trim()) {
-    return res.status(400).json({ error: 'track_id and new_information are required' });
-  }
-  try {
-    const [{ rows: issueRows }, { rows: noteRows }] = await Promise.all([
-      pool.query(
-        `SELECT label FROM admin_console.project_issue_tracks WHERE id = $1 AND project_id = $2`,
-        [track_id, projectId]
-      ),
-      pool.query(
-        `SELECT argument_for FROM public.appeal_issue_notes WHERE track_id = $1 AND project_id = $2`,
-        [track_id, projectId]
-      )
-    ]);
-    if (!issueRows.length) return res.status(404).json({ error: 'Issue not found' });
-    const evolved = await evolveArgumentFromBriefing({
-      issueLabel: issueRows[0].label,
-      existingArgument: noteRows[0]?.argument_for ?? '',
-      newInformation: new_information,
-      conversation: conversation ?? []
-    });
-    res.json({ evolved });
-  } catch (err) {
-    console.error('appeal.evolveArgument error:', err);
-    res.status(500).json({ error: err.message || 'Failed to evolve argument' });
-  }
-}
-
-export async function chatArgument(req, res) {
-  const { projectId } = req.params;
-  const { track_id, briefing_note_id, conversation } = req.body;
-  if (!track_id || !Array.isArray(conversation) || !conversation.length) {
-    return res.status(400).json({ error: 'track_id and conversation are required' });
-  }
-  try {
-    const briefingNoteId = briefing_note_id ? parseInt(briefing_note_id) : null;
-    const briefingQuery = briefingNoteId
-      ? pool.query(
-          `SELECT summary_html FROM planning_applications.document_summaries WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
-          [projectId, briefingNoteId]
-        )
-      : pool.query(
-          `SELECT summary_html FROM planning_applications.document_summaries WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-          [projectId]
-        );
-
-    const [{ rows: issueRows }, { rows: noteRows }, { rows: bRows }] = await Promise.all([
-      pool.query(`SELECT label FROM admin_console.project_issue_tracks WHERE id = $1 AND project_id = $2`, [track_id, projectId]),
-      pool.query(`SELECT argument_for FROM public.appeal_issue_notes WHERE track_id = $1 AND project_id = $2`, [track_id, projectId]),
-      briefingQuery
-    ]);
-
-    if (!issueRows.length) return res.status(404).json({ error: 'Issue not found' });
-
-    const evolved = await chatArgumentWithBriefing({
-      issueLabel: issueRows[0].label,
-      existingArgument: noteRows[0]?.argument_for ?? '',
-      briefingContent: bRows[0]?.summary_html ?? '',
-      conversation
-    });
-    res.json({ evolved });
-  } catch (err) {
-    console.error('appeal.chatArgument error:', err);
-    res.status(500).json({ error: err.message || 'Failed to chat argument' });
-  }
-}

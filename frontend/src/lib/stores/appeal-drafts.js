@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { tick } from 'svelte';
-import { getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections } from '$lib/api/appeal.js';
+import { getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections, generateDraftFromDocuments } from '$lib/api/appeal.js';
 
 // Editor component refs — set from the template via setDraftEditor / setSectionExampleEditor
 let _draftEditor;
@@ -23,6 +23,7 @@ export const draftTypes = writable([]);
 export const drafts = writable({});
 export const draftLoading = writable({});
 export const draftGenerating = writable(null);
+export const draftGeneratingFromDocs = writable(false);
 export const activeDraftTypeId = writable(null);
 export const draftEditorHtml = writable('');
 export const draftSaving = writable(false);
@@ -70,6 +71,20 @@ export async function handleGenerate(typeId) {
     alert(`Generation failed: ${err.message}`);
   } finally {
     draftGenerating.set(null);
+  }
+}
+
+export async function handleGenerateFromDocs(typeId, documentIds) {
+  draftGeneratingFromDocs.set(true);
+  try {
+    const result = await generateDraftFromDocuments(_projectId, typeId, documentIds);
+    drafts.update(d => ({ ...d, [typeId]: result }));
+    openDraft(typeId);
+  } catch (err) {
+    console.error('Generate from docs failed:', err);
+    alert(`Generation failed: ${err.message}`);
+  } finally {
+    draftGeneratingFromDocs.set(false);
   }
 }
 

@@ -11,19 +11,12 @@ import {
   getIssueNotes,
   upsertIssueNote,
   analyseDocument,
-  getArgument,
-  saveArgument,
-  generateArgument,
   getDocuments,
   uploadDocument,
   updateDocumentStatus,
   getPromptTemplate,
   savePromptTemplate,
   deletePromptTemplate,
-  suggestArgument,
-  getSuggestTemplate,
-  saveSuggestTemplate,
-  deleteSuggestTemplate,
   getDraftTypes,
   getDraft,
   saveDraft,
@@ -38,13 +31,7 @@ import {
   createDocumentLogEntry,
   deleteDocumentLogEntry,
   updateDocumentLogEntry,
-  getBriefingNotes,
-  uploadBriefingNote,
-  draftArgumentsFromBriefing,
-  draftArgumentsFromIssueNotes,
-  draftKeySummariesFromBriefing,
-  evolveArgument,
-  chatArgument
+  generateDraftFromDocs,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -79,17 +66,6 @@ router.get('/projects/:projectId/prompt-template', getPromptTemplate);
 router.put('/projects/:projectId/prompt-template', savePromptTemplate);
 router.delete('/projects/:projectId/prompt-template', deletePromptTemplate);
 
-// Argument suggestion + prompt template
-router.post('/projects/:projectId/suggest-argument', upload.single('file'), suggestArgument);
-router.get('/projects/:projectId/suggest-template', getSuggestTemplate);
-router.put('/projects/:projectId/suggest-template', saveSuggestTemplate);
-router.delete('/projects/:projectId/suggest-template', deleteSuggestTemplate);
-
-// Argument document
-router.get('/projects/:projectId/argument', getArgument);
-router.put('/projects/:projectId/argument', saveArgument);
-router.post('/projects/:projectId/generate', generateArgument);
-
 // Draft documents
 router.get('/draft-types', getDraftTypes);
 router.get('/draft-types/:typeId/sections', getSections);
@@ -100,16 +76,8 @@ router.put('/draft-types/:typeId/sections/reorder', reorderSections);
 router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
+router.post('/projects/:projectId/drafts/:typeId/generate-from-docs', generateDraftFromDocs);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
-
-// Briefing notes
-router.get('/projects/:projectId/briefing-notes', getBriefingNotes);
-router.post('/projects/:projectId/briefing-notes', upload.single('file'), uploadBriefingNote);
-router.post('/projects/:projectId/draft-arguments-from-briefing', draftArgumentsFromBriefing);
-router.post('/projects/:projectId/draft-arguments-from-issue-notes', draftArgumentsFromIssueNotes);
-router.post('/projects/:projectId/draft-key-summaries-from-briefing', draftKeySummariesFromBriefing);
-router.post('/projects/:projectId/evolve-argument', evolveArgument);
-router.post('/projects/:projectId/chat-argument', chatArgument);
 
 // Document log
 router.get('/projects/:projectId/document-log', getDocumentLog);

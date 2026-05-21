@@ -479,7 +479,7 @@ Return ONLY a valid JSON array with no preamble, explanation, or code fences. If
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Briefing-driven argument drafting (planning app)
+// Briefing-driven argument drafting (planning application workflow)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues }) {
