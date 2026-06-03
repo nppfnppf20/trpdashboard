@@ -238,6 +238,64 @@ Produce the complete ${draftTypeName} as HTML now.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Document incorporation — interactive two-panel flow
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function incorporateDocument({ projectName, draftTypeName, currentDraftHtml, documentText, issues, userNotes = null, guidingBrief = null, conversation = [] }) {
+  const issueContext = buildIssueContext(issues);
+
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\nGuiding brief for this document type:\n${guidingBrief.guidance_content.trim()}`
+    : '';
+
+  const userNotesBlock = userNotes?.trim()
+    ? `## User guidance — HIGH PRIORITY\nThe user has provided specific instructions for this document. Follow these precisely — they override your own judgement about what to include:\n${userNotes.trim()}\n\n`
+    : '';
+
+  const currentDraftText = currentDraftHtml?.trim()
+    ? `Current working draft:\n${currentDraftHtml}`
+    : `Current working draft: (none yet — write the full document from the key issues notes and the document provided)`;
+
+  const userPrompt = `You are a planning appeal consultant updating a formal appeal document to incorporate evidence from a new specialist report or document.
+
+Document type: ${draftTypeName}
+Project: ${projectName}${guidingBlock}
+
+${userNotesBlock}Key issues in this appeal:
+${issueContext}
+
+${currentDraftText}
+
+Document to incorporate:
+${documentText}
+
+Instructions:
+- Read the working draft and this document carefully
+- Only add or amend content where this document provides genuinely relevant new evidence
+- Do not rewrite sections that this document does not speak to — leave them exactly as they are
+- Where the document strengthens an existing argument, reinforce it with specific references, citing paragraph or section numbers where available
+- Where the document raises points against the case, acknowledge and address them in the relevant section
+- Where the document introduces genuinely new relevant material not already covered, add it in the appropriate section
+- Write in formal planning language suitable for submission to the Planning Inspectorate
+- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead
+- Output the complete updated draft HTML only — no markdown, no explanation, no commentary`;
+
+  const messages = [
+    { role: 'user', content: userPrompt },
+    ...conversation
+  ];
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 8000,
+    messages
+  });
+
+  return noEmDash(response.content[0].text.trim()
+    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Briefing-driven argument drafting
 // ─────────────────────────────────────────────────────────────────────────────
 

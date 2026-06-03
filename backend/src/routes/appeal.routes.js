@@ -44,7 +44,8 @@ import {
   draftArgumentsFromIssueNotes,
   draftKeySummariesFromBriefing,
   evolveArgument,
-  chatArgument
+  chatArgument,
+  incorporateDocumentIntoTdraft,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -101,6 +102,7 @@ router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
+router.post('/projects/:projectId/drafts/:typeId/incorporate', incorporateDocumentIntoTdraft);
 
 // Briefing notes
 router.get('/projects/:projectId/briefing-notes', getBriefingNotes);

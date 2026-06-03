@@ -391,6 +391,22 @@ export async function chatArgument(projectId, { trackId, briefingNoteId, convers
   return res.json();
 }
 
+export async function incorporateDocument(projectId, typeId, { documentId, documentText, documentTitle, userNotes = null, conversation = [] }) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/incorporate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      document_id: documentId ?? null,
+      document_text: documentText ?? null,
+      document_title: documentTitle ?? null,
+      user_notes: userNotes,
+      conversation
+    })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to incorporate document'); }
+  return res.json();
+}
+
 export async function updateDocumentStatus(docId, reviewStatus) {
   const res = await authFetch(`/api/appeal/documents/${docId}/status`, {
     method: 'PUT',

@@ -6,7 +6,7 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -329,52 +329,21 @@ export async function uploadDocument(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   try {
-    // Parse PDF/text to plain text
-    const { text } = await parseFile(req.file);
+    const { text, warning } = await parseFile(req.file.buffer, req.file.originalname);
 
-    // Fetch current argument
-    const { rows: argRows } = await pool.query(
-      `SELECT argument_html FROM public.appeal_arguments WHERE project_id = $1`,
-      [projectId]
-    );
-    const currentArgument = argRows[0]?.argument_html ?? '';
-
-    // Fetch key issues + refusal reasons for context
-    const { rows: issueRows } = await pool.query(
-      `SELECT label, discipline_group
-       FROM admin_console.project_key_issues
-       WHERE project_id = $1 AND is_active = TRUE
-       ORDER BY sort_order, id`,
-      [projectId]
-    );
-    const { rows: refusalRows } = await pool.query(
-      `SELECT title FROM admin_console.refusal_reasons
-       WHERE project_id = $1
-       ORDER BY sort_order, id`,
-      [projectId]
-    );
-
-    // Run AI review
-    const aiReview = await reviewDocumentAgainstArgument({
-      documentText: text,
-      currentArgument,
-      keyIssues: issueRows,
-      refusalReasons: refusalRows,
-      filename: req.file.originalname
-    });
-
-    // Persist document record
     const { rows } = await pool.query(
-      `INSERT INTO public.appeal_documents (project_id, filename, review_status, ai_review)
-       VALUES ($1, $2, 'reviewed', $3)
-       RETURNING *`,
-      [projectId, req.file.originalname, JSON.stringify(aiReview)]
+      `INSERT INTO public.appeal_documents (project_id, filename, file_text, review_status)
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING id, project_id, filename, review_status, uploaded_at`,
+      [projectId, req.file.originalname, text]
     );
 
-    res.status(201).json(rows[0]);
+    const doc = rows[0];
+    if (warning) doc.warning = warning;
+    res.status(201).json(doc);
   } catch (err) {
     console.error('uploadDocument error:', err);
-    res.status(500).json({ error: 'Failed to process document' });
+    res.status(500).json({ error: 'Failed to upload document' });
   }
 }
 
@@ -1168,5 +1137,81 @@ export async function chatArgument(req, res) {
   } catch (err) {
     console.error('appeal.chatArgument error:', err);
     res.status(500).json({ error: err.message || 'Failed to chat argument' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document incorporation — two-panel interactive flow
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function incorporateDocumentIntoTdraft(req, res) {
+  const { projectId, typeId } = req.params;
+  const { document_id, document_text, document_title, user_notes = null, conversation = [] } = req.body;
+
+  if (!document_id && !document_text) {
+    return res.status(400).json({ error: 'document_id or document_text is required' });
+  }
+
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const { rows: typeRows } = await pool.query(
+      `SELECT id, name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+
+    // Current working draft
+    const { rows: draftRows } = await pool.query(
+      `SELECT content_html FROM appeals.appeal_drafts WHERE project_id = $1 AND draft_type_id = $2`,
+      [projectId, typeId]
+    );
+    const currentDraftHtml = draftRows[0]?.content_html ?? '';
+
+    // Resolve document text — either from DB record or directly from request
+    let documentText, docLabel;
+    if (document_id) {
+      const { rows: docRows } = await pool.query(
+        `SELECT filename, file_text FROM public.appeal_documents WHERE id = $1 AND project_id = $2`,
+        [document_id, projectId]
+      );
+      if (!docRows.length) return res.status(404).json({ error: 'Document not found' });
+      documentText = docRows[0].file_text ?? '';
+      docLabel = docRows[0].filename;
+    } else {
+      documentText = document_text;
+      docLabel = document_title || 'Pasted document';
+    }
+
+    // Issues with argument notes
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const guidingBrief = await getGuidingBrief(typeRows[0].slug, projectRows[0].development_type);
+
+    const updatedHtml = await incorporateDocument({
+      projectName: projectRows[0].project_name,
+      draftTypeName: typeRows[0].name,
+      currentDraftHtml,
+      documentText,
+      issues,
+      userNotes: user_notes,
+      guidingBrief,
+      conversation
+    });
+
+    res.json({ content_html: updatedHtml, doc_label: docLabel });
+  } catch (err) {
+    console.error('incorporateDocument error:', err);
+    res.status(500).json({ error: err.message });
   }
 }

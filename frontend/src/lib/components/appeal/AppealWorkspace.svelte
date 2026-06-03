@@ -7,6 +7,7 @@
   import { suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestDirection, suggestUserNotes, suggestTrackIds, suggestState, conversation, suggestError, refinementInput, refinementLoading, acceptLoading, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, runSuggestion, sendRefinement, acceptSuggestion, resetSuggestion, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt, openSuggestionLogModal } from '$lib/stores/appeal-suggestion.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/appeal-drafts.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import AppealDocIncorporatePanel from '$lib/components/appeal/AppealDocIncorporatePanel.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
 
@@ -672,7 +673,7 @@
   {:else if activeTab === 'draft'}
     <!-- ── Tab 3: Draft Document ── -->
     {#if $activeDraftTypeId !== null}
-      <!-- Editor view -->
+      <!-- Two-panel editor view -->
       {@const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
       <div class="draft-editor-bar">
         <button class="reset-btn" on:click={closeDraft}><i class="las la-arrow-left"></i> Documents</button>
@@ -736,8 +737,24 @@
         {/if}
       {/if}
 
-      <div class="draft-editor-wrap">
-        <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
+      <!-- Two-panel layout -->
+      <div class="draft-two-panel">
+        <div class="draft-left-panel">
+          <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
+        </div>
+        <div class="draft-right-panel">
+          <AppealDocIncorporatePanel
+            {project}
+            typeId={$activeDraftTypeId}
+            {keyIssues}
+            currentDraftHtml={$draftEditorHtml}
+            on:accepted={(e) => {
+              $draftEditorHtml = e.detail.html;
+              draftEditor?.setHTML(e.detail.html);
+              $draftSaved = false;
+            }}
+          />
+        </div>
       </div>
     {:else}
       <!-- Document type list -->
@@ -2428,6 +2445,32 @@
     flex: 1;
     overflow-y: auto;
     padding: 1.5rem;
+    background: #f8fafc;
+  }
+
+  /* ── Two-panel draft layout ── */
+  .draft-two-panel {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .draft-left-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    background: #f8fafc;
+    min-width: 0;
+  }
+
+  .draft-right-panel {
+    width: 340px;
+    flex-shrink: 0;
+    border-left: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background: #f8fafc;
   }
 
