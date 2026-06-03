@@ -112,6 +112,7 @@
   };
 
   let exportingWord = false;
+  let incorporateReviewMode = false;
 
   let briefCheckResults = null;
   let briefChecking = false;
@@ -739,19 +740,21 @@
 
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
-        <div class="draft-left-panel">
+        <div class="draft-left-panel" class:hidden={incorporateReviewMode}>
           <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
         </div>
-        <div class="draft-right-panel">
+        <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
           <AppealDocIncorporatePanel
             {project}
             typeId={$activeDraftTypeId}
             {keyIssues}
             currentDraftHtml={$draftEditorHtml}
+            on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
             on:accepted={(e) => {
               $draftEditorHtml = e.detail.html;
               draftEditor?.setHTML(e.detail.html);
               $draftSaved = false;
+              incorporateReviewMode = false;
             }}
           />
         </div>
@@ -2472,6 +2475,15 @@
     flex-direction: column;
     overflow: hidden;
     background: #f8fafc;
+  }
+
+  .draft-right-panel--full {
+    width: 100%;
+    border-left: none;
+  }
+
+  .draft-left-panel.hidden {
+    display: none;
   }
 
   .modal-wide { max-width: 900px; }

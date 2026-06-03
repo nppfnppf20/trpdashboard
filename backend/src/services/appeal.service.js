@@ -271,10 +271,11 @@ ${documentText}
 
 Instructions:
 - Read the working draft and this document carefully
-- Only add or amend content where this document provides genuinely relevant new evidence
-- Do not rewrite sections that this document does not speak to — leave them exactly as they are
-- Where the document strengthens an existing argument, reinforce it with specific references, citing paragraph or section numbers where available
-- Where the document raises points against the case, acknowledge and address them in the relevant section
+- Identify which sections of the draft this document directly and specifically addresses
+- For sections this document speaks to: add new evidence, reinforce existing arguments with specific references and paragraph/section numbers, or acknowledge and address points raised against the case
+- For sections this document does NOT directly address: copy them into the output CHARACTER FOR CHARACTER, word for word, with absolutely no changes — no rephrasing, no restructuring, no removal of content, no improvement of wording
+- NEVER remove existing content from the draft unless this document explicitly and directly contradicts or supersedes it — a specialist report in one discipline (e.g. heritage) does not authorise any changes to sections covering a different discipline (e.g. landscape, transport, ecology)
+- NEVER rewrite, condense, or paraphrase existing paragraphs that you are not adding new evidence to
 - Where the document introduces genuinely new relevant material not already covered, add it in the appropriate section
 - Write in formal planning language suitable for submission to the Planning Inspectorate
 - Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead

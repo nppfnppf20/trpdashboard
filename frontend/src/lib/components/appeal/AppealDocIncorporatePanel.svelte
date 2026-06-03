@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { diffWords } from 'diff';
+  import { diffArrays, diffWords } from 'diff';
   import { getDocuments, uploadDocument, incorporateDocument } from '$lib/api/appeal.js';
 
   export let project;
@@ -29,7 +29,7 @@
   let incorporateError = null;
 
   let suggestedHtml = '';
-  let diffParts = [];
+  let changeGroups = []; // paragraph-level diff groups
 
   let conversation = [];
   let chatInput = '';
@@ -83,7 +83,7 @@
     userNotes = '';
     conversation = [];
     suggestedHtml = '';
-    diffParts = [];
+    changeGroups = [];
     incorporateError = null;
     panelState = 'incorporating';
     await runIncorporate();
@@ -96,23 +96,27 @@
     userNotes = '';
     conversation = [];
     suggestedHtml = '';
-    diffParts = [];
+    changeGroups = [];
     incorporateError = null;
     panelState = 'incorporating';
     await runIncorporate();
   }
 
+  function buildPayload(extraConversation = []) {
+    const conv = [...conversation, ...extraConversation];
+    return incorporatingDoc
+      ? { documentId: incorporatingDoc.id, userNotes: userNotes || null, conversation: conv }
+      : { documentText: pasteText, documentTitle: incorporatingLabel, userNotes: userNotes || null, conversation: conv };
+  }
+
   async function runIncorporate() {
     incorporateError = null;
     try {
-      const payload = incorporatingDoc
-        ? { documentId: incorporatingDoc.id, userNotes: userNotes || null, conversation }
-        : { documentText: pasteText, documentTitle: incorporatingLabel, userNotes: userNotes || null, conversation };
-
-      const result = await incorporateDocument(project.id, typeId, payload);
+      const result = await incorporateDocument(project.id, typeId, buildPayload());
       suggestedHtml = result.content_html;
-      diffParts = computeDiff(currentDraftHtml, suggestedHtml);
+      changeGroups = computeParagraphDiff(currentDraftHtml, suggestedHtml);
       panelState = 'review';
+      dispatch('reviewchange', { active: true });
     } catch (err) {
       incorporateError = err.message;
       panelState = 'incorporating';
@@ -126,22 +130,16 @@
     chatInput = '';
     chatLoading = true;
 
-    // Build conversation: original prompt result + chat turns
-    // We re-run the incorporation with conversation history appended
-    conversation = [
-      ...conversation,
+    const newTurns = [
       { role: 'assistant', content: suggestedHtml },
       { role: 'user', content: userMessage }
     ];
+    conversation = [...conversation, ...newTurns];
 
     try {
-      const result = await incorporateDocument(project.id, typeId, {
-        documentId: incorporatingDoc.id,
-        userNotes: userNotes || null,
-        conversation
-      });
+      const result = await incorporateDocument(project.id, typeId, buildPayload());
       suggestedHtml = result.content_html;
-      diffParts = computeDiff(currentDraftHtml, suggestedHtml);
+      changeGroups = computeParagraphDiff(currentDraftHtml, suggestedHtml);
     } catch (err) {
       incorporateError = err.message;
     } finally {
@@ -150,10 +148,22 @@
   }
 
   // ── Accept / discard ───────────────────────────────────────────────────────
-  function accept() {
-    dispatch('accepted', { html: suggestedHtml, doc: incorporatingDoc });
-    documents = documents.map(d => d.id === incorporatingDoc.id ? { ...d, review_status: 'reviewed' } : d);
+  function acceptAll() {
+    changeGroups = changeGroups.map(g => g.type === 'unchanged' ? g : { ...g, accepted: true });
+    commitAccepted();
+  }
+
+  function commitAccepted() {
+    const html = buildFinalHtml(changeGroups);
+    dispatch('accepted', { html, doc: incorporatingDoc });
+    if (incorporatingDoc) {
+      documents = documents.map(d => d.id === incorporatingDoc.id ? { ...d, review_status: 'reviewed' } : d);
+    }
     reset();
+  }
+
+  function toggleGroup(idx) {
+    changeGroups = changeGroups.map((g, i) => i === idx ? { ...g, accepted: !g.accepted } : g);
   }
 
   function discard() {
@@ -164,19 +174,92 @@
     panelState = 'idle';
     incorporatingDoc = null;
     suggestedHtml = '';
-    diffParts = [];
+    changeGroups = [];
     conversation = [];
     incorporateError = null;
+    dispatch('reviewchange', { active: false });
   }
 
-  // ── Diff computation ───────────────────────────────────────────────────────
+  // ── Paragraph diff ─────────────────────────────────────────────────────────
+  function splitIntoParagraphs(html) {
+    if (!html?.trim()) return [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+    const blocks = [];
+    doc.body.firstChild?.childNodes.forEach(node => {
+      if (node.nodeType === 1) {
+        blocks.push(node.outerHTML);
+      } else if (node.nodeType === 3 && node.textContent.trim()) {
+        blocks.push(`<p>${node.textContent.trim()}</p>`);
+      }
+    });
+    return blocks;
+  }
+
+  function computeParagraphDiff(oldHtml, newHtml) {
+    const oldParas = splitIntoParagraphs(oldHtml);
+    const newParas = splitIntoParagraphs(newHtml);
+    const raw = diffArrays(oldParas, newParas);
+
+    const groups = [];
+    let i = 0;
+    while (i < raw.length) {
+      const part = raw[i];
+      if (part.removed && i + 1 < raw.length && raw[i + 1].added) {
+        // Pair removed+added as modifications
+        const oldVals = part.value;
+        const newVals = raw[i + 1].value;
+        const pairs = Math.min(oldVals.length, newVals.length);
+        for (let j = 0; j < pairs; j++) {
+          groups.push({ type: 'modified', oldHtml: oldVals[j], newHtml: newVals[j], accepted: true, words: wordDiff(oldVals[j], newVals[j]) });
+        }
+        for (let j = pairs; j < oldVals.length; j++) {
+          groups.push({ type: 'removed', html: oldVals[j], accepted: true, words: wordDiff(oldVals[j], '') });
+        }
+        for (let j = pairs; j < newVals.length; j++) {
+          groups.push({ type: 'added', html: newVals[j], accepted: true, words: wordDiff('', newVals[j]) });
+        }
+        i += 2;
+      } else if (part.removed) {
+        for (const html of part.value) {
+          groups.push({ type: 'removed', html, accepted: true, words: wordDiff(html, '') });
+        }
+        i++;
+      } else if (part.added) {
+        for (const html of part.value) {
+          groups.push({ type: 'added', html, accepted: true, words: wordDiff('', html) });
+        }
+        i++;
+      } else {
+        for (const html of part.value) {
+          groups.push({ type: 'unchanged', html });
+        }
+        i++;
+      }
+    }
+    return groups;
+  }
+
   function stripHtml(html) {
     return (html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
-  function computeDiff(oldHtml, newHtml) {
+  function wordDiff(oldHtml, newHtml) {
     return diffWords(stripHtml(oldHtml), stripHtml(newHtml));
   }
+
+  function buildFinalHtml(groups) {
+    return groups.map(g => {
+      if (g.type === 'unchanged') return g.html;
+      if (g.type === 'added')     return g.accepted ? g.html : '';
+      if (g.type === 'removed')   return g.accepted ? '' : g.html;
+      if (g.type === 'modified')  return g.accepted ? g.newHtml : g.oldHtml;
+      return '';
+    }).filter(Boolean).join('\n');
+  }
+
+  $: changedCount = changeGroups.filter(g => g.type !== 'unchanged').length;
+  $: acceptedCount = changeGroups.filter(g => g.type !== 'unchanged' && g.accepted).length;
 
   // ── Status labels ──────────────────────────────────────────────────────────
   const statusLabels = {
@@ -222,6 +305,19 @@
         <p class="error-msg">{uploadError}</p>
       {/if}
 
+      <!-- ── User notes ── -->
+      <div class="notes-area">
+        <label class="notes-label">
+          <i class="las la-pen"></i> Your notes
+          <span class="notes-hint">Tell Claude what to focus on — given high priority in the prompt</span>
+        </label>
+        <textarea
+          class="notes-textarea"
+          placeholder="e.g. Focus on section 4.2, ignore ecology..."
+          bind:value={userNotes}
+        ></textarea>
+      </div>
+
       <!-- ── Document list ── -->
       {#if documents.length === 0}
         <div class="empty-docs">
@@ -262,6 +358,17 @@
           placeholder="Paste the document text here..."
           bind:value={pasteText}
         ></textarea>
+        <div class="notes-area notes-area--inline">
+          <label class="notes-label">
+            <i class="las la-pen"></i> Your notes
+            <span class="notes-hint">Tell Claude what to focus on — given high priority</span>
+          </label>
+          <textarea
+            class="notes-textarea"
+            placeholder="e.g. Focus only on transport conclusions..."
+            bind:value={userNotes}
+          ></textarea>
+        </div>
         <button
           class="incorporate-btn incorporate-btn--full"
           disabled={!pasteText.trim()}
@@ -298,57 +405,102 @@
     </div>
 
   {:else if panelState === 'review'}
-    <!-- ── Review panel ── -->
-    <div class="review-header">
-      <div class="review-header-left">
-        <span class="review-title">Suggested changes</span>
-        <span class="review-doc-name">{incorporatingLabel}</span>
-      </div>
-      <div class="review-header-actions">
-        <button class="btn-discard" on:click={discard}>Discard</button>
-        <button class="btn-accept" on:click={accept}>
-          <i class="las la-check"></i> Accept
-        </button>
-      </div>
-    </div>
+    <!-- ── Full-width two-column review layout ── -->
+    <div class="review-layout">
 
-    <!-- ── Diff view ── -->
-    <div class="diff-view">
-      {#if diffParts.length === 0}
-        <p class="diff-no-changes">No changes suggested for this document.</p>
-      {:else}
-        <div class="diff-content">
-          {#each diffParts as part}
-            {#if part.added}
-              <ins class="diff-add">{part.value}</ins>
-            {:else if part.removed}
-              <del class="diff-del">{part.value}</del>
-            {:else}
-              <span>{part.value}</span>
+      <!-- Left: document-style diff -->
+      <div class="review-doc-col">
+        <div class="review-doc-header">
+          <span class="review-doc-title">{incorporatingLabel}</span>
+          <span class="review-doc-subtitle">Review suggested changes before applying</span>
+        </div>
+        <div class="review-doc-body trp-document-content">
+          {#if changeGroups.length === 0}
+            <p style="color:#94a3b8">No changes suggested.</p>
+          {:else}
+            {#each changeGroups as group, idx}
+              {#if group.type === 'unchanged'}
+                <div class="doc-para-unchanged">{@html group.html}</div>
+              {:else if group.type === 'added'}
+                <div class="doc-para-change doc-para-added" class:faded={!group.accepted}>
+                  <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}{:else}<span>{w.value}</span>{/if}{/each}</div>
+                </div>
+              {:else if group.type === 'removed'}
+                <div class="doc-para-change doc-para-removed" class:faded={!group.accepted}>
+                  <div class="word-diff">{#each group.words as w}{#if w.removed}<del class="wd-del">{w.value}</del>{:else if w.added}{:else}<span>{w.value}</span>{/if}{/each}</div>
+                </div>
+              {:else if group.type === 'modified'}
+                <div class="doc-para-change doc-para-modified" class:faded={!group.accepted}>
+                  <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}<del class="wd-del">{w.value}</del>{:else}<span>{w.value}</span>{/if}{/each}</div>
+                </div>
+              {/if}
+            {/each}
+          {/if}
+        </div>
+      </div>
+
+      <!-- Right: controls -->
+      <div class="review-ctrl-col">
+        <div class="review-ctrl-header">
+          <span class="review-ctrl-title">Changes</span>
+          <span class="review-ctrl-count">{acceptedCount}/{changedCount} accepted</span>
+        </div>
+        <div class="review-ctrl-actions">
+          <button class="btn-accept-all" on:click={acceptAll}><i class="las la-check-double"></i> Accept all</button>
+          <button class="btn-commit" disabled={acceptedCount === 0} on:click={commitAccepted}><i class="las la-check"></i> Apply</button>
+          <button class="btn-discard" on:click={discard}>Discard</button>
+        </div>
+
+        <div class="review-ctrl-list">
+          {#each changeGroups as group, idx}
+            {#if group.type !== 'unchanged'}
+              <div class="ctrl-item" class:rejected={!group.accepted}>
+                <div class="ctrl-item-tag">
+                  {#if group.type === 'added'}<span class="change-tag change-tag--added">+ Added</span>
+                  {:else if group.type === 'removed'}<span class="change-tag change-tag--removed">− Removed</span>
+                  {:else}<span class="change-tag change-tag--modified">~ Modified</span>{/if}
+                </div>
+                <p class="ctrl-item-preview">
+                  {#if group.type === 'modified'}{stripHtml(group.newHtml).slice(0, 80)}...
+                  {:else}{stripHtml(group.html ?? '').slice(0, 80)}...{/if}
+                </p>
+                <div class="para-btns">
+                  {#if group.type === 'added'}
+                    <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
+                    <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Reject</button>
+                  {:else if group.type === 'removed'}
+                    <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept removal</button>
+                    <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep</button>
+                  {:else}
+                    <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
+                    <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep original</button>
+                  {/if}
+                </div>
+              </div>
             {/if}
           {/each}
         </div>
-      {/if}
-    </div>
 
-    <!-- ── Chat ── -->
-    <div class="chat-area">
-      <div class="chat-input-row">
-        <input
-          class="chat-input"
-          type="text"
-          placeholder="Refine the suggestions... e.g. 'focus more on heritage' or 'remove the transport paragraph'"
-          bind:value={chatInput}
-          disabled={chatLoading}
-          on:keydown={(e) => e.key === 'Enter' && !chatLoading && sendChat()}
-        />
-        <button class="chat-send-btn" disabled={chatLoading || !chatInput.trim()} on:click={sendChat}>
-          {#if chatLoading}<div class="mini-spinner"></div>{:else}<i class="las la-paper-plane"></i>{/if}
-        </button>
+        <!-- Chat -->
+        <div class="chat-area">
+          <div class="chat-input-row">
+            <input
+              class="chat-input"
+              type="text"
+              placeholder="Refine suggestions..."
+              bind:value={chatInput}
+              disabled={chatLoading}
+              on:keydown={(e) => e.key === 'Enter' && !chatLoading && sendChat()}
+            />
+            <button class="chat-send-btn" disabled={chatLoading || !chatInput.trim()} on:click={sendChat}>
+              {#if chatLoading}<div class="mini-spinner"></div>{:else}<i class="las la-paper-plane"></i>{/if}
+            </button>
+          </div>
+          {#if incorporateError}
+            <p class="error-msg" style="margin-top:0.5rem">{incorporateError}</p>
+          {/if}
+        </div>
       </div>
-      {#if incorporateError}
-        <p class="error-msg" style="margin-top:0.5rem">{incorporateError}</p>
-      {/if}
     </div>
   {/if}
 
@@ -459,6 +611,52 @@
   .upload-sub { font-size: 0.75rem !important; color: #94a3b8 !important; font-weight: 400 !important; }
 
   .error-msg { font-size: 0.8rem; color: #ef4444; margin: 0 1rem 0.5rem; }
+
+  /* ── User notes ── */
+  .notes-area {
+    flex-shrink: 0;
+    padding: 0 1rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .notes-area--inline {
+    padding: 0;
+  }
+
+  .notes-label {
+    display: flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  .notes-hint {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #94a3b8;
+  }
+
+  .notes-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: #374151;
+    background: #fffbeb;
+    resize: none;
+    line-height: 1.5;
+    min-height: 64px;
+    transition: border-color 0.15s;
+  }
+  .notes-textarea:focus { outline: none; border-color: #f59e0b; background: white; box-shadow: 0 0 0 3px rgba(245,158,11,0.08); }
+  .notes-textarea::placeholder { color: #94a3b8; }
 
   /* ── Doc list ── */
   .doc-list {
@@ -629,36 +827,216 @@
     font-size: 0.8125rem; cursor: pointer; font-family: inherit;
   }
 
-  /* ── Diff view ── */
-  .diff-view {
+  /* ── Review two-column layout ── */
+  .review-layout {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Left: document diff */
+  .review-doc-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    background: white;
+  }
+
+  .review-doc-header {
+    flex-shrink: 0;
+    padding: 0.875rem 2rem 0.625rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .review-doc-title { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
+  .review-doc-subtitle { font-size: 0.75rem; color: #94a3b8; }
+
+  .review-doc-body {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
-    background: white;
+    padding: 2rem 2.5rem;
+    max-width: 820px;
+  }
+
+  /* Unchanged paragraphs — full document style, slightly muted */
+  .doc-para-unchanged {
+    opacity: 0.5;
+  }
+
+  /* Changed paragraph — left border highlight, no card background */
+  .doc-para-change {
+    padding-left: 0.875rem;
+    margin-left: -0.875rem;
+    border-left: 3px solid transparent;
+    transition: opacity 0.2s;
+  }
+
+  .doc-para-change.faded { opacity: 0.35; }
+
+  .doc-para-added    { border-left-color: #22c55e; }
+  .doc-para-removed  { border-left-color: #ef4444; }
+  .doc-para-modified { border-left-color: #f59e0b; }
+
+  /* Right: compact controls */
+  .review-ctrl-col {
+    width: 280px;
+    flex-shrink: 0;
+    border-left: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #f8fafc;
+  }
+
+  .review-ctrl-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid #e2e8f0;
+    background: white;
+  }
+  .review-ctrl-title { font-size: 0.8125rem; font-weight: 700; color: #1e293b; }
+  .review-ctrl-count { font-size: 0.75rem; color: #64748b; }
+
+  .review-ctrl-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 0.375rem;
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: white;
   }
 
-  .diff-no-changes { font-size: 0.875rem; color: #94a3b8; text-align: center; padding: 2rem 0; margin: 0; }
+  .btn-accept-all {
+    display: flex; align-items: center; gap: 0.3rem;
+    padding: 0.35rem 0.625rem;
+    background: #16a34a; color: white;
+    border: none; border-radius: 5px;
+    font-size: 0.75rem; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn-accept-all:hover { background: #15803d; }
 
-  .diff-content {
-    font-size: 0.8125rem;
-    line-height: 1.7;
-    color: #374151;
-    white-space: pre-wrap;
-    word-break: break-word;
+  .btn-commit {
+    display: flex; align-items: center; gap: 0.3rem;
+    padding: 0.35rem 0.625rem;
+    background: #7c3aed; color: white;
+    border: none; border-radius: 5px;
+    font-size: 0.75rem; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn-commit:hover:not(:disabled) { background: #6d28d9; }
+  .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .review-ctrl-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
   }
 
-  .diff-add {
+  .ctrl-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.5rem 0.625rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    transition: opacity 0.15s;
+  }
+  .ctrl-item.rejected { opacity: 0.5; }
+
+  .ctrl-item-tag { display: flex; }
+
+  .ctrl-item-preview {
+    margin: 0;
+    font-size: 0.7rem;
+    color: #64748b;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .change-tag {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+  }
+  .change-tag--added    { background: #dcfce7; color: #15803d; }
+  .change-tag--removed  { background: #fee2e2; color: #b91c1c; }
+  .change-tag--modified { background: #fef9c3; color: #a16207; }
+
+  .para-btns {
+    display: flex;
+    gap: 0.375rem;
+    align-self: flex-start;
+  }
+
+  .para-btn {
+    padding: 0.2rem 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #94a3b8;
+    background: white;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    opacity: 0.5;
+  }
+  .para-btn.active {
+    opacity: 1;
+    cursor: default;
+  }
+  .para-btn:not(.active):hover { background: #f1f5f9; color: #374151; opacity: 0.8; }
+
+  .para-btn--accept.active {
     background: #dcfce7;
+    border-color: #86efac;
     color: #15803d;
+  }
+  .para-btn--reject.active {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+  }
+
+  /* ── Inline word diff ── */
+  .word-diff {
+    font-size: 0.8rem;
+    line-height: 1.7;
+    color: #1e293b;
+  }
+
+  .wd-add {
+    background: #bbf7d0;
+    color: #14532d;
     text-decoration: none;
     border-radius: 2px;
     padding: 0 1px;
   }
 
-  .diff-del {
-    background: #fee2e2;
-    color: #b91c1c;
+  .wd-del {
+    background: #fecaca;
+    color: #7f1d1d;
     text-decoration: line-through;
     border-radius: 2px;
     padding: 0 1px;
