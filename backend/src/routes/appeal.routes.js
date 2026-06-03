@@ -48,6 +48,8 @@ import {
   incorporateDocumentIntoTdraft,
   scopeIncorporation,
   incorporateTargeted,
+  uploadDraftExample,
+  getDraftContext,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -101,12 +103,14 @@ router.patch('/sections/:sectionId', updateSection);
 router.delete('/sections/:sectionId', deleteSection);
 router.put('/draft-types/:typeId/sections/reorder', reorderSections);
 router.get('/projects/:projectId/drafts/:typeId', getDraft);
+router.get('/projects/:projectId/drafts/:typeId/context', getDraftContext);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
 router.post('/projects/:projectId/drafts/:typeId/incorporate', incorporateDocumentIntoTdraft);
-router.post('/projects/:projectId/scope-incorporate', scopeIncorporation);
-router.post('/projects/:projectId/incorporate-targeted', incorporateTargeted);
+router.post('/projects/:projectId/drafts/:typeId/scope-incorporate', scopeIncorporation);
+router.post('/projects/:projectId/drafts/:typeId/incorporate-targeted', incorporateTargeted);
+router.post('/projects/:projectId/drafts/:typeId/upload-example', upload.single('file'), uploadDraftExample);
 
 // Briefing notes
 router.get('/projects/:projectId/briefing-notes', getBriefingNotes);

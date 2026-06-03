@@ -676,7 +676,8 @@ export async function getDraft(req, res) {
   const { projectId, typeId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, project_id, draft_type_id, content_html, generated_at, updated_at
+      `SELECT id, project_id, draft_type_id, content_html, generated_at, updated_at,
+              example_doc_filename
        FROM appeals.appeal_drafts
        WHERE project_id = $1 AND draft_type_id = $2`,
       [projectId, typeId]
@@ -685,6 +686,38 @@ export async function getDraft(req, res) {
   } catch (err) {
     console.error('getDraft error:', err);
     res.status(500).json({ error: 'Failed to fetch draft' });
+  }
+}
+
+export async function getDraftContext(req, res) {
+  const { projectId, typeId } = req.params;
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const { rows: typeRows } = await pool.query(
+      `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+
+    const [{ projectBrief, guidingBrief }, exampleDoc] = await Promise.all([
+      fetchPromptContext(projectId, typeRows[0].slug, projectRows[0].development_type),
+      fetchExampleDoc(projectId, typeId)
+    ]);
+
+    res.json({
+      guidingBrief: guidingBrief ? {
+        name: guidingBrief.name,
+        content: guidingBrief.guidance_content ?? null
+      } : null,
+      projectBrief: projectBrief ?? null,
+      exampleDoc: exampleDoc ? { filename: exampleDoc.filename } : null
+    });
+  } catch (err) {
+    console.error('getDraftContext error:', err);
+    res.status(500).json({ error: err.message });
   }
 }
 
@@ -738,14 +771,17 @@ export async function generateDraft(req, res) {
       [typeId]
     );
 
-    const guidingBrief = await getGuidingBrief(draftType.slug, projectRows[0].development_type);
+    const { projectBrief, guidingBrief } = await fetchPromptContext(projectId, draftType.slug, projectRows[0].development_type);
+    const exampleDoc = await fetchExampleDoc(projectId, typeId);
 
     const contentHtml = await generateAppealDraft({
       projectName: projectRows[0].project_name,
       draftTypeName: draftType.name,
       sections,
       issues,
-      guidingBrief
+      guidingBrief,
+      projectBrief,
+      exampleDoc
     });
 
     // Persist
@@ -762,6 +798,57 @@ export async function generateDraft(req, res) {
     console.error('generateDraft error:', err);
     res.status(500).json({ error: err.message });
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared context fetcher — project brief, guiding brief, example doc
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function uploadDraftExample(req, res) {
+  const { projectId, typeId } = req.params;
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const { text, warning } = await parseFile(req.file.buffer, req.file.originalname);
+    await pool.query(
+      `INSERT INTO appeals.appeal_drafts (project_id, draft_type_id, content_html, example_doc_text, example_doc_filename, updated_at)
+       VALUES ($1, $2, '', $3, $4, NOW())
+       ON CONFLICT (project_id, draft_type_id)
+       DO UPDATE SET example_doc_text = $3, example_doc_filename = $4, updated_at = NOW()`,
+      [projectId, typeId, text, req.file.originalname]
+    );
+    res.json({ ok: true, filename: req.file.originalname, warning: warning ?? null });
+  } catch (err) {
+    console.error('uploadDraftExample error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function fetchPromptContext(projectId, typeSlug, developmentType) {
+  const [projectBriefRows, guidingBrief] = await Promise.all([
+    pool.query(
+      `SELECT summary_html FROM planning_applications.document_summaries
+       WHERE project_id = $1 AND doc_type = 'briefing_note'
+       ORDER BY created_at DESC LIMIT 1`,
+      [projectId]
+    ),
+    getGuidingBrief(typeSlug, developmentType)
+  ]);
+  return {
+    projectBrief: projectBriefRows.rows[0]?.summary_html ?? null,
+    guidingBrief
+  };
+}
+
+async function fetchExampleDoc(projectId, typeId) {
+  const { rows } = await pool.query(
+    `SELECT example_doc_text, example_doc_filename
+     FROM appeals.appeal_drafts
+     WHERE project_id = $1 AND draft_type_id = $2`,
+    [projectId, typeId]
+  );
+  return rows[0]?.example_doc_text
+    ? { text: rows[0].example_doc_text, filename: rows[0].example_doc_filename }
+    : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1221,13 +1308,20 @@ export async function incorporateDocumentIntoTdraft(req, res) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function scopeIncorporation(req, res) {
-  const { projectId } = req.params;
+  const { projectId, typeId } = req.params;
   const { document_id, document_text, document_title, paragraphs } = req.body;
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
   if (!document_id && !document_text) return res.status(400).json({ error: 'document_id or document_text required' });
 
   try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT development_type FROM public.projects WHERE id = $1`, [projectId]
+    );
+    const { rows: typeRows } = await pool.query(
+      `SELECT slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+
     let documentText, filename;
     if (document_id) {
       const { rows } = await pool.query(
@@ -1242,17 +1336,26 @@ export async function scopeIncorporation(req, res) {
       filename = document_title || 'Pasted document';
     }
 
-    const { rows: issues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN public.appeal_issue_notes ain
-         ON ain.track_id = pit.id AND ain.project_id = $1
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
+    const [issueRows, { guidingBrief }] = await Promise.all([
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN public.appeal_issue_notes ain
+           ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      ),
+      fetchPromptContext(projectId, typeRows[0]?.slug, projectRows[0]?.development_type)
+    ]);
 
-    const result = await scopeDocumentIncorporation({ paragraphs, documentText, filename, issues });
+    const result = await scopeDocumentIncorporation({
+      paragraphs,
+      documentText,
+      filename,
+      issues: issueRows.rows,
+      guidingBrief
+    });
     res.json({ ...result, filename });
   } catch (err) {
     console.error('scopeIncorporation error:', err);
@@ -1265,13 +1368,20 @@ export async function scopeIncorporation(req, res) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function incorporateTargeted(req, res) {
-  const { projectId } = req.params;
+  const { projectId, typeId } = req.params;
   const { document_id, document_text, document_title, paragraphs, user_notes = null } = req.body;
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
   if (!document_id && !document_text) return res.status(400).json({ error: 'document_id or document_text required' });
 
   try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+    );
+    const { rows: typeRows } = await pool.query(
+      `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+
     let documentText, filename;
     if (document_id) {
       const { rows } = await pool.query(
@@ -1286,17 +1396,32 @@ export async function incorporateTargeted(req, res) {
       filename = document_title || 'Pasted document';
     }
 
-    const { rows: issues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN public.appeal_issue_notes ain
-         ON ain.track_id = pit.id AND ain.project_id = $1
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
+    const [issueRows, { projectBrief, guidingBrief }, exampleDoc] = await Promise.all([
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN public.appeal_issue_notes ain
+           ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      ),
+      fetchPromptContext(projectId, typeRows[0]?.slug, projectRows[0]?.development_type),
+      fetchExampleDoc(projectId, typeId)
+    ]);
 
-    const updated = await incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes: user_notes });
+    const updated = await incorporateTargetedParagraphs({
+      paragraphs,
+      documentText,
+      filename,
+      issues: issueRows.rows,
+      userNotes: user_notes,
+      projectName: projectRows[0]?.project_name,
+      draftTypeName: typeRows[0]?.name,
+      guidingBrief,
+      projectBrief,
+      exampleDoc
+    });
     res.json({ updated });
   } catch (err) {
     console.error('incorporateTargeted error:', err);

@@ -156,24 +156,22 @@ Respond ONLY with valid JSON in this exact shape (no markdown, no explanation):
 // Formal appeal draft document generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief = null }) {
+export async function generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief = null, projectBrief = null, exampleDoc = null }) {
   const instructions = section.generation_prompt?.trim() ||
     `Write the "${section.name}" section of a ${draftTypeName}. Use formal planning language suitable for submission to the Planning Inspectorate. Produce clean HTML: <h2> for the section heading, <p> for body text, <ol>/<li> for numbered lists. Do not add placeholder text — write the full section from the material provided.`;
 
-  const exampleBlock = section.example_text?.trim()
-    ? `The following is an example of this section's tone and format. Match the style but use NO information from it — all content must come from the working argument notes:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n`
+  const sectionExampleBlock = section.example_text?.trim()
+    ? `Section style example (match tone/format, use NO content from it):\n<section_example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</section_example>\n`
     : '';
 
-  const guidingBlock = guidingBrief?.guidance_content?.trim()
-    ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
-    : '';
+  const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
 
   const prompt = `You are drafting the "${section.name}" section of a formal planning appeal document. Output HTML only — no markdown.
 
 CONTENT INSTRUCTIONS:
 ${instructions}
 
-${exampleBlock}Project: ${projectName}
+${sectionExampleBlock}${contextBlocks ? contextBlocks + '\n\n' : ''}Project: ${projectName}
 Document: ${draftTypeName}
 
 Working argument notes:
@@ -193,7 +191,7 @@ FORMAT RULES (mandatory):
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 2000,
-    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${guidingBlock}`,
+    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`,
     messages: [{ role: 'user', content: prompt }]
   });
 
@@ -201,15 +199,14 @@ FORMAT RULES (mandatory):
   return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
-export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {}, guidingBrief = null }) {
+export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {}, guidingBrief = null, projectBrief = null, exampleDoc = null }) {
   const issueContext = buildIssueContext(issues, evidenceByTrack);
+  const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
 
   if (!sections || sections.length === 0) {
-    const guidingBlock = guidingBrief?.guidance_content?.trim()
-      ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
-      : '';
+    const contextSection = contextBlocks ? `\n\n${contextBlocks}` : '';
 
-    const prompt = `${DEFAULT_DRAFT_PROMPT}${guidingBlock}
+    const prompt = `${DEFAULT_DRAFT_PROMPT}${contextSection}
 
 Project: ${projectName}
 Document type: ${draftTypeName}
@@ -231,7 +228,7 @@ Produce the complete ${draftTypeName} as HTML now.`;
   const parts = [];
   for (const section of sections) {
     console.log(`[generateAppealDraft] generating section: ${section.name}`);
-    const html = await generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief });
+    const html = await generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief, projectBrief, exampleDoc });
     parts.push(html);
   }
 
@@ -239,18 +236,53 @@ Produce the complete ${draftTypeName} as HTML now.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared prompt context builder
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildContextBlocks({ guidingBrief = null, projectBrief = null, exampleDoc = null } = {}) {
+  const blocks = [];
+
+  if (guidingBrief?.guidance_content?.trim()) {
+    blocks.push(`## Document Type Brief
+This describes what this document type is, what it must achieve, and the structure it should follow. Use this as your primary guide to the document's purpose and required content.
+
+${guidingBrief.guidance_content.trim()}`);
+  }
+
+  if (projectBrief?.trim()) {
+    blocks.push(`## Project Brief
+This sets out the project-specific strategy, context, and client position. Use it to understand the background and ensure all content is aligned with the project's goals.
+
+${projectBrief.trim().slice(0, 4000)}`);
+  }
+
+  if (exampleDoc?.text?.trim()) {
+    blocks.push(`## Example Document
+The following is an example of this document type from this project. Use it as a guide to the preferred tone, register, structure, and level of detail. Do not copy content from it — use it only to calibrate style.
+
+${exampleDoc.text.trim().slice(0, 6000)}`);
+  }
+
+  return blocks.join('\n\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Document incorporation — Option C: scoping + targeted paragraph update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function scopeDocumentIncorporation({ paragraphs, documentText, filename, issues }) {
+export async function scopeDocumentIncorporation({ paragraphs, documentText, filename, issues, guidingBrief = null }) {
   const issueLabels = issues.map(i => i.label).join(', ') || 'none listed';
+
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\nDocument type brief: ${guidingBrief.guidance_content.trim().slice(0, 500)}\n`
+    : '';
 
   const paraList = paragraphs
     .map(p => `${p.id}: ${p.text.slice(0, 120)}${p.text.length > 120 ? '...' : ''}`)
     .join('\n');
 
   const prompt = `You are reviewing which paragraphs of a planning appeal document are directly relevant to a new specialist report.
-
+${guidingBlock}
 Key issues in this appeal: ${issueLabels}
 Document being incorporated: ${filename}
 
@@ -278,38 +310,44 @@ Respond ONLY with valid JSON, no markdown:
   return JSON.parse(raw);
 }
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null }) {
   const issueContext = buildIssueContext(issues);
+  const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
 
   const userNotesBlock = userNotes?.trim()
-    ? `## User guidance — HIGH PRIORITY\n${userNotes.trim()}\n\n`
+    ? `## User Guidance — HIGH PRIORITY\nFollow these instructions precisely. They override your own judgement:\n${userNotes.trim()}\n\n`
     : '';
 
   const paraBlock = paragraphs
     .map(p => `${p.id}:\n${p.html}`)
     .join('\n\n');
 
-  const prompt = `You are updating a section of a formal planning appeal document to incorporate evidence from a new specialist report.
+  const prompt = `You are updating a section of a formal planning document to incorporate evidence from a new specialist report.
 
-${userNotesBlock}Key issues in this appeal:
+Document type: ${draftTypeName}
+Project: ${projectName}
+
+${contextBlocks}
+
+${userNotesBlock}## Key Issues
 ${issueContext}
 
-Document being incorporated: ${filename}
+## Document Being Incorporated: ${filename}
 ${documentText}
 
-The following paragraphs are IN SCOPE — you may update them and you may add new paragraphs where the document warrants it. Only these paragraphs have been unlocked for editing; all other parts of the document are fixed and you will not see or touch them.
+## In-Scope Paragraphs
+The following paragraphs are unlocked for editing. All other parts of the document are fixed. You may update in-scope paragraphs and add new paragraphs where the document warrants it. Leave a paragraph unchanged if the document adds nothing relevant to it.
 
-For each in-scope paragraph: update it if the document adds relevant evidence, or leave it unchanged if not. If the document justifies a new paragraph (e.g. a new point that doesn't fit within an existing paragraph), add it using the id format "INSERT_AFTER_[id]" to indicate where it should be inserted.
+For new paragraphs, use id format "INSERT_AFTER_[id]".
 
 Write in formal planning language. Cite paragraph or section numbers from the document where available. Do not use em dashes. Do not number paragraphs.
 
-In-scope paragraphs:
 ${paraBlock}
 
 Return ONLY a valid JSON array — no markdown, no explanation:
 [
   {"id": "p3", "html": "<p>Updated paragraph...</p>"},
-  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph inserted after p3...</p>"},
+  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph...</p>"},
   {"id": "p7", "html": "<p>Unchanged or updated...</p>"}
 ]`;
 

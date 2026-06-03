@@ -238,6 +238,12 @@ export async function reorderSections(typeId, order) {
   return res.json();
 }
 
+export async function getDraftContext(projectId, typeId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/context`);
+  if (!res.ok) throw new Error('Failed to fetch draft context');
+  return res.json();
+}
+
 export async function getDraft(projectId, typeId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}`);
   if (!res.ok) throw new Error('Failed to fetch draft');
@@ -391,8 +397,8 @@ export async function chatArgument(projectId, { trackId, briefingNoteId, convers
   return res.json();
 }
 
-export async function scopeIncorporation(projectId, { documentId, documentText, documentTitle, paragraphs }) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/scope-incorporate`, {
+export async function scopeIncorporation(projectId, typeId, { documentId, documentText, documentTitle, paragraphs }) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/scope-incorporate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -406,8 +412,8 @@ export async function scopeIncorporation(projectId, { documentId, documentText, 
   return res.json();
 }
 
-export async function incorporateTargeted(projectId, { documentId, documentText, documentTitle, paragraphs, userNotes = null }) {
-  const res = await authFetch(`/api/appeal/projects/${projectId}/incorporate-targeted`, {
+export async function incorporateTargeted(projectId, typeId, { documentId, documentText, documentTitle, paragraphs, userNotes = null }) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/incorporate-targeted`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -419,6 +425,17 @@ export async function incorporateTargeted(projectId, { documentId, documentText,
     })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to incorporate'); }
+  return res.json();
+}
+
+export async function uploadDraftExample(projectId, typeId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/upload-example`, {
+    method: 'POST',
+    body: formData
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to upload example'); }
   return res.json();
 }
 

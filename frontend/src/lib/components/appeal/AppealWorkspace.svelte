@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getArgumentPoints } from '$lib/api/appeal.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getArgumentPoints, uploadDraftExample, getDraftContext } from '$lib/api/appeal.js';
   import { issueNotes, noteStatus, initNotes, handleNoteInput, loadBriefingNotes, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, openBriefingUpload, submitBriefingUpload, selectBriefingNote, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, applyEvolvedArgument, acceptBriefingDraftSuggestion, skipBriefingDraftSuggestion, closeBriefingDraft, sendChatMessage, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/appeal-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logSummary, logPoints, logSaving, initLog, openLogModal, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/appeal-log.js';
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
@@ -9,7 +9,6 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import AppealDocIncorporatePanel from '$lib/components/appeal/AppealDocIncorporatePanel.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
-  import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
 
   const DOC_TYPES = [
     'Officer Report',
@@ -113,28 +112,46 @@
 
   let exportingWord = false;
   let incorporateReviewMode = false;
-  $: if (!$activeDraftTypeId) incorporateReviewMode = false;
 
-  let briefCheckResults = null;
-  let briefChecking = false;
-  let briefCheckError = null;
+  // Per-type example doc upload state — filenames seeded from loaded drafts
+  let exampleUploading = {};
+  let exampleFileInputs = {};
+  let _exampleFilenameOverrides = {};
+  $: exampleFilenames = {
+    ...Object.fromEntries(
+      Object.entries($drafts).filter(([,d]) => d?.example_doc_filename).map(([id, d]) => [id, d.example_doc_filename])
+    ),
+    ..._exampleFilenameOverrides
+  };
 
-  async function checkBrief() {
-    const html = draftEditor?.getHTML();
-    if (!html?.trim()) return;
-    const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
-    briefChecking = true; briefCheckResults = null; briefCheckError = null;
+  async function handleExampleUpload(typeId, file) {
+    if (!file) return;
+    exampleUploading = { ...exampleUploading, [typeId]: true };
     try {
-      const result = await reviewDraftAgainstBrief({
-        draft_html: html,
-        document_type: activeType?.slug ?? '',
-        development_type: project.development_type ?? null
-      });
-      briefCheckResults = result;
+      const result = await uploadDraftExample(project.id, typeId, file);
+      _exampleFilenameOverrides = { ..._exampleFilenameOverrides, [typeId]: result.filename };
     } catch (err) {
-      briefCheckError = err.message;
+      console.error('Example upload failed:', err);
     } finally {
-      briefChecking = false;
+      exampleUploading = { ...exampleUploading, [typeId]: false };
+    }
+  }
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; contextPanelOpen = false; contextData = null; }
+
+  let contextPanelOpen = false;
+  let contextData = null;
+  let contextLoading = false;
+  let contextExpanded = { guidingBrief: true, projectBrief: false, exampleDoc: true };
+
+  async function toggleContextPanel() {
+    if (contextPanelOpen) { contextPanelOpen = false; return; }
+    incorporateReviewMode = false;
+    contextPanelOpen = true;
+    if (!contextData) {
+      contextLoading = true;
+      try { contextData = await getDraftContext(project.id, $activeDraftTypeId); }
+      catch (err) { console.error('Failed to load context:', err); }
+      finally { contextLoading = false; }
     }
   }
 
@@ -684,8 +701,8 @@
           <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => handleGenerate($activeDraftTypeId)}>
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
-          <button class="draft-check-btn" disabled={briefChecking} on:click={checkBrief} title="Check draft against guiding brief">
-            {#if briefChecking}<div class="mini-spinner"></div> Checking...{:else}<i class="las la-clipboard-check"></i> Check brief{/if}
+          <button class="draft-context-btn" class:active={contextPanelOpen} on:click={toggleContextPanel} title="View prompt context — guiding brief, project brief, example doc">
+            <i class="las la-layer-group"></i> Context
           </button>
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
@@ -696,55 +713,85 @@
         </div>
       </div>
 
-      {#if briefCheckError}
-        <div class="brief-check-panel brief-check-error">
-          <i class="las la-exclamation-circle"></i> {briefCheckError}
-          <button class="brief-check-dismiss" on:click={() => briefCheckError = null}><i class="las la-times"></i></button>
-        </div>
-      {/if}
-
-      {#if briefCheckResults}
-        {#if briefCheckResults.no_brief}
-          <div class="brief-check-panel brief-check-info">
-            <i class="las la-info-circle"></i> No guiding brief found for this document type and development type. Add one in Admin Console → Guiding Briefs.
-            <button class="brief-check-dismiss" on:click={() => briefCheckResults = null}><i class="las la-times"></i></button>
-          </div>
-        {:else if briefCheckResults.no_checklist}
-          <div class="brief-check-panel brief-check-info">
-            <i class="las la-info-circle"></i> A guiding brief exists but has no review checklist. Add one in Admin Console → Guiding Briefs.
-            <button class="brief-check-dismiss" on:click={() => briefCheckResults = null}><i class="las la-times"></i></button>
-          </div>
-        {:else if briefCheckResults.items?.length}
-          <div class="brief-check-panel">
-            <div class="brief-check-header">
-              <span class="brief-check-title"><i class="las la-clipboard-check"></i> Guiding Brief Check</span>
-              <button class="brief-check-dismiss" on:click={() => briefCheckResults = null}><i class="las la-times"></i></button>
-            </div>
-            <div class="brief-check-items">
-              {#each briefCheckResults.items as item}
-                <div class="brief-check-item brief-check-item--{item.status}">
-                  <span class="brief-check-icon">
-                    {#if item.status === 'present'}<i class="las la-check-circle"></i>
-                    {:else if item.status === 'partial'}<i class="las la-exclamation-triangle"></i>
-                    {:else}<i class="las la-times-circle"></i>{/if}
-                  </span>
-                  <div class="brief-check-text">
-                    <span class="brief-check-topic">{item.topic}</span>
-                    {#if item.suggestion}<span class="brief-check-suggestion">{item.suggestion}</span>{/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      {/if}
-
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
         <div class="draft-left-panel" class:panel-hidden={incorporateReviewMode}>
           <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
+          {#if contextPanelOpen}
+            <div class="context-panel">
+              <div class="context-panel-header">
+                <span class="context-panel-title"><i class="las la-layer-group"></i> Prompt context</span>
+                <button class="context-panel-close" on:click={() => contextPanelOpen = false}><i class="las la-times"></i></button>
+              </div>
+              {#if contextLoading}
+                <div class="context-panel-loading"><div class="spinner"></div><span>Loading...</span></div>
+              {:else}
+                <div class="context-panel-body">
+
+                  <!-- Guiding brief -->
+                  <div class="context-block">
+                    <button class="context-block-header" on:click={() => contextExpanded.guidingBrief = !contextExpanded.guidingBrief}>
+                      <span class="context-block-label"><i class="las la-book"></i> Guiding brief</span>
+                      <span class="context-block-status {contextData?.guidingBrief ? 'status-set' : 'status-missing'}">
+                        {contextData?.guidingBrief ? contextData.guidingBrief.name : 'Not set'}
+                      </span>
+                      <i class="las la-angle-{contextExpanded.guidingBrief ? 'up' : 'down'} context-chevron"></i>
+                    </button>
+                    {#if contextExpanded.guidingBrief && contextData?.guidingBrief?.content}
+                      <div class="context-block-body">{contextData.guidingBrief.content}</div>
+                    {:else if contextExpanded.guidingBrief}
+                      <p class="context-block-empty">No guiding brief set for this document type. Add one in Admin Console → Guiding Briefs.</p>
+                    {/if}
+                  </div>
+
+                  <!-- Project brief -->
+                  <div class="context-block">
+                    <button class="context-block-header" on:click={() => contextExpanded.projectBrief = !contextExpanded.projectBrief}>
+                      <span class="context-block-label"><i class="las la-file-alt"></i> Project brief</span>
+                      <span class="context-block-status {contextData?.projectBrief ? 'status-set' : 'status-missing'}">
+                        {contextData?.projectBrief ? 'Set' : 'Not set'}
+                      </span>
+                      <i class="las la-angle-{contextExpanded.projectBrief ? 'up' : 'down'} context-chevron"></i>
+                    </button>
+                    {#if contextExpanded.projectBrief && contextData?.projectBrief}
+                      <div class="context-block-body">{@html contextData.projectBrief}</div>
+                    {:else if contextExpanded.projectBrief}
+                      <p class="context-block-empty">No project brief uploaded. Upload a briefing note via the planning application tool.</p>
+                    {/if}
+                  </div>
+
+                  <!-- Example doc -->
+                  <div class="context-block">
+                    <button class="context-block-header" on:click={() => contextExpanded.exampleDoc = !contextExpanded.exampleDoc}>
+                      <span class="context-block-label"><i class="las la-file-code"></i> Example document</span>
+                      <span class="context-block-status {contextData?.exampleDoc ? 'status-set' : 'status-missing'}">
+                        {contextData?.exampleDoc ? contextData.exampleDoc.filename : 'Not set'}
+                      </span>
+                      <i class="las la-angle-{contextExpanded.exampleDoc ? 'up' : 'down'} context-chevron"></i>
+                    </button>
+                    {#if contextExpanded.exampleDoc}
+                      {#if contextData?.exampleDoc}
+                        <div class="context-block-body">
+                          <p class="context-example-filename"><i class="las la-check-circle" style="color:#16a34a"></i> {contextData.exampleDoc.filename}</p>
+                          <p class="context-example-hint">This document's tone and structure are being used as a reference in all generation prompts.</p>
+                          <button class="context-example-replace" on:click={() => exampleFileInputs[$activeDraftTypeId]?.click()}>
+                            <i class="las la-exchange-alt"></i> Replace
+                          </button>
+                        </div>
+                      {:else}
+                        <div class="context-block-body">
+                          <p class="context-block-empty">No example document uploaded. Upload one from the draft type list to guide tone and structure.</p>
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
+
+                </div>
+              {/if}
+            </div>
+          {:else}
           <AppealDocIncorporatePanel
             {project}
             typeId={$activeDraftTypeId}
@@ -758,6 +805,7 @@
               incorporateReviewMode = false;
             }}
           />
+          {/if}
         </div>
       </div>
     {:else}
@@ -792,6 +840,27 @@
                 <button class="draft-setting-btn" on:click={() => openSectionsModal(type.id)}>
                   <i class="las la-layer-group"></i> Configure sections
                 </button>
+                <button
+                  class="draft-setting-btn"
+                  disabled={exampleUploading[type.id]}
+                  on:click={() => exampleFileInputs[type.id]?.click()}
+                  title="Upload an example document — used as tone and structure reference in all prompts"
+                >
+                  {#if exampleUploading[type.id]}
+                    <div class="mini-spinner"></div> Uploading...
+                  {:else if exampleFilenames[type.id]}
+                    <i class="las la-file-check"></i> Example: {exampleFilenames[type.id]}
+                  {:else}
+                    <i class="las la-file-upload"></i> Upload example doc
+                  {/if}
+                </button>
+                <input
+                  type="file"
+                  accept=".pdf,.txt,.md,.docx"
+                  style="display:none"
+                  bind:this={exampleFileInputs[type.id]}
+                  on:change={(e) => { handleExampleUpload(type.id, e.target.files?.[0]); e.target.value = ''; }}
+                />
               </div>
             </div>
           {/each}
@@ -2392,58 +2461,158 @@
   .draft-save-btn:hover:not(:disabled) { background: #6d28d9; }
   .draft-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .draft-check-btn {
+  .draft-context-btn {
     display: flex; align-items: center; gap: 0.35rem;
     padding: 0.4rem 0.75rem;
-    background: #f0fdfa; color: #0d9488;
-    border: 1px solid #99f6e4; border-radius: 6px;
+    background: #f5f3ff; color: #6d28d9;
+    border: 1px solid #ddd6fe; border-radius: 6px;
     font-size: 0.8125rem; cursor: pointer; font-family: inherit; transition: all 0.15s;
   }
-  .draft-check-btn:hover:not(:disabled) { background: #ccfbf1; }
-  .draft-check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .draft-context-btn:hover { background: #ede9fe; }
+  .draft-context-btn.active { background: #7c3aed; color: white; border-color: #7c3aed; }
 
-  .brief-check-panel {
-    margin: 0 1.5rem 0.75rem;
-    background: white; border: 1px solid #e2e8f0; border-radius: 8px;
-    font-size: 0.8125rem;
+  /* ── Context panel ── */
+  .context-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: white;
+  }
+
+  .context-panel-header {
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: white;
   }
-  .brief-check-panel.brief-check-error {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.625rem 0.875rem;
-    background: #fef2f2; border-color: #fecaca; color: #dc2626;
+
+  .context-panel-title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
   }
-  .brief-check-panel.brief-check-info {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.625rem 0.875rem;
-    background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8;
+
+  .context-panel-close {
+    display: flex; align-items: center; justify-content: center;
+    width: 1.5rem; height: 1.5rem;
+    border: none; background: transparent; color: #94a3b8;
+    cursor: pointer; border-radius: 4px; font-size: 1rem;
   }
-  .brief-check-dismiss {
-    margin-left: auto; background: none; border: none; cursor: pointer;
-    color: inherit; opacity: 0.6; padding: 0.15rem; display: flex; align-items: center;
+  .context-panel-close:hover { background: #f1f5f9; color: #374151; }
+
+  .context-panel-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: #64748b;
+    font-size: 0.875rem;
   }
-  .brief-check-dismiss:hover { opacity: 1; }
-  .brief-check-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.625rem 0.875rem; border-bottom: 1px solid #f1f5f9;
+
+  .context-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
   }
-  .brief-check-title { font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
-  .brief-check-title i { color: #0d9488; }
-  .brief-check-items { padding: 0.5rem 0.75rem; display: flex; flex-direction: column; gap: 0.375rem; }
-  .brief-check-item {
-    display: flex; align-items: flex-start; gap: 0.625rem;
-    padding: 0.5rem 0.625rem; border-radius: 6px;
+
+  .context-block {
+    border-bottom: 1px solid #f1f5f9;
   }
-  .brief-check-item--present { background: #f0fdf4; }
-  .brief-check-item--partial { background: #fffbeb; }
-  .brief-check-item--missing { background: #fef2f2; }
-  .brief-check-icon { flex-shrink: 0; font-size: 1rem; margin-top: 0.05rem; }
-  .brief-check-item--present .brief-check-icon { color: #16a34a; }
-  .brief-check-item--partial .brief-check-icon { color: #ca8a04; }
-  .brief-check-item--missing .brief-check-icon { color: #dc2626; }
-  .brief-check-text { display: flex; flex-direction: column; gap: 0.2rem; }
-  .brief-check-topic { font-weight: 600; color: #1e293b; }
-  .brief-check-suggestion { color: #475569; line-height: 1.5; }
+
+  .context-block-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: background 0.12s;
+  }
+  .context-block-header:hover { background: #f8fafc; }
+
+  .context-block-label {
+    flex: 1;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .context-block-status {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 110px;
+  }
+  .status-set    { background: #f0fdf4; color: #15803d; }
+  .status-missing { background: #f1f5f9; color: #94a3b8; }
+
+  .context-chevron { font-size: 0.75rem; color: #94a3b8; flex-shrink: 0; }
+
+  .context-block-body {
+    padding: 0 1rem 0.875rem;
+    font-size: 0.8rem;
+    color: #475569;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .context-block-body :global(p) { margin: 0.25rem 0; }
+  .context-block-body :global(h2),
+  .context-block-body :global(h3) { font-size: 0.8rem; font-weight: 700; margin: 0.5rem 0 0.2rem; color: #1e293b; }
+
+  .context-block-empty {
+    margin: 0;
+    padding: 0 1rem 0.875rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-style: italic;
+  }
+
+  .context-example-filename {
+    margin: 0 0 0.375rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .context-example-hint {
+    margin: 0 0 0.625rem;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+
+  .context-example-replace {
+    display: flex; align-items: center; gap: 0.3rem;
+    padding: 0.25rem 0.625rem;
+    background: white; color: #64748b;
+    border: 1px solid #e2e8f0; border-radius: 5px;
+    font-size: 0.75rem; cursor: pointer; font-family: inherit;
+    transition: all 0.12s;
+  }
+  .context-example-replace:hover { background: #f1f5f9; color: #374151; }
 
   .draft-editor-wrap {
     flex: 1;

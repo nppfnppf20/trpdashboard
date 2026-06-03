@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
-  import { getDocuments, uploadDocument, incorporateDocument, scopeIncorporation, incorporateTargeted } from '$lib/api/appeal.js';
+  import { getDocuments, uploadDocument, incorporateDocument, scopeIncorporation, incorporateTargeted, uploadDraftExample } from '$lib/api/appeal.js';
 
   export let project;
   export let typeId;
@@ -139,7 +139,7 @@
     }
 
     try {
-      const result = await scopeIncorporation(project.id, {
+      const result = await scopeIncorporation(project.id, typeId, {
         ...buildDocPayload(),
         paragraphs: allParagraphs.map(p => ({ id: p.id, text: p.text }))
       });
@@ -165,7 +165,7 @@
     }
 
     try {
-      const result = await incorporateTargeted(project.id, {
+      const result = await incorporateTargeted(project.id, typeId, {
         ...buildDocPayload(),
         paragraphs: targeted,
         userNotes: userNotes || null
