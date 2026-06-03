@@ -6,7 +6,7 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -1212,6 +1212,94 @@ export async function incorporateDocumentIntoTdraft(req, res) {
     res.json({ content_html: updatedHtml, doc_label: docLabel });
   } catch (err) {
     console.error('incorporateDocument error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scoped incorporation — Step 1: scope which paragraphs are relevant
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function scopeIncorporation(req, res) {
+  const { projectId } = req.params;
+  const { document_id, document_text, document_title, paragraphs } = req.body;
+
+  if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
+  if (!document_id && !document_text) return res.status(400).json({ error: 'document_id or document_text required' });
+
+  try {
+    let documentText, filename;
+    if (document_id) {
+      const { rows } = await pool.query(
+        `SELECT filename, file_text FROM public.appeal_documents WHERE id = $1 AND project_id = $2`,
+        [document_id, projectId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Document not found' });
+      documentText = rows[0].file_text ?? '';
+      filename = rows[0].filename;
+    } else {
+      documentText = document_text;
+      filename = document_title || 'Pasted document';
+    }
+
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const result = await scopeDocumentIncorporation({ paragraphs, documentText, filename, issues });
+    res.json({ ...result, filename });
+  } catch (err) {
+    console.error('scopeIncorporation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scoped incorporation — Step 2: update only targeted paragraphs
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function incorporateTargeted(req, res) {
+  const { projectId } = req.params;
+  const { document_id, document_text, document_title, paragraphs, user_notes = null } = req.body;
+
+  if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
+  if (!document_id && !document_text) return res.status(400).json({ error: 'document_id or document_text required' });
+
+  try {
+    let documentText, filename;
+    if (document_id) {
+      const { rows } = await pool.query(
+        `SELECT filename, file_text FROM public.appeal_documents WHERE id = $1 AND project_id = $2`,
+        [document_id, projectId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Document not found' });
+      documentText = rows[0].file_text ?? '';
+      filename = rows[0].filename;
+    } else {
+      documentText = document_text;
+      filename = document_title || 'Pasted document';
+    }
+
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN public.appeal_issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const updated = await incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes: user_notes });
+    res.json({ updated });
+  } catch (err) {
+    console.error('incorporateTargeted error:', err);
     res.status(500).json({ error: err.message });
   }
 }

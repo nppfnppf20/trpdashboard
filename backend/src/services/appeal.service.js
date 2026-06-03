@@ -238,7 +238,86 @@ Produce the complete ${draftTypeName} as HTML now.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Document incorporation — interactive two-panel flow
+// Document incorporation — Option C: scoping + targeted paragraph update
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function scopeDocumentIncorporation({ paragraphs, documentText, filename, issues }) {
+  const issueLabels = issues.map(i => i.label).join(', ') || 'none listed';
+
+  const paraList = paragraphs
+    .map(p => `${p.id}: ${p.text.slice(0, 120)}${p.text.length > 120 ? '...' : ''}`)
+    .join('\n');
+
+  const prompt = `You are reviewing which paragraphs of a planning appeal document are directly relevant to a new specialist report.
+
+Key issues in this appeal: ${issueLabels}
+Document being incorporated: ${filename}
+
+Draft paragraphs (id: preview):
+${paraList}
+
+Document content:
+${documentText}
+
+Identify which paragraph IDs this document directly speaks to — i.e. where incorporating evidence from this document would genuinely improve or update that paragraph. Only include paragraphs where this document has something specific and relevant to contribute. Do not include paragraphs from unrelated disciplines or topics.
+
+Respond ONLY with valid JSON, no markdown:
+{
+  "relevant_ids": ["p2", "p5", "p8"],
+  "summary": "One sentence explaining what this document addresses and which sections are affected."
+}`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 500,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  return JSON.parse(raw);
+}
+
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null }) {
+  const issueContext = buildIssueContext(issues);
+
+  const userNotesBlock = userNotes?.trim()
+    ? `## User guidance — HIGH PRIORITY\n${userNotes.trim()}\n\n`
+    : '';
+
+  const paraBlock = paragraphs
+    .map(p => `${p.id}:\n${p.html}`)
+    .join('\n\n');
+
+  const prompt = `You are updating specific paragraphs of a formal planning appeal document to incorporate evidence from a new specialist report.
+
+${userNotesBlock}Key issues in this appeal:
+${issueContext}
+
+Document being incorporated: ${filename}
+${documentText}
+
+Paragraphs to update — update ALL of them using the evidence from the document above. Cite paragraph or section numbers from the document where available. Write in formal planning language. Do not use em dashes.
+
+${paraBlock}
+
+Return ONLY a valid JSON array — no markdown, no explanation:
+[
+  {"id": "p0", "html": "<p>Updated paragraph HTML...</p>"},
+  {"id": "p1", "html": "<h2>Updated heading...</h2>"}
+]`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  return JSON.parse(raw);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Document incorporation — interactive two-panel flow (full-draft fallback)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function incorporateDocument({ projectName, draftTypeName, currentDraftHtml, documentText, issues, userNotes = null, guidingBrief = null, conversation = [] }) {

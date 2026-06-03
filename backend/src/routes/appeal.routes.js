@@ -46,6 +46,8 @@ import {
   evolveArgument,
   chatArgument,
   incorporateDocumentIntoTdraft,
+  scopeIncorporation,
+  incorporateTargeted,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -103,6 +105,8 @@ router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
 router.post('/projects/:projectId/drafts/:typeId/incorporate', incorporateDocumentIntoTdraft);
+router.post('/projects/:projectId/scope-incorporate', scopeIncorporation);
+router.post('/projects/:projectId/incorporate-targeted', incorporateTargeted);
 
 // Briefing notes
 router.get('/projects/:projectId/briefing-notes', getBriefingNotes);

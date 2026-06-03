@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
-  import { getDocuments, uploadDocument, incorporateDocument } from '$lib/api/appeal.js';
+  import { getDocuments, uploadDocument, incorporateDocument, scopeIncorporation, incorporateTargeted } from '$lib/api/appeal.js';
 
   export let project;
   export let typeId;
@@ -11,7 +11,7 @@
   const dispatch = createEventDispatcher();
 
   // ── State machine ──────────────────────────────────────────────────────────
-  // idle | uploading | incorporating | review
+  // idle | uploading | scoping | scoped | incorporating | review
   let panelState = 'idle';
 
   let inputTab = 'upload'; // 'upload' | 'paste'
@@ -30,6 +30,12 @@
 
   let suggestedHtml = '';
   let changeGroups = []; // paragraph-level diff groups
+
+  // scoping state
+  let allParagraphs = [];      // [{id, html, text}] — full draft split
+  let scopeSummary = '';
+  let scopedIds = new Set();   // IDs Claude identified as relevant (user can adjust)
+  let scopeError = null;
 
   let conversation = [];
   let chatInput = '';
@@ -77,49 +83,106 @@
   }
 
   // ── Incorporate ────────────────────────────────────────────────────────────
+  // ── Paragraph splitting (shared between scoping and reconstruction) ─────────
+  function splitDraftWithIds(html) {
+    if (!html?.trim()) return [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+    const blocks = [];
+    let idx = 0;
+    doc.body.firstChild?.childNodes.forEach(node => {
+      if (node.nodeType === 1) {
+        blocks.push({ id: `p${idx++}`, html: node.outerHTML, text: node.textContent.trim() });
+      } else if (node.nodeType === 3 && node.textContent.trim()) {
+        blocks.push({ id: `p${idx++}`, html: `<p>${node.textContent.trim()}</p>`, text: node.textContent.trim() });
+      }
+    });
+    return blocks;
+  }
+
+  function buildDocPayload() {
+    return incorporatingDoc
+      ? { documentId: incorporatingDoc.id }
+      : { documentText: pasteText, documentTitle: incorporatingLabel };
+  }
+
   async function startIncorporate(doc) {
     incorporatingDoc = doc;
     incorporatingLabel = doc.filename;
-    userNotes = '';
     conversation = [];
     suggestedHtml = '';
     changeGroups = [];
-    incorporateError = null;
-    panelState = 'incorporating';
-    await runIncorporate();
+    scopeError = null;
+    await runScope();
   }
 
   async function startIncorporateFromPaste() {
     if (!pasteText.trim()) return;
     incorporatingDoc = null;
     incorporatingLabel = pasteTitle.trim() || 'Pasted document';
-    userNotes = '';
     conversation = [];
     suggestedHtml = '';
     changeGroups = [];
+    scopeError = null;
+    await runScope();
+  }
+
+  async function runScope() {
+    panelState = 'scoping';
+    scopeError = null;
+    allParagraphs = splitDraftWithIds(currentDraftHtml);
+
+    if (!allParagraphs.length) {
+      // No draft yet — skip scoping, go straight to incorporate
+      await runIncorporate(allParagraphs);
+      return;
+    }
+
+    try {
+      const result = await scopeIncorporation(project.id, {
+        ...buildDocPayload(),
+        paragraphs: allParagraphs.map(p => ({ id: p.id, text: p.text }))
+      });
+      scopeSummary = result.summary ?? '';
+      scopedIds = new Set(result.relevant_ids ?? []);
+      panelState = 'scoped';
+    } catch (err) {
+      scopeError = err.message;
+      panelState = 'scoped'; // still show UI so user can proceed manually
+    }
+  }
+
+  async function runIncorporate(paragraphsOverride = null) {
     incorporateError = null;
     panelState = 'incorporating';
-    await runIncorporate();
-  }
 
-  function buildPayload(extraConversation = []) {
-    const conv = [...conversation, ...extraConversation];
-    return incorporatingDoc
-      ? { documentId: incorporatingDoc.id, userNotes: userNotes || null, conversation: conv }
-      : { documentText: pasteText, documentTitle: incorporatingLabel, userNotes: userNotes || null, conversation: conv };
-  }
+    const targeted = paragraphsOverride ?? allParagraphs.filter(p => scopedIds.has(p.id));
 
-  async function runIncorporate() {
-    incorporateError = null;
+    if (!targeted.length) {
+      incorporateError = 'No paragraphs selected — tick at least one paragraph to update.';
+      panelState = 'scoped';
+      return;
+    }
+
     try {
-      const result = await incorporateDocument(project.id, typeId, buildPayload());
-      suggestedHtml = result.content_html;
+      const result = await incorporateTargeted(project.id, {
+        ...buildDocPayload(),
+        paragraphs: targeted,
+        userNotes: userNotes || null
+      });
+
+      // Reconstruct: updated paragraphs from Claude, everything else verbatim from original
+      const updatedMap = {};
+      for (const p of (result.updated ?? [])) updatedMap[p.id] = p.html;
+
+      const reconstructed = allParagraphs.map(p => updatedMap[p.id] ?? p.html).join('\n');
+      suggestedHtml = reconstructed;
       changeGroups = computeParagraphDiff(currentDraftHtml, suggestedHtml);
       panelState = 'review';
       dispatch('reviewchange', { active: true });
     } catch (err) {
       incorporateError = err.message;
-      panelState = 'incorporating';
+      panelState = 'scoped';
     }
   }
 
@@ -130,6 +193,7 @@
     chatInput = '';
     chatLoading = true;
 
+    // Chat refines the full draft via the original incorporate endpoint with conversation history
     const newTurns = [
       { role: 'assistant', content: suggestedHtml },
       { role: 'user', content: userMessage }
@@ -137,7 +201,11 @@
     conversation = [...conversation, ...newTurns];
 
     try {
-      const result = await incorporateDocument(project.id, typeId, buildPayload());
+      const result = await incorporateDocument(project.id, typeId, {
+        ...buildDocPayload(),
+        userNotes: userNotes || null,
+        conversation
+      });
       suggestedHtml = result.content_html;
       changeGroups = computeParagraphDiff(currentDraftHtml, suggestedHtml);
     } catch (err) {
@@ -260,6 +328,46 @@
 
   $: changedCount = changeGroups.filter(g => g.type !== 'unchanged').length;
   $: acceptedCount = changeGroups.filter(g => g.type !== 'unchanged' && g.accepted).length;
+
+  function getHeadingLevel(html) {
+    const m = html.match(/^<h([1-6])/i);
+    return m ? parseInt(m[1]) : null;
+  }
+
+  function selectSection(headingIdx) {
+    const level = getHeadingLevel(allParagraphs[headingIdx].html);
+    if (!level) return;
+    const next = new Set(scopedIds);
+    for (let i = headingIdx + 1; i < allParagraphs.length; i++) {
+      const l = getHeadingLevel(allParagraphs[i].html);
+      if (l && l <= level) break;
+      next.add(allParagraphs[i].id);
+    }
+    scopedIds = next;
+  }
+
+  function deselectSection(headingIdx) {
+    const level = getHeadingLevel(allParagraphs[headingIdx].html);
+    if (!level) return;
+    const next = new Set(scopedIds);
+    for (let i = headingIdx + 1; i < allParagraphs.length; i++) {
+      const l = getHeadingLevel(allParagraphs[i].html);
+      if (l && l <= level) break;
+      next.delete(allParagraphs[i].id);
+    }
+    scopedIds = next;
+  }
+
+  function isSectionSelected(headingIdx) {
+    const level = getHeadingLevel(allParagraphs[headingIdx].html);
+    if (!level) return false;
+    for (let i = headingIdx + 1; i < allParagraphs.length; i++) {
+      const l = getHeadingLevel(allParagraphs[i].html);
+      if (l && l <= level) break;
+      if (!scopedIds.has(allParagraphs[i].id)) return false;
+    }
+    return true;
+  }
 
   // ── Status labels ──────────────────────────────────────────────────────────
   const statusLabels = {
@@ -385,22 +493,80 @@
       <span>Uploading document...</span>
     </div>
 
-  {:else if panelState === 'incorporating' && !incorporateError}
+  {:else if panelState === 'scoping'}
     <div class="loading-state">
       <div class="spinner"></div>
       <div class="loading-text">
-        <span>Reading document and updating draft...</span>
-        <span class="loading-sub">This may take 20–40 seconds</span>
+        <span>Identifying relevant paragraphs...</span>
+        <span class="loading-sub">Reading document against draft</span>
       </div>
     </div>
 
-  {:else if panelState === 'incorporating' && incorporateError}
-    <div class="error-state">
-      <i class="las la-exclamation-circle"></i>
-      <p>{incorporateError}</p>
-      <div class="error-actions">
+  {:else if panelState === 'scoped'}
+    <div class="scoped-panel">
+      <div class="scoped-header">
+        <span class="scoped-title"><i class="las la-search"></i> {incorporatingLabel}</span>
+        {#if scopeSummary}
+          <p class="scoped-summary">{scopeSummary}</p>
+        {/if}
+        {#if scopeError}
+          <p class="scoped-error"><i class="las la-exclamation-circle"></i> Scoping failed — select paragraphs manually below.</p>
+        {/if}
+      </div>
+
+      <p class="scoped-instruct">
+        Claude identified {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''} to update. Review and adjust, then click Incorporate.
+      </p>
+
+      <div class="scoped-list">
+        {#each allParagraphs as para, idx}
+          {@const checked = scopedIds.has(para.id)}
+          {@const headingLevel = getHeadingLevel(para.html)}
+          {#if headingLevel}
+            <div class="scoped-heading">
+              <span class="scoped-heading-text">{para.text}</span>
+              <button
+                class="scoped-section-btn"
+                on:click={() => isSectionSelected(idx) ? deselectSection(idx) : selectSection(idx)}
+              >
+                {isSectionSelected(idx) ? 'Deselect section' : 'Select section'}
+              </button>
+            </div>
+          {:else}
+            <label class="scoped-item" class:selected={checked}>
+              <input
+                type="checkbox"
+                {checked}
+                on:change={() => {
+                  const next = new Set(scopedIds);
+                  if (next.has(para.id)) next.delete(para.id); else next.add(para.id);
+                  scopedIds = next;
+                }}
+              />
+              <span class="scoped-item-text">{para.text.slice(0, 100)}{para.text.length > 100 ? '...' : ''}</span>
+            </label>
+          {/if}
+        {/each}
+      </div>
+
+      {#if incorporateError}
+        <p class="error-msg" style="padding:0 1rem">{incorporateError}</p>
+      {/if}
+
+      <div class="scoped-actions">
         <button class="btn-secondary" on:click={discard}>Cancel</button>
-        <button class="btn-primary" on:click={runIncorporate}>Retry</button>
+        <button class="btn-primary" disabled={scopedIds.size === 0} on:click={() => runIncorporate()}>
+          <i class="las la-file-import"></i> Incorporate {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}
+        </button>
+      </div>
+    </div>
+
+  {:else if panelState === 'incorporating'}
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <div class="loading-text">
+        <span>Updating {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}...</span>
+        <span class="loading-sub">This may take 15–30 seconds</span>
       </div>
     </div>
 
@@ -825,6 +991,146 @@
     background: white; color: #64748b;
     border: 1px solid #e2e8f0; border-radius: 6px;
     font-size: 0.8125rem; cursor: pointer; font-family: inherit;
+  }
+
+  /* ── Scoped panel ── */
+  .scoped-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .scoped-header {
+    flex-shrink: 0;
+    padding: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .scoped-title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .scoped-summary {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #475569;
+    line-height: 1.5;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 5px;
+    padding: 0.5rem 0.625rem;
+  }
+
+  .scoped-error {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #dc2626;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .scoped-instruct {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.625rem 1rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .scoped-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .scoped-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.12s;
+    font-size: 0;
+  }
+
+  .scoped-item.selected {
+    background: #f0fdf4;
+    border-color: #86efac;
+  }
+
+  .scoped-item input[type="checkbox"] {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+    accent-color: #16a34a;
+  }
+
+  .scoped-item-text {
+    font-size: 0.75rem;
+    color: #374151;
+    line-height: 1.4;
+  }
+
+  .scoped-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem 0.25rem;
+    margin-top: 0.375rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .scoped-heading-text {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #1e293b;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .scoped-section-btn {
+    flex-shrink: 0;
+    padding: 0.15rem 0.5rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: #7c3aed;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.12s;
+  }
+  .scoped-section-btn:hover { background: #faf5ff; border-color: #c4b5fd; }
+
+  .scoped-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #e2e8f0;
+    background: white;
   }
 
   /* ── Review two-column layout ── */
