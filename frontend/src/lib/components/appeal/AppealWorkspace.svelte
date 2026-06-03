@@ -113,6 +113,7 @@
 
   let exportingWord = false;
   let incorporateReviewMode = false;
+  $: if (!$activeDraftTypeId) incorporateReviewMode = false;
 
   let briefCheckResults = null;
   let briefChecking = false;
@@ -677,7 +678,7 @@
       <!-- Two-panel editor view -->
       {@const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
       <div class="draft-editor-bar">
-        <button class="reset-btn" on:click={closeDraft}><i class="las la-arrow-left"></i> Documents</button>
+        <button class="reset-btn" on:click={() => { incorporateReviewMode = false; closeDraft(); }}><i class="las la-arrow-left"></i> Documents</button>
         <span class="draft-editor-title">{activeType?.name ?? ''}</span>
         <div class="draft-editor-actions">
           <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => handleGenerate($activeDraftTypeId)}>
@@ -740,7 +741,7 @@
 
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
-        <div class="draft-left-panel" class:hidden={incorporateReviewMode}>
+        <div class="draft-left-panel" class:panel-hidden={incorporateReviewMode}>
           <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
@@ -2482,7 +2483,7 @@
     border-left: none;
   }
 
-  .draft-left-panel.hidden {
+  .draft-left-panel.panel-hidden {
     display: none;
   }
 

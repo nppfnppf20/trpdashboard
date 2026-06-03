@@ -571,84 +571,16 @@
     </div>
 
   {:else if panelState === 'review'}
-    <!-- ── Full-width two-column review layout ── -->
+    <!-- ── Review: fixed top bar + scrollable row-grid ── -->
     <div class="review-layout">
 
-      <!-- Left: document-style diff -->
-      <div class="review-doc-col">
-        <div class="review-doc-header">
-          <span class="review-doc-title">{incorporatingLabel}</span>
-          <span class="review-doc-subtitle">Review suggested changes before applying</span>
+      <!-- Fixed top bar -->
+      <div class="review-bar">
+        <div class="review-bar-left">
+          <span class="review-bar-title">{incorporatingLabel}</span>
+          <span class="review-bar-count">{acceptedCount}/{changedCount} changes accepted</span>
         </div>
-        <div class="review-doc-body trp-document-content">
-          {#if changeGroups.length === 0}
-            <p style="color:#94a3b8">No changes suggested.</p>
-          {:else}
-            {#each changeGroups as group, idx}
-              {#if group.type === 'unchanged'}
-                <div class="doc-para-unchanged">{@html group.html}</div>
-              {:else if group.type === 'added'}
-                <div class="doc-para-change doc-para-added" class:faded={!group.accepted}>
-                  <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}{:else}<span>{w.value}</span>{/if}{/each}</div>
-                </div>
-              {:else if group.type === 'removed'}
-                <div class="doc-para-change doc-para-removed" class:faded={!group.accepted}>
-                  <div class="word-diff">{#each group.words as w}{#if w.removed}<del class="wd-del">{w.value}</del>{:else if w.added}{:else}<span>{w.value}</span>{/if}{/each}</div>
-                </div>
-              {:else if group.type === 'modified'}
-                <div class="doc-para-change doc-para-modified" class:faded={!group.accepted}>
-                  <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}<del class="wd-del">{w.value}</del>{:else}<span>{w.value}</span>{/if}{/each}</div>
-                </div>
-              {/if}
-            {/each}
-          {/if}
-        </div>
-      </div>
-
-      <!-- Right: controls -->
-      <div class="review-ctrl-col">
-        <div class="review-ctrl-header">
-          <span class="review-ctrl-title">Changes</span>
-          <span class="review-ctrl-count">{acceptedCount}/{changedCount} accepted</span>
-        </div>
-        <div class="review-ctrl-actions">
-          <button class="btn-accept-all" on:click={acceptAll}><i class="las la-check-double"></i> Accept all</button>
-          <button class="btn-commit" disabled={acceptedCount === 0} on:click={commitAccepted}><i class="las la-check"></i> Apply</button>
-          <button class="btn-discard" on:click={discard}>Discard</button>
-        </div>
-
-        <div class="review-ctrl-list">
-          {#each changeGroups as group, idx}
-            {#if group.type !== 'unchanged'}
-              <div class="ctrl-item" class:rejected={!group.accepted}>
-                <div class="ctrl-item-tag">
-                  {#if group.type === 'added'}<span class="change-tag change-tag--added">+ Added</span>
-                  {:else if group.type === 'removed'}<span class="change-tag change-tag--removed">− Removed</span>
-                  {:else}<span class="change-tag change-tag--modified">~ Modified</span>{/if}
-                </div>
-                <p class="ctrl-item-preview">
-                  {#if group.type === 'modified'}{stripHtml(group.newHtml).slice(0, 80)}...
-                  {:else}{stripHtml(group.html ?? '').slice(0, 80)}...{/if}
-                </p>
-                <div class="para-btns">
-                  {#if group.type === 'added'}
-                    <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
-                    <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Reject</button>
-                  {:else if group.type === 'removed'}
-                    <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept removal</button>
-                    <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep</button>
-                  {:else}
-                    <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
-                    <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep original</button>
-                  {/if}
-                </div>
-              </div>
-            {/if}
-          {/each}
-        </div>
-
-        <!-- Chat -->
-        <div class="chat-area">
+        <div class="review-bar-right">
           <div class="chat-input-row">
             <input
               class="chat-input"
@@ -662,10 +594,93 @@
               {#if chatLoading}<div class="mini-spinner"></div>{:else}<i class="las la-paper-plane"></i>{/if}
             </button>
           </div>
-          {#if incorporateError}
-            <p class="error-msg" style="margin-top:0.5rem">{incorporateError}</p>
-          {/if}
         </div>
+        <div class="review-bar-actions">
+          <button class="btn-discard" on:click={discard}>Discard</button>
+          <button class="btn-accept-all" on:click={acceptAll}><i class="las la-check-double"></i> Accept all</button>
+          <button class="btn-commit" disabled={acceptedCount === 0} on:click={commitAccepted}><i class="las la-check"></i> Apply</button>
+        </div>
+      </div>
+
+      {#if incorporateError}
+        <p class="error-msg" style="padding:0.375rem 1rem;flex-shrink:0">{incorporateError}</p>
+      {/if}
+
+      <!-- Row-grid: each paragraph + its control card share the same row -->
+      <div class="review-rows">
+        {#if changeGroups.length === 0}
+          <p class="diff-no-changes">No changes suggested.</p>
+        {:else}
+          {#each changeGroups as group, idx}
+            <div class="review-row" class:review-row--changed={group.type !== 'unchanged'}>
+
+              <!-- Left cell: paragraph in document style -->
+              <div class="review-row-doc" class:review-row-doc--unchanged={group.type === 'unchanged'}>
+                {#if group.type === 'unchanged'}
+                  {@html group.html}
+                {:else if group.type === 'added'}
+                  {#if group.accepted}
+                    <!-- Accepted addition: show new content with green highlight -->
+                    <div class="doc-para-change doc-para-added">
+                      <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}{:else}<span>{w.value}</span>{/if}{/each}</div>
+                    </div>
+                  {:else}
+                    <!-- Rejected addition: show nothing (paragraph won't exist) -->
+                    <div class="doc-para-rejected-add">
+                      <div class="word-diff word-diff--rejected">{#each group.words as w}{#if w.added}<span>{w.value}</span>{:else if w.removed}{:else}<span>{w.value}</span>{/if}{/each}</div>
+                    </div>
+                  {/if}
+                {:else if group.type === 'removed'}
+                  {#if group.accepted}
+                    <!-- Accepted removal: show old content struck through (it's leaving) -->
+                    <div class="doc-para-change doc-para-removed">
+                      <div class="word-diff">{#each group.words as w}{#if w.removed}<del class="wd-del">{w.value}</del>{:else if w.added}{:else}<span>{w.value}</span>{/if}{/each}</div>
+                    </div>
+                  {:else}
+                    <!-- Kept paragraph: show original cleanly -->
+                    <div class="doc-para-kept">{@html group.html}</div>
+                  {/if}
+                {:else if group.type === 'modified'}
+                  {#if group.accepted}
+                    <!-- Accepted change: show word diff -->
+                    <div class="doc-para-change doc-para-modified">
+                      <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}<del class="wd-del">{w.value}</del>{:else}<span>{w.value}</span>{/if}{/each}</div>
+                    </div>
+                  {:else}
+                    <!-- Keeping original: show old HTML cleanly with neutral border -->
+                    <div class="doc-para-change doc-para-kept-original">{@html group.oldHtml}</div>
+                  {/if}
+                {/if}
+              </div>
+
+              <!-- Right cell: control card (only for changed rows) -->
+              <div class="review-row-ctrl">
+                {#if group.type !== 'unchanged'}
+                  <div class="ctrl-card" class:rejected={!group.accepted}>
+                    <div class="ctrl-card-tag">
+                      {#if group.type === 'added'}<span class="change-tag change-tag--added">+ Added</span>
+                      {:else if group.type === 'removed'}<span class="change-tag change-tag--removed">− Removed</span>
+                      {:else}<span class="change-tag change-tag--modified">~ Modified</span>{/if}
+                    </div>
+                    <div class="para-btns">
+                      {#if group.type === 'added'}
+                        <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
+                        <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Reject</button>
+                      {:else if group.type === 'removed'}
+                        <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept removal</button>
+                        <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep</button>
+                      {:else}
+                        <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
+                        <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep original</button>
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+
+            </div>
+          {/each}
+        {/if}
       </div>
     </div>
   {/if}
@@ -1133,92 +1148,39 @@
     background: white;
   }
 
-  /* ── Review two-column layout ── */
+  /* ── Review layout ── */
   .review-layout {
     flex: 1;
     display: flex;
+    flex-direction: column;
     overflow: hidden;
     min-height: 0;
   }
 
-  /* Left: document diff */
-  .review-doc-col {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    min-width: 0;
-    background: white;
-  }
-
-  .review-doc-header {
-    flex-shrink: 0;
-    padding: 0.875rem 2rem 0.625rem;
-    border-bottom: 1px solid #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .review-doc-title { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
-  .review-doc-subtitle { font-size: 0.75rem; color: #94a3b8; }
-
-  .review-doc-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 2rem 2.5rem;
-    max-width: 820px;
-  }
-
-  /* Unchanged paragraphs — full document style, slightly muted */
-  .doc-para-unchanged {
-    opacity: 0.5;
-  }
-
-  /* Changed paragraph — left border highlight, no card background */
-  .doc-para-change {
-    padding-left: 0.875rem;
-    margin-left: -0.875rem;
-    border-left: 3px solid transparent;
-    transition: opacity 0.2s;
-  }
-
-  .doc-para-change.faded { opacity: 0.35; }
-
-  .doc-para-added    { border-left-color: #22c55e; }
-  .doc-para-removed  { border-left-color: #ef4444; }
-  .doc-para-modified { border-left-color: #f59e0b; }
-
-  /* Right: compact controls */
-  .review-ctrl-col {
-    width: 280px;
-    flex-shrink: 0;
-    border-left: 1px solid #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: #f8fafc;
-  }
-
-  .review-ctrl-header {
+  /* Fixed top bar */
+  .review-bar {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #e2e8f0;
-    background: white;
-  }
-  .review-ctrl-title { font-size: 0.8125rem; font-weight: 700; color: #1e293b; }
-  .review-ctrl-count { font-size: 0.75rem; color: #64748b; }
-
-  .review-ctrl-actions {
-    flex-shrink: 0;
-    display: flex;
-    gap: 0.375rem;
+    gap: 0.75rem;
     padding: 0.625rem 1rem;
-    border-bottom: 1px solid #e2e8f0;
     background: white;
+    border-bottom: 2px solid #e2e8f0;
+    flex-wrap: wrap;
   }
+
+  .review-bar-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .review-bar-title  { font-size: 0.8rem; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .review-bar-count  { font-size: 0.7rem; color: #64748b; }
+
+  .review-bar-right  { flex: 1; min-width: 160px; }
+
+  .review-bar-actions { display: flex; gap: 0.375rem; flex-shrink: 0; }
 
   .btn-accept-all {
     display: flex; align-items: center; gap: 0.3rem;
@@ -1243,39 +1205,88 @@
   .btn-commit:hover:not(:disabled) { background: #6d28d9; }
   .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .review-ctrl-list {
+  /* Scrollable row grid */
+  .review-rows {
     flex: 1;
     overflow-y: auto;
-    padding: 0.5rem;
+    background: white;
+  }
+
+  .diff-no-changes { font-size: 0.875rem; color: #94a3b8; text-align: center; padding: 3rem 2rem; margin: 0; }
+
+  /* Each row = one paragraph (left) + optional control card (right) */
+  .review-row {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .review-row--changed {
+    border-bottom-color: #e2e8f0;
+  }
+
+  /* Left cell — document typography */
+  .review-row-doc {
+    padding: 0.375rem 1.5rem 0.375rem 2rem;
+    font-family: 'Calibri', 'Arial', sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: #1e293b;
+    min-width: 0;
+  }
+
+  .review-row-doc--unchanged { opacity: 0.45; }
+
+  .review-row-doc :global(h1) { font-size: 1.75rem; font-weight: 700; color: #1F4E78; margin: 0.75rem 0 0.5rem; }
+  .review-row-doc :global(h2) { font-size: 1.2rem; font-weight: 300; color: #1F4E78; margin: 0.5rem 0 0.25rem; font-family: 'Calibri Light', 'Calibri', sans-serif; }
+  .review-row-doc :global(h3) { font-size: 1rem; font-weight: 300; color: #1F4E78; margin: 0.375rem 0 0.2rem; font-family: 'Calibri Light', 'Calibri', sans-serif; }
+  .review-row-doc :global(p)  { margin: 0.25rem 0; }
+  .review-row-doc :global(ul),
+  .review-row-doc :global(ol) { padding-left: 1.5rem; margin: 0.25rem 0; }
+  .review-row-doc :global(li) { margin: 0.15rem 0; }
+
+  /* Changed paragraph highlight — left border only, no background */
+  .doc-para-change {
+    border-left: 3px solid transparent;
+    padding-left: 0.625rem;
+    margin-left: -0.625rem;
+    transition: opacity 0.2s;
+  }
+  .doc-para-added          { border-left-color: #22c55e; }
+  .doc-para-removed        { border-left-color: #ef4444; }
+  .doc-para-modified       { border-left-color: #f59e0b; }
+  .doc-para-kept-original  { border-left-color: #94a3b8; }
+  .doc-para-kept           { border-left-color: #94a3b8; }
+  .doc-para-rejected-add   {
+    border-left: 3px solid #e2e8f0;
+    padding-left: 0.625rem;
+    margin-left: -0.625rem;
+  }
+  .word-diff--rejected     { opacity: 0.3; text-decoration: line-through; }
+
+  /* Right cell — control card */
+  .review-row-ctrl {
+    padding: 0.375rem 0.625rem;
+    border-left: 1px solid #f1f5f9;
+    background: #fafafa;
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .review-row--changed .review-row-ctrl {
+    border-left-color: #e2e8f0;
+    background: #f8fafc;
+  }
+
+  .ctrl-card {
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-  }
-
-  .ctrl-item {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 0.5rem 0.625rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
     transition: opacity 0.15s;
   }
-  .ctrl-item.rejected { opacity: 0.5; }
-
-  .ctrl-item-tag { display: flex; }
-
-  .ctrl-item-preview {
-    margin: 0;
-    font-size: 0.7rem;
-    color: #64748b;
-    line-height: 1.4;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
+  .ctrl-card.rejected { opacity: 0.5; }
+  .ctrl-card-tag { display: flex; }
 
   .change-tag {
     font-size: 0.65rem;
