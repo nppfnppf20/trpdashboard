@@ -12,6 +12,8 @@
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
+  import FormattingPanel from '$lib/components/planning-application/FormattingPanel.svelte';
 
   const SUGGEST_DOC_TYPES = [
     'Officer Report',
@@ -250,6 +252,12 @@
     </button>
     <button class="tab" class:active={activeTab === 'log'} on:click={() => activeTab = 'log'}>
       Document Log
+    </button>
+    <button class="tab" class:active={activeTab === 'stage1'} on:click={() => activeTab = 'stage1'}>
+      Stage 1 Review
+    </button>
+    <button class="tab" class:active={activeTab === 'formatting'} on:click={() => activeTab = 'formatting'}>
+      Formatting
     </button>
   </div>
 
@@ -855,6 +863,15 @@
         </div>
       </div>
     {/if}
+
+  {:else if activeTab === 'stage1'}
+    <!-- ── Tab 6: Stage 1 Review ── -->
+    <Stage1ReviewPanel {project} />
+
+  {:else if activeTab === 'formatting'}
+    <!-- ── Tab 7: Formatting ── -->
+    <FormattingPanel />
+
   {/if}
 
 </div>

@@ -9,7 +9,8 @@ const TEMPLATE_MAP = {
   site_justification:       '/planningstatementsolar.docx',
   eia_screening:            '/planningstatementsolar.docx',
   cover_letter:             '/letter.docx',
-  certificate_b_notice:     '/letter.docx'
+  certificate_b_notice:     '/letter.docx',
+  stage1_review:            '/stage1reviewtemplate.docx'
 };
 
 const DEFAULT_TEMPLATE = '/planningstatementsolar.docx';
@@ -57,7 +58,21 @@ export async function exportDeliverableToWord(deliverable, html) {
 function htmlToOOXML(html) {
   const div = document.createElement('div');
   div.innerHTML = html;
-  return Array.from(div.children).map(el => elementToOOXML(el)).filter(Boolean).join('');
+
+  // If there are no element children the content is bare text nodes — wrap each line.
+  if (div.children.length === 0) {
+    return (div.textContent || '').split('\n')
+      .map(l => l.trim()).filter(Boolean)
+      .map(l => paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(l)}</w:t></w:r>`))
+      .join('');
+  }
+
+  return Array.from(div.childNodes).map(node => {
+    if (node.nodeType === Node.ELEMENT_NODE) return elementToOOXML(node);
+    // Orphaned top-level text node
+    const t = node.textContent.trim();
+    return t ? paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(t)}</w:t></w:r>`) : '';
+  }).filter(Boolean).join('');
 }
 
 function elementToOOXML(el) {
@@ -86,11 +101,66 @@ function elementToOOXML(el) {
       return Array.from(el.querySelectorAll('li')).map(li =>
         paragraph('ListNumber', inlineRuns(li))
       ).join('');
+    case 'table':
+      if (el.classList.contains('trp-appraisal-table')) {
+        return appraisalTableToOOXML(el);
+      }
+      return el.textContent.trim()
+        ? paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
+        : '';
     default:
       return el.textContent.trim()
         ? paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
         : '';
   }
+}
+
+function appraisalTableToOOXML(tableEl) {
+  const tblPr = `<w:tblPr>
+    <w:tblW w:w="9072" w:type="dxa"/>
+    <w:tblBorders>
+      <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      <w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+      <w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+    </w:tblBorders>
+  </w:tblPr>`;
+
+  let rows = '';
+  tableEl.querySelectorAll('tr').forEach(tr => {
+    if (tr.classList.contains('tbl-header')) {
+      const headerText = escapeXml(tr.querySelector('strong')?.textContent || tr.textContent.trim());
+      rows += `<w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="9072" w:type="dxa"/>
+            <w:gridSpan w:val="2"/>
+          </w:tcPr>
+          <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">${headerText}</w:t></w:r></w:p>
+        </w:tc>
+      </w:tr>`;
+    } else if (tr.classList.contains('tbl-row')) {
+      const cells = tr.querySelectorAll('td');
+      if (cells.length >= 2) {
+        const labelText = escapeXml(cells[0].textContent.trim());
+        const valueText = escapeXml(cells[1].textContent.trim());
+        rows += `<w:tr>
+          <w:tc>
+            <w:tcPr><w:tcW w:w="2722" w:type="dxa"/></w:tcPr>
+            <w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${labelText}</w:t></w:r></w:p>
+          </w:tc>
+          <w:tc>
+            <w:tcPr><w:tcW w:w="6350" w:type="dxa"/></w:tcPr>
+            <w:p><w:r><w:t xml:space="preserve">${valueText}</w:t></w:r></w:p>
+          </w:tc>
+        </w:tr>`;
+      }
+    }
+  });
+
+  return `<w:tbl>${tblPr}${rows}</w:tbl>`;
 }
 
 function paragraph(styleId, runsXml, options = {}) {

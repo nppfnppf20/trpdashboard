@@ -1432,6 +1432,95 @@ Respond with a JSON array:
 ]`
       }
     ]
+  },
+
+  // ── Stage 1 Review ──────────────────────────────────────────────────────────
+  {
+    id: 'stage1-review',
+    name: 'Stage 1 Review',
+    icon: 'la-table',
+    description: 'LLM-assisted Stage 1 Planning Appraisal table generation. Uses a briefing note to populate each section of the appraisal.',
+    operations: [
+      {
+        id: 'generate-table',
+        name: 'Generate Appraisal Table',
+        output: 'JSON object mapping each appraisal row label to a completed text value, assembled into a full HTML document (title + subtitle + date + appraisal table)',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role',
+            source: 'stage1Review.controller.js — generateStage1Review()',
+            content: `You are a specialist planning consultant at a UK planning consultancy completing a Stage 1 Planning Appraisal. This is a detailed desk-based review document — your entries must be thorough, substantive, and draw out all relevant planning information from the briefing note. Write in the third person in clear, professional UK planning language.`
+          },
+          {
+            type: 'tone',
+            label: 'Tone Example',
+            source: 'backend/stage1reviewexample.md',
+            content: `Loaded from stage1reviewexample.md at server startup. Full text injected (no truncation).
+
+Injected as:
+"The following is a real Stage 1 Planning Appraisal written by this consultancy. Use it ONLY as a writing style reference — to learn the professional register, the level of detail expected in each row, and the way conclusions and risks are phrased. Do NOT reproduce any place names, policy references, distances, designations, site details, or factual content from it. Every fact in your output must come solely from the briefing note provided."`
+          },
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=stage1_review, matched by project development type)',
+            content: `Fetched from the guiding briefs library using document_type='stage1_review' and the project's development type. Falls back to the generic (null development type) brief if no specific match exists.
+
+If found, guidance_content is injected into the user prompt as:
+"## Practice Guidance
+[guidance_content]"
+
+Use the Guiding Briefs admin page to add guidance for each development type (Solar, Wind, Residential, etc.).`
+          },
+          {
+            type: 'runtime',
+            label: 'Project Data',
+            description: 'Project name, address, LPA, and proposal (sub_sectors) — pre-filled into the Site Details rows before the LLM call. Passed to the LLM as context only.'
+          },
+          {
+            type: 'runtime',
+            label: 'Briefing Note',
+            description: 'Full plain text from the selected briefing note (doc_type=briefing_transcript). HTML tags stripped. No character limit — the complete briefing note is passed to the LLM.'
+          },
+          {
+            type: 'format',
+            label: 'Output Format',
+            source: 'stage1Review.controller.js — generateStage1Review()',
+            content: `- Return ONLY a JSON object — keys are exact row labels, values are completed text
+- Entries must be detailed and comprehensive — include specific policy refs, constraint names, distances, designations, risk assessments, and recommended next steps where the briefing provides them
+- If the briefing note contains no relevant information for a row, return an empty string
+- Do not invent content not in the briefing note
+- Plain text only — no markdown, no bullet characters, no HTML
+
+Rows completed by LLM:
+Development plan, Neighbourhood plan, Key local policy, Supplementary guidance,
+Site description, Planning history, Benefits of proposal, Landscape and visual effects,
+Ecology, Trees, Site Access, Heritage and archaeology, Agricultural land grade and use,
+Flood risk and drainage, Noise, Glint and glare, Battery safety fire management plan,
+Public consultation, Scope of supporting information, Summary and recommendation
+
+Rows pre-filled from project data (NOT sent to LLM for generation):
+Site address, Proposal, Local planning authority`
+          }
+        ],
+        assembledPreview: `[SYSTEM: UK planning consultant completing Stage 1 Appraisal — detailed and thorough]
+[TONE: stage1reviewexample.md — full real example for style reference]
+[GUIDE: stage1_review guiding brief, if configured]
+
+Project: [RUNTIME: project_name]
+Address: [RUNTIME: address]
+LPA: [RUNTIME: local_planning_authority]
+Proposal: [RUNTIME: sub_sectors]
+
+## Full Briefing Note
+[RUNTIME: complete briefing note plain text — no character limit]
+
+## Task
+Complete the following Stage 1 Planning Appraisal table rows with full detail...
+[FORMAT: JSON object — label → detailed text, all facts from briefing only]`
+      }
+    ]
   }
 
 ];

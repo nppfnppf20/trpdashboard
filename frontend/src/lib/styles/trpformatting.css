@@ -108,6 +108,53 @@
   text-decoration: underline;
 }
 
+/* Appraisal table (Stage 1 Review and similar table-format deliverables) */
+.trp-document-content .trp-appraisal-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-family: 'Calibri', 'Arial', sans-serif;
+  font-size: 0.9375rem;
+}
+
+.trp-document-content .trp-appraisal-table .tbl-header td {
+  background: transparent;
+  color: #1F4E78;
+  font-family: 'Calibri Light', 'Calibri', 'Arial', sans-serif;
+  font-size: 1.333rem;
+  font-weight: 300;
+  padding: 1rem 0.75rem 0.25rem;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.trp-document-content .trp-appraisal-table .tbl-header strong {
+  color: #1F4E78;
+  font-weight: 300;
+}
+
+.trp-document-content .trp-appraisal-table .tbl-row td {
+  border: 1px solid #cbd5e1;
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+}
+
+.trp-document-content .trp-appraisal-table .tbl-label {
+  width: 30%;
+  background: #f8fafc;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trp-document-content .trp-appraisal-table .tbl-value {
+  width: 70%;
+  min-height: 2rem;
+}
+
+.trp-document-content .trp-appraisal-table .tbl-row:hover .tbl-value {
+  background: #fafafa;
+}
+
 /* LLM-generated content indicator */
 .trp-document-content .llm-generated {
   color: #6b7280;

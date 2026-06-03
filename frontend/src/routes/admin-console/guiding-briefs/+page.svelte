@@ -9,6 +9,7 @@
     { value: 'statement_of_common_ground',label: 'Statement of Common Ground' },
     { value: 'proof_of_evidence',         label: 'Proof of Evidence' },
     { value: 'planning_notice',           label: 'Planning Notice' },
+    { value: 'stage1_review',             label: 'Stage 1 Review' },
   ];
 
   const DEVELOPMENT_TYPES = [

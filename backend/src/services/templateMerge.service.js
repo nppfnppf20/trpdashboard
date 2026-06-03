@@ -4,6 +4,26 @@
  */
 
 /**
+ * Render a table section's rows to HTML
+ * @param {Array} rows - Array of row objects
+ * @param {string} sectionId - Section ID for data attribute
+ * @returns {string} HTML string
+ */
+function renderTableFromRows(rows, sectionId) {
+  let html = `<table class="trp-appraisal-table" data-section-id="${sectionId}"><tbody>`;
+  for (const row of rows) {
+    if (row.type === 'header') {
+      html += `<tr class="tbl-header"><td colspan="2"><strong>${row.content}</strong></td></tr>`;
+    } else {
+      const content = row.content || '';
+      html += `<tr class="tbl-row"><td class="tbl-label"><strong>${row.label}</strong></td><td class="tbl-value">${content}</td></tr>`;
+    }
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+/**
  * Extract all placeholders from a template
  * Supports both {{placeholder}} and «placeholder» formats
  * @param {Object} template - Template object with sections
@@ -16,34 +36,22 @@ export function extractPlaceholders(template) {
 
   if (!template?.sections) return placeholders;
 
-  template.sections.forEach(section => {
-    if (section.content) {
-      // Extract {{placeholder}} format
-      const curlyMatches = section.content.matchAll(curlyRegex);
-      for (const match of curlyMatches) {
-        placeholders.add(match[1].trim());
-      }
-      
-      // Extract «placeholder» format
-      const guilleMatches = section.content.matchAll(guillemetRegex);
-      for (const match of guilleMatches) {
-        placeholders.add(match[1].trim());
-      }
-    }
+  function extractFromText(text) {
+    if (!text) return;
+    const curlyMatches = text.matchAll(curlyRegex);
+    for (const match of curlyMatches) placeholders.add(match[1].trim());
+    const guilleMatches = text.matchAll(guillemetRegex);
+    for (const match of guilleMatches) placeholders.add(match[1].trim());
+  }
 
-    // Check list items as well
-    if (section.items && Array.isArray(section.items)) {
-      section.items.forEach(item => {
-        const curlyMatches = item.matchAll(curlyRegex);
-        for (const match of curlyMatches) {
-          placeholders.add(match[1].trim());
-        }
-        
-        const guilleMatches = item.matchAll(guillemetRegex);
-        for (const match of guilleMatches) {
-          placeholders.add(match[1].trim());
-        }
-      });
+  template.sections.forEach(section => {
+    if (section.type === 'table' && section.rows) {
+      section.rows.forEach(row => extractFromText(row.content));
+    } else {
+      extractFromText(section.content);
+      if (section.items && Array.isArray(section.items)) {
+        section.items.forEach(item => extractFromText(item));
+      }
     }
   });
 
@@ -81,14 +89,12 @@ export function buildPlaceholderMap(projectData) {
   // Extract project name without location suffix (for solar farms)
   let projectNameOnly = projectData.project_name || 'N/A';
   if (projectNameOnly !== 'N/A') {
-    // Remove common suffixes like "Solar Farm", "Solar Park", etc.
     projectNameOnly = projectNameOnly
       .replace(/\s+(Solar|solar)\s+(Farm|farm|Park|park|PV|pv)$/i, '')
       .trim();
   }
 
   const placeholderMap = {
-    // Basic project info from existing database fields
     'project_name': projectData.project_name || 'N/A',
     'project_id': projectData.project_id || 'N/A',
     'current_date': dateStr,
@@ -115,7 +121,7 @@ export function buildPlaceholderMap(projectData) {
   placeholderMap['Detailed_Description_of_Development_'] = firstSubSector
     ? `${firstSubSector} development`
     : '[Insert detailed development description]';
-  
+
   // Technical solar fields - leave as placeholders (will be populated from another source later)
   placeholderMap['GWh_per_year'] = 'xx';
   placeholderMap['Homes_powered_per_year'] = 'xx';
@@ -124,7 +130,7 @@ export function buildPlaceholderMap(projectData) {
   placeholderMap['Proposed_use_duration_years'] = 'xx';
   placeholderMap['Use_duration__1_year_construction_and_1'] = 'xx';
   placeholderMap['PV_max_panel_height_m'] = 'xx';
-  placeholderMap['LPA_abbreviation'] = lpaValue; // Use LPA value or 'N/A'
+  placeholderMap['LPA_abbreviation'] = lpaValue;
 
   return placeholderMap;
 }
@@ -140,15 +146,13 @@ export function replacePlaceholders(text, placeholderMap) {
   if (!text) return text;
 
   let result = text;
-  
-  // Replace {{placeholder}} format
+
   const curlyRegex = /\{\{([^}]+)\}\}/g;
   result = result.replace(curlyRegex, (match, placeholderName) => {
     const cleanName = placeholderName.trim();
     return placeholderMap[cleanName] !== undefined ? placeholderMap[cleanName] : match;
   });
 
-  // Replace «placeholder» format (guillemet format)
   const guillemetRegex = /«([^»]+)»/g;
   result = result.replace(guillemetRegex, (match, placeholderName) => {
     const cleanName = placeholderName.trim();
@@ -166,23 +170,27 @@ export function replacePlaceholders(text, placeholderMap) {
  */
 export function mergeTemplateWithProject(template, projectData) {
   const placeholderMap = buildPlaceholderMap(projectData);
-  
-  // Deep clone the template content to avoid modifying the original
+
   const mergedContent = JSON.parse(JSON.stringify(template.template_content));
 
-  // Replace placeholders in each section
   if (mergedContent.sections) {
     mergedContent.sections = mergedContent.sections.map(section => {
       const mergedSection = { ...section };
 
-      if (section.content) {
-        mergedSection.content = replacePlaceholders(section.content, placeholderMap);
-      }
-
-      if (section.items && Array.isArray(section.items)) {
-        mergedSection.items = section.items.map(item => 
-          replacePlaceholders(item, placeholderMap)
-        );
+      if (section.type === 'table' && section.rows) {
+        mergedSection.rows = section.rows.map(row => ({
+          ...row,
+          content: replacePlaceholders(row.content || '', placeholderMap)
+        }));
+      } else {
+        if (section.content) {
+          mergedSection.content = replacePlaceholders(section.content, placeholderMap);
+        }
+        if (section.items && Array.isArray(section.items)) {
+          mergedSection.items = section.items.map(item =>
+            replacePlaceholders(item, placeholderMap)
+          );
+        }
       }
 
       return mergedSection;
@@ -215,11 +223,11 @@ export function contentToHTML(content) {
 
   content.sections.forEach(section => {
     switch (section.type) {
-      case 'heading':
+      case 'heading': {
         const level = section.level || 2;
         html += `<h${level}>${section.content}</h${level}>`;
         break;
-
+      }
       case 'paragraph':
         html += `<p>${section.content}</p>`;
         break;
@@ -231,6 +239,14 @@ export function contentToHTML(content) {
             html += `<li>${item}</li>`;
           });
           html += '</ul>';
+        }
+        break;
+
+      case 'table':
+        if (section.rendered_html) {
+          html += section.rendered_html;
+        } else if (section.rows) {
+          html += renderTableFromRows(section.rows, section.id);
         }
         break;
 
@@ -248,21 +264,25 @@ export function contentToHTML(content) {
  * @returns {Object} Structured content object
  */
 export function htmlToContent(html) {
-  // This is a simplified version - in production you might want a proper HTML parser
   const sections = [];
-  
-  // Basic parsing - split by tags
+
   const h1Regex = /<h1>(.*?)<\/h1>/g;
   const h2Regex = /<h2>(.*?)<\/h2>/g;
   const h3Regex = /<h3>(.*?)<\/h3>/g;
   const pRegex = /<p>(.*?)<\/p>/g;
   const ulRegex = /<ul>(.*?)<\/ul>/gs;
+  const tableRegex = /<table[^>]*class="[^"]*trp-appraisal-table[^"]*"[^>]*>[\s\S]*?<\/table>/g;
 
   let match;
-  let lastIndex = 0;
   const elements = [];
 
-  // Collect all elements with their positions
+  while ((match = tableRegex.exec(html)) !== null) {
+    const tableHtml = match[0];
+    const idMatch = tableHtml.match(/data-section-id="([^"]*)"/);
+    const id = idMatch ? idMatch[1] : `table_${elements.length}`;
+    elements.push({ type: 'table', id, rendered_html: tableHtml, index: match.index });
+  }
+
   while ((match = h1Regex.exec(html)) !== null) {
     elements.push({ type: 'h1', content: match[1], index: match.index });
   }
@@ -285,45 +305,26 @@ export function htmlToContent(html) {
     elements.push({ type: 'ul', items, index: match.index });
   }
 
-  // Sort by position
   elements.sort((a, b) => a.index - b.index);
 
-  // Convert to sections
   let sectionId = 0;
   elements.forEach(element => {
-    if (element.type === 'h1') {
+    if (element.type === 'table') {
       sections.push({
-        id: `section_${sectionId++}`,
-        type: 'heading',
-        level: 1,
-        content: element.content
+        id: element.id,
+        type: 'table',
+        rendered_html: element.rendered_html
       });
+    } else if (element.type === 'h1') {
+      sections.push({ id: `section_${sectionId++}`, type: 'heading', level: 1, content: element.content });
     } else if (element.type === 'h2') {
-      sections.push({
-        id: `section_${sectionId++}`,
-        type: 'heading',
-        level: 2,
-        content: element.content
-      });
+      sections.push({ id: `section_${sectionId++}`, type: 'heading', level: 2, content: element.content });
     } else if (element.type === 'h3') {
-      sections.push({
-        id: `section_${sectionId++}`,
-        type: 'heading',
-        level: 3,
-        content: element.content
-      });
+      sections.push({ id: `section_${sectionId++}`, type: 'heading', level: 3, content: element.content });
     } else if (element.type === 'p') {
-      sections.push({
-        id: `section_${sectionId++}`,
-        type: 'paragraph',
-        content: element.content
-      });
+      sections.push({ id: `section_${sectionId++}`, type: 'paragraph', content: element.content });
     } else if (element.type === 'ul') {
-      sections.push({
-        id: `section_${sectionId++}`,
-        type: 'list',
-        items: element.items
-      });
+      sections.push({ id: `section_${sectionId++}`, type: 'list', items: element.items });
     }
   });
 
@@ -338,4 +339,3 @@ export default {
   contentToHTML,
   htmlToContent
 };
-
