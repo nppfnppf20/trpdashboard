@@ -20,7 +20,8 @@ Instructions:
 - Where argument_against notes set out the opposing position, acknowledge it before rebutting with the argument_for
 - Produce clean HTML using <h2> for main sections, <h3> for sub-sections, <p> for body text, <ol>/<li> for numbered lists
 - Do not include a title — start directly with the first section
-- Do not add placeholder text or "[INSERT X]" gaps — write the full document from the material provided`;
+- Do not add placeholder text or "[INSERT X]" gaps — write the full document from the material provided
+- Do not number paragraphs — do not prefix paragraphs with numbers like 1.1, 2.3 etc.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue context builder (shared with draft generation)
@@ -288,7 +289,7 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
     .map(p => `${p.id}:\n${p.html}`)
     .join('\n\n');
 
-  const prompt = `You are updating specific paragraphs of a formal planning appeal document to incorporate evidence from a new specialist report.
+  const prompt = `You are updating a section of a formal planning appeal document to incorporate evidence from a new specialist report.
 
 ${userNotesBlock}Key issues in this appeal:
 ${issueContext}
@@ -296,14 +297,20 @@ ${issueContext}
 Document being incorporated: ${filename}
 ${documentText}
 
-Paragraphs to update — update ALL of them using the evidence from the document above. Cite paragraph or section numbers from the document where available. Write in formal planning language. Do not use em dashes.
+The following paragraphs are IN SCOPE — you may update them and you may add new paragraphs where the document warrants it. Only these paragraphs have been unlocked for editing; all other parts of the document are fixed and you will not see or touch them.
 
+For each in-scope paragraph: update it if the document adds relevant evidence, or leave it unchanged if not. If the document justifies a new paragraph (e.g. a new point that doesn't fit within an existing paragraph), add it using the id format "INSERT_AFTER_[id]" to indicate where it should be inserted.
+
+Write in formal planning language. Cite paragraph or section numbers from the document where available. Do not use em dashes. Do not number paragraphs.
+
+In-scope paragraphs:
 ${paraBlock}
 
 Return ONLY a valid JSON array — no markdown, no explanation:
 [
-  {"id": "p0", "html": "<p>Updated paragraph HTML...</p>"},
-  {"id": "p1", "html": "<h2>Updated heading...</h2>"}
+  {"id": "p3", "html": "<p>Updated paragraph...</p>"},
+  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph inserted after p3...</p>"},
+  {"id": "p7", "html": "<p>Unchanged or updated...</p>"}
 ]`;
 
   const response = await client.messages.create({
@@ -358,6 +365,7 @@ Instructions:
 - Where the document introduces genuinely new relevant material not already covered, add it in the appropriate section
 - Write in formal planning language suitable for submission to the Planning Inspectorate
 - Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead
+- Do not number paragraphs — do not prefix any paragraph with numbers like 1.1, 2.3 etc.
 - Output the complete updated draft HTML only — no markdown, no explanation, no commentary`;
 
   const messages = [

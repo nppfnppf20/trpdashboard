@@ -171,11 +171,26 @@
         userNotes: userNotes || null
       });
 
-      // Reconstruct: updated paragraphs from Claude, everything else verbatim from original
+      // Reconstruct: updated paragraphs from Claude, insertions placed after their anchor,
+      // everything else verbatim from original
       const updatedMap = {};
-      for (const p of (result.updated ?? [])) updatedMap[p.id] = p.html;
+      const insertionsAfter = {};
+      for (const p of (result.updated ?? [])) {
+        if (p.id.startsWith('INSERT_AFTER_')) {
+          const anchorId = p.id.replace('INSERT_AFTER_', '');
+          if (!insertionsAfter[anchorId]) insertionsAfter[anchorId] = [];
+          insertionsAfter[anchorId].push(p.html);
+        } else {
+          updatedMap[p.id] = p.html;
+        }
+      }
 
-      const reconstructed = allParagraphs.map(p => updatedMap[p.id] ?? p.html).join('\n');
+      const parts = [];
+      for (const p of allParagraphs) {
+        parts.push(updatedMap[p.id] ?? p.html);
+        if (insertionsAfter[p.id]) parts.push(...insertionsAfter[p.id]);
+      }
+      const reconstructed = parts.join('\n');
       suggestedHtml = reconstructed;
       changeGroups = computeParagraphDiff(currentDraftHtml, suggestedHtml);
       panelState = 'review';
