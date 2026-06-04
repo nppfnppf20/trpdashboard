@@ -99,6 +99,7 @@ export async function handleSaveDraft() {
     const html = _draftEditor?.getHTML() ?? get(draftEditorHtml);
     const result = await saveDraft(_projectId, typeId, html);
     drafts.update(d => ({ ...d, [typeId]: result }));
+    draftEditorHtml.set(html);
     draftSaved.set(true);
     setTimeout(() => draftSaved.set(false), 2500);
   } catch (err) {

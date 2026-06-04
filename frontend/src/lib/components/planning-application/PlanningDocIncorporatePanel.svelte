@@ -1,5 +1,5 @@
 ﻿<script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
   import { paScopeIncorporation, paIncorporateTargeted } from '$lib/api/planningApplication.js';
 
@@ -11,12 +11,14 @@
 
   // idle | uploading | scoping | scoped | incorporating | review
   let panelState = 'idle';
+  let reviewRowsEl;
 
   let inputTab = 'upload';
   let pasteText = '';
   let pasteTitle = '';
   let uploadFile = null;
   let uploadLabel = '';
+  let uploadTitle = '';
   let docDragOver = false;
   let docFileInput;
   let uploadError = null;
@@ -104,7 +106,7 @@
 
     try {
       const payload = inputTab === 'upload'
-        ? { file: uploadFile, paragraphs: allParagraphs.map(p => ({ id: p.id, text: p.text })) }
+        ? { file: uploadFile, documentTitle: uploadTitle || null, paragraphs: allParagraphs.map(p => ({ id: p.id, text: p.text })) }
         : { documentText: pasteText, documentTitle: pasteTitle || 'Pasted document', paragraphs: allParagraphs.map(p => ({ id: p.id, text: p.text })) };
 
       const result = await paScopeIncorporation(project.id, typeId, payload);
@@ -131,7 +133,7 @@
 
     try {
       const payload = inputTab === 'upload'
-        ? { file: uploadFile, paragraphs: targeted, userNotes: userNotes || null }
+        ? { file: uploadFile, documentTitle: uploadTitle || null, paragraphs: targeted, userNotes: userNotes || null }
         : { documentText: pasteText, documentTitle: pasteTitle || 'Pasted document', paragraphs: targeted, userNotes: userNotes || null };
 
       const result = await paIncorporateTargeted(project.id, typeId, payload);
@@ -149,16 +151,29 @@
       }
 
       // Reconstruct: merge updated assessment paragraphs back into the full draft
-      const assessmentIds = new Set(allParagraphs.map(p => p.id));
-      const allDraftBlocks = splitAllParagraphs(currentDraftHtml);
-      const assessmentIdx = allParagraphs.reduce((m, p, i) => { m[p.id] = i; return m; }, {});
-
-      // Build updated assessment HTML
       const updatedAssessmentParts = [];
       for (const p of allParagraphs) {
         updatedAssessmentParts.push(updatedMap[p.id] ?? p.html);
         if (insertionsAfter[p.id]) updatedAssessmentParts.push(...insertionsAfter[p.id]);
       }
+
+      // Deduplicate conclusion paragraphs — keep only the last one.
+      // A conclusion paragraph contains "considered to comply with" or "therefore comply".
+      const isConclusion = html => /considered to comply with|therefore comply/i.test(
+        html.replace(/<[^>]+>/g, '')
+      );
+      const conclusionIndices = updatedAssessmentParts.reduce((acc, html, i) => {
+        if (isConclusion(html)) acc.push(i);
+        return acc;
+      }, []);
+      // If more than one conclusion found, remove all but the last
+      if (conclusionIndices.length > 1) {
+        const toRemove = new Set(conclusionIndices.slice(0, -1));
+        updatedAssessmentParts.splice(0, updatedAssessmentParts.length,
+          ...updatedAssessmentParts.filter((_, i) => !toRemove.has(i))
+        );
+      }
+
       const updatedAssessmentHtml = updatedAssessmentParts.join('\n');
 
       // Replace assessment section in full draft
@@ -166,6 +181,8 @@
       changeGroups = computeParagraphDiff(currentDraftHtml, suggestedHtml);
       panelState = 'review';
       dispatch('reviewchange', { active: true });
+      await tick();
+      reviewRowsEl?.querySelector('.review-row--changed')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
       incorporateError = err.message;
       panelState = 'scoped';
@@ -384,6 +401,14 @@
       <input type="file" accept=".pdf,.txt,.md" bind:this={docFileInput} on:change={onFileChange} style="display:none" />
       {#if uploadError}<p class="error-msg">{uploadError}</p>{/if}
 
+      <input
+        class="paste-title-input"
+        type="text"
+        placeholder="Document title (e.g. Heritage Statement) — leave blank and Claude will derive one"
+        bind:value={uploadTitle}
+        style="margin: 0 1rem 0; width: calc(100% - 2rem); box-sizing: border-box;"
+      />
+
       <div class="notes-area">
         <label class="notes-label">
           <i class="las la-pen"></i> Your notes
@@ -495,7 +520,7 @@
 
       {#if incorporateError}<p class="error-msg" style="padding:0.375rem 1rem;flex-shrink:0">{incorporateError}</p>{/if}
 
-      <div class="review-rows">
+      <div class="review-rows" bind:this={reviewRowsEl}>
         {#if changeGroups.length === 0}
           <p class="diff-no-changes">No changes suggested.</p>
         {:else}

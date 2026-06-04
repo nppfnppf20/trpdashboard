@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType, getPaDraftContext } from '$lib/api/planningApplication.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType, getPaDraftContext } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
@@ -123,6 +123,7 @@
   let activeTab = 'key-issues';
 
   let keyIssues = [];
+  let issueNotes = {};
   let projectPolicies = [];
   let policyTrackRelevance = {};
   let loading = true;
@@ -143,6 +144,7 @@
         getArgumentPoints(project.id)
       ]);
       keyIssues = issues;
+      issueNotes = notes;
       projectPolicies = policies;
       policyTrackRelevance = relevance;
       initArgumentPoints(argPoints);
@@ -262,12 +264,6 @@
     <button class="tab" class:active={activeTab === 'key-issues'} on:click={() => activeTab = 'key-issues'}>
       Key Issues
     </button>
-    <button class="tab" class:active={activeTab === 'policy'} on:click={() => activeTab = 'policy'}>
-      Policy
-    </button>
-    <button class="tab" class:active={activeTab === 'argument'} on:click={() => activeTab = 'argument'}>
-      Argument Structure
-    </button>
     <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
       Draft Document
     </button>
@@ -354,6 +350,24 @@
                   </span>
                 {/if}
               </div>
+              <div class="policy-section">
+                <PolicyTierNotes
+                  {issue}
+                  projectId={project.id}
+                  policies={projectPolicies}
+                  relevantPolicyIds={policyTrackRelevance[issue.id] ?? []}
+                  on:relevancechange={(e) => {
+                    const { policyId, linked } = e.detail;
+                    policyTrackRelevance = {
+                      ...policyTrackRelevance,
+                      [issue.id]: linked
+                        ? [...(policyTrackRelevance[issue.id] ?? []), policyId]
+                        : (policyTrackRelevance[issue.id] ?? []).filter(id => id !== policyId)
+                    };
+                  }}
+                />
+              </div>
+              <label class="argument-notes-label">Issue notes</label>
               <textarea
                 class="summary-field"
                 placeholder="Add notes on this issue — position, key evidence, approach..."
@@ -361,311 +375,22 @@
                 use:autoresize={issue.summary}
                 on:blur={(e) => updateKeyIssueSummary(issue.id, e.target.value)}
               ></textarea>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-
-  {:else if activeTab === 'policy'}
-    <!-- ── Tab 2: Policy ── -->
-    <div class="tab-body">
-      {#if keyIssues.length === 0}
-        <div class="empty-state">
-          <i class="las la-list-alt"></i>
-          <p>No key issues found. Add them in the Key Issues tab first.</p>
-        </div>
-      {:else}
-        <div class="argument-list">
-          {#each keyIssues as issue (issue.id)}
-            {@const risk = riskColours[issue.last_known_risk_level]}
-            <div class="argument-section">
-              <div class="argument-heading">
-                <div class="argument-title-row">
-                  {#if issue.discipline}
-                    <span class="discipline-tag">{issue.discipline.replace(/_/g, ' ')}</span>
-                  {/if}
-                  <h2 class="argument-issue-title">{issue.label}</h2>
-                  {#if issue.last_known_risk_level}
-                    <span class="risk-chip" style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}">
-                      {issue.last_known_risk_level.replace(/_/g, ' ')}
-                    </span>
-                  {/if}
-                </div>
-              </div>
-              <PolicyTierNotes
-                {issue}
-                projectId={project.id}
-                policies={projectPolicies}
-                relevantPolicyIds={policyTrackRelevance[issue.id] ?? []}
-                on:relevancechange={(e) => {
-                  const { policyId, linked } = e.detail;
-                  policyTrackRelevance = {
-                    ...policyTrackRelevance,
-                    [issue.id]: linked
-                      ? [...(policyTrackRelevance[issue.id] ?? []), policyId]
-                      : (policyTrackRelevance[issue.id] ?? []).filter(id => id !== policyId)
-                  };
+              <label class="argument-notes-label">Argument notes</label>
+              <textarea
+                class="summary-field argument-notes-field"
+                placeholder="Outline the argument structure for this issue — how the proposals comply with policy, key evidence to cite..."
+                value={issueNotes[issue.id]?.argument_for ?? ''}
+                use:autoresize={issueNotes[issue.id]?.argument_for}
+                on:blur={async (e) => {
+                  const val = e.target.value;
+                  issueNotes = { ...issueNotes, [issue.id]: { ...issueNotes[issue.id], argument_for: val } };
+                  await upsertIssueNote(project.id, issue.id, { argument_for: val });
                 }}
-              />
+              ></textarea>
             </div>
           {/each}
         </div>
       {/if}
-    </div>
-
-  {:else if activeTab === 'argument'}
-    <!-- ── Tab 3: Argument Structure ── -->
-    <div class="argument-body">
-      <div class="argument-panel">
-        <div class="argument-panel-toolbar">
-          <button class="btn-from-issue-notes" on:click={() => runDraftFromIssueSummaries(project.id)}>
-            <i class="las la-file-alt"></i> Build from issue notes
-          </button>
-          <div class="briefing-btn-group" use:clickOutside={() => $briefingDropdownOpen = false}>
-            <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id, $selectedBriefingNoteId)}>
-              <i class="las la-lightbulb"></i> Draft from briefing
-              {#if $selectedBriefingNoteId}
-                {@const note = $briefingNotes.find(n => n.id === $selectedBriefingNoteId)}
-                {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
-              {/if}
-            </button>
-            <button class="btn-briefing-chevron" on:click={() => $briefingDropdownOpen = !$briefingDropdownOpen} title="Select briefing note">
-              <i class="las la-angle-down"></i>
-            </button>
-            {#if $briefingDropdownOpen}
-              <div class="briefing-dropdown">
-                <button
-                  class="briefing-dropdown-item"
-                  class:active={$selectedBriefingNoteId === null}
-                  on:click={() => selectBriefingNote(null)}
-                >
-                  <span>Latest briefing note</span>
-                </button>
-                {#each $briefingNotes as note}
-                  <button
-                    class="briefing-dropdown-item"
-                    class:active={$selectedBriefingNoteId === note.id}
-                    on:click={() => selectBriefingNote(note.id)}
-                  >
-                    <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
-                    <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  </button>
-                {/each}
-                <button class="briefing-dropdown-item briefing-dropdown-upload" on:click={openBriefingUpload}>
-                  <i class="las la-plus"></i> Upload new briefing note
-                </button>
-              </div>
-            {/if}
-          </div>
-        </div>
-        <ArgumentStructurePanel {keyIssues} {projectPolicies} {policyTrackRelevance} argumentPointsByTrack={$argumentPointsByTrack} />
-      </div>
-
-      <!-- Right: argument suggestion panel -->
-      <div class="input-panel">
-
-        {#if $suggestState === 'loading'}
-          <div class="analysis-loading">
-            <div class="spinner"></div>
-            <p>Reading document and building suggestion...</p>
-          </div>
-
-        {:else if $suggestState === 'chat'}
-          <!-- Chat thread -->
-          <div class="chat-header">
-            <span class="results-title">Argument suggestion</span>
-            <div class="results-header-actions">
-              {#if Object.keys($acceptedIssues).length > 0}
-                <button class="log-btn" on:click={openSuggestionLogModal}>
-                  <i class="las la-save"></i> Log document
-                </button>
-              {/if}
-              <button class="reset-btn" on:click={resetSuggestion}><i class="las la-arrow-left"></i> New document</button>
-            </div>
-          </div>
-
-          <div class="chat-thread">
-            {#each $conversation as msg, i}
-              {#if msg.role === 'assistant'}
-                {@const isLast = i === $conversation.length - 1 || $conversation.slice(i + 1).every(m => m.role === 'user')}
-                <div class="chat-msg assistant">
-                  <div class="chat-prose">{msg.content}</div>
-                  {#if isLast}
-                    <div class="chat-msg-actions">
-                      {#if $suggestTrackIds.length === 1}
-                        {@const issue = keyIssues.find(iss => iss.id === $suggestTrackIds[0])}
-                        <button
-                          class="accept-btn"
-                          class:accepted={$acceptedIssues[$suggestTrackIds[0]]}
-                          on:click={() => acceptSuggestion($suggestTrackIds[0], msg.content, issue?.label ?? '')}
-                        >
-                          {#if $acceptedIssues[$suggestTrackIds[0]]}
-                            <i class="las la-check"></i> Accepted into {issue?.label ?? 'issue'}
-                          {:else}
-                            <i class="las la-check"></i> Accept into {issue?.label ?? 'issue'}
-                          {/if}
-                        </button>
-                      {:else}
-                        <div class="accept-multi">
-                          {#each ($suggestTrackIds.length > 0 ? keyIssues.filter(iss => $suggestTrackIds.includes(iss.id)) : keyIssues) as issue}
-                            <button
-                              class="accept-btn accept-btn-sm"
-                              class:accepted={$acceptedIssues[issue.id]}
-                              on:click={() => acceptSuggestion(issue.id, msg.content, issue.label)}
-                            >
-                              {#if $acceptedIssues[issue.id]}
-                                <i class="las la-check"></i> {issue.label}
-                              {:else}
-                                Accept into {issue.label}
-                              {/if}
-                            </button>
-                          {/each}
-                        </div>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              {:else}
-                <div class="chat-msg user">
-                  <p>{msg.content}</p>
-                </div>
-              {/if}
-            {/each}
-            {#if $refinementLoading}
-              <div class="chat-msg assistant loading-msg">
-                <div class="mini-spinner"></div><span>Revising...</span>
-              </div>
-            {/if}
-            <div bind:this={chatEndEl}></div>
-          </div>
-
-          <div class="chat-input-row">
-            <textarea
-              class="chat-input"
-              bind:value={$refinementInput}
-              placeholder="Ask for changes — e.g. 'focus more on the transport assessment conclusions'..."
-              rows="2"
-              on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefinement(); } }}
-            ></textarea>
-            <button class="chat-send-btn" disabled={!$refinementInput.trim() || $refinementLoading} on:click={sendRefinement}>
-              <i class="las la-paper-plane"></i>
-            </button>
-          </div>
-
-          {#if $suggestError}
-            <p class="analysis-error">{$suggestError}</p>
-          {/if}
-
-        {:else}
-          <!-- Idle: upload / paste form -->
-          <div class="input-tabs">
-            <button class="input-tab" class:active={$suggestInputTab === 'upload'} on:click={() => $suggestInputTab = 'upload'}>
-              <i class="las la-file-upload"></i> Upload
-            </button>
-            <button class="input-tab" class:active={$suggestInputTab === 'paste'} on:click={() => $suggestInputTab = 'paste'}>
-              <i class="las la-paste"></i> Paste Text
-            </button>
-          </div>
-
-          <div class="idle-form">
-
-            <div class="form-row">
-              <label class="form-label">Document type</label>
-              <select class="doc-type-select" bind:value={$suggestDocumentType}>
-                {#each SUGGEST_DOC_TYPES as t}<option>{t}</option>{/each}
-              </select>
-            </div>
-
-            <div class="form-row">
-              <label class="form-label">Document title <span class="form-label-hint">(used for inline references)</span></label>
-              <input class="doc-title-input" type="text" bind:value={$suggestDocumentTitle} placeholder="e.g. Transport Assessment — Land at Station Road" />
-            </div>
-
-            {#if $suggestInputTab === 'upload'}
-              <div
-                class="upload-zone"
-                class:has-file={$suggestFile}
-                on:dragover|preventDefault={() => {}}
-                on:drop={onSuggestDrop}
-                on:click={() => suggestFileInput.click()}
-                role="button"
-                tabindex="0"
-                on:keydown={(e) => e.key === 'Enter' && suggestFileInput.click()}
-              >
-                {#if $suggestFile}
-                  <i class="las la-file-alt"></i>
-                  <span>{$suggestFile.name}</span>
-                  <span class="upload-sub">Click to change</span>
-                {:else}
-                  <i class="las la-cloud-upload-alt"></i>
-                  <span>Drop a PDF or click to upload</span>
-                  <span class="upload-sub">PDF, TXT or MD · max 20MB</span>
-                {/if}
-              </div>
-              <input type="file" accept=".pdf,.txt,.md" bind:this={suggestFileInput} on:change={onSuggestFileChange} style="display:none" />
-            {:else}
-              <textarea
-                class="paste-area"
-                bind:value={$suggestPasteText}
-                placeholder="Paste text from a document, report or meeting notes here..."
-              ></textarea>
-            {/if}
-
-            <div class="form-row">
-              <label class="form-label">Your guidance <span class="form-label-hint">(optional)</span></label>
-              <textarea
-                class="user-notes-field"
-                bind:value={$suggestUserNotes}
-                placeholder="e.g. Focus on section 5 regarding heritage — the consultant's conclusions support our case..."
-              ></textarea>
-            </div>
-
-            {#if keyIssues.length > 0}
-              <div class="form-row">
-                <label class="form-label">Relevant to <span class="form-label-hint">(leave blank for all issues)</span></label>
-                <div class="issue-checks">
-                  {#each keyIssues as issue}
-                    <label class="issue-check-label">
-                      <input
-                        type="checkbox"
-                        checked={$suggestTrackIds.includes(issue.id)}
-                        on:change={() => toggleSuggestTrack(issue.id)}
-                      />
-                      <span>{issue.label}</span>
-                    </label>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            <div class="analyse-row">
-              <button
-                class="analyse-btn"
-                disabled={$suggestInputTab === 'upload' ? !$suggestFile : !$suggestPasteText.trim()}
-                on:click={runSuggestion}
-              >
-                Suggest additions
-              </button>
-              <button
-                class="prompt-btn"
-                disabled={$suggestInputTab === 'upload' ? !$suggestFile : !$suggestPasteText.trim()}
-                on:click={openSuggestPromptModal}
-                title="View and edit the prompt before running"
-              >
-                <i class="las la-code"></i> Edit prompt
-              </button>
-            </div>
-
-            {#if $suggestError}
-              <p class="analysis-error">{$suggestError}</p>
-            {/if}
-
-          </div>
-        {/if}
-
-      </div>
-
     </div>
 
   {:else if activeTab === 'log'}
@@ -2144,6 +1869,13 @@
   }
 
   .summary-field { min-height: 72px; }
+  .argument-notes-label { display: block; font-size: 0.7rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; margin: 0.5rem 0 0.25rem; }
+  .argument-notes-field { min-height: 100px; background: #fffbeb; border-color: #fde68a; }
+  .argument-notes-field:focus { border-color: #f59e0b; background: white; }
+
+  .policy-section {
+    margin-top: 0.25rem;
+  }
   .notes-field   { min-height: 100px; }
 
   .note-fields {

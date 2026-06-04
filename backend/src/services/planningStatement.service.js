@@ -10,22 +10,27 @@ import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFu
 // Prompt constants — Assessment
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PLANNING_ASSESSMENT_DEFAULT_PROMPT = `You are writing a planning assessment section for a planning statement. Here's what I want:
-- Each of these sections will take an issue.
-- It will outline the national policy, the local policy, and any other policy (this could be supplementary or national guidance etc.).
-Here's how it will work:
-- The layout will be: The argument structure will be: 1) National policy says X. 2) Local policy says X. 3) Any other policy says X 4) This is how the proposals are compliant with those policies. (That will have user notes, like planning notes, an argument that we've come up with and also specialist surveys, the structure will usually be both of those: this is how we believe the proposal meets the scheme and then we've had this specialist report done and this said X and this is why it meets the scheme.)
-  5) Then the conclusion will be: therefore we think it meets and then your list of policies it meets that we mentioned at the start.
-That's the structure of each section. Sometimes we might not meet policy, in which case we'll need justification or mitigation, but that will also be included in the note. You're basically polishing up the argument structure but just so you know that's how this will look.
+export const PLANNING_ASSESSMENT_DEFAULT_PROMPT = `You are writing the planning assessment sub-section for the issue "{{ISSUE_LABEL}}"{{ISSUE_DISCIPLINE}}, for the project "{{PROJECT_NAME}}".
 
-The argument structure and the relevant policies have been provided for you. You are absolutely not to hallucinate anything, only to polish up the information that has been provided for you in the tone that has been shown to you.
+{{EXAMPLE_BLOCK}}
+## What you are doing
+Your job is to turn the consultant's working notes and policy framework into polished, formal planning statement prose. You are not inventing an argument — you are giving professional form to the argument that has already been constructed. Do not add facts, policies, or conclusions that are not present in the material below.
 
-You are writing the sub-section for the issue "{{ISSUE_LABEL}}"{{ISSUE_DISCIPLINE}}, for the project "{{PROJECT_NAME}}".
+## Structure of this sub-section
+Write in flowing prose with no sub-headings of any kind. The structure must follow this order:
 
-{{EXAMPLE_BLOCK}}{{POLICY_STRUCTURE}}
+{{POLICY_STRUCTURE}}
 
-Issue context — policies, assessment notes, and specialist evidence:
+## The context provided to you — what each part means
+
+The following material contains everything you need. Read each block carefully before writing.
+
 {{ISSUE_CONTEXT}}
+
+## What each block means
+- **Policy sections (National Policy, Local Policy, Supplementary, etc.)** — these are the statutory policies the proposals must be assessed against. They define the policy framework for this issue. Cite each policy by name and reference number in the text. Policies marked [KEY POLICY — quote verbatim in draft] must be quoted directly.
+- **Policy Assessment Notes** — this is the consultant's working argument: how the proposals comply with the policies above, what the key planning points are, and any sensitivities or mitigation required. This is the core substance of what you are polishing into formal prose. Follow this argument closely — do not deviate from it or add new arguments not present here.
+- **Supporting Evidence from Documents** — these are findings extracted from specialist technical reports (transport assessments, ecology surveys, heritage statements, etc.). Reference each report by its full title inline (e.g. "The Transport Assessment confirms..." or "The Ecological Appraisal (section 4.2) concludes..."). These provide the technical evidence base for the compliance case.
 
 FORMAT RULES (mandatory — failure to follow these is an error):
 - Output HTML only — no markdown whatsoever
@@ -482,7 +487,7 @@ Return ONLY a valid JSON array with no preamble, explanation, or code fences. If
 // Planning assessment incorporation — structure-aware document update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null }) {
+export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null }) {
   // Build rich per-issue context (policies + argument notes) for each issue
   const issueContextParts = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
@@ -499,6 +504,10 @@ export async function incorporatePlanningAssessment({ paragraphs, documentText, 
     ? `\n\n## Project Brief\n${projectBrief.trim().slice(0, 4000)}`
     : '';
 
+  const exampleBlock = exampleText?.trim()
+    ? `\n\n## Example Planning Assessment\nThe following is an example of a planning assessment section from a different project. Use it as a guide for tone, paragraph length, structure, and how policy framework flows into compliance argument and conclusion. Do not copy any content from it — all content must come from the policies, argument notes, and specialist report provided.\nThis example covers multiple issues. Your task is per-issue — apply the same style to the specific issue sub-section you are updating.\n\n${exampleText.trim().slice(0, 8000)}`
+    : '';
+
   const userNotesBlock = userNotes?.trim()
     ? `## User Guidance — HIGH PRIORITY\nFollow these instructions precisely:\n${userNotes.trim()}\n\n`
     : '';
@@ -507,20 +516,24 @@ export async function incorporatePlanningAssessment({ paragraphs, documentText, 
 
   const prompt = `You are updating the Planning Assessment section of a formal Planning Statement to incorporate evidence from a new specialist report.
 
-Project: ${projectName}${guidingBlock}${projectBriefBlock}
+Project: ${projectName}${guidingBlock}${projectBriefBlock}${exampleBlock}
 
-## Structure of this section
-The Planning Assessment is organised by issue. Each issue sub-section follows this fixed structure:
-1. Policy framework — what the relevant national, local, and other policies require (do NOT alter these statements)
-2. Compliance argument — how the proposals satisfy those policies, citing expert evidence and specialist reports
-3. Concluding sentence — "The proposals are therefore considered to comply with [policy list]" (preserve the policy list)
+## Structure of each issue sub-section
+Each issue sub-section has three parts:
+1. Policy framework paragraphs — state what the relevant national, local, and other policies require. Do NOT alter these.
+2. Compliance argument paragraphs — explain how the proposals satisfy those policies, drawing on expert evidence and specialist reports. This is where you add and update content.
+3. Concluding sentence — "The proposals are therefore considered to comply with [policy list]." Preserve the policy list exactly.
 
-When incorporating the new document:
-- Add its findings to the compliance argument paragraphs only
-- Reference the document by name and cite paragraph/section numbers where available (e.g. "The Transport Assessment (para 4.3) confirms...")
-- Do not alter policy statements or the concluding sentence
-- Leave a paragraph unchanged if the document adds nothing relevant to it
-- You may add new paragraphs (use id "INSERT_AFTER_[id]") where the document warrants additional compliance evidence
+## Your task
+Rewrite the compliance section of each relevant issue sub-section to incorporate the evidence from this specialist report. You are working holistically — assess the paragraphs as a whole and return an updated version of the section.
+
+Rules:
+- Do NOT change any paragraph that is setting out policy (i.e. paragraphs that describe what national or local policy requires). Leave those exactly as they are.
+- Everything else is fair game: compliance argument paragraphs, evidence paragraphs, and the conclusion.
+- Keep the existing argument being made — do not change the position or conclusions. Your job is to back up that argument with specific evidence and citations from the specialist report.
+- Where the existing text makes a claim about compliance, harm level, or planning balance, add the report's findings to support it. Always refer to the document by a formal report title (e.g. "The Heritage Statement concludes...", "The Ecological Appraisal (section 5.2) finds...", "The Transport Assessment confirms..."). Never refer to "the specialist", "the appellant's consultant", "the heritage specialist" or similar — always use the document's title. ${filename ? `The document title is: "${filename}".` : `No title has been provided — derive an appropriate formal title from the document content (e.g. if it is a heritage assessment use "the Heritage Statement", if it is a transport assessment use "the Transport Assessment"). Use that derived title consistently throughout.`}
+- The section must end with a concluding sentence of the form: "The proposals are therefore considered to comply with [policy references]." If one already exists, you may update it but keep the policy list. If none exists, add one.
+- Write in formal planning language. Do not use em dashes.
 
 ## Key Issues and Policy Context
 ${issueContextParts}
@@ -533,8 +546,8 @@ ${userNotesBlock}${paraBlock}
 
 Return ONLY a valid JSON array — no markdown, no explanation:
 [
-  {"id": "p3", "html": "<p>Updated paragraph...</p>"},
-  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph...</p>"}
+  {"id": "p3", "html": "<p>Updated paragraph with evidence woven in...</p>"},
+  {"id": "INSERT_AFTER_p3", "html": "<p>New compliance paragraph constructed from report...</p>"}
 ]`;
 
   const response = await client.messages.create({

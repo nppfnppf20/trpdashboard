@@ -2078,11 +2078,11 @@ export async function paScopeIncorporation(req, res) {
     if (req.file) {
       const parsed = await parseFile(req.file.buffer, req.file.originalname);
       documentText = parsed.text;
-      filename = req.file.originalname;
+      filename = req.body.document_title?.trim() || null;
     } else {
       if (!req.body.document_text) return res.status(400).json({ error: 'document_text or file required' });
       documentText = req.body.document_text;
-      filename = req.body.document_title || 'Document';
+      filename = req.body.document_title?.trim() || null;
     }
 
     const [projectRows, typeRows, issueRows] = await Promise.all([
@@ -2127,14 +2127,14 @@ export async function paIncorporateTargeted(req, res) {
     try {
       const parsed = await parseFile(req.file.buffer, req.file.originalname);
       documentText = parsed.text;
-      filename = req.file.originalname;
+      filename = req.body.document_title?.trim() || null;
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
   } else {
     if (!req.body.document_text) return res.status(400).json({ error: 'document_text or file required' });
     documentText = req.body.document_text;
-    filename = req.body.document_title || 'Document';
+    filename = req.body.document_title?.trim() || null;
   }
 
   try {
@@ -2143,7 +2143,7 @@ export async function paIncorporateTargeted(req, res) {
       pool.query(`SELECT slug, name FROM planning_applications.draft_types WHERE id = $1`, [typeId])
     ]);
 
-    const [issueRows, linkedPoliciesByTrack, issueTypesByTrack, briefRows, guidingBrief] = await Promise.all([
+    const [issueRows, linkedPoliciesByTrack, issueTypesByTrack, briefRows, guidingBrief, sectionRows] = await Promise.all([
       pool.query(
         `SELECT pit.id, pit.label, pit.discipline, ain.argument_for
          FROM admin_console.project_issue_tracks pit
@@ -2160,7 +2160,12 @@ export async function paIncorporateTargeted(req, res) {
          ORDER BY created_at DESC LIMIT 1`,
         [projectId]
       ),
-      getGuidingBrief(typeRows.rows[0]?.slug ?? 'planning_statement', projectRows.rows[0]?.development_type)
+      getGuidingBrief(typeRows.rows[0]?.slug ?? 'planning_statement', projectRows.rows[0]?.development_type),
+      pool.query(
+        `SELECT example_text FROM planning_applications.draft_sections
+         WHERE draft_type_id = $1 AND slug = 'planning_assessment'`,
+        [typeId]
+      )
     ]);
 
     const updated = await incorporatePlanningAssessment({
@@ -2173,7 +2178,8 @@ export async function paIncorporateTargeted(req, res) {
       userNotes: user_notes,
       projectName: projectRows.rows[0]?.project_name,
       guidingBrief,
-      projectBrief: briefRows.rows[0]?.summary_html ?? null
+      projectBrief: briefRows.rows[0]?.summary_html ?? null,
+      exampleText: sectionRows.rows[0]?.example_text ?? null
     });
     res.json({ updated });
   } catch (err) {
