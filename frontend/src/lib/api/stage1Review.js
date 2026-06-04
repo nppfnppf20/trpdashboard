@@ -14,3 +14,9 @@ export async function generateStage1Review(projectId, { briefingNoteId } = {}) {
   }
   return res.json();
 }
+
+export async function getStage1Context(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/context`);
+  if (!res.ok) throw new Error('Failed to fetch Stage 1 context');
+  return res.json(); // { guidingBrief, projectBrief, toneExampleLoaded }
+}

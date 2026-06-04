@@ -218,3 +218,28 @@ Return ONLY valid JSON — no explanation, no markdown fences.`;
     res.status(500).json({ error: err.message });
   }
 }
+
+export async function getStage1Context(req, res) {
+  const { projectId } = req.params;
+  try {
+    const [projectRows, briefRows] = await Promise.all([
+      pool.query(`SELECT development_type FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+         ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      )
+    ]);
+    const developmentType = projectRows.rows[0]?.development_type ?? null;
+    const guidingBrief = await getGuidingBrief('stage1_review', developmentType);
+    res.json({
+      guidingBrief: guidingBrief ? { name: guidingBrief.name, content: guidingBrief.guidance_content ?? null } : null,
+      projectBrief: briefRows.rows[0]?.summary_html ?? null,
+      toneExampleLoaded: TONE_EXAMPLE_BLOCK.length > 0,
+    });
+  } catch (err) {
+    console.error('stage1Review.getContext error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}

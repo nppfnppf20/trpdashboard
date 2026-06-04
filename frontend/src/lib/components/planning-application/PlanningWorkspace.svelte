@@ -1,12 +1,17 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType, getPaDraftContext } from '$lib/api/planningApplication.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType, getPaDraftContext, saveDraft } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { argumentPointsByTrack, initArgumentPoints } from '$lib/stores/planning-analysis.js';
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt } from '$lib/stores/planning-suggestion.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue } from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext } from '$lib/stores/planning-drafts.js';
+  import { generateStage1Review } from '$lib/api/stage1Review.js';
+  import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
+  import DeliverableEditor from '$lib/components/planning/DeliverableEditor.svelte';
+
+  let stage1EditorDeliverable = null;
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
@@ -19,7 +24,8 @@
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
   const draftKeyState  = actionPromptState('draft_key_summaries');
-  const draftArgsState = actionPromptState('draft_arguments_from_briefing');
+  const draftArgsState    = actionPromptState('draft_arguments_from_briefing');
+  const stage1PromptState = actionPromptState('stage1_review');
 
   const SUGGEST_DOC_TYPES = [
     'Officer Report',
@@ -196,6 +202,61 @@
     low_risk:            { bg: '#dcfce7', colour: '#16a34a' }
   };
 
+  // ── Stage 1 card state ─────────────────────────────────────────────────────
+  let stage1Generating = false;
+  let stage1Html = null;
+  let stage1GeneratedAt = null;
+  let stage1Error = null;
+  let stage1DropdownOpen = false;
+  let stage1SelectedNoteId = null;
+  function clickOutsideStage1(node) {
+    function onClick(e) { if (!node.contains(e.target)) stage1DropdownOpen = false; }
+    document.addEventListener('click', onClick, true);
+    return { destroy() { document.removeEventListener('click', onClick, true); } };
+  }
+
+  function getStage1TypeId() {
+    return $draftTypes.find(t => t.slug === 'stage1_review')?.id ?? null;
+  }
+
+  $: stage1TypeId = $draftTypes.find(t => t.slug === 'stage1_review')?.id ?? null;
+  $: stage1DraftExists = !!(stage1TypeId && $drafts[stage1TypeId]);
+  // Hydrate local state from DB draft on load so button persists across refreshes
+  $: if (stage1TypeId && $drafts[stage1TypeId]?.content_html && !stage1Html) {
+    stage1Html = $drafts[stage1TypeId].content_html;
+    stage1GeneratedAt = $drafts[stage1TypeId].updated_at ? new Date($drafts[stage1TypeId].updated_at) : stage1GeneratedAt;
+  }
+
+  function openStage1InEditor() {
+    if (stage1TypeId) openDraft(stage1TypeId);
+  }
+
+  async function exportStage1ToWord() {
+    const html = stage1Html ?? $drafts[stage1TypeId]?.content_html;
+    if (!html) return;
+    await exportHtmlToWord(html, 'Stage 1 Planning Appraisal', '/basicdocument.docx');
+  }
+
+  async function handleGenerateStage1() {
+    stage1Generating = true;
+    stage1Error = null;
+    try {
+      const result = await generateStage1Review(project.id, { briefingNoteId: stage1SelectedNoteId });
+      stage1Html = result.html;
+      stage1GeneratedAt = new Date();
+      const typeId = getStage1TypeId();
+      if (typeId) {
+        const saved = await saveDraft(project.id, typeId, result.html);
+        drafts.update(d => ({ ...d, [typeId]: saved }));
+        openDraft(typeId);
+      }
+    } catch (err) {
+      stage1Error = err.message;
+    } finally {
+      stage1Generating = false;
+    }
+  }
+
   let exportingWord = false;
 
   async function handleExportToWord() {
@@ -274,9 +335,6 @@
     </button>
     <button class="tab" class:active={activeTab === 'log'} on:click={() => activeTab = 'log'}>
       Document Log
-    </button>
-    <button class="tab" class:active={activeTab === 'stage1'} on:click={() => activeTab = 'stage1'}>
-      Stage 1 Review
     </button>
     <button class="tab" class:active={activeTab === 'formatting'} on:click={() => activeTab = 'formatting'}>
       Formatting
@@ -560,7 +618,7 @@
                 </div>
               {/if}
             </div>
-          {:else}
+          {:else if activeType?.slug !== 'stage1_review'}
             <PlanningDocIncorporatePanel
               {project}
               typeId={$activeDraftTypeId}
@@ -580,11 +638,14 @@
       <!-- Document type list -->
       <div class="tab-body">
         <div class="draft-types-list">
-          {#each $draftTypes as type (type.id)}
+
+          <!-- ── Planning statement + other draft type cards ── -->
+          {#each $draftTypes.filter(t => t.slug !== 'stage1_review') as type (type.id)}
             {@const draft = $drafts[type.id]}
             {@const isExpanded = $cardExpandedTypeId === type.id}
             {@const typeSections = $cardSections[type.id] ?? []}
             {@const typeLoading = $cardSectionsLoading[type.id] ?? false}
+            {@const ctx = $cardContextState[type.id]}
             <div class="draft-type-card">
               <div class="draft-type-main">
                 <div class="draft-type-info">
@@ -611,8 +672,31 @@
                       <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
                     {/if}
                   </button>
+                  <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
                 </div>
               </div>
+
+              <!-- Context accordion -->
+              <button class="draft-sections-toggle" on:click={() => toggleCardContext(project.id, type.id)}>
+                <i class="las la-layer-group"></i> Context
+                <i class="las {ctx?.expanded ? 'la-angle-up' : 'la-angle-down'} toggle-chevron"></i>
+              </button>
+              {#if ctx?.expanded}
+                <div class="draft-inline-context">
+                  {#if ctx.loading}
+                    <div class="draft-inline-loading"><div class="mini-spinner"></div><span>Loading...</span></div>
+                  {:else}
+                    <div class="ctx-row">
+                      <span class="ctx-label">Guiding brief</span>
+                      <span class="ctx-value {ctx.guidingBrief ? 'ctx-set' : 'ctx-missing'}">{ctx.guidingBrief?.name ?? 'Not set — add in Admin Console → Guiding Briefs'}</span>
+                    </div>
+                    <div class="ctx-row">
+                      <span class="ctx-label">Project brief</span>
+                      <span class="ctx-value {ctx.projectBrief ? 'ctx-set' : 'ctx-missing'}">{ctx.projectBrief ? 'Set' : 'Not uploaded — upload a briefing note in the Key Issues tab'}</span>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
 
               <!-- Sections toggle row -->
               <button class="draft-sections-toggle" on:click={() => toggleCardExpand(type.id)}>
@@ -672,16 +756,92 @@
               {/if}
             </div>
           {/each}
+
+          <!-- ── Stage 1 Planning Appraisal card ── -->
+          <div class="draft-type-card">
+            <div class="draft-type-main">
+              <div class="draft-type-info">
+                <span class="draft-type-name">Stage 1 Planning Appraisal</span>
+                <span class="draft-type-desc">Desk-based appraisal table generated from briefing note</span>
+                {#if stage1GeneratedAt}
+                  <span class="draft-type-meta">Last generated {stage1GeneratedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                {/if}
+              </div>
+              <div class="draft-type-actions">
+                {#if stage1DraftExists || stage1Html}
+                  <button class="draft-open-btn" on:click={openStage1InEditor}>Open</button>
+                {/if}
+                <!-- Briefing note selector + generate -->
+                <div class="briefing-btn-group stage1-briefing-group" use:clickOutsideStage1>
+                  <button class="draft-generate-btn" disabled={stage1Generating} on:click={handleGenerateStage1}>
+                    {#if stage1Generating}
+                      <div class="mini-spinner"></div> Generating...
+                    {:else}
+                      <i class="las la-magic"></i> {stage1Html ? 'Regenerate' : 'Generate'}
+                      {#if stage1SelectedNoteId}
+                        {@const note = $briefingNotes.find(n => n.id === stage1SelectedNoteId)}
+                        {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
+                      {/if}
+                    {/if}
+                  </button>
+                  <button class="btn-briefing-chevron" title="Select briefing note" on:click={() => stage1DropdownOpen = !stage1DropdownOpen}>
+                    <i class="las la-angle-down"></i>
+                  </button>
+                  {#if stage1DropdownOpen}
+                    <div class="briefing-dropdown">
+                      <button class="briefing-dropdown-item" class:active={stage1SelectedNoteId === null} on:click={() => { stage1SelectedNoteId = null; stage1DropdownOpen = false; }}>
+                        <span>Latest briefing note</span>
+                      </button>
+                      {#each $briefingNotes as note}
+                        <button class="briefing-dropdown-item" class:active={stage1SelectedNoteId === note.id} on:click={() => { stage1SelectedNoteId = note.id; stage1DropdownOpen = false; }}>
+                          <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
+                          <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+                <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt('stage1_review')}><i class="las la-sliders-h"></i></button>
+              </div>
+            </div>
+
+            {#if stage1Error}
+              <p class="stage1-error"><i class="las la-exclamation-circle"></i> {stage1Error}</p>
+            {/if}
+
+            <!-- Context accordion -->
+            <button class="draft-sections-toggle" on:click={() => toggleCardContext(project.id, 'stage1_review')}>
+              <i class="las la-layer-group"></i> Context
+              <i class="las {$cardContextState['stage1_review']?.expanded ? 'la-angle-up' : 'la-angle-down'} toggle-chevron"></i>
+            </button>
+            {#if $cardContextState['stage1_review']?.expanded}
+              <div class="draft-inline-context">
+                {#if $cardContextState['stage1_review'].loading}
+                  <div class="draft-inline-loading"><div class="mini-spinner"></div><span>Loading...</span></div>
+                {:else}
+                  <div class="ctx-row">
+                    <span class="ctx-label">Guiding brief</span>
+                    <span class="ctx-value {$cardContextState['stage1_review'].guidingBrief ? 'ctx-set' : 'ctx-missing'}">{$cardContextState['stage1_review'].guidingBrief?.name ?? 'Not set — add in Admin Console → Guiding Briefs'}</span>
+                  </div>
+                  <div class="ctx-row">
+                    <span class="ctx-label">Project brief</span>
+                    <span class="ctx-value {$cardContextState['stage1_review'].projectBrief ? 'ctx-set' : 'ctx-missing'}">{$cardContextState['stage1_review'].projectBrief ? 'Set' : 'Not uploaded — upload a briefing note in the Key Issues tab'}</span>
+                  </div>
+                  <div class="ctx-row">
+                    <span class="ctx-label">Tone example</span>
+                    <span class="ctx-value {$cardContextState['stage1_review'].toneExampleLoaded ? 'ctx-set' : 'ctx-missing'}">{$cardContextState['stage1_review'].toneExampleLoaded ? 'Loaded (stage1reviewexample.md)' : 'Not loaded — add stage1reviewexample.md to backend root'}</span>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+
         </div>
       </div>
     {/if}
 
-  {:else if activeTab === 'stage1'}
-    <!-- ── Tab 6: Stage 1 Review ── -->
-    <Stage1ReviewPanel {project} />
-
   {:else if activeTab === 'formatting'}
-    <!-- ── Tab 7: Formatting ── -->
+    <!-- ── Formatting ── -->
     <FormattingPanel />
 
   {/if}
@@ -1303,6 +1463,24 @@
   on:change={(e) => setPromptText('draft_arguments_from_briefing', e.detail)}
   on:save={() => saveActionPromptStore('draft_arguments_from_briefing')}
   on:reset={() => resetActionPromptStore('draft_arguments_from_briefing')}
+/>
+
+{#if stage1EditorDeliverable}
+  <DeliverableEditor deliverable={stage1EditorDeliverable} on:close={() => stage1EditorDeliverable = null} />
+{/if}
+
+<PromptEditModal
+  open={$stage1PromptState.open}
+  title="Edit Prompt — Generate Stage 1 Review"
+  promptText={$stage1PromptState.text}
+  contextTemplate={$stage1PromptState.contextTemplate}
+  loading={$stage1PromptState.loading}
+  saving={$stage1PromptState.saving}
+  saved={$stage1PromptState.saved}
+  on:close={() => closeActionPrompt('stage1_review')}
+  on:change={(e) => setPromptText('stage1_review', e.detail)}
+  on:save={() => saveActionPromptStore('stage1_review')}
+  on:reset={() => resetActionPromptStore('stage1_review')}
 />
 
 <style>
@@ -2123,6 +2301,44 @@
     flex-direction: column;
     gap: 0.25rem;
     padding-bottom: 0.375rem;
+  }
+
+  .draft-inline-context {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.625rem 0.875rem 0.5rem;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .ctx-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .ctx-label {
+    font-weight: 600;
+    color: #64748b;
+    min-width: 7rem;
+    flex-shrink: 0;
+  }
+
+  .ctx-value { color: #475569; }
+  .ctx-set { color: #16a34a; }
+  .ctx-missing { color: #94a3b8; font-style: italic; }
+
+  .stage1-briefing-group { position: relative; }
+
+  .stage1-error {
+    margin: 0;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.8125rem;
+    color: #dc2626;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
   }
 
   .draft-inline-loading {

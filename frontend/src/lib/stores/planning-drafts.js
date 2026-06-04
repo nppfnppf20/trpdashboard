@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { tick } from 'svelte';
-import { getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections, getSectionPrompt, resetSectionPrompt, getAssessmentIssues, generateAssessmentIssue } from '$lib/api/planningApplication.js';
+import { getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections, getSectionPrompt, resetSectionPrompt, getAssessmentIssues, generateAssessmentIssue, getPaDraftContext } from '$lib/api/planningApplication.js';
+import { getStage1Context } from '$lib/api/stage1Review.js';
 
 // Editor component refs — set from the template via setDraftEditor / setSectionExampleEditor
 let _draftEditor;
@@ -56,8 +57,12 @@ export async function loadDraftTypes() {
     const types = await getDraftTypes();
     draftTypes.set(types);
     await Promise.all(types.map(async t => {
-      const d = await getDraft(_projectId, t.id);
-      drafts.update(dd => ({ ...dd, [t.id]: d }));
+      try {
+        const d = await getDraft(_projectId, t.id);
+        drafts.update(dd => ({ ...dd, [t.id]: d }));
+      } catch (err) {
+        console.error(`Failed to load draft for type ${t.id}:`, err);
+      }
     }));
   } catch (err) {
     console.error('Failed to load draft types:', err);
@@ -402,5 +407,36 @@ export async function handleGenerateSection(sectionId, explicitTypeId = null) {
     alert(`Failed to generate section: ${err.message}`);
   } finally {
     sectionGenerating.set(null);
+  }
+}
+
+// ── Card context accordion ─────────────────────────────────────────────────────
+// key = typeId (number) for draft types, or 'stage1_review' for stage 1 card
+
+export const cardContextState = writable({}); // key → { expanded, loading, guidingBrief, projectBrief, toneExampleLoaded }
+
+export async function toggleCardContext(projectId, key) {
+  const current = get(cardContextState)[key];
+  if (current?.expanded) {
+    cardContextState.update(s => ({ ...s, [key]: { ...s[key], expanded: false } }));
+    return;
+  }
+  // Re-expand — only show spinner if not yet loaded
+  cardContextState.update(s => ({ ...s, [key]: { ...(s[key] ?? {}), expanded: true, loading: !s[key]?.loaded } }));
+  if (current?.loaded) return; // data already fetched, just re-expand
+  try {
+    const data = key === 'stage1_review'
+      ? await getStage1Context(projectId)
+      : await getPaDraftContext(projectId, key);
+    cardContextState.update(s => ({ ...s, [key]: {
+      ...s[key],
+      loading: false,
+      loaded: true,
+      guidingBrief: data.guidingBrief,
+      projectBrief: data.projectBrief,
+      toneExampleLoaded: data.toneExampleLoaded ?? null,
+    }}));
+  } catch {
+    cardContextState.update(s => ({ ...s, [key]: { ...s[key], loading: false } }));
   }
 }
