@@ -52,6 +52,9 @@ import {
   getDraftContext,
   generateDraftFromPaNotes,
   generateSectionFromPaNotes,
+  getAppealTypePrompt,
+  saveAppealTypePrompt,
+  resetAppealTypePrompt,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -99,6 +102,9 @@ router.post('/projects/:projectId/generate', generateArgument);
 
 // Draft documents
 router.get('/draft-types', getDraftTypes);
+router.get('/draft-types/:typeId/prompt', getAppealTypePrompt);
+router.put('/draft-types/:typeId/prompt', saveAppealTypePrompt);
+router.delete('/draft-types/:typeId/prompt', resetAppealTypePrompt);
 router.get('/draft-types/:typeId/sections', getSections);
 router.post('/draft-types/:typeId/sections', createSection);
 router.patch('/sections/:sectionId', updateSection);

@@ -6,7 +6,7 @@
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { argumentPointsByTrack, initArgumentPoints } from '$lib/stores/planning-analysis.js';
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt } from '$lib/stores/planning-suggestion.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext } from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt, appealSelectedNoteIds, appealDropdownOpenId} from '$lib/stores/planning-drafts.js';
   import { generateStage1Review } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
   import DeliverableEditor from '$lib/components/planning/DeliverableEditor.svelte';
@@ -26,6 +26,8 @@
   const draftKeyState  = actionPromptState('draft_key_summaries');
   const draftArgsState    = actionPromptState('draft_arguments_from_briefing');
   const stage1PromptState = actionPromptState('stage1_review');
+
+  $: appealPromptTitle = $draftTypes.find(t => t.id === $appealPromptTypeId)?.name ?? 'Appeal Document';
 
   const SUGGEST_DOC_TYPES = [
     'Officer Report',
@@ -667,6 +669,36 @@
                   {#if draft}
                     <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
+                  {#if type.tool === 'appeal'}
+                    {@const selectedNoteId = $appealSelectedNoteIds[type.id] ?? null}
+                    {@const selectedNote = selectedNoteId ? $briefingNotes.find(n => n.id === selectedNoteId) : null}
+                    <div class="briefing-btn-group" use:clickOutside={() => { if ($appealDropdownOpenId === type.id) appealDropdownOpenId.set(null); }}>
+                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => handleGenerate(type.id, { briefingNoteId: selectedNoteId })}>
+                        {#if $draftGenerating === type.id}
+                          <div class="mini-spinner"></div> Generating...
+                        {:else}
+                          <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
+                          {#if selectedNote}<span class="briefing-note-pill">{selectedNote.title || selectedNote.file_name}</span>{/if}
+                        {/if}
+                      </button>
+                      <button class="btn-briefing-chevron" title="Select briefing note" on:click={() => appealDropdownOpenId.set($appealDropdownOpenId === type.id ? null : type.id)}>
+                        <i class="las la-angle-down"></i>
+                      </button>
+                      {#if $appealDropdownOpenId === type.id}
+                        <div class="briefing-dropdown">
+                          <button class="briefing-dropdown-item" class:active={!selectedNoteId} on:click={() => { appealSelectedNoteIds.update(m => ({ ...m, [type.id]: null })); appealDropdownOpenId.set(null); }}>
+                            <span>Latest briefing note</span>
+                          </button>
+                          {#each $briefingNotes as note}
+                            <button class="briefing-dropdown-item" class:active={selectedNoteId === note.id} on:click={() => { appealSelectedNoteIds.update(m => ({ ...m, [type.id]: note.id })); appealDropdownOpenId.set(null); }}>
+                              <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
+                              <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  {:else}
                   <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => handleGenerate(type.id)}>
                     {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
@@ -674,7 +706,12 @@
                       <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
                     {/if}
                   </button>
-                  <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id, { autoExpand: type.tool === 'appeal' })}><i class="las la-sliders-h"></i></button>
+                  {/if}
+                  {#if type.tool === 'appeal'}
+                    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openAppealPrompt(type.id)}><i class="las la-sliders-h"></i></button>
+                  {:else}
+                    <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
+                  {/if}
                 </div>
               </div>
 
@@ -700,7 +737,8 @@
                 </div>
               {/if}
 
-              <!-- Sections toggle row -->
+              <!-- Sections toggle row — hidden for appeal types (broad-prompt generation) -->
+              {#if type.tool !== 'appeal'}
               <button class="draft-sections-toggle" on:click={() => toggleCardExpand(type.id)}>
                 <i class="las la-layer-group"></i>
                 Sections
@@ -755,6 +793,7 @@
                     <i class="las la-cog"></i> Configure sections
                   </button>
                 </div>
+              {/if}
               {/if}
             </div>
           {/each}
@@ -1483,6 +1522,20 @@
   on:change={(e) => setPromptText('stage1_review', e.detail)}
   on:save={() => saveActionPromptStore('stage1_review')}
   on:reset={() => resetActionPromptStore('stage1_review')}
+/>
+
+<PromptEditModal
+  open={$appealPromptOpen}
+  title="Edit Generation Prompt — {appealPromptTitle}"
+  promptText={$appealPromptText}
+  contextTemplate={`↑ YOUR INSTRUCTIONS (editable above)\n━━━ Dynamic context injected automatically ━━━\nUse {{GUIDING_BRIEF}} anywhere above to embed the guiding brief inline.\nThe project brief and working argument notes by issue are always appended below your prompt.`}
+  loading={$appealPromptLoading}
+  saving={$appealPromptSaving}
+  saved={$appealPromptSaved}
+  on:close={closeAppealPrompt}
+  on:change={(e) => { $appealPromptText = e.detail; }}
+  on:save={saveAppealPrompt}
+  on:reset={resetAppealPrompt}
 />
 
 <style>

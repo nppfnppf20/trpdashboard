@@ -7,6 +7,7 @@ import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs, DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT, DEFAULT_INCORPORATE_APPEAL_PROMPT, DEFAULT_DRAFT_ARGUMENTS_PROMPT, DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT, DEFAULT_SCOPE_INCORPORATION_PROMPT } from '../services/llm.service.js';
+import { generateAppealDraftFromPrompt, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
 
 // Keys that this controller reads from admin_console.llm_prompts
 const APPEAL_PROMPT_KEYS = new Set([
@@ -823,6 +824,7 @@ export async function generateDraft(req, res) {
 
 export async function generateDraftFromPaNotes(req, res) {
   const { projectId, typeId } = req.params;
+  const { briefingNoteId } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
@@ -830,7 +832,7 @@ export async function generateDraftFromPaNotes(req, res) {
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
     const { rows: typeRows } = await pool.query(
-      `SELECT id, name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+      `SELECT id, name, slug, generation_prompt FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
     const draftType = typeRows[0];
@@ -845,22 +847,35 @@ export async function generateDraftFromPaNotes(req, res) {
       [projectId]
     );
 
-    const { rows: sections } = await pool.query(
-      `SELECT * FROM appeals.appeal_draft_sections WHERE draft_type_id = $1 ORDER BY sort_order, id`,
-      [typeId]
-    );
+    // Fetch briefing note (specific by ID, or latest)
+    let briefingNoteQuery;
+    if (briefingNoteId) {
+      briefingNoteQuery = pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
+        [briefingNoteId, projectId]
+      );
+    } else {
+      briefingNoteQuery = pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+         ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      );
+    }
+    const [{ rows: briefingRows }, guidingBrief] = await Promise.all([
+      briefingNoteQuery,
+      getGuidingBrief(draftType.slug, projectRows[0].development_type)
+    ]);
+    const projectBrief = briefingRows[0]?.summary_html ?? null;
 
-    const { projectBrief, guidingBrief } = await fetchPromptContext(projectId, draftType.slug, projectRows[0].development_type);
-    const exampleDoc = await fetchExampleDoc(projectId, typeId);
-
-    const contentHtml = await generateAppealDraft({
+    const contentHtml = await generateAppealDraftFromPrompt({
       projectName: projectRows[0].project_name,
       draftTypeName: draftType.name,
-      sections,
+      typePrompt: draftType.generation_prompt,
       issues,
       guidingBrief,
       projectBrief,
-      exampleDoc
     });
 
     const { rows } = await pool.query(
@@ -874,6 +889,46 @@ export async function generateDraftFromPaNotes(req, res) {
     res.json(rows[0]);
   } catch (err) {
     console.error('generateDraftFromPaNotes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getAppealTypePrompt(req, res) {
+  const { typeId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT generation_prompt FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Draft type not found' });
+    res.json({ prompt: rows[0].generation_prompt ?? DEFAULT_DRAFT_PROMPT, isCustom: !!rows[0].generation_prompt });
+  } catch (err) {
+    console.error('getAppealTypePrompt error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function saveAppealTypePrompt(req, res) {
+  const { typeId } = req.params;
+  const { prompt } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  try {
+    await pool.query(
+      `UPDATE appeals.appeal_draft_types SET generation_prompt = $1 WHERE id = $2`, [prompt.trim(), typeId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('saveAppealTypePrompt error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function resetAppealTypePrompt(req, res) {
+  const { typeId } = req.params;
+  try {
+    await pool.query(`UPDATE appeals.appeal_draft_types SET generation_prompt = NULL WHERE id = $1`, [typeId]);
+    res.json({ prompt: DEFAULT_DRAFT_PROMPT, isCustom: false });
+  } catch (err) {
+    console.error('resetAppealTypePrompt error:', err);
     res.status(500).json({ error: err.message });
   }
 }

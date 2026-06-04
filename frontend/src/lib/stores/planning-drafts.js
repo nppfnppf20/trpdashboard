@@ -30,6 +30,9 @@ import {
   getDraftContext as appealGetDraftContext,
   generateDraftFromPaNotes,
   generateSectionFromPaNotes,
+  getAppealTypePrompt,
+  saveAppealTypePrompt as saveAppealTypePromptApi,
+  resetAppealTypePrompt as resetAppealTypePromptApi,
 } from '$lib/api/appeal.js';
 import { getStage1Context } from '$lib/api/stage1Review.js';
 
@@ -53,7 +56,7 @@ function api(typeId) {
     updateSection:  (sid, data) => appealUpdateSection(sid, data),
     deleteSection:  (sid) => appealDeleteSection(sid),
     reorderSections: (_id, order) => appealReorderSections(rawId(typeId), order),
-    generateDraft:  (pid, _id) => generateDraftFromPaNotes(pid, rawId(typeId)),
+    generateDraft:  (pid, _id, opts) => generateDraftFromPaNotes(pid, rawId(typeId), opts),
     generateSection: (pid, _id, sid) => generateSectionFromPaNotes(pid, rawId(typeId), sid),
   } : {
     getDraft:       paGetDraft,
@@ -157,11 +160,15 @@ export async function loadDraftTypes() {
 
 // ── Draft actions ──────────────────────────────────────────────────────────────
 
-export async function handleGenerate(typeId) {
+// appealSelectedNoteIds: typeId → briefingNoteId (null = latest)
+export const appealSelectedNoteIds = writable({});
+export const appealDropdownOpenId = writable(null);
+
+export async function handleGenerate(typeId, opts = {}) {
   draftGenerating.set(typeId);
   try {
     const a = api(typeId);
-    const result = await a.generateDraft(_projectId, rawId(typeId));
+    const result = await a.generateDraft(_projectId, rawId(typeId), opts);
     drafts.update(d => ({ ...d, [typeId]: result }));
     openDraft(typeId);
   } catch (err) {
@@ -542,5 +549,62 @@ export async function toggleCardContext(projectId, key) {
     }}));
   } catch {
     cardContextState.update(s => ({ ...s, [key]: { ...s[key], loading: false } }));
+  }
+}
+
+// ── Appeal type broad prompt editing ──────────────────────────────────────────
+
+export const appealPromptOpen = writable(false);
+export const appealPromptTypeId = writable(null);   // the 'appeal_N' key
+export const appealPromptText = writable('');
+export const appealPromptLoading = writable(false);
+export const appealPromptSaving = writable(false);
+export const appealPromptSaved = writable(false);
+
+export async function openAppealPrompt(typeId) {
+  appealPromptTypeId.set(typeId);
+  appealPromptOpen.set(true);
+  appealPromptLoading.set(true);
+  try {
+    const data = await getAppealTypePrompt(rawId(typeId));
+    appealPromptText.set(data.prompt);
+  } catch (err) {
+    console.error('Failed to load appeal type prompt:', err);
+  } finally {
+    appealPromptLoading.set(false);
+  }
+}
+
+export function closeAppealPrompt() {
+  appealPromptOpen.set(false);
+}
+
+export async function saveAppealPrompt() {
+  const typeId = get(appealPromptTypeId);
+  const text = get(appealPromptText);
+  if (!text?.trim()) return;
+  appealPromptSaving.set(true);
+  try {
+    await saveAppealTypePromptApi(rawId(typeId), text);
+    appealPromptSaved.set(true);
+    setTimeout(() => appealPromptSaved.set(false), 2500);
+  } catch (err) {
+    console.error('Failed to save appeal type prompt:', err);
+  } finally {
+    appealPromptSaving.set(false);
+  }
+}
+
+export async function resetAppealPrompt() {
+  const typeId = get(appealPromptTypeId);
+  appealPromptSaving.set(true);
+  try {
+    const data = await resetAppealTypePromptApi(rawId(typeId));
+    appealPromptText.set(data.prompt);
+    appealPromptSaved.set(false);
+  } catch (err) {
+    console.error('Failed to reset appeal type prompt:', err);
+  } finally {
+    appealPromptSaving.set(false);
   }
 }

@@ -10,7 +10,7 @@ import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFu
 // Prompt constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_DRAFT_PROMPT = `You are an experienced planning appeal consultant drafting a formal appeal document.
+export const DEFAULT_DRAFT_PROMPT = `You are an experienced planning appeal consultant drafting a formal appeal document.
 You will be given the working argument notes for an appeal — the case built up across all key issues — and you must polish these into a well-structured, professionally written document.
 
 Instructions:
@@ -228,6 +228,71 @@ Produce the complete ${draftTypeName} as HTML now.`;
   }
 
   return parts.join('\n\n');
+}
+
+export const DEFAULT_PA_APPEAL_DRAFT_PROMPT = `You are a planning appeal consultant preparing a {{DOCUMENT_TYPE}} for a planning appeal.
+
+Read the guiding brief below carefully — it tells you exactly what this document is, what it must achieve, and how it should be structured:
+
+{{GUIDING_BRIEF}}
+
+You also have access to the project brief which sets out the project background and context, and the key issue notes which set out the planning case for each issue.
+
+Using only the information you have been given, write a first draft of this document following the structure and approach set out in the guiding brief above.
+
+Important:
+- Do not invent facts, arguments, or technical information. Every statement must be grounded in the material provided.
+- If the notes are thin on a particular issue, reflect that honestly — do not fabricate supporting content.
+- Write in formal planning language appropriate for submission to the Planning Inspectorate.
+- Do not number paragraphs (no 1.1, 2.3 etc.).
+
+Output format — clean HTML only:
+- <h2> for main section headings
+- <h3> for sub-section headings
+- <p> for body paragraphs
+- <ol>/<li> for numbered lists, <ul>/<li> for bullets
+- Do not include a document title — start directly with the first section heading
+- No markdown characters (**, *, #, ---) and no em dashes (—)`;
+
+// Single broad-prompt generation — for document types where the user controls
+// the whole prompt rather than per-section prompts.
+// Supports {{GUIDING_BRIEF}} variable substitution in the prompt text.
+export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null }) {
+  const issueContext = buildIssueContext(issues, {});
+
+  const cleanProjectBrief = projectBrief?.trim()
+    ? projectBrief.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)
+    : '(no project brief uploaded)';
+
+  const basePrompt = typePrompt?.trim() || DEFAULT_DRAFT_PROMPT;
+  const instructions = basePrompt
+    .replace(/\{\{GUIDING_BRIEF\}\}/g, guidingBrief?.guidance_content?.trim() ?? '(no guiding brief set)')
+    .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
+    .replace(/\{\{DOCUMENT_TYPE\}\}/g, draftTypeName)
+    .replace(/\{\{PROJECT_BRIEF\}\}/g, cleanProjectBrief);
+
+  const projectBriefBlock = !basePrompt.includes('{{PROJECT_BRIEF}}') && projectBrief?.trim()
+    ? `\nProject brief:\n${cleanProjectBrief}`
+    : '';
+
+  const prompt = `${instructions}${projectBriefBlock}
+
+Project: ${projectName}
+Document type: ${draftTypeName}
+
+Working argument notes by issue:
+${issueContext}
+
+Produce the complete ${draftTypeName} as HTML now.`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 6000,
+    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).`,
+    messages: [{ role: 'user', content: prompt }]
+  });
+  const raw = response.content[0].text.trim();
+  return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

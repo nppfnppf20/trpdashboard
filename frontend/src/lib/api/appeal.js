@@ -276,9 +276,33 @@ export async function generateDraftSection(projectId, typeId, sectionId) {
   return res.json();
 }
 
-export async function generateDraftFromPaNotes(projectId, typeId) {
+export async function getAppealTypePrompt(typeId) {
+  const res = await authFetch(`/api/appeal/draft-types/${typeId}/prompt`);
+  if (!res.ok) throw new Error('Failed to fetch prompt');
+  return res.json();
+}
+
+export async function saveAppealTypePrompt(typeId, prompt) {
+  const res = await authFetch(`/api/appeal/draft-types/${typeId}/prompt`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  });
+  if (!res.ok) throw new Error('Failed to save prompt');
+  return res.json();
+}
+
+export async function resetAppealTypePrompt(typeId) {
+  const res = await authFetch(`/api/appeal/draft-types/${typeId}/prompt`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to reset prompt');
+  return res.json();
+}
+
+export async function generateDraftFromPaNotes(projectId, typeId, { briefingNoteId } = {}) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/generate-from-pa`, {
-    method: 'POST'
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefingNoteId: briefingNoteId ?? null })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate draft'); }
   return res.json();
