@@ -206,14 +206,25 @@ export async function handleSaveDraft() {
 
 // ── Sections modal ─────────────────────────────────────────────────────────────
 
-export async function openSectionsModal(typeId) {
+export async function openSectionsModal(typeId, { autoExpand = false } = {}) {
   sectionsTypeId.set(typeId);
   sectionsTypeName.set(get(draftTypes).find(t => t.id === typeId)?.name ?? '');
   sectionsModalOpen.set(true);
   sectionsLoading.set(true);
   sectionExpandedId.set(null);
   try {
-    sections.set(await api(typeId).getSections(rawId(typeId)));
+    const loaded = await api(typeId).getSections(rawId(typeId));
+    sections.set(loaded);
+    if (autoExpand && loaded.length > 0) {
+      const first = loaded[0];
+      sectionExpandedId.set(first.id);
+      sectionPromptId.set(first.id);
+      sectionTemplateText.set(first.template_html ?? '');
+      sectionPromptText.set(first.generation_prompt ?? '');
+      sectionPromptIsCustom.set(false);
+      sectionPromptSaved.set(false);
+      sectionTemplateSaved.set(false);
+    }
   } catch (err) {
     console.error('Failed to load sections:', err);
   } finally {

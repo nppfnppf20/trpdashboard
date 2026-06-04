@@ -674,7 +674,7 @@
                       <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
                     {/if}
                   </button>
-                  <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
+                  <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id, { autoExpand: type.tool === 'appeal' })}><i class="las la-sliders-h"></i></button>
                 </div>
               </div>
 
