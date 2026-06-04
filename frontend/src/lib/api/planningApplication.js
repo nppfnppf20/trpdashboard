@@ -435,3 +435,46 @@ export async function createArgumentPoint(projectId, data) {
   if (!res.ok) throw new Error('Failed to create argument point');
   return res.json();
 }
+
+// ── Working draft incorporation ───────────────────────────────────────────────
+
+export async function getPaDraftContext(projectId, typeId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/context`);
+  if (!res.ok) throw new Error('Failed to fetch draft context');
+  return res.json();
+}
+
+export async function paScopeIncorporation(projectId, typeId, { file, documentText, documentTitle, paragraphs }) {
+  const form = new FormData();
+  form.append('paragraphs', JSON.stringify(paragraphs));
+  if (file) {
+    form.append('file', file);
+  } else {
+    form.append('document_text', documentText ?? '');
+    form.append('document_title', documentTitle ?? '');
+  }
+  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/scope-incorporation`, {
+    method: 'POST',
+    body: form
+  });
+  if (!res.ok) throw new Error('Failed to scope incorporation');
+  return res.json();
+}
+
+export async function paIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, paragraphs, userNotes }) {
+  const form = new FormData();
+  form.append('paragraphs', JSON.stringify(paragraphs));
+  if (userNotes) form.append('user_notes', userNotes);
+  if (file) {
+    form.append('file', file);
+  } else {
+    form.append('document_text', documentText ?? '');
+    form.append('document_title', documentTitle ?? '');
+  }
+  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/incorporate`, {
+    method: 'POST',
+    body: form
+  });
+  if (!res.ok) throw new Error('Failed to incorporate document');
+  return res.json();
+}

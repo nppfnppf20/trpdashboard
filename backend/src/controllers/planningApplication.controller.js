@@ -26,7 +26,9 @@ import {
   suggestTranscriptUpdates,
   PLANNING_ASSESSMENT_DEFAULT_PROMPT,
   suggestPlanningArgumentAddition,
-  buildPlanningArgumentSuggestionTemplate
+  buildPlanningArgumentSuggestionTemplate,
+  scopeDocumentIncorporation,
+  incorporatePlanningAssessment
 } from '../services/llm.service.js';
 
 const SCHEMA = 'planning_applications';
@@ -2056,5 +2058,156 @@ export async function populateFromBriefing(req, res) {
   } catch (err) {
     console.error('pa.populateFromBriefing error:', err);
     res.status(500).json({ error: err.message || 'Failed to populate from briefing' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Working draft incorporation (planning assessment section only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function paScopeIncorporation(req, res) {
+  const { projectId, typeId } = req.params;
+  const paragraphs = Array.isArray(req.body.paragraphs)
+    ? req.body.paragraphs
+    : JSON.parse(req.body.paragraphs ?? '[]');
+
+  if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
+
+  try {
+    let documentText, filename;
+    if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      documentText = parsed.text;
+      filename = req.file.originalname;
+    } else {
+      if (!req.body.document_text) return res.status(400).json({ error: 'document_text or file required' });
+      documentText = req.body.document_text;
+      filename = req.body.document_title || 'Document';
+    }
+
+    const [projectRows, typeRows, issueRows] = await Promise.all([
+      pool.query(`SELECT development_type FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(`SELECT slug FROM planning_applications.draft_types WHERE id = $1`, [typeId]),
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline
+         FROM admin_console.project_issue_tracks pit
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      )
+    ]);
+
+    const guidingBrief = await getGuidingBrief(typeRows.rows[0]?.slug ?? 'planning_statement', projectRows.rows[0]?.development_type);
+
+    const result = await scopeDocumentIncorporation({
+      paragraphs,
+      documentText,
+      filename,
+      issues: issueRows.rows,
+      guidingBrief
+    });
+    res.json({ ...result, filename });
+  } catch (err) {
+    console.error('pa.scopeIncorporation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function paIncorporateTargeted(req, res) {
+  const { projectId, typeId } = req.params;
+  const paragraphs = Array.isArray(req.body.paragraphs)
+    ? req.body.paragraphs
+    : JSON.parse(req.body.paragraphs ?? '[]');
+  const user_notes = req.body.user_notes ?? null;
+
+  if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
+
+  let documentText, filename;
+  if (req.file) {
+    try {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      documentText = parsed.text;
+      filename = req.file.originalname;
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  } else {
+    if (!req.body.document_text) return res.status(400).json({ error: 'document_text or file required' });
+    documentText = req.body.document_text;
+    filename = req.body.document_title || 'Document';
+  }
+
+  try {
+    const [projectRows, typeRows] = await Promise.all([
+      pool.query(`SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(`SELECT slug, name FROM planning_applications.draft_types WHERE id = $1`, [typeId])
+    ]);
+
+    const [issueRows, linkedPoliciesByTrack, issueTypesByTrack, briefRows, guidingBrief] = await Promise.all([
+      pool.query(
+        `SELECT pit.id, pit.label, pit.discipline, ain.argument_for
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN planning_applications.issue_notes ain ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE
+         ORDER BY pit.sort_order, pit.id`,
+        [projectId]
+      ),
+      fetchLinkedPoliciesByTrack(projectId),
+      fetchIssueTypesByTrack(projectId),
+      pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_note'
+         ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      ),
+      getGuidingBrief(typeRows.rows[0]?.slug ?? 'planning_statement', projectRows.rows[0]?.development_type)
+    ]);
+
+    const updated = await incorporatePlanningAssessment({
+      paragraphs,
+      documentText,
+      filename,
+      issues: issueRows.rows,
+      linkedPoliciesByTrack,
+      issueTypesByTrack,
+      userNotes: user_notes,
+      projectName: projectRows.rows[0]?.project_name,
+      guidingBrief,
+      projectBrief: briefRows.rows[0]?.summary_html ?? null
+    });
+    res.json({ updated });
+  } catch (err) {
+    console.error('pa.incorporateTargeted error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function paDraftContext(req, res) {
+  const { projectId, typeId } = req.params;
+  try {
+    const [projectRows, typeRows] = await Promise.all([
+      pool.query(`SELECT development_type FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(`SELECT slug FROM planning_applications.draft_types WHERE id = $1`, [typeId])
+    ]);
+    if (!projectRows.rows.length) return res.status(404).json({ error: 'Project not found' });
+    if (!typeRows.rows.length) return res.status(404).json({ error: 'Draft type not found' });
+
+    const [guidingBrief, briefRows] = await Promise.all([
+      getGuidingBrief(typeRows.rows[0].slug, projectRows.rows[0].development_type),
+      pool.query(
+        `SELECT summary_html FROM planning_applications.document_summaries
+         WHERE project_id = $1 AND doc_type = 'briefing_note'
+         ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      )
+    ]);
+
+    res.json({
+      guidingBrief: guidingBrief ? { name: guidingBrief.name, content: guidingBrief.guidance_content ?? null } : null,
+      projectBrief: briefRows.rows[0]?.summary_html ?? null
+    });
+  } catch (err) {
+    console.error('pa.draftContext error:', err);
+    res.status(500).json({ error: err.message });
   }
 }

@@ -55,7 +55,10 @@ import {
   saveSuggestTemplate,
   deleteSuggestTemplate,
   getProjectCompleteness,
-  populateFromBriefing
+  populateFromBriefing,
+  paScopeIncorporation,
+  paIncorporateTargeted,
+  paDraftContext
 } from '../controllers/planningApplication.controller.js';
 
 const router = express.Router();
@@ -115,6 +118,9 @@ router.post('/projects/:projectId/draft-arguments-from-issue-notes', draftArgume
 router.post('/projects/:projectId/draft-key-summaries-from-briefing', draftKeySummariesFromBriefing);
 router.post('/projects/:projectId/evolve-argument', evolveArgument);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/issues/:trackId/generate', generateAssessmentIssue);
+router.get('/projects/:projectId/drafts/:typeId/context', paDraftContext);
+router.post('/projects/:projectId/drafts/:typeId/scope-incorporation', upload.single('file'), paScopeIncorporation);
+router.post('/projects/:projectId/drafts/:typeId/incorporate', upload.single('file'), paIncorporateTargeted);
 
 // Document log
 router.get('/projects/:projectId/document-log', getDocumentLog);

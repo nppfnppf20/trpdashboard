@@ -130,6 +130,12 @@
   .workspace-container :global(.workspace) {
     height: auto;
     min-height: 600px;
+    flex: 1;
+  }
+
+  .workspace-container :global(.draft-two-panel) {
+    height: calc(100vh - 300px);
+    min-height: 500px;
   }
 
   .empty-panel {

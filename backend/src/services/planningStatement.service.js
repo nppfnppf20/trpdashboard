@@ -479,6 +479,75 @@ Return ONLY a valid JSON array with no preamble, explanation, or code fences. If
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Planning assessment incorporation — structure-aware document update
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null }) {
+  // Build rich per-issue context (policies + argument notes) for each issue
+  const issueContextParts = issues.map(issue => {
+    const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
+    const issueType = issueTypesByTrack[issue.id] ?? null;
+    const ctx = buildPlanningAppIssueContext(issue, linkedPolicies, [], issueType);
+    return `### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n${ctx}`;
+  }).join('\n\n---\n\n');
+
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\n## Guiding Brief\n${guidingBrief.guidance_content.trim()}`
+    : '';
+
+  const projectBriefBlock = projectBrief?.trim()
+    ? `\n\n## Project Brief\n${projectBrief.trim().slice(0, 4000)}`
+    : '';
+
+  const userNotesBlock = userNotes?.trim()
+    ? `## User Guidance — HIGH PRIORITY\nFollow these instructions precisely:\n${userNotes.trim()}\n\n`
+    : '';
+
+  const paraBlock = paragraphs.map(p => `${p.id}:\n${p.html}`).join('\n\n');
+
+  const prompt = `You are updating the Planning Assessment section of a formal Planning Statement to incorporate evidence from a new specialist report.
+
+Project: ${projectName}${guidingBlock}${projectBriefBlock}
+
+## Structure of this section
+The Planning Assessment is organised by issue. Each issue sub-section follows this fixed structure:
+1. Policy framework — what the relevant national, local, and other policies require (do NOT alter these statements)
+2. Compliance argument — how the proposals satisfy those policies, citing expert evidence and specialist reports
+3. Concluding sentence — "The proposals are therefore considered to comply with [policy list]" (preserve the policy list)
+
+When incorporating the new document:
+- Add its findings to the compliance argument paragraphs only
+- Reference the document by name and cite paragraph/section numbers where available (e.g. "The Transport Assessment (para 4.3) confirms...")
+- Do not alter policy statements or the concluding sentence
+- Leave a paragraph unchanged if the document adds nothing relevant to it
+- You may add new paragraphs (use id "INSERT_AFTER_[id]") where the document warrants additional compliance evidence
+
+## Key Issues and Policy Context
+${issueContextParts}
+
+## Document Being Incorporated: ${filename}
+${documentText}
+
+## In-Scope Paragraphs
+${userNotesBlock}${paraBlock}
+
+Return ONLY a valid JSON array — no markdown, no explanation:
+[
+  {"id": "p3", "html": "<p>Updated paragraph...</p>"},
+  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph...</p>"}
+]`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = noEmDash(response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+  return JSON.parse(raw);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Briefing-driven argument drafting (planning app)
 // ─────────────────────────────────────────────────────────────────────────────
 

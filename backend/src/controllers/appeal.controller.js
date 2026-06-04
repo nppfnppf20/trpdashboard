@@ -808,13 +808,19 @@ export async function uploadDraftExample(req, res) {
   const { projectId, typeId } = req.params;
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
+    const { rows: typeRows } = await pool.query(
+      `SELECT slug, name FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+    const { slug, name } = typeRows[0];
+
     const { text, warning } = await parseFile(req.file.buffer, req.file.originalname);
     await pool.query(
-      `INSERT INTO appeals.appeal_drafts (project_id, draft_type_id, content_html, example_doc_text, example_doc_filename, updated_at)
-       VALUES ($1, $2, '', $3, $4, NOW())
-       ON CONFLICT (project_id, draft_type_id)
-       DO UPDATE SET example_doc_text = $3, example_doc_filename = $4, updated_at = NOW()`,
-      [projectId, typeId, text, req.file.originalname]
+      `INSERT INTO admin_console.document_templates (document_type, name, doc_text, filename, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (document_type)
+       DO UPDATE SET doc_text = $3, filename = $4, updated_at = NOW()`,
+      [slug, name, text, req.file.originalname]
     );
     res.json({ ok: true, filename: req.file.originalname, warning: warning ?? null });
   } catch (err) {
@@ -840,14 +846,17 @@ async function fetchPromptContext(projectId, typeSlug, developmentType) {
 }
 
 async function fetchExampleDoc(projectId, typeId) {
-  const { rows } = await pool.query(
-    `SELECT example_doc_text, example_doc_filename
-     FROM appeals.appeal_drafts
-     WHERE project_id = $1 AND draft_type_id = $2`,
-    [projectId, typeId]
+  const { rows: typeRows } = await pool.query(
+    `SELECT slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
   );
-  return rows[0]?.example_doc_text
-    ? { text: rows[0].example_doc_text, filename: rows[0].example_doc_filename }
+  if (!typeRows.length) return null;
+
+  const { rows } = await pool.query(
+    `SELECT doc_text, filename FROM admin_console.document_templates WHERE document_type = $1`,
+    [typeRows[0].slug]
+  );
+  return rows[0]?.doc_text
+    ? { text: rows[0].doc_text, filename: rows[0].filename }
     : null;
 }
 
