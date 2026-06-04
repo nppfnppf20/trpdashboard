@@ -461,6 +461,30 @@ export async function paScopeIncorporation(projectId, typeId, { file, documentTe
   return res.json();
 }
 
+// ── Action prompts (generic CRUD) ─────────────────────────────────────────────
+
+export async function getActionPrompt(key) {
+  const res = await authFetch(`${BASE}/action-prompts/${key}`);
+  if (!res.ok) throw new Error('Failed to fetch prompt');
+  return res.json(); // { prompt }
+}
+
+export async function saveActionPrompt(key, prompt) {
+  const res = await authFetch(`${BASE}/action-prompts/${key}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  });
+  if (!res.ok) throw new Error('Failed to save prompt');
+  return res.json();
+}
+
+export async function resetActionPrompt(key) {
+  const res = await authFetch(`${BASE}/action-prompts/${key}/reset`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to reset prompt');
+  return res.json(); // { prompt }
+}
+
 export async function paIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, paragraphs, userNotes }) {
   const form = new FormData();
   form.append('paragraphs', JSON.stringify(paragraphs));

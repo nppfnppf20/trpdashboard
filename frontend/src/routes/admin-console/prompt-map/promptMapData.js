@@ -1305,7 +1305,7 @@ Meeting transcript (filename.pdf):
 [RUNTIME: full transcript text, up to 80,000 chars]`
       }
     ]
-  }
+  },
 
   // ── Web Scraper Filters ────────────────────────────────────────────────────
   {

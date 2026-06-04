@@ -6,7 +6,23 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs, DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT, DEFAULT_INCORPORATE_APPEAL_PROMPT, DEFAULT_DRAFT_ARGUMENTS_PROMPT, DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT, DEFAULT_SCOPE_INCORPORATION_PROMPT } from '../services/llm.service.js';
+
+// Keys that this controller reads from admin_console.llm_prompts
+const APPEAL_PROMPT_KEYS = new Set([
+  'generate_appeal_argument',
+  'incorporate_appeal',
+  'draft_arguments_from_briefing',
+  'draft_key_summaries',
+  'scope_incorporation',
+]);
+
+async function loadGlobalPrompt(key) {
+  const { rows } = await pool.query(
+    `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = $1`, [key]
+  );
+  return rows[0]?.prompt_text ?? null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Key issues
@@ -282,7 +298,8 @@ export async function generateArgument(req, res) {
       projectName,
       refusalReasons: refusalRows,
       keyIssues: issueRows,
-      initialNotes: initial_notes ?? null
+      initialNotes: initial_notes ?? null,
+      customPrompt: await loadGlobalPrompt('generate_appeal_argument')
     });
 
     // Persist
@@ -1101,7 +1118,7 @@ export async function draftArgumentsFromBriefing(req, res) {
       )
     ]);
     if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project. Upload a briefing note first.' });
-    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: await loadGlobalPrompt('draft_arguments_from_briefing') });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1157,7 +1174,7 @@ export async function draftKeySummariesFromBriefing(req, res) {
       )
     ]);
     if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project.' });
-    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: await loadGlobalPrompt('draft_key_summaries') });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1363,7 +1380,8 @@ export async function scopeIncorporation(req, res) {
       documentText,
       filename,
       issues: issueRows.rows,
-      guidingBrief
+      guidingBrief,
+      customPrompt: await loadGlobalPrompt('scope_incorporation')
     });
     res.json({ ...result, filename });
   } catch (err) {
@@ -1429,7 +1447,8 @@ export async function incorporateTargeted(req, res) {
       draftTypeName: typeRows[0]?.name,
       guidingBrief,
       projectBrief,
-      exampleDoc
+      exampleDoc,
+      customPrompt: await loadGlobalPrompt('incorporate_appeal')
     });
     res.json({ updated });
   } catch (err) {

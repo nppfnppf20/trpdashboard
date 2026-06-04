@@ -53,7 +53,18 @@ export function buildIssueContext(issues, evidenceByTrack = {}) {
 // Appeal argument generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateAppealArgument({ projectName, refusalReasons, keyIssues, initialNotes }) {
+export const DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT = `You are a planning appeal consultant generating a structured working argument summary.
+
+Produce a structured working argument summary in HTML. Use these five sections:
+1. <h2>Appeal Overview</h2> — brief summary of the appeal and the development
+2. <h2>Reasons for Refusal</h2> — summarise each reason and its significance
+3. <h2>Argument by Issue</h2> — for each key issue, outline both the opposing position and the initial argument direction
+4. <h2>Risks and Unknowns</h2> — identify gaps, risks, and what evidence is still needed
+5. <h2>Next Steps</h2> — practical actions to advance the case
+
+Use <p> for body text. Keep it concise but substantive — this is a working document, not a final submission.`;
+
+export async function generateAppealArgument({ projectName, refusalReasons, keyIssues, initialNotes, customPrompt = null }) {
   const reasonsText = refusalReasons.length
     ? refusalReasons.map((r, i) => `${i + 1}. ${r.title}${r.summary ? ` — ${r.summary}` : ''}${r.risk_level ? ` [${r.risk_level}]` : ''}`).join('\n')
     : 'None recorded';
@@ -66,30 +77,14 @@ export async function generateAppealArgument({ projectName, refusalReasons, keyI
     ? `\n\nInitial strategic notes from the team:\n${initialNotes.trim()}`
     : '';
 
-  const prompt = `You are a planning appeal consultant. Generate a structured working argument summary for the following appeal.
-
-Project: ${projectName}
-
-Reasons for refusal:
-${reasonsText}
-
-Key issues to address:
-${issuesText}
-${notesBlock}
-
-Produce a structured working argument summary in HTML. Use these five sections:
-1. <h2>Appeal Overview</h2> — brief summary of the appeal and the development
-2. <h2>Reasons for Refusal</h2> — summarise each reason and its significance
-3. <h2>Argument by Issue</h2> — for each key issue, outline both the opposing position and the initial argument direction
-4. <h2>Risks and Unknowns</h2> — identify gaps, risks, and what evidence is still needed
-5. <h2>Next Steps</h2> — practical actions to advance the case
-
-Use <p> for body text. Keep it concise but substantive — this is a working document, not a final submission.`;
+  const systemPrompt = customPrompt ?? DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT;
+  const userMessage = `Project: ${projectName}\n\nReasons for refusal:\n${reasonsText}\n\nKey issues to address:\n${issuesText}${notesBlock}`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 3000,
-    messages: [{ role: 'user', content: prompt }]
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }]
   });
 
   const raw = response.content[0].text.trim();
@@ -270,7 +265,17 @@ ${exampleDoc.text.trim().slice(0, 6000)}`);
 // Document incorporation — Option C: scoping + targeted paragraph update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function scopeDocumentIncorporation({ paragraphs, documentText, filename, issues, guidingBrief = null }) {
+export const DEFAULT_SCOPE_INCORPORATION_PROMPT = `You are reviewing which paragraphs of a planning document are directly relevant to a new specialist report.
+
+Identify which paragraph IDs this document directly speaks to — i.e. where incorporating evidence from this document would genuinely improve or update that paragraph. Only include paragraphs where this document has something specific and relevant to contribute. Do not include paragraphs from unrelated disciplines or topics.
+
+Respond ONLY with valid JSON, no markdown:
+{
+  "relevant_ids": ["p2", "p5", "p8"],
+  "summary": "One sentence explaining what this document addresses and which sections are affected."
+}`;
+
+export async function scopeDocumentIncorporation({ paragraphs, documentText, filename, issues, guidingBrief = null, customPrompt = null }) {
   const issueLabels = issues.map(i => i.label).join(', ') || 'none listed';
 
   const guidingBlock = guidingBrief?.guidance_content?.trim()
@@ -281,36 +286,44 @@ export async function scopeDocumentIncorporation({ paragraphs, documentText, fil
     .map(p => `${p.id}: ${p.text.slice(0, 120)}${p.text.length > 120 ? '...' : ''}`)
     .join('\n');
 
-  const prompt = `You are reviewing which paragraphs of a planning appeal document are directly relevant to a new specialist report.
-${guidingBlock}
-Key issues in this appeal: ${issueLabels}
+  const systemPrompt = customPrompt ?? DEFAULT_SCOPE_INCORPORATION_PROMPT;
+
+  const userMessage = `${guidingBlock}Key issues: ${issueLabels}
 Document being incorporated: ${filename}
 
 Draft paragraphs (id: preview):
 ${paraList}
 
 Document content:
-${documentText}
-
-Identify which paragraph IDs this document directly speaks to — i.e. where incorporating evidence from this document would genuinely improve or update that paragraph. Only include paragraphs where this document has something specific and relevant to contribute. Do not include paragraphs from unrelated disciplines or topics.
-
-Respond ONLY with valid JSON, no markdown:
-{
-  "relevant_ids": ["p2", "p5", "p8"],
-  "summary": "One sentence explaining what this document addresses and which sections are affected."
-}`;
+${documentText}`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 500,
-    messages: [{ role: 'user', content: prompt }]
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }]
   });
 
   const raw = response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   return JSON.parse(raw);
 }
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null }) {
+export const DEFAULT_INCORPORATE_APPEAL_PROMPT = `You are updating a section of a formal planning appeal document to incorporate evidence from a new specialist report.
+
+The following paragraphs are unlocked for editing. All other parts of the document are fixed. You may update in-scope paragraphs and add new paragraphs where the document warrants it. Leave a paragraph unchanged if the document adds nothing relevant to it.
+
+For new paragraphs, use id format "INSERT_AFTER_[id]".
+
+Write in formal planning language. Cite paragraph or section numbers from the document where available. Do not use em dashes. Do not number paragraphs.
+
+Return ONLY a valid JSON array — no markdown, no explanation:
+[
+  {"id": "p3", "html": "<p>Updated paragraph...</p>"},
+  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph...</p>"},
+  {"id": "p7", "html": "<p>Unchanged or updated...</p>"}
+]`;
+
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
 
@@ -322,34 +335,23 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
     .map(p => `${p.id}:\n${p.html}`)
     .join('\n\n');
 
-  const prompt = `You are updating a section of a formal planning document to incorporate evidence from a new specialist report.
+  const instructionBlock = customPrompt ?? DEFAULT_INCORPORATE_APPEAL_PROMPT;
 
-Document type: ${draftTypeName}
+  const prompt = `Document type: ${draftTypeName}
 Project: ${projectName}
 
 ${contextBlocks}
 
-${userNotesBlock}## Key Issues
+## Key Issues
 ${issueContext}
 
 ## Document Being Incorporated: ${filename}
 ${documentText}
 
 ## In-Scope Paragraphs
-The following paragraphs are unlocked for editing. All other parts of the document are fixed. You may update in-scope paragraphs and add new paragraphs where the document warrants it. Leave a paragraph unchanged if the document adds nothing relevant to it.
+${userNotesBlock}${instructionBlock}
 
-For new paragraphs, use id format "INSERT_AFTER_[id]".
-
-Write in formal planning language. Cite paragraph or section numbers from the document where available. Do not use em dashes. Do not number paragraphs.
-
-${paraBlock}
-
-Return ONLY a valid JSON array — no markdown, no explanation:
-[
-  {"id": "p3", "html": "<p>Updated paragraph...</p>"},
-  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph...</p>"},
-  {"id": "p7", "html": "<p>Unchanged or updated...</p>"}
-]`;
+${paraBlock}`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
@@ -425,12 +427,7 @@ Instructions:
 // Briefing-driven argument drafting
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues }) {
-  const issueList = issues.map(i =>
-    `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.argument_for?.trim() ? `\n  Existing notes: ${i.argument_for.trim().slice(0, 200)}` : ''}`
-  ).join('\n');
-
-  const prompt = `You are a planning consultant building a planning case on behalf of the applicant. Your job is to extract and formulate argument positions — points that can be advanced IN FAVOUR of the proposal — drawing on any relevant content in the briefing summary below.
+export const DEFAULT_DRAFT_ARGUMENTS_PROMPT = `You are a planning consultant building a planning case on behalf of the applicant. Your job is to extract and formulate argument positions — points that can be advanced IN FAVOUR of the proposal — drawing on any relevant content in the briefing summary.
 
 For each issue listed, identify whether the briefing contains any information that supports the case: design decisions, technical measures, expert evidence, mitigation, site characteristics, or any other facts that could form the basis of a planning argument for that issue.
 
@@ -439,12 +436,6 @@ If the briefing contains relevant material for an issue, write 2–5 sentences f
 Only include issues where the briefing genuinely provides something to work with. If there is nothing relevant for an issue, omit it from your response entirely — do not include placeholders or notes about what is missing.
 
 Where an issue already has existing notes, supplement rather than replace — add new angles from the briefing not already captured.
-
-Briefing summary:
-${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}
-
-Issues:
-${issueList}
 
 Respond ONLY with valid JSON — no markdown, no explanation:
 [
@@ -455,10 +446,19 @@ Only include issues where you have substantive argument content to contribute. O
 
 Do not use em dashes (—) anywhere in your output; use a comma, colon, or rewrite the sentence instead.`;
 
+export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues, customPrompt = null }) {
+  const issueList = issues.map(i =>
+    `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.argument_for?.trim() ? `\n  Existing notes: ${i.argument_for.trim().slice(0, 200)}` : ''}`
+  ).join('\n');
+
+  const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ARGUMENTS_PROMPT;
+  const userMessage = `Briefing summary:\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}\n\nIssues:\n${issueList}`;
+
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }]
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }]
   });
 
   const raw = response.content[0].text.trim();

@@ -58,7 +58,10 @@ import {
   populateFromBriefing,
   paScopeIncorporation,
   paIncorporateTargeted,
-  paDraftContext
+  paDraftContext,
+  getActionPrompt,
+  saveActionPrompt,
+  resetActionPrompt,
 } from '../controllers/planningApplication.controller.js';
 
 const router = express.Router();
@@ -154,5 +157,10 @@ router.post('/projects/:projectId/suggest-argument', upload.single('file'), sugg
 router.get('/projects/:projectId/suggest-template', getSuggestTemplate);
 router.put('/projects/:projectId/suggest-template', saveSuggestTemplate);
 router.delete('/projects/:projectId/suggest-template', deleteSuggestTemplate);
+
+// Action prompts (global — no project scoping)
+router.get('/action-prompts/:key', getActionPrompt);
+router.put('/action-prompts/:key', saveActionPrompt);
+router.post('/action-prompts/:key/reset', resetActionPrompt);
 
 export default router;

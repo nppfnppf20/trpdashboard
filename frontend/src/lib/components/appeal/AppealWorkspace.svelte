@@ -9,6 +9,11 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import AppealDocIncorporatePanel from '$lib/components/appeal/AppealDocIncorporatePanel.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
+
+  const draftArgsState = actionPromptState('draft_arguments_from_briefing');
+  const draftKeyState  = actionPromptState('draft_key_summaries');
 
   const DOC_TYPES = [
     'Officer Report',
@@ -217,6 +222,7 @@
           <div class="briefing-btn-group" use:clickOutside={() => $keyIssueDropdownOpen = false}>
             <button class="btn-draft-from-briefing" on:click={() => runKeyIssueDraftFromBriefing(project.id, $keyIssueSelectedNoteId)}>
               <i class="las la-lightbulb"></i> Draft issue notes from briefing
+              <button class="prompt-info-btn" title="Edit prompt" on:click|stopPropagation={() => openActionPrompt('draft_key_summaries')}><i class="las la-sliders-h"></i></button>
               {#if $keyIssueSelectedNoteId}
                 {@const note = $briefingNotes.find(n => n.id === $keyIssueSelectedNoteId)}
                 {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
@@ -293,6 +299,7 @@
           <div class="briefing-btn-group" use:clickOutside={() => $briefingDropdownOpen = false}>
             <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id, $selectedBriefingNoteId)}>
               <i class="las la-lightbulb"></i> Draft from briefing
+              <button class="prompt-info-btn" title="Edit prompt" on:click|stopPropagation={() => openActionPrompt('draft_arguments_from_briefing')}><i class="las la-sliders-h"></i></button>
               {#if $selectedBriefingNoteId}
                 {@const note = $briefingNotes.find(n => n.id === $selectedBriefingNoteId)}
                 {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
@@ -1192,6 +1199,7 @@
         <div class="modal-footer-left"></div>
         <div class="modal-footer-right">
           <button class="modal-cancel" on:click={() => $briefingUploadOpen = false}>Cancel</button>
+          <button class="prompt-info-btn" title="Edit draft arguments prompt" on:click={() => openActionPrompt('draft_arguments_from_briefing')}><i class="las la-sliders-h"></i></button>
           <button class="modal-run" disabled={$briefingUploadLoading || ($briefingUploadTab === 'upload' ? !$briefingUploadFile : !$briefingUploadText.trim())} on:click={() => submitBriefingUpload(project.id)}>
             {$briefingUploadLoading ? 'Uploading...' : 'Upload & analyse'}
           </button>
@@ -1378,6 +1386,33 @@
     </div>
   </div>
 {/if}
+
+<!-- Action prompt modals -->
+<PromptEditModal
+  open={$draftArgsState.open}
+  title="Edit Prompt — Draft Arguments from Briefing"
+  promptText={$draftArgsState.text}
+  loading={$draftArgsState.loading}
+  saving={$draftArgsState.saving}
+  saved={$draftArgsState.saved}
+  on:close={() => closeActionPrompt('draft_arguments_from_briefing')}
+  on:change={(e) => setPromptText('draft_arguments_from_briefing', e.detail)}
+  on:save={() => saveActionPromptStore('draft_arguments_from_briefing')}
+  on:reset={() => resetActionPromptStore('draft_arguments_from_briefing')}
+/>
+
+<PromptEditModal
+  open={$draftKeyState.open}
+  title="Edit Prompt — Draft Issue Notes from Briefing"
+  promptText={$draftKeyState.text}
+  loading={$draftKeyState.loading}
+  saving={$draftKeyState.saving}
+  saved={$draftKeyState.saved}
+  on:close={() => closeActionPrompt('draft_key_summaries')}
+  on:change={(e) => setPromptText('draft_key_summaries', e.detail)}
+  on:save={() => saveActionPromptStore('draft_key_summaries')}
+  on:reset={() => resetActionPromptStore('draft_key_summaries')}
+/>
 
 <style>
   .workspace {

@@ -15,6 +15,11 @@
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
   import FormattingPanel from '$lib/components/planning-application/FormattingPanel.svelte';
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
+
+  const draftKeyState  = actionPromptState('draft_key_summaries');
+  const draftArgsState = actionPromptState('draft_arguments_from_briefing');
 
   const SUGGEST_DOC_TYPES = [
     'Officer Report',
@@ -300,6 +305,7 @@
           <div class="briefing-btn-group" use:clickOutside={() => $keyIssueDropdownOpen = false}>
             <button class="btn-draft-from-briefing" on:click={() => runKeyIssueDraftFromBriefing(project.id, $keyIssueSelectedNoteId)}>
               <i class="las la-lightbulb"></i> Draft issue notes from briefing
+              <button class="prompt-info-btn" title="Edit prompt" on:click|stopPropagation={() => openActionPrompt('draft_key_summaries')}><i class="las la-sliders-h"></i></button>
               {#if $keyIssueSelectedNoteId}
                 {@const note = $briefingNotes.find(n => n.id === $keyIssueSelectedNoteId)}
                 {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
@@ -824,6 +830,7 @@
         <div class="modal-footer-left"></div>
         <div class="modal-footer-right">
           <button class="modal-cancel" on:click={() => $briefingUploadOpen = false}>Cancel</button>
+          <button class="prompt-info-btn" title="Edit draft arguments prompt" on:click={() => openActionPrompt('draft_arguments_from_briefing')}><i class="las la-sliders-h"></i></button>
           <button
             class="modal-run"
             disabled={$briefingUploadLoading || ($briefingUploadTab === 'upload' ? !$briefingUploadFile : !$briefingUploadText.trim())}
@@ -1268,6 +1275,33 @@
     </div>
   </div>
 {/if}
+
+<!-- Action prompt edit modals -->
+<PromptEditModal
+  open={$draftKeyState.open}
+  title="Edit Prompt — Draft Issue Notes from Briefing"
+  promptText={$draftKeyState.text}
+  loading={$draftKeyState.loading}
+  saving={$draftKeyState.saving}
+  saved={$draftKeyState.saved}
+  on:close={() => closeActionPrompt('draft_key_summaries')}
+  on:change={(e) => setPromptText('draft_key_summaries', e.detail)}
+  on:save={() => saveActionPromptStore('draft_key_summaries')}
+  on:reset={() => resetActionPromptStore('draft_key_summaries')}
+/>
+
+<PromptEditModal
+  open={$draftArgsState.open}
+  title="Edit Prompt — Draft Arguments from Briefing"
+  promptText={$draftArgsState.text}
+  loading={$draftArgsState.loading}
+  saving={$draftArgsState.saving}
+  saved={$draftArgsState.saved}
+  on:close={() => closeActionPrompt('draft_arguments_from_briefing')}
+  on:change={(e) => setPromptText('draft_arguments_from_briefing', e.detail)}
+  on:save={() => saveActionPromptStore('draft_arguments_from_briefing')}
+  on:reset={() => resetActionPromptStore('draft_arguments_from_briefing')
+/>
 
 <style>
   .workspace {
@@ -2884,6 +2918,26 @@
     transition: all 0.15s;
   }
   .btn-draft-from-briefing:hover { background: #f3e8ff; border-color: #a855f7; }
+
+  .prompt-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 0.25rem;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s;
+    vertical-align: middle;
+    margin-left: 0.35rem;
+  }
+  .prompt-info-btn:hover { opacity: 1; color: #6366f1; border-color: #6366f1; }
 
   .briefing-note-pill {
     background: #ede9fe;

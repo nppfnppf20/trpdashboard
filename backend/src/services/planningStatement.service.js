@@ -487,7 +487,32 @@ Return ONLY a valid JSON array with no preamble, explanation, or code fences. If
 // Planning assessment incorporation — structure-aware document update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null }) {
+export const DEFAULT_INCORPORATE_ASSESSMENT_PROMPT = `You are updating the Planning Assessment section of a formal Planning Statement to incorporate evidence from a new specialist report.
+
+## Structure of each issue sub-section
+Each issue sub-section has three parts:
+1. Policy framework paragraphs — state what the relevant national, local, and other policies require. Do NOT alter these.
+2. Compliance argument paragraphs — explain how the proposals satisfy those policies, drawing on expert evidence and specialist reports. This is where you add and update content.
+3. Concluding sentence — "The proposals are therefore considered to comply with [policy list]." Preserve the policy list exactly.
+
+## Your task
+Rewrite the compliance section of each relevant issue sub-section to incorporate the evidence from this specialist report. You are working holistically — assess the paragraphs as a whole and return an updated version of the section.
+
+Rules:
+- Do NOT change any paragraph that is setting out policy (i.e. paragraphs that describe what national or local policy requires). Leave those exactly as they are.
+- Everything else is fair game: compliance argument paragraphs, evidence paragraphs, and the conclusion.
+- Keep the existing argument being made — do not change the position or conclusions. Your job is to back up that argument with specific evidence and citations from the specialist report.
+- Where the existing text makes a claim about compliance, harm level, or planning balance, add the report's findings to support it. Always refer to the document by a formal report title (e.g. "The Heritage Statement concludes...", "The Ecological Appraisal (section 5.2) finds...", "The Transport Assessment confirms..."). Never refer to "the specialist", "the appellant's consultant", "the heritage specialist" or similar — always use the document's title. The document title is shown in the heading below.
+- The section must end with a concluding sentence of the form: "The proposals are therefore considered to comply with [policy references]." If one already exists, you may update it but keep the policy list. If none exists, add one.
+- Write in formal planning language. Do not use em dashes.
+
+Return ONLY a valid JSON array — no markdown, no explanation:
+[
+  {"id": "p3", "html": "<p>Updated paragraph with evidence woven in...</p>"},
+  {"id": "INSERT_AFTER_p3", "html": "<p>New compliance paragraph constructed from report...</p>"}
+]`;
+
+export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null, customPrompt = null }) {
   // Build rich per-issue context (policies + argument notes) for each issue
   const issueContextParts = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
@@ -514,41 +539,20 @@ export async function incorporatePlanningAssessment({ paragraphs, documentText, 
 
   const paraBlock = paragraphs.map(p => `${p.id}:\n${p.html}`).join('\n\n');
 
-  const prompt = `You are updating the Planning Assessment section of a formal Planning Statement to incorporate evidence from a new specialist report.
+  const instructionBlock = customPrompt ?? DEFAULT_INCORPORATE_ASSESSMENT_PROMPT;
 
-Project: ${projectName}${guidingBlock}${projectBriefBlock}${exampleBlock}
+  const prompt = `Project: ${projectName}${guidingBlock}${projectBriefBlock}${exampleBlock}
 
-## Structure of each issue sub-section
-Each issue sub-section has three parts:
-1. Policy framework paragraphs — state what the relevant national, local, and other policies require. Do NOT alter these.
-2. Compliance argument paragraphs — explain how the proposals satisfy those policies, drawing on expert evidence and specialist reports. This is where you add and update content.
-3. Concluding sentence — "The proposals are therefore considered to comply with [policy list]." Preserve the policy list exactly.
-
-## Your task
-Rewrite the compliance section of each relevant issue sub-section to incorporate the evidence from this specialist report. You are working holistically — assess the paragraphs as a whole and return an updated version of the section.
-
-Rules:
-- Do NOT change any paragraph that is setting out policy (i.e. paragraphs that describe what national or local policy requires). Leave those exactly as they are.
-- Everything else is fair game: compliance argument paragraphs, evidence paragraphs, and the conclusion.
-- Keep the existing argument being made — do not change the position or conclusions. Your job is to back up that argument with specific evidence and citations from the specialist report.
-- Where the existing text makes a claim about compliance, harm level, or planning balance, add the report's findings to support it. Always refer to the document by a formal report title (e.g. "The Heritage Statement concludes...", "The Ecological Appraisal (section 5.2) finds...", "The Transport Assessment confirms..."). Never refer to "the specialist", "the appellant's consultant", "the heritage specialist" or similar — always use the document's title. ${filename ? `The document title is: "${filename}".` : `No title has been provided — derive an appropriate formal title from the document content (e.g. if it is a heritage assessment use "the Heritage Statement", if it is a transport assessment use "the Transport Assessment"). Use that derived title consistently throughout.`}
-- The section must end with a concluding sentence of the form: "The proposals are therefore considered to comply with [policy references]." If one already exists, you may update it but keep the policy list. If none exists, add one.
-- Write in formal planning language. Do not use em dashes.
+${instructionBlock}
 
 ## Key Issues and Policy Context
 ${issueContextParts}
 
-## Document Being Incorporated: ${filename}
+## Document Being Incorporated${filename ? `: "${filename}"` : ' (no title provided — derive an appropriate formal title from the document content, e.g. "the Heritage Statement", "the Transport Assessment")'}
 ${documentText}
 
 ## In-Scope Paragraphs
-${userNotesBlock}${paraBlock}
-
-Return ONLY a valid JSON array — no markdown, no explanation:
-[
-  {"id": "p3", "html": "<p>Updated paragraph with evidence woven in...</p>"},
-  {"id": "INSERT_AFTER_p3", "html": "<p>New compliance paragraph constructed from report...</p>"}
-]`;
+${userNotesBlock}${paraBlock}`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
@@ -564,22 +568,9 @@ Return ONLY a valid JSON array — no markdown, no explanation:
 // Briefing-driven argument drafting (planning app)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues }) {
-  const issueList = issues.map(i =>
-    `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.summary?.trim() ? `\n  Existing note: ${i.summary.trim().slice(0, 150)}` : ''}`
-  ).join('\n');
-
-  const prompt = `You are a planning consultant reviewing a briefing note for a planning application. Based on the briefing, draft a brief position note for each key issue listed below.
+export const DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT = `You are a planning consultant reviewing a briefing note for a planning application. Based on the briefing, draft a brief position note for each key issue listed below.
 
 Each note should be 2-4 sentences capturing: the consultant's position on this issue, the key evidence or approach, and any sensitivities flagged in the briefing. Write as working notes for the consultant — concise and practical, not formal submission language.
-
-Briefing note:
-<briefing>
-${briefingSummary}
-</briefing>
-
-Key issues:
-${issueList}
 
 Respond ONLY with valid JSON — no markdown, no explanation:
 [
@@ -588,10 +579,19 @@ Respond ONLY with valid JSON — no markdown, no explanation:
 
 Only include issues where the briefing contains relevant content. Omit issues entirely if the briefing has nothing relevant.`;
 
+export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues, customPrompt = null }) {
+  const issueList = issues.map(i =>
+    `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.summary?.trim() ? `\n  Existing note: ${i.summary.trim().slice(0, 150)}` : ''}`
+  ).join('\n');
+
+  const systemPrompt = customPrompt ?? DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT;
+  const userMessage = `Briefing note:\n<briefing>\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}\n</briefing>\n\nKey issues:\n${issueList}`;
+
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }]
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }]
   });
 
   const raw = response.content[0].text.trim();

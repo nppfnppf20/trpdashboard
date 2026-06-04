@@ -28,8 +28,21 @@ import {
   suggestPlanningArgumentAddition,
   buildPlanningArgumentSuggestionTemplate,
   scopeDocumentIncorporation,
-  incorporatePlanningAssessment
+  incorporatePlanningAssessment,
+  DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT,
+  DEFAULT_INCORPORATE_ASSESSMENT_PROMPT,
+  DEFAULT_DRAFT_ARGUMENTS_PROMPT,
+  DEFAULT_SCOPE_INCORPORATION_PROMPT,
 } from '../services/llm.service.js';
+import { DEFAULT_STAGE1_REVIEW_PROMPT } from './stage1Review.controller.js';
+
+const ACTION_PROMPT_DEFAULTS = {
+  draft_key_summaries:         DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT,
+  draft_arguments_from_briefing: DEFAULT_DRAFT_ARGUMENTS_PROMPT,
+  scope_incorporation:         DEFAULT_SCOPE_INCORPORATION_PROMPT,
+  incorporate_assessment:      DEFAULT_INCORPORATE_ASSESSMENT_PROMPT,
+  stage1_review:               DEFAULT_STAGE1_REVIEW_PROMPT,
+};
 
 const SCHEMA = 'planning_applications';
 
@@ -1433,7 +1446,10 @@ export async function draftArgumentsFromBriefing(req, res) {
       )
     ]);
     if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript summary found for this project. Upload and summarise a briefing transcript first.' });
-    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'draft_arguments_from_briefing'`
+    );
+    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1506,7 +1522,10 @@ export async function draftKeySummariesFromBriefing(req, res) {
       )
     ]);
     if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project.' });
-    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues });
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'draft_key_summaries'`
+    );
+    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -2062,6 +2081,63 @@ export async function populateFromBriefing(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Action prompt CRUD (generic — keyed by prompt_key)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getActionPrompt(req, res) {
+  const { key } = req.params;
+  if (!ACTION_PROMPT_DEFAULTS[key]) return res.status(404).json({ error: 'Unknown prompt key' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = $1`,
+      [key]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Prompt not found — run migration 064' });
+    res.json({ prompt: rows[0].prompt_text });
+  } catch (err) {
+    console.error('pa.getActionPrompt error:', err);
+    res.status(500).json({ error: 'Failed to fetch prompt' });
+  }
+}
+
+export async function saveActionPrompt(req, res) {
+  const { key } = req.params;
+  const { prompt } = req.body;
+  if (!ACTION_PROMPT_DEFAULTS[key]) return res.status(404).json({ error: 'Unknown prompt key' });
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  try {
+    await pool.query(
+      `INSERT INTO admin_console.llm_prompts (prompt_key, prompt_text, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (prompt_key) DO UPDATE SET prompt_text = $2, updated_at = NOW()`,
+      [key, prompt.trim()]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('pa.saveActionPrompt error:', err);
+    res.status(500).json({ error: 'Failed to save prompt' });
+  }
+}
+
+export async function resetActionPrompt(req, res) {
+  const { key } = req.params;
+  const defaultPrompt = ACTION_PROMPT_DEFAULTS[key];
+  if (!defaultPrompt) return res.status(404).json({ error: 'Unknown prompt key' });
+  try {
+    await pool.query(
+      `INSERT INTO admin_console.llm_prompts (prompt_key, prompt_text, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (prompt_key) DO UPDATE SET prompt_text = $2, updated_at = NOW()`,
+      [key, defaultPrompt]
+    );
+    res.json({ prompt: defaultPrompt });
+  } catch (err) {
+    console.error('pa.resetActionPrompt error:', err);
+    res.status(500).json({ error: 'Failed to reset prompt' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Working draft incorporation (planning assessment section only)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2099,12 +2175,17 @@ export async function paScopeIncorporation(req, res) {
 
     const guidingBrief = await getGuidingBrief(typeRows.rows[0]?.slug ?? 'planning_statement', projectRows.rows[0]?.development_type);
 
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'scope_incorporation'`
+    );
+
     const result = await scopeDocumentIncorporation({
       paragraphs,
       documentText,
       filename,
       issues: issueRows.rows,
-      guidingBrief
+      guidingBrief,
+      customPrompt: promptRows[0]?.prompt_text ?? null
     });
     res.json({ ...result, filename });
   } catch (err) {
@@ -2168,6 +2249,10 @@ export async function paIncorporateTargeted(req, res) {
       )
     ]);
 
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'incorporate_assessment'`
+    );
+
     const updated = await incorporatePlanningAssessment({
       paragraphs,
       documentText,
@@ -2179,7 +2264,8 @@ export async function paIncorporateTargeted(req, res) {
       projectName: projectRows.rows[0]?.project_name,
       guidingBrief,
       projectBrief: briefRows.rows[0]?.summary_html ?? null,
-      exampleText: sectionRows.rows[0]?.example_text ?? null
+      exampleText: sectionRows.rows[0]?.example_text ?? null,
+      customPrompt: promptRows[0]?.prompt_text ?? null
     });
     res.json({ updated });
   } catch (err) {

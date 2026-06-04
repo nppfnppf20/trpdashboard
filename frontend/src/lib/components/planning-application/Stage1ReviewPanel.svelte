@@ -5,6 +5,10 @@
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import DeliverableEditor from '$lib/components/planning/DeliverableEditor.svelte';
   import '$lib/styles/trpformatting.css';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
+
+  const stage1PromptState = actionPromptState('stage1_review');
 
   export let project;
 
@@ -85,6 +89,7 @@
 <div class="stage1-panel">
   <!-- Toolbar -->
   <div class="toolbar">
+    <div class="stage1-toolbar">
     <div class="briefing-btn-group" use:clickOutside={() => dropdownOpen = false}>
       <button
         class="btn-generate"
@@ -134,6 +139,8 @@
           </button>
         </div>
       {/if}
+    </div>
+    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt('stage1_review')}><i class="las la-sliders-h"></i></button>
     </div>
 
     {#if generatedHtml}
@@ -201,6 +208,19 @@
   <DeliverableEditor deliverable={editorDeliverable} on:close={closeEditor} />
 {/if}
 
+<PromptEditModal
+  open={$stage1PromptState.open}
+  title="Edit Prompt — Generate Stage 1 Review"
+  promptText={$stage1PromptState.text}
+  loading={$stage1PromptState.loading}
+  saving={$stage1PromptState.saving}
+  saved={$stage1PromptState.saved}
+  on:close={() => closeActionPrompt('stage1_review')}
+  on:change={(e) => setPromptText('stage1_review', e.detail)}
+  on:save={() => saveActionPromptStore('stage1_review')}
+  on:reset={() => resetActionPromptStore('stage1_review')}
+/>
+
 <style>
   .stage1-panel {
     padding: 1.5rem;
@@ -222,6 +242,30 @@
     display: flex;
     align-items: stretch;
   }
+
+  .stage1-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .prompt-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .prompt-info-btn:hover { color: #6366f1; border-color: #6366f1; }
 
   .btn-generate {
     display: flex;

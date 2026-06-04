@@ -26,6 +26,8 @@ try {
   console.warn('[stage1Review] Could not load stage1reviewexample.md:', e.message);
 }
 
+export const DEFAULT_STAGE1_REVIEW_PROMPT = `You are a specialist planning consultant at a UK planning consultancy completing a Stage 1 Planning Appraisal. This is a detailed desk-based review document — your entries must be thorough, substantive, and draw out all relevant planning information from the briefing note. Write in the third person in clear, professional UK planning language. This document is client-facing: never reference the briefing note, the client, or internal documents in your output — present all information as established fact as if you are the author of the appraisal.`;
+
 // Fixed table structure — labels in the order they appear in the appraisal
 const TABLE_ROWS = [
   { type: 'header', label: 'Site Details' },
@@ -129,12 +131,16 @@ export async function generateStage1Review(req, res) {
     // ── 3. Guiding brief ──────────────────────────────────────────────────────
     const guidingBrief = await getGuidingBrief('stage1_review', project.development_type || null);
 
-    // ── 4. Build prompt ───────────────────────────────────────────────────────
+    // ── 4. Load prompt from global table ─────────────────────────────────────
+    const { rows: promptRows } = await pool.query(
+      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'stage1_review'`
+    );
+
     const guidanceSection = guidingBrief?.guidance_content?.trim()
       ? `\n\n## Practice Guidance\n${guidingBrief.guidance_content.trim()}`
       : '';
 
-    const systemPrompt = `You are a specialist planning consultant at a UK planning consultancy completing a Stage 1 Planning Appraisal. This is a detailed desk-based review document — your entries must be thorough, substantive, and draw out all relevant planning information from the briefing note. Write in the third person in clear, professional UK planning language. This document is client-facing: never reference the briefing note, the client, or internal documents in your output — present all information as established fact as if you are the author of the appraisal.${TONE_EXAMPLE_BLOCK}`;
+    const systemPrompt = (promptRows[0]?.prompt_text ?? DEFAULT_STAGE1_REVIEW_PROMPT) + TONE_EXAMPLE_BLOCK;
 
     const labelsJson = JSON.stringify(LLM_LABELS, null, 2);
 

@@ -2,10 +2,15 @@
   import { createEventDispatcher, tick } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
   import { paScopeIncorporation, paIncorporateTargeted } from '$lib/api/planningApplication.js';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
   export let project;
   export let typeId;
   export let currentDraftHtml = '';
+
+  const scopeState       = actionPromptState('scope_incorporation');
+  const incorporateState = actionPromptState('incorporate_assessment');
 
   const dispatch = createEventDispatcher();
 
@@ -421,6 +426,8 @@
         <button class="incorporate-btn" disabled={!uploadFile} on:click={startIncorporate}>
           <i class="las la-file-import"></i> Incorporate into assessment
         </button>
+        <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+        <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
       </div>
 
     {:else}
@@ -434,9 +441,13 @@
           </label>
           <textarea class="notes-textarea" placeholder="e.g. Focus only on transport conclusions..." bind:value={userNotes}></textarea>
         </div>
-        <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim()} on:click={startIncorporate}>
-          <i class="las la-file-import"></i> Incorporate into assessment
-        </button>
+        <div class="idle-actions idle-actions--inline">
+          <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim()} on:click={startIncorporate}>
+            <i class="las la-file-import"></i> Incorporate into assessment
+          </button>
+          <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+          <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+        </div>
       </div>
     {/if}
 
@@ -579,6 +590,33 @@
 
 </div>
 
+<!-- Prompt edit modals -->
+<PromptEditModal
+  open={$scopeState.open}
+  title="Edit Prompt — Scope Incorporation"
+  promptText={$scopeState.text}
+  loading={$scopeState.loading}
+  saving={$scopeState.saving}
+  saved={$scopeState.saved}
+  on:close={() => closeActionPrompt('scope_incorporation')}
+  on:change={(e) => setPromptText('scope_incorporation', e.detail)}
+  on:save={() => saveActionPromptStore('scope_incorporation')}
+  on:reset={() => resetActionPromptStore('scope_incorporation')}
+/>
+
+<PromptEditModal
+  open={$incorporateState.open}
+  title="Edit Prompt — Incorporate into Assessment"
+  promptText={$incorporateState.text}
+  loading={$incorporateState.loading}
+  saving={$incorporateState.saving}
+  saved={$incorporateState.saved}
+  on:close={() => closeActionPrompt('incorporate_assessment')}
+  on:change={(e) => setPromptText('incorporate_assessment', e.detail)}
+  on:save={() => saveActionPromptStore('incorporate_assessment')}
+  on:reset={() => resetActionPromptStore('incorporate_assessment')}
+/>
+
 <style>
   .panel { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: #f8fafc; }
 
@@ -604,7 +642,26 @@
   .notes-textarea:focus { outline: none; border-color: #f59e0b; background: white; }
   .notes-textarea::placeholder { color: #94a3b8; }
 
-  .idle-actions { padding: 0 1rem 1rem; }
+  .idle-actions { padding: 0 1rem 1rem; display: flex; align-items: center; gap: 0.5rem; }
+  .idle-actions--inline { padding: 0.5rem 0 0; }
+
+  .prompt-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.25rem;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .prompt-info-btn:hover { color: #6366f1; border-color: #6366f1; }
   .incorporate-btn { display: flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.875rem; background: #7c3aed; color: white; border: none; border-radius: 5px; font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
   .incorporate-btn:hover:not(:disabled) { background: #6d28d9; }
   .incorporate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
