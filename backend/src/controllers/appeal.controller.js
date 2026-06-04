@@ -818,6 +818,121 @@ export async function generateDraft(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PA-notes variants — same as above but read from planning_applications.issue_notes
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function generateDraftFromPaNotes(req, res) {
+  const { projectId, typeId } = req.params;
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const { rows: typeRows } = await pool.query(
+      `SELECT id, name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+    const draftType = typeRows[0];
+
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN planning_applications.issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const { rows: sections } = await pool.query(
+      `SELECT * FROM appeals.appeal_draft_sections WHERE draft_type_id = $1 ORDER BY sort_order, id`,
+      [typeId]
+    );
+
+    const { projectBrief, guidingBrief } = await fetchPromptContext(projectId, draftType.slug, projectRows[0].development_type);
+    const exampleDoc = await fetchExampleDoc(projectId, typeId);
+
+    const contentHtml = await generateAppealDraft({
+      projectName: projectRows[0].project_name,
+      draftTypeName: draftType.name,
+      sections,
+      issues,
+      guidingBrief,
+      projectBrief,
+      exampleDoc
+    });
+
+    const { rows } = await pool.query(
+      `INSERT INTO appeals.appeal_drafts (project_id, draft_type_id, content_html, generated_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (project_id, draft_type_id)
+       DO UPDATE SET content_html = $3, generated_at = NOW(), updated_at = NOW()
+       RETURNING *`,
+      [projectId, typeId, contentHtml]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('generateDraftFromPaNotes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function generateSectionFromPaNotes(req, res) {
+  const { projectId, typeId, sectionId } = req.params;
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const { rows: typeRows } = await pool.query(
+      `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+
+    const { rows: sectionRows } = await pool.query(
+      `SELECT * FROM appeals.appeal_draft_sections WHERE id = $1 AND draft_type_id = $2`,
+      [sectionId, typeId]
+    );
+    if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
+
+    const { rows: issues } = await pool.query(
+      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+       FROM admin_console.project_issue_tracks pit
+       LEFT JOIN planning_applications.issue_notes ain
+         ON ain.track_id = pit.id AND ain.project_id = $1
+       WHERE pit.project_id = $1 AND pit.is_active = TRUE
+       ORDER BY pit.sort_order, pit.id`,
+      [projectId]
+    );
+
+    const issueContext = issues.map(issue => {
+      const lines = [`## ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}`];
+      if (issue.argument_against) lines.push(`Opposing position:\n${issue.argument_against}`);
+      if (issue.argument_for)     lines.push(`Our case:\n${issue.argument_for}`);
+      if (!issue.argument_against && !issue.argument_for) lines.push('(No notes yet.)');
+      return lines.join('\n');
+    }).join('\n\n---\n\n');
+
+    const guidingBrief = await getGuidingBrief(typeRows[0].slug, projectRows[0].development_type);
+
+    const html = await generateDraftSection({
+      section: sectionRows[0],
+      projectName: projectRows[0].project_name,
+      draftTypeName: typeRows[0].name,
+      issueContext,
+      guidingBrief
+    });
+
+    res.json({ html, section_id: sectionRows[0].id, section_name: sectionRows[0].name });
+  } catch (err) {
+    console.error('generateSectionFromPaNotes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Shared context fetcher — project brief, guiding brief, example doc
 // ─────────────────────────────────────────────────────────────────────────────
 

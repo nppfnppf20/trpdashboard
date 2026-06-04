@@ -693,6 +693,20 @@ export async function createDocumentLogEntry(req, res) {
 // Draft types & sections
 // ─────────────────────────────────────────────────────────────────────────────
 
+export async function hasPaIssueNotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT EXISTS(SELECT 1 FROM planning_applications.issue_notes WHERE project_id = $1) AS has_notes`,
+      [projectId]
+    );
+    res.json({ hasNotes: rows[0].has_notes });
+  } catch (err) {
+    console.error('pa.hasPaIssueNotes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function getDraftTypes(req, res) {
   try {
     const { rows } = await pool.query(

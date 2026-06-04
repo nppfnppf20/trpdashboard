@@ -266,6 +266,13 @@ export async function reorderSections(typeId, order) {
 
 // ── Drafts ────────────────────────────────────────────────────────────────────
 
+export async function hasPaIssueNotes(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/has-pa-notes`);
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.hasNotes ?? false;
+}
+
 export async function getDraft(projectId, typeId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}`);
   if (!res.ok) throw new Error('Failed to fetch draft');

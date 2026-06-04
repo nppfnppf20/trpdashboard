@@ -1,9 +1,74 @@
 import { writable, get } from 'svelte/store';
 import { tick } from 'svelte';
-import { getDraftTypes, getDraft, saveDraft, generateDraft, generateDraftSection, getSections, createSection, updateSection, deleteSection, reorderSections, getSectionPrompt, resetSectionPrompt, getAssessmentIssues, generateAssessmentIssue, getPaDraftContext } from '$lib/api/planningApplication.js';
+import {
+  getDraftTypes as paGetDraftTypes,
+  getDraft as paGetDraft,
+  saveDraft as paSaveDraft,
+  generateDraft as paGenerateDraft,
+  generateDraftSection as paGenerateDraftSection,
+  getSections as paGetSections,
+  createSection as paCreateSection,
+  updateSection as paUpdateSection,
+  deleteSection as paDeleteSection,
+  reorderSections as paReorderSections,
+  getSectionPrompt,
+  resetSectionPrompt,
+  getAssessmentIssues,
+  generateAssessmentIssue,
+  getPaDraftContext,
+  hasPaIssueNotes,
+} from '$lib/api/planningApplication.js';
+import {
+  getDraftTypes as appealGetDraftTypes,
+  getDraft as appealGetDraft,
+  saveDraft as appealSaveDraft,
+  getSections as appealGetSections,
+  createSection as appealCreateSection,
+  updateSection as appealUpdateSection,
+  deleteSection as appealDeleteSection,
+  reorderSections as appealReorderSections,
+  getDraftContext as appealGetDraftContext,
+  generateDraftFromPaNotes,
+  generateSectionFromPaNotes,
+} from '$lib/api/appeal.js';
 import { getStage1Context } from '$lib/api/stage1Review.js';
 
-// Editor component refs — set from the template via setDraftEditor / setSectionExampleEditor
+// ── Routing helpers ────────────────────────────────────────────────────────────
+// Appeal types get id: 'appeal_N' to avoid collision with PA numeric IDs.
+
+function isAppeal(typeId) {
+  return typeof typeId === 'string' && typeId.startsWith('appeal_');
+}
+
+function rawId(typeId) {
+  return isAppeal(typeId) ? parseInt(typeId.replace('appeal_', ''), 10) : typeId;
+}
+
+function api(typeId) {
+  return isAppeal(typeId) ? {
+    getDraft:       (pid, _id) => appealGetDraft(pid, rawId(typeId)),
+    saveDraft:      (pid, _id, html) => appealSaveDraft(pid, rawId(typeId), html),
+    getSections:    (_id) => appealGetSections(rawId(typeId)),
+    createSection:  (_id, data) => appealCreateSection(rawId(typeId), data),
+    updateSection:  (sid, data) => appealUpdateSection(sid, data),
+    deleteSection:  (sid) => appealDeleteSection(sid),
+    reorderSections: (_id, order) => appealReorderSections(rawId(typeId), order),
+    generateDraft:  (pid, _id) => generateDraftFromPaNotes(pid, rawId(typeId)),
+    generateSection: (pid, _id, sid) => generateSectionFromPaNotes(pid, rawId(typeId), sid),
+  } : {
+    getDraft:       paGetDraft,
+    saveDraft:      paSaveDraft,
+    getSections:    paGetSections,
+    createSection:  paCreateSection,
+    updateSection:  paUpdateSection,
+    deleteSection:  paDeleteSection,
+    reorderSections: paReorderSections,
+    generateDraft:  paGenerateDraft,
+    generateSection: paGenerateDraftSection,
+  };
+}
+
+// ── Editor refs ────────────────────────────────────────────────────────────────
 let _draftEditor;
 let _sectionExampleEditor;
 let _projectId;
@@ -20,6 +85,7 @@ export function setSectionExampleEditor(editor) {
   _sectionExampleEditor = editor;
 }
 
+// ── Stores ─────────────────────────────────────────────────────────────────────
 export const draftTypes = writable([]);
 export const drafts = writable({});
 export const draftLoading = writable({});
@@ -52,13 +118,33 @@ export const sectionExampleId = writable(null);
 export const sectionExampleSaving = writable(false);
 export const sectionExampleSaved = writable(false);
 
+// ── Load ───────────────────────────────────────────────────────────────────────
+
 export async function loadDraftTypes() {
   try {
-    const types = await getDraftTypes();
-    draftTypes.set(types);
-    await Promise.all(types.map(async t => {
+    const [paTypes, hasNotes, appealTypesRaw] = await Promise.all([
+      paGetDraftTypes(),
+      hasPaIssueNotes(_projectId),
+      appealGetDraftTypes(),
+    ]);
+
+    const tagged = [
+      ...paTypes.map(t => ({ ...t, tool: 'pa' })),
+      ...(hasNotes ? appealTypesRaw.map(t => ({
+        ...t,
+        id: `appeal_${t.id}`,
+        _rawId: t.id,
+        tool: 'appeal',
+      })) : []),
+    ];
+
+    draftTypes.set(tagged);
+
+    await Promise.all(tagged.map(async t => {
       try {
-        const d = await getDraft(_projectId, t.id);
+        const d = isAppeal(t.id)
+          ? await appealGetDraft(_projectId, t._rawId)
+          : await paGetDraft(_projectId, t.id);
         drafts.update(dd => ({ ...dd, [t.id]: d }));
       } catch (err) {
         console.error(`Failed to load draft for type ${t.id}:`, err);
@@ -69,10 +155,13 @@ export async function loadDraftTypes() {
   }
 }
 
+// ── Draft actions ──────────────────────────────────────────────────────────────
+
 export async function handleGenerate(typeId) {
   draftGenerating.set(typeId);
   try {
-    const result = await generateDraft(_projectId, typeId);
+    const a = api(typeId);
+    const result = await a.generateDraft(_projectId, rawId(typeId));
     drafts.update(d => ({ ...d, [typeId]: result }));
     openDraft(typeId);
   } catch (err) {
@@ -102,7 +191,8 @@ export async function handleSaveDraft() {
   draftSaving.set(true);
   try {
     const html = _draftEditor?.getHTML() ?? get(draftEditorHtml);
-    const result = await saveDraft(_projectId, typeId, html);
+    const a = api(typeId);
+    const result = await a.saveDraft(_projectId, rawId(typeId), html);
     drafts.update(d => ({ ...d, [typeId]: result }));
     draftEditorHtml.set(html);
     draftSaved.set(true);
@@ -114,6 +204,8 @@ export async function handleSaveDraft() {
   }
 }
 
+// ── Sections modal ─────────────────────────────────────────────────────────────
+
 export async function openSectionsModal(typeId) {
   sectionsTypeId.set(typeId);
   sectionsTypeName.set(get(draftTypes).find(t => t.id === typeId)?.name ?? '');
@@ -121,7 +213,7 @@ export async function openSectionsModal(typeId) {
   sectionsLoading.set(true);
   sectionExpandedId.set(null);
   try {
-    sections.set(await getSections(typeId));
+    sections.set(await api(typeId).getSections(rawId(typeId)));
   } catch (err) {
     console.error('Failed to load sections:', err);
   } finally {
@@ -135,7 +227,7 @@ export async function handleAddSection() {
   addingSectionLoading.set(true);
   try {
     const typeId = get(sectionsTypeId);
-    const s = await createSection(typeId, { name, description: '' });
+    const s = await api(typeId).createSection(rawId(typeId), { name, description: '' });
     sections.update(ss => [...ss, s]);
     newSectionName.set('');
     invalidateCardSections(typeId);
@@ -150,7 +242,7 @@ export async function handleDeleteSection(sectionId) {
   if (!confirm('Delete this section?')) return;
   try {
     const typeId = get(sectionsTypeId);
-    await deleteSection(sectionId);
+    await api(typeId).deleteSection(sectionId);
     sections.update(ss => ss.filter(s => s.id !== sectionId));
     if (get(sectionExpandedId) === sectionId) sectionExpandedId.set(null);
     invalidateCardSections(typeId);
@@ -167,7 +259,8 @@ export async function moveSectionUp(idx) {
     [reordered[idx - 1], reordered[idx]] = [reordered[idx], reordered[idx - 1]];
     return reordered;
   });
-  try { await reorderSections(get(sectionsTypeId), reordered.map(s => s.id)); } catch {}
+  const typeId = get(sectionsTypeId);
+  try { await api(typeId).reorderSections(rawId(typeId), reordered.map(s => s.id)); } catch {}
 }
 
 export async function moveSectionDown(idx) {
@@ -178,8 +271,9 @@ export async function moveSectionDown(idx) {
     [reordered[idx], reordered[idx + 1]] = [reordered[idx + 1], reordered[idx]];
     return reordered;
   });
+  const typeId = get(sectionsTypeId);
   if (reordered) {
-    try { await reorderSections(get(sectionsTypeId), reordered.map(s => s.id)); } catch {}
+    try { await api(typeId).reorderSections(rawId(typeId), reordered.map(s => s.id)); } catch {}
   }
 }
 
@@ -194,7 +288,8 @@ export async function toggleSectionExpand(sectionId) {
     sectionPromptSaved.set(false);
     sectionTemplateSaved.set(false);
 
-    if (s?.slug === 'planning_assessment') {
+    const typeId = get(sectionsTypeId);
+    if (!isAppeal(typeId) && s?.slug === 'planning_assessment') {
       sectionPromptText.set('');
       sectionPromptIsCustom.set(false);
       try {
@@ -228,7 +323,8 @@ export async function handleResetSectionPrompt(sectionId) {
 export async function handleSaveSectionPrompt(sectionId) {
   sectionPromptSaving.set(true);
   try {
-    const updated = await updateSection(sectionId, { generation_prompt: get(sectionPromptText) });
+    const typeId = get(sectionsTypeId);
+    const updated = await api(typeId).updateSection(sectionId, { generation_prompt: get(sectionPromptText) });
     sections.update(ss => ss.map(s => s.id === sectionId ? { ...s, ...updated } : s));
     sectionPromptIsCustom.set(true);
     sectionPromptSaved.set(true);
@@ -243,7 +339,8 @@ export async function handleSaveSectionPrompt(sectionId) {
 export async function handleSaveSectionTemplate(sectionId) {
   sectionTemplateSaving.set(true);
   try {
-    const updated = await updateSection(sectionId, { template_html: get(sectionTemplateText) || null });
+    const typeId = get(sectionsTypeId);
+    const updated = await api(typeId).updateSection(sectionId, { template_html: get(sectionTemplateText) || null });
     sections.update(ss => ss.map(s => s.id === sectionId ? { ...s, ...updated } : s));
     sectionTemplateSaved.set(true);
     setTimeout(() => sectionTemplateSaved.set(false), 2500);
@@ -267,8 +364,9 @@ export async function handleSaveSectionExample() {
   sectionExampleSaving.set(true);
   try {
     const id = get(sectionExampleId);
+    const typeId = get(sectionsTypeId);
     const html = _sectionExampleEditor?.getHTML() ?? '';
-    const updated = await updateSection(id, { example_text: html });
+    const updated = await api(typeId).updateSection(id, { example_text: html });
     sections.update(ss => ss.map(s => s.id === id ? { ...s, ...updated } : s));
     sectionExampleSaved.set(true);
     setTimeout(() => sectionExampleSaved.set(false), 2500);
@@ -282,7 +380,6 @@ export async function handleSaveSectionExample() {
 function patchSectionInDraft(draftHtml, sectionName, newSectionHtml) {
   if (!draftHtml) return newSectionHtml;
   const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Match numbered headings like "2.0 Background" as well as plain "Background"
   const pattern = new RegExp(`<h2>[^<]*${escaped}[^<]*<\\/h2>[\\s\\S]*?(?=<h2>|$)`, 'i');
   if (pattern.test(draftHtml)) {
     return draftHtml.replace(pattern, newSectionHtml + '\n\n');
@@ -290,11 +387,11 @@ function patchSectionInDraft(draftHtml, sectionName, newSectionHtml) {
   return draftHtml + '\n\n' + newSectionHtml;
 }
 
-// ── Inline card sections (expand on draft type card without opening modal) ──
+// ── Inline card sections ───────────────────────────────────────────────────────
 
 export const cardExpandedTypeId = writable(null);
-export const cardSections = writable({});       // typeId → section[]
-export const cardSectionsLoading = writable({}); // typeId → bool
+export const cardSections = writable({});
+export const cardSectionsLoading = writable({});
 
 export async function toggleCardExpand(typeId) {
   if (get(cardExpandedTypeId) === typeId) {
@@ -305,7 +402,7 @@ export async function toggleCardExpand(typeId) {
   if (!get(cardSections)[typeId]) {
     cardSectionsLoading.update(s => ({ ...s, [typeId]: true }));
     try {
-      const loaded = await getSections(typeId);
+      const loaded = await api(typeId).getSections(rawId(typeId));
       cardSections.update(s => ({ ...s, [typeId]: loaded }));
     } catch (err) {
       console.error('Failed to load card sections:', err);
@@ -319,11 +416,11 @@ export function invalidateCardSections(typeId) {
   cardSections.update(s => { const copy = { ...s }; delete copy[typeId]; return copy; });
 }
 
-// ── Per-issue assessment generation ──
+// ── Per-issue assessment generation (PA only) ──────────────────────────────────
 
 export const assessmentIssues = writable([]);
 export const assessmentIssuesLoading = writable(false);
-export const issueGenerating = writable(null); // trackId
+export const issueGenerating = writable(null);
 
 export async function loadAssessmentIssues() {
   assessmentIssuesLoading.set(true);
@@ -340,8 +437,6 @@ function patchIssueInDraft(draftHtml, issueLabel, newIssueHtml) {
   if (!draftHtml) return newIssueHtml;
   const escaped = issueLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const h3Pattern = new RegExp(`<h3>[^<]*${escaped}[^<]*<\\/h3>`, 'i');
-
-  // Walk each llm-generated block individually so we never match across block boundaries
   const OPEN = '<div class="llm-generated">';
   const CLOSE = '</div>';
   let searchFrom = 0;
@@ -356,14 +451,11 @@ function patchIssueInDraft(draftHtml, issueLabel, newIssueHtml) {
     }
     searchFrom = closeIdx + CLOSE.length;
   }
-
-  // No existing block found — insert after the Planning Assessment h2
   const h2Match = /<h2>[^<]*[Pp]lanning\s+[Aa]ssessment[^<]*<\/h2>/.exec(draftHtml);
   if (h2Match) {
     const insertAt = h2Match.index + h2Match[0].length;
     return draftHtml.slice(0, insertAt) + '\n\n' + newIssueHtml + draftHtml.slice(insertAt);
   }
-
   return draftHtml + '\n\n' + newIssueHtml;
 }
 
@@ -373,7 +465,7 @@ export async function handleGenerateAssessmentIssue(typeId, sectionId, trackId, 
     const { html } = await generateAssessmentIssue(_projectId, typeId, sectionId, trackId);
     const currentHtml = get(drafts)[typeId]?.content_html ?? '';
     const patched = patchIssueInDraft(currentHtml, issueLabel, html);
-    const saved = await saveDraft(_projectId, typeId, patched);
+    const saved = await paSaveDraft(_projectId, typeId, patched);
     drafts.update(d => ({ ...d, [typeId]: saved }));
     if (get(activeDraftTypeId) === typeId) {
       draftEditorHtml.set(patched);
@@ -391,12 +483,13 @@ export async function handleGenerateSection(sectionId, explicitTypeId = null) {
   sectionGenerating.set(sectionId);
   try {
     const typeId = explicitTypeId ?? get(sectionsTypeId);
-    const result = await generateDraftSection(_projectId, typeId, sectionId);
+    const a = api(typeId);
+    const result = await a.generateSection(_projectId, rawId(typeId), sectionId);
     const currentHtml = get(drafts)[typeId]?.content_html ?? '';
     const section = get(sections).find(s => s.id === sectionId)
       ?? Object.values(get(cardSections)).flat().find(s => s.id === sectionId);
     const patched = patchSectionInDraft(currentHtml, section.name, result.html);
-    const saved = await saveDraft(_projectId, typeId, patched);
+    const saved = await a.saveDraft(_projectId, rawId(typeId), patched);
     drafts.update(d => ({ ...d, [typeId]: saved }));
     if (get(activeDraftTypeId) === typeId) {
       draftEditorHtml.set(patched);
@@ -411,9 +504,8 @@ export async function handleGenerateSection(sectionId, explicitTypeId = null) {
 }
 
 // ── Card context accordion ─────────────────────────────────────────────────────
-// key = typeId (number) for draft types, or 'stage1_review' for stage 1 card
 
-export const cardContextState = writable({}); // key → { expanded, loading, guidingBrief, projectBrief, toneExampleLoaded }
+export const cardContextState = writable({});
 
 export async function toggleCardContext(projectId, key) {
   const current = get(cardContextState)[key];
@@ -421,13 +513,14 @@ export async function toggleCardContext(projectId, key) {
     cardContextState.update(s => ({ ...s, [key]: { ...s[key], expanded: false } }));
     return;
   }
-  // Re-expand — only show spinner if not yet loaded
   cardContextState.update(s => ({ ...s, [key]: { ...(s[key] ?? {}), expanded: true, loading: !s[key]?.loaded } }));
-  if (current?.loaded) return; // data already fetched, just re-expand
+  if (current?.loaded) return;
   try {
     const data = key === 'stage1_review'
       ? await getStage1Context(projectId)
-      : await getPaDraftContext(projectId, key);
+      : isAppeal(key)
+        ? await appealGetDraftContext(projectId, rawId(key))
+        : await getPaDraftContext(projectId, key);
     cardContextState.update(s => ({ ...s, [key]: {
       ...s[key],
       loading: false,

@@ -50,6 +50,8 @@ import {
   incorporateTargeted,
   uploadDraftExample,
   getDraftContext,
+  generateDraftFromPaNotes,
+  generateSectionFromPaNotes,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -106,7 +108,9 @@ router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.get('/projects/:projectId/drafts/:typeId/context', getDraftContext);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);
+router.post('/projects/:projectId/drafts/:typeId/generate-from-pa', generateDraftFromPaNotes);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
+router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate-from-pa', generateSectionFromPaNotes);
 router.post('/projects/:projectId/drafts/:typeId/incorporate', incorporateDocumentIntoTdraft);
 router.post('/projects/:projectId/drafts/:typeId/scope-incorporate', scopeIncorporation);
 router.post('/projects/:projectId/drafts/:typeId/incorporate-targeted', incorporateTargeted);

@@ -618,7 +618,7 @@
                 </div>
               {/if}
             </div>
-          {:else if activeType?.slug !== 'stage1_review'}
+          {:else if activeType?.slug !== 'stage1_review' && activeType?.tool !== 'appeal'}
             <PlanningDocIncorporatePanel
               {project}
               typeId={$activeDraftTypeId}
@@ -656,12 +656,14 @@
                   {/if}
                 </div>
                 <div class="draft-type-actions">
+                  {#if type.tool !== 'appeal'}
                   <select class="card-dev-type-select" value={developmentType} on:change={handleDevTypeChange} disabled={devTypeSaving} title="Development type">
                     <option value="">Dev type...</option>
                     {#each DEV_TYPES as dt}
                       <option value={dt}>{dt}</option>
                     {/each}
                   </select>
+                  {/if}
                   {#if draft}
                     <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
@@ -726,7 +728,7 @@
                           </button>
                         </div>
                       </div>
-                      {#if section.slug === 'planning_assessment' && $assessmentIssues.length > 0}
+                      {#if type.tool !== 'appeal' && section.slug === 'planning_assessment' && $assessmentIssues.length > 0}
                         <div class="assessment-issues-list">
                           {#if $assessmentIssuesLoading}
                             <div class="draft-inline-loading"><div class="mini-spinner"></div><span>Loading issues...</span></div>

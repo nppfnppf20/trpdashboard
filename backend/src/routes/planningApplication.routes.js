@@ -62,6 +62,7 @@ import {
   getActionPrompt,
   saveActionPrompt,
   resetActionPrompt,
+  hasPaIssueNotes,
 } from '../controllers/planningApplication.controller.js';
 
 const router = express.Router();
@@ -109,6 +110,7 @@ router.delete('/sections/:sectionId', deleteSection);
 router.get('/sections/:sectionId/prompt', getSectionPrompt);
 router.delete('/sections/:sectionId/prompt', resetSectionPrompt);
 router.put('/draft-types/:typeId/sections/reorder', reorderSections);
+router.get('/projects/:projectId/has-pa-notes', hasPaIssueNotes);
 router.get('/projects/:projectId/drafts/:typeId', getDraft);
 router.put('/projects/:projectId/drafts/:typeId', saveDraft);
 router.post('/projects/:projectId/drafts/:typeId/generate', generateDraft);

@@ -276,6 +276,22 @@ export async function generateDraftSection(projectId, typeId, sectionId) {
   return res.json();
 }
 
+export async function generateDraftFromPaNotes(projectId, typeId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/generate-from-pa`, {
+    method: 'POST'
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate draft'); }
+  return res.json();
+}
+
+export async function generateSectionFromPaNotes(projectId, typeId, sectionId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/sections/${sectionId}/generate-from-pa`, {
+    method: 'POST'
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate section'); }
+  return res.json();
+}
+
 export async function getDocumentLog(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/document-log`);
   if (!res.ok) throw new Error('Failed to fetch document log');
