@@ -6,13 +6,13 @@ const _states = writable({});
 
 function initKey(key) {
   if (!get(_states)[key]) {
-    _states.update(s => ({ ...s, [key]: { open: false, text: '', loading: false, saving: false, saved: false } }));
+    _states.update(s => ({ ...s, [key]: { open: false, text: '', contextTemplate: null, loading: false, saving: false, saved: false } }));
   }
 }
 
 export function actionPromptState(key) {
   return {
-    subscribe: (cb) => _states.subscribe(s => cb(s[key] ?? { open: false, text: '', loading: false, saving: false, saved: false }))
+    subscribe: (cb) => _states.subscribe(s => cb(s[key] ?? { open: false, text: '', contextTemplate: null, loading: false, saving: false, saved: false }))
   };
 }
 
@@ -25,8 +25,9 @@ export async function openActionPrompt(key) {
   _states.update(s => ({ ...s, [key]: { ...s[key], open: true, loading: true } }));
   try {
     const data = await getActionPrompt(key);
-    _states.update(s => ({ ...s, [key]: { ...s[key], text: data.prompt, loading: false } }));
-  } catch {
+    _states.update(s => ({ ...s, [key]: { ...s[key], text: data.prompt, contextTemplate: data.contextTemplate ?? null, loading: false } }));
+  } catch (err) {
+    console.error('[actionPrompts] Failed to load prompt for key:', key, err);
     _states.update(s => ({ ...s, [key]: { ...s[key], loading: false } }));
   }
 }

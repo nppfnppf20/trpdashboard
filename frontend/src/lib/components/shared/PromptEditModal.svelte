@@ -4,6 +4,7 @@
   export let open = false;
   export let title = 'Edit Prompt';
   export let promptText = '';
+  export let contextTemplate = null;
   export let loading = false;
   export let saving = false;
   export let saved = false;
@@ -38,6 +39,14 @@
             use:autoresize={promptText}
             on:input={(e) => dispatch('change', e.target.value)}
           ></textarea>
+          {#if contextTemplate}
+            <div class="context-template">
+              <div class="context-template-label">
+                <i class="las la-code"></i> Dynamic context injected by the system (read-only)
+              </div>
+              <pre class="context-template-body">{contextTemplate}</pre>
+            </div>
+          {/if}
         {/if}
       </div>
 
@@ -214,6 +223,42 @@
   }
   .modal-save:hover:not(:disabled) { background: #f1f5f9; border-color: #cbd5e1; }
   .modal-save:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .context-template {
+    margin-top: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .context-template-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .context-template-body {
+    margin: 0;
+    padding: 0.75rem;
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: #475569;
+    background: #f8fafc;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 260px;
+    overflow-y: auto;
+  }
 
   .prompt-custom-badge {
     font-size: 0.7rem;

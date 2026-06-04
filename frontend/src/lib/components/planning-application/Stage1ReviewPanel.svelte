@@ -212,6 +212,7 @@
   open={$stage1PromptState.open}
   title="Edit Prompt — Generate Stage 1 Review"
   promptText={$stage1PromptState.text}
+  contextTemplate={$stage1PromptState.contextTemplate}
   loading={$stage1PromptState.loading}
   saving={$stage1PromptState.saving}
   saved={$stage1PromptState.saved}

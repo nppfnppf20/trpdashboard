@@ -2,6 +2,11 @@
   import { createEventDispatcher } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
   import { getDocuments, uploadDocument, incorporateDocument, scopeIncorporation, incorporateTargeted, uploadDraftExample } from '$lib/api/appeal.js';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
+
+  const scopeState       = actionPromptState('scope_incorporation');
+  const incorporateState = actionPromptState('incorporate_appeal');
 
   export let project;
   export let typeId;
@@ -459,9 +464,13 @@
                   <span class="doc-date">{new Date(doc.uploaded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                 </div>
               </div>
-              <button class="incorporate-btn" on:click={() => startIncorporate(doc)}>
-                <i class="las la-file-import"></i> Incorporate
-              </button>
+              <div class="doc-incorporate-actions">
+                <button class="incorporate-btn" on:click={() => startIncorporate(doc)}>
+                  <i class="las la-file-import"></i> Incorporate
+                </button>
+                <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+                <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_appeal')}><i class="las la-code-branch"></i></button>
+              </div>
             </div>
           {/each}
         </div>
@@ -492,13 +501,17 @@
             bind:value={userNotes}
           ></textarea>
         </div>
-        <button
-          class="incorporate-btn incorporate-btn--full"
-          disabled={!pasteText.trim()}
-          on:click={startIncorporateFromPaste}
-        >
-          <i class="las la-file-import"></i> Incorporate
-        </button>
+        <div class="idle-actions">
+          <button
+            class="incorporate-btn incorporate-btn--full"
+            disabled={!pasteText.trim()}
+            on:click={startIncorporateFromPaste}
+          >
+            <i class="las la-file-import"></i> Incorporate
+          </button>
+          <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+          <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_appeal')}><i class="las la-code-branch"></i></button>
+        </div>
       </div>
     {/if}
 
@@ -573,6 +586,7 @@
         <button class="btn-primary" disabled={scopedIds.size === 0} on:click={() => runIncorporate()}>
           <i class="las la-file-import"></i> Incorporate {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}
         </button>
+        <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_appeal')}><i class="las la-sliders-h"></i></button>
       </div>
     </div>
 
@@ -702,6 +716,35 @@
 
 </div>
 
+<!-- Prompt edit modals -->
+<PromptEditModal
+  open={$scopeState.open}
+  title="Edit Prompt — Scope Incorporation"
+  promptText={$scopeState.text}
+  contextTemplate={$scopeState.contextTemplate}
+  loading={$scopeState.loading}
+  saving={$scopeState.saving}
+  saved={$scopeState.saved}
+  on:close={() => closeActionPrompt('scope_incorporation')}
+  on:change={(e) => setPromptText('scope_incorporation', e.detail)}
+  on:save={() => saveActionPromptStore('scope_incorporation')}
+  on:reset={() => resetActionPromptStore('scope_incorporation')}
+/>
+
+<PromptEditModal
+  open={$incorporateState.open}
+  title="Edit Prompt — Incorporate into Appeal"
+  promptText={$incorporateState.text}
+  contextTemplate={$incorporateState.contextTemplate}
+  loading={$incorporateState.loading}
+  saving={$incorporateState.saving}
+  saved={$incorporateState.saved}
+  on:close={() => closeActionPrompt('incorporate_appeal')}
+  on:change={(e) => setPromptText('incorporate_appeal', e.detail)}
+  on:save={() => saveActionPromptStore('incorporate_appeal')}
+  on:reset={() => resetActionPromptStore('incorporate_appeal')}
+/>
+
 <style>
   .panel {
     display: flex;
@@ -784,6 +827,28 @@
     justify-content: center;
   }
   .incorporate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .doc-incorporate-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+
+  .idle-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+
+  .prompt-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.25rem;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .prompt-info-btn:hover { color: #6366f1; border-color: #6366f1; }
 
   /* ── Upload zone ── */
   .upload-zone {

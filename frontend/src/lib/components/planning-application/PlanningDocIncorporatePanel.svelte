@@ -503,6 +503,7 @@
         <button class="btn-primary" disabled={scopedIds.size === 0} on:click={() => runIncorporate()}>
           <i class="las la-file-import"></i> Incorporate {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}
         </button>
+        <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-sliders-h"></i></button>
       </div>
     </div>
 
@@ -595,6 +596,7 @@
   open={$scopeState.open}
   title="Edit Prompt — Scope Incorporation"
   promptText={$scopeState.text}
+  contextTemplate={$scopeState.contextTemplate}
   loading={$scopeState.loading}
   saving={$scopeState.saving}
   saved={$scopeState.saved}
@@ -608,6 +610,7 @@
   open={$incorporateState.open}
   title="Edit Prompt — Incorporate into Assessment"
   promptText={$incorporateState.text}
+  contextTemplate={$incorporateState.contextTemplate}
   loading={$incorporateState.loading}
   saving={$incorporateState.saving}
   saved={$incorporateState.saved}

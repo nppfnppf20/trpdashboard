@@ -33,15 +33,142 @@ import {
   DEFAULT_INCORPORATE_ASSESSMENT_PROMPT,
   DEFAULT_DRAFT_ARGUMENTS_PROMPT,
   DEFAULT_SCOPE_INCORPORATION_PROMPT,
+  DEFAULT_INCORPORATE_APPEAL_PROMPT,
+  DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
 } from '../services/llm.service.js';
 import { DEFAULT_STAGE1_REVIEW_PROMPT } from './stage1Review.controller.js';
 
 const ACTION_PROMPT_DEFAULTS = {
-  draft_key_summaries:         DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT,
+  draft_key_summaries:           DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT,
   draft_arguments_from_briefing: DEFAULT_DRAFT_ARGUMENTS_PROMPT,
-  scope_incorporation:         DEFAULT_SCOPE_INCORPORATION_PROMPT,
-  incorporate_assessment:      DEFAULT_INCORPORATE_ASSESSMENT_PROMPT,
-  stage1_review:               DEFAULT_STAGE1_REVIEW_PROMPT,
+  scope_incorporation:           DEFAULT_SCOPE_INCORPORATION_PROMPT,
+  incorporate_assessment:        DEFAULT_INCORPORATE_ASSESSMENT_PROMPT,
+  stage1_review:                 DEFAULT_STAGE1_REVIEW_PROMPT,
+  incorporate_appeal:            DEFAULT_INCORPORATE_APPEAL_PROMPT,
+  generate_appeal_argument:      DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
+};
+
+// Read-only templates showing what dynamic context gets injected around the editable prompt
+const ACTION_PROMPT_CONTEXT_TEMPLATES = {
+  draft_key_summaries: `\
+↑ YOUR INSTRUCTIONS (editable above)
+━━━ Dynamic context injected as user message (not editable) ━━━
+
+Briefing note:
+<briefing>
+{{BRIEFING_TRANSCRIPT — full text of the selected briefing note}}
+</briefing>
+
+Key issues:
+{{ISSUE_LIST — one line per active issue, e.g.:
+  - id:42 | Heritage (archaeology)
+    Existing note: Our position is that the proposals are acceptable...}}`,
+
+  draft_arguments_from_briefing: `\
+↑ YOUR INSTRUCTIONS (editable above)
+━━━ Dynamic context injected as user message (not editable) ━━━
+
+Briefing summary:
+{{BRIEFING_TRANSCRIPT — full text of the selected briefing note, stripped of HTML, up to 6000 chars}}
+
+Issues:
+{{ISSUE_LIST — one line per active issue, e.g.:
+  - id:42 | Heritage (archaeology)
+    Existing notes: The proposals are considered to be...}}`,
+
+  scope_incorporation: `\
+↑ YOUR INSTRUCTIONS (editable above)
+━━━ Dynamic context injected as user message (not editable) ━━━
+
+{{GUIDING_BRIEF — if a guiding brief is set for this document type}}
+Key issues: {{ISSUE_LABELS — comma-separated list of active issue labels}}
+Document being incorporated: {{FILENAME}}
+
+Draft paragraphs (id: preview):
+{{PARAGRAPH_LIST — id + first 120 chars of each paragraph, e.g.:
+  p0: <h2>Planning Assessment</h2>
+  p1: The application site is located at...
+  p2: Policy LP1 requires that...}}
+
+Document content:
+{{FULL_DOCUMENT_TEXT}}`,
+
+  incorporate_assessment: `\
+━━━ Dynamic context injected before your instructions (not editable) ━━━
+
+Project: {{PROJECT_NAME}}
+{{GUIDING_BRIEF — guidance content if set for this document type}}
+{{PROJECT_BRIEF — briefing note summary if uploaded}}
+{{EXAMPLE_TEXT — planning assessment style example if set on the section}}
+
+↑ YOUR INSTRUCTIONS (editable above)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Key Issues and Policy Context
+{{ISSUE_CONTEXT — per issue: policies linked to that issue (national, local, supplementary), policy assessment notes, evidence from accepted argument points}}
+
+## Document Being Incorporated: "{{FILENAME}}" (or "no title provided — derive appropriate title")
+{{FULL_DOCUMENT_TEXT}}
+
+## In-Scope Paragraphs
+{{USER_NOTES — if provided, shown as high-priority guidance}}
+{{PARAGRAPHS — the selected paragraph HTML blocks, each prefixed with its id}}`,
+
+  incorporate_appeal: `\
+━━━ Dynamic context injected before your instructions (not editable) ━━━
+
+Document type: {{DRAFT_TYPE_NAME}}
+Project: {{PROJECT_NAME}}
+{{GUIDING_BRIEF — guidance content if set for this document type}}
+{{PROJECT_BRIEF — briefing note summary if uploaded}}
+{{EXAMPLE_DOC — example document text if uploaded for this draft type}}
+
+## Key Issues
+{{ISSUE_CONTEXT — per issue: argument_for and argument_against notes}}
+
+## Document Being Incorporated: {{FILENAME}}
+{{FULL_DOCUMENT_TEXT}}
+
+## In-Scope Paragraphs
+{{USER_NOTES — if provided, shown as high-priority guidance}}
+↑ YOUR INSTRUCTIONS (editable above)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{PARAGRAPHS — the selected paragraph HTML blocks, each prefixed with its id}}`,
+
+  stage1_review: `\
+↑ YOUR INSTRUCTIONS (used as system prompt — editable above)
++ tone example appended if stage1reviewexample.md is loaded on the server
+━━━ User message injected (not editable) ━━━
+
+Project: {{PROJECT_NAME}}
+Address: {{ADDRESS}}
+LPA: {{LPA}}
+Proposal: {{SUB_SECTORS}}
+{{GUIDING_BRIEF — practice guidance section if a guiding brief is set}}
+
+## Full Briefing Note
+{{BRIEFING_TEXT — full plain text of the selected briefing note, no character limit}}
+
+## Task
+You are completing a Stage 1 Planning Appraisal table. For each row below, extract and synthesise ALL relevant information from the briefing note above...
+
+Rows to complete:
+{{ROW_LABELS — JSON array of the appraisal table row labels}}`,
+
+  generate_appeal_argument: `\
+↑ YOUR INSTRUCTIONS (used as system prompt — editable above)
+━━━ User message injected (not editable) ━━━
+
+Project: {{PROJECT_NAME}}
+
+Reasons for refusal:
+{{REFUSAL_REASONS — numbered list, e.g.:
+  1. Character and appearance of the area — Significant risk
+  2. Heritage impact — Medium risk}}
+
+Key issues to address:
+{{ISSUE_LIST — bullet list of active key issues}}
+{{INITIAL_NOTES — strategic notes entered by the user, if any}}`,
 };
 
 const SCHEMA = 'planning_applications';
@@ -2086,17 +2213,20 @@ export async function populateFromBriefing(req, res) {
 
 export async function getActionPrompt(req, res) {
   const { key } = req.params;
-  if (!ACTION_PROMPT_DEFAULTS[key]) return res.status(404).json({ error: 'Unknown prompt key' });
+  const defaultPrompt = ACTION_PROMPT_DEFAULTS[key];
+  if (!defaultPrompt) return res.status(404).json({ error: `Unknown prompt key: ${key}` });
   try {
     const { rows } = await pool.query(
       `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = $1`,
       [key]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Prompt not found — run migration 064' });
-    res.json({ prompt: rows[0].prompt_text });
+    res.json({
+      prompt: rows[0]?.prompt_text ?? defaultPrompt,
+      contextTemplate: ACTION_PROMPT_CONTEXT_TEMPLATES[key] ?? null,
+    });
   } catch (err) {
     console.error('pa.getActionPrompt error:', err);
-    res.status(500).json({ error: 'Failed to fetch prompt' });
+    res.json({ prompt: defaultPrompt, contextTemplate: ACTION_PROMPT_CONTEXT_TEMPLATES[key] ?? null });
   }
 }
 

@@ -222,12 +222,12 @@
           <div class="briefing-btn-group" use:clickOutside={() => $keyIssueDropdownOpen = false}>
             <button class="btn-draft-from-briefing" on:click={() => runKeyIssueDraftFromBriefing(project.id, $keyIssueSelectedNoteId)}>
               <i class="las la-lightbulb"></i> Draft issue notes from briefing
-              <button class="prompt-info-btn" title="Edit prompt" on:click|stopPropagation={() => openActionPrompt('draft_key_summaries')}><i class="las la-sliders-h"></i></button>
               {#if $keyIssueSelectedNoteId}
                 {@const note = $briefingNotes.find(n => n.id === $keyIssueSelectedNoteId)}
                 {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
               {/if}
             </button>
+            <button class="prompt-info-btn" title="Edit prompt" on:click={() => openActionPrompt('draft_key_summaries')}><i class="las la-sliders-h"></i></button>
             <button class="btn-briefing-chevron" on:click={() => $keyIssueDropdownOpen = !$keyIssueDropdownOpen} title="Select briefing note">
               <i class="las la-angle-down"></i>
             </button>
@@ -299,12 +299,12 @@
           <div class="briefing-btn-group" use:clickOutside={() => $briefingDropdownOpen = false}>
             <button class="btn-draft-from-briefing" on:click={() => runDraftFromBriefing(project.id, $selectedBriefingNoteId)}>
               <i class="las la-lightbulb"></i> Draft from briefing
-              <button class="prompt-info-btn" title="Edit prompt" on:click|stopPropagation={() => openActionPrompt('draft_arguments_from_briefing')}><i class="las la-sliders-h"></i></button>
               {#if $selectedBriefingNoteId}
                 {@const note = $briefingNotes.find(n => n.id === $selectedBriefingNoteId)}
                 {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
               {/if}
             </button>
+            <button class="prompt-info-btn" title="Edit prompt" on:click={() => openActionPrompt('draft_arguments_from_briefing')}><i class="las la-sliders-h"></i></button>
             <button class="btn-briefing-chevron" on:click={() => $briefingDropdownOpen = !$briefingDropdownOpen} title="Select briefing note">
               <i class="las la-angle-down"></i>
             </button>
@@ -1392,6 +1392,7 @@
   open={$draftArgsState.open}
   title="Edit Prompt — Draft Arguments from Briefing"
   promptText={$draftArgsState.text}
+  contextTemplate={$draftArgsState.contextTemplate}
   loading={$draftArgsState.loading}
   saving={$draftArgsState.saving}
   saved={$draftArgsState.saved}
@@ -1405,6 +1406,7 @@
   open={$draftKeyState.open}
   title="Edit Prompt — Draft Issue Notes from Briefing"
   promptText={$draftKeyState.text}
+  contextTemplate={$draftKeyState.contextTemplate}
   loading={$draftKeyState.loading}
   saving={$draftKeyState.saving}
   saved={$draftKeyState.saved}
@@ -3378,6 +3380,26 @@
   }
 
   .btn-draft-from-briefing:hover { background: #ede9fe; }
+
+  .prompt-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 0.25rem;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s;
+    vertical-align: middle;
+    margin-left: 0.35rem;
+  }
+  .prompt-info-btn:hover { opacity: 1; color: #6366f1; border-color: #6366f1; }
 
   .btn-briefing-chevron {
     display: flex;

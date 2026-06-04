@@ -305,12 +305,12 @@
           <div class="briefing-btn-group" use:clickOutside={() => $keyIssueDropdownOpen = false}>
             <button class="btn-draft-from-briefing" on:click={() => runKeyIssueDraftFromBriefing(project.id, $keyIssueSelectedNoteId)}>
               <i class="las la-lightbulb"></i> Draft issue notes from briefing
-              <button class="prompt-info-btn" title="Edit prompt" on:click|stopPropagation={() => openActionPrompt('draft_key_summaries')}><i class="las la-sliders-h"></i></button>
               {#if $keyIssueSelectedNoteId}
                 {@const note = $briefingNotes.find(n => n.id === $keyIssueSelectedNoteId)}
                 {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
               {/if}
             </button>
+            <button class="prompt-info-btn" title="Edit prompt" on:click={() => openActionPrompt('draft_key_summaries')}><i class="las la-sliders-h"></i></button>
             <button class="btn-briefing-chevron" on:click={() => $keyIssueDropdownOpen = !$keyIssueDropdownOpen} title="Select briefing note">
               <i class="las la-angle-down"></i>
             </button>
@@ -1281,6 +1281,7 @@
   open={$draftKeyState.open}
   title="Edit Prompt — Draft Issue Notes from Briefing"
   promptText={$draftKeyState.text}
+  contextTemplate={$draftKeyState.contextTemplate}
   loading={$draftKeyState.loading}
   saving={$draftKeyState.saving}
   saved={$draftKeyState.saved}
@@ -1294,13 +1295,14 @@
   open={$draftArgsState.open}
   title="Edit Prompt — Draft Arguments from Briefing"
   promptText={$draftArgsState.text}
+  contextTemplate={$draftArgsState.contextTemplate}
   loading={$draftArgsState.loading}
   saving={$draftArgsState.saving}
   saved={$draftArgsState.saved}
   on:close={() => closeActionPrompt('draft_arguments_from_briefing')}
   on:change={(e) => setPromptText('draft_arguments_from_briefing', e.detail)}
   on:save={() => saveActionPromptStore('draft_arguments_from_briefing')}
-  on:reset={() => resetActionPromptStore('draft_arguments_from_briefing')
+  on:reset={() => resetActionPromptStore('draft_arguments_from_briefing')}
 />
 
 <style>
