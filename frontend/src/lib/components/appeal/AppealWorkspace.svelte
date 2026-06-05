@@ -6,6 +6,7 @@
   import { activeInputTab, selectedFile, documentType, documentDirection, userNotes, selectedTrackIds, dragOver, pasteText, analysisState, analysisError, analysisSummary, analysisCoverage, extractedPoints, acceptedPoints, activePoints, pointsByIssue, promptModalOpen, promptText, promptLoading, promptSaving, promptSaved, promptIsCustom, initAnalysis, onDrop, onFileInputChange, toggleTrack, dismissPoint, acceptPoint, openPromptModal, savePrompt, resetPromptToDefault, runAnalysis, runAnalysisWithPrompt, resetAnalysis } from '$lib/stores/appeal-analysis.js';
   import { suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestDirection, suggestUserNotes, suggestTrackIds, suggestState, conversation, suggestError, refinementInput, refinementLoading, acceptLoading, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, runSuggestion, sendRefinement, acceptSuggestion, resetSuggestion, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt, openSuggestionLogModal } from '$lib/stores/appeal-suggestion.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptSaving, sectionPromptSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection } from '$lib/stores/appeal-drafts.js';
+  import { md } from '$lib/utils/markdown.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import AppealDocIncorporatePanel from '$lib/components/appeal/AppealDocIncorporatePanel.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
@@ -747,7 +748,7 @@
                       <i class="las la-angle-{contextExpanded.guidingBrief ? 'up' : 'down'} context-chevron"></i>
                     </button>
                     {#if contextExpanded.guidingBrief && contextData?.guidingBrief?.content}
-                      <div class="context-block-body">{contextData.guidingBrief.content}</div>
+                      <div class="context-block-body md-body">{@html md(contextData.guidingBrief.content)}</div>
                     {:else if contextExpanded.guidingBrief}
                       <p class="context-block-empty">No guiding brief set for this document type. Add one in Admin Console → Guiding Briefs.</p>
                     {/if}

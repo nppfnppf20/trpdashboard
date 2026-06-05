@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { md } from '$lib/utils/markdown.js';
 
   export let open = false;
   export let title = 'Edit Prompt';
@@ -8,6 +9,9 @@
   export let loading = false;
   export let saving = false;
   export let saved = false;
+
+  let activeTab = 'edit';
+  $: if (!open) activeTab = 'edit';
 
   const dispatch = createEventDispatcher();
 
@@ -25,6 +29,10 @@
       <div class="modal-header">
         <div class="modal-header-left">
           <span class="modal-title">{title}</span>
+          <div class="prompt-tabs">
+            <button class="prompt-tab" class:active={activeTab === 'edit'} on:click={() => activeTab = 'edit'}>Edit</button>
+            <button class="prompt-tab" class:active={activeTab === 'preview'} on:click={() => activeTab = 'preview'}>Preview</button>
+          </div>
         </div>
         <button class="modal-close" on:click={() => dispatch('close')}><i class="las la-times"></i></button>
       </div>
@@ -32,7 +40,7 @@
       <div class="modal-body">
         {#if loading}
           <div class="prompt-loading"><div class="spinner"></div><span>Loading prompt...</span></div>
-        {:else}
+        {:else if activeTab === 'edit'}
           <textarea
             class="prompt-editor"
             value={promptText}
@@ -47,6 +55,8 @@
               <pre class="context-template-body">{contextTemplate}</pre>
             </div>
           {/if}
+        {:else}
+          <div class="prompt-preview md-body">{@html md(promptText)}</div>
         {/if}
       </div>
 
@@ -102,10 +112,36 @@
   .modal-header-left {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.75rem;
   }
 
   .modal-title { font-size: 0.9375rem; font-weight: 700; color: #1e293b; }
+
+  .prompt-tabs { display: flex; gap: 2px; background: #f1f5f9; border-radius: 6px; padding: 2px; }
+  .prompt-tab {
+    padding: 0.25rem 0.75rem;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.12s;
+  }
+  .prompt-tab:hover { color: #374151; }
+  .prompt-tab.active { background: white; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  .prompt-preview {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    background: #fafafa;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    min-height: 400px;
+  }
 
   .modal-close {
     display: flex;

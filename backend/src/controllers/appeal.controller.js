@@ -863,11 +863,17 @@ export async function generateDraftFromPaNotes(req, res) {
         [projectId]
       );
     }
-    const [{ rows: briefingRows }, guidingBrief] = await Promise.all([
+    const [{ rows: briefingRows }, guidingBrief, { rows: startingDocRows }] = await Promise.all([
       briefingNoteQuery,
-      getGuidingBrief(draftType.slug, projectRows[0].development_type)
+      getGuidingBrief(draftType.slug, projectRows[0].development_type),
+      pool.query(
+        `SELECT slot_slug, content_text FROM appeals.pa_draft_starting_docs
+         WHERE project_id = $1 AND draft_type_id = $2`,
+        [projectId, typeId]
+      )
     ]);
     const projectBrief = briefingRows[0]?.summary_html ?? null;
+    const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
 
     const contentHtml = await generateAppealDraftFromPrompt({
       projectName: projectRows[0].project_name,
@@ -876,6 +882,7 @@ export async function generateDraftFromPaNotes(req, res) {
       issues,
       guidingBrief,
       projectBrief,
+      startingDocs,
     });
 
     const { rows } = await pool.query(
@@ -889,6 +896,72 @@ export async function generateDraftFromPaNotes(req, res) {
     res.json(rows[0]);
   } catch (err) {
     console.error('generateDraftFromPaNotes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Starting documents — per-project source docs for PA-workspace appeal drafts
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getStartingDocs(req, res) {
+  const { projectId, typeId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT slot_slug, content_text, file_name, updated_at
+       FROM appeals.pa_draft_starting_docs
+       WHERE project_id = $1 AND draft_type_id = $2`,
+      [projectId, typeId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getStartingDocs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function upsertStartingDoc(req, res) {
+  const { projectId, typeId, slotSlug } = req.params;
+  try {
+    let contentText = '';
+    let fileName = null;
+
+    if (req.file) {
+      const { text } = await parseFile(req.file.buffer, req.file.originalname);
+      contentText = text;
+      fileName = req.file.originalname;
+    } else {
+      contentText = req.body.content_text ?? '';
+      fileName = req.body.file_name ?? null;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO appeals.pa_draft_starting_docs
+         (project_id, draft_type_id, slot_slug, content_text, file_name, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (project_id, draft_type_id, slot_slug)
+       DO UPDATE SET content_text = $4, file_name = $5, updated_at = NOW()
+       RETURNING slot_slug, content_text, file_name, updated_at`,
+      [projectId, typeId, slotSlug, contentText, fileName]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('upsertStartingDoc error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function deleteStartingDoc(req, res) {
+  const { projectId, typeId, slotSlug } = req.params;
+  try {
+    await pool.query(
+      `DELETE FROM appeals.pa_draft_starting_docs
+       WHERE project_id = $1 AND draft_type_id = $2 AND slot_slug = $3`,
+      [projectId, typeId, slotSlug]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deleteStartingDoc error:', err);
     res.status(500).json({ error: err.message });
   }
 }

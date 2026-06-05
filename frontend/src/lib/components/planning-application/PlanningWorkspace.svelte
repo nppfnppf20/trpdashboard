@@ -21,6 +21,9 @@
   import FormattingPanel from '$lib/components/planning-application/FormattingPanel.svelte';
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
+  import { getStartingDocs, getDraftContext } from '$lib/api/appeal.js';
+  import { md } from '$lib/utils/markdown.js';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
   const draftKeyState  = actionPromptState('draft_key_summaries');
@@ -172,6 +175,7 @@
     }
     // Run independently — failures must not block the rest of the workspace
     await Promise.all([loadDraftTypes(), loadAssessmentIssues(), loadBriefingNotes(project.id)]);
+    loadCardContextPcts();
   }
 
 
@@ -260,6 +264,41 @@
   }
 
   let exportingWord = false;
+
+  let startingDocsType = null; // { id, slug, name } of the appeal type whose modal is open
+  let cardContextPct = {}; // typeId -> 0-100
+
+  async function loadCardContextPcts() {
+    // Issue notes already loaded — add their text to every type's baseline
+    const issueNotesChars = Object.values(issueNotes).reduce((acc, note) =>
+      acc + (note.argument_for?.length ?? 0) + (note.argument_against?.length ?? 0), 0);
+
+    const results = await Promise.all(
+      $draftTypes.map(async type => {
+        const isAppeal = type.tool === 'appeal';
+        const rawId = isAppeal ? parseInt(type.id.replace('appeal_', ''), 10) : type.id;
+        try {
+          const ctxPromise = isAppeal
+            ? getDraftContext(project.id, rawId).catch(() => null)
+            : getPaDraftContext(project.id, rawId).catch(() => null);
+          const docsPromise = isAppeal
+            ? getStartingDocs(project.id, rawId).catch(() => [])
+            : Promise.resolve([]);
+          const [ctx, docs] = await Promise.all([ctxPromise, docsPromise]);
+
+          let chars = 1500 + issueNotesChars;
+          if (ctx?.guidingBrief?.content) chars += ctx.guidingBrief.content.length;
+          if (ctx?.projectBrief) chars += ctx.projectBrief.replace(/<[^>]+>/g, '').length;
+          chars += docs.reduce((acc, r) => acc + (r.content_text?.length ?? 0), 0);
+
+          return [type.id, Math.min(100, Math.round(chars / 200000 * 100))];
+        } catch {
+          return [type.id, null];
+        }
+      })
+    );
+    cardContextPct = Object.fromEntries(results);
+  }
 
   async function handleExportToWord() {
     const html = draftEditor?.getHTML();
@@ -598,7 +637,7 @@
                       <i class="las la-angle-{contextExpanded.guidingBrief ? 'up' : 'down'} context-chevron"></i>
                     </button>
                     {#if contextExpanded.guidingBrief && contextData?.guidingBrief?.content}
-                      <div class="context-block-body">{contextData.guidingBrief.content}</div>
+                      <div class="context-block-body md-body">{@html md(contextData.guidingBrief.content)}</div>
                     {:else if contextExpanded.guidingBrief}
                       <p class="context-block-empty">No guiding brief set for this document type. Add one in Admin Console → Guiding Briefs.</p>
                     {/if}
@@ -708,12 +747,27 @@
                   </button>
                   {/if}
                   {#if type.tool === 'appeal'}
+                    <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name }}>
+                      <i class="las la-file-import"></i> Starting docs
+                    </button>
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openAppealPrompt(type.id)}><i class="las la-sliders-h"></i></button>
                   {:else}
                     <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
                   {/if}
                 </div>
               </div>
+
+              <!-- Context bar -->
+              {#if cardContextPct[type.id] != null}
+                {@const pct = cardContextPct[type.id]}
+                {@const colour = pct >= 75 ? '#dc2626' : pct >= 50 ? '#d97706' : '#16a34a'}
+                <div class="card-context-bar" title="~{pct}% of context window used (prompt + guiding brief + project brief + documents)">
+                  <span class="card-context-label">~{pct}% context</span>
+                  <div class="card-context-track">
+                    <div class="card-context-fill" style="width:{pct}%; background:{colour}"></div>
+                  </div>
+                </div>
+              {/if}
 
               <!-- Context accordion -->
               <button class="draft-sections-toggle" on:click={() => toggleCardContext(project.id, type.id)}>
@@ -848,6 +902,18 @@
 
             {#if stage1Error}
               <p class="stage1-error"><i class="las la-exclamation-circle"></i> {stage1Error}</p>
+            {/if}
+
+            <!-- Context bar -->
+            {#if cardContextPct[stage1TypeId] != null}
+              {@const pct = cardContextPct[stage1TypeId]}
+              {@const colour = pct >= 75 ? '#dc2626' : pct >= 50 ? '#d97706' : '#16a34a'}
+              <div class="card-context-bar" title="~{pct}% of context window used (prompt + guiding brief + project brief + issue notes)">
+                <span class="card-context-label">~{pct}% context</span>
+                <div class="card-context-track">
+                  <div class="card-context-fill" style="width:{pct}%; background:{colour}"></div>
+                </div>
+              </div>
             {/if}
 
             <!-- Context accordion -->
@@ -1523,6 +1589,16 @@
   on:save={() => saveActionPromptStore('stage1_review')}
   on:reset={() => resetActionPromptStore('stage1_review')}
 />
+
+{#if startingDocsType}
+  <StartingDocsModal
+    {project}
+    typeId={startingDocsType.id}
+    typeSlug={startingDocsType.slug}
+    typeName={startingDocsType.name}
+    on:close={() => { startingDocsType = null; loadCardContextPcts(); }}
+  />
+{/if}
 
 <PromptEditModal
   open={$appealPromptOpen}
@@ -2330,6 +2406,34 @@
   }
   .draft-generate-btn:hover:not(:disabled) { background: #6d28d9; }
   .draft-generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .card-context-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.25rem 0;
+  }
+
+  .card-context-label {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .card-context-track {
+    flex: 1;
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .card-context-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.4s ease, background 0.3s;
+  }
 
   .draft-sections-toggle {
     display: flex;

@@ -28,6 +28,22 @@ html, body, #svelte {
   height: 100%;
 }
 
+/* Rendered markdown — used in guiding briefs, prompt previews, context panels */
+.md-body { font-size: 0.8125rem; color: #374151; line-height: 1.65; }
+.md-body h1 { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 1.1rem 0 0.4rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.25rem; }
+.md-body h2 { font-size: 0.9375rem; font-weight: 700; color: #1e293b; margin: 1rem 0 0.35rem; }
+.md-body h3 { font-size: 0.85rem; font-weight: 600; color: #334155; margin: 0.75rem 0 0.25rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.md-body h4 { font-size: 0.8125rem; font-weight: 600; color: #475569; margin: 0.6rem 0 0.2rem; }
+.md-body p  { margin: 0 0 0.55rem; }
+.md-body ul, .md-body ol { margin: 0.25rem 0 0.55rem 1.25rem; padding: 0; }
+.md-body li { margin-bottom: 0.25rem; }
+.md-body strong { font-weight: 700; color: #1e293b; }
+.md-body em { font-style: italic; color: #475569; }
+.md-body code { font-family: 'Menlo', 'Consolas', monospace; font-size: 0.75rem; background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; color: #6d28d9; border: 1px solid #e2e8f0; }
+.md-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 0.9rem 0; }
+.md-body > *:first-child { margin-top: 0; }
+.md-body > *:last-child { margin-bottom: 0; }
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";

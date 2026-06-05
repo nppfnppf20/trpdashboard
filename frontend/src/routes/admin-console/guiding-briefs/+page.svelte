@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { listGuidingBriefs, createGuidingBrief, updateGuidingBrief, deleteGuidingBrief } from '$lib/api/guidingBriefs.js';
+  import { md } from '$lib/utils/markdown.js';
 
   const DOCUMENT_TYPES = [
     { value: 'hlpv',                      label: 'HLPV Narrative' },
@@ -246,6 +247,10 @@
           Guidance
           {#if form.guidance_content?.trim()}<span class="tab-dot tab-dot-ok"></span>{:else}<span class="tab-dot tab-dot-empty"></span>{/if}
         </button>
+        <button class="field-tab" class:active={activeTab === 'guidance-preview'} onclick={() => activeTab = 'guidance-preview'}>
+          <i class="las la-eye"></i>
+          Preview
+        </button>
         <button class="field-tab" class:active={activeTab === 'checklist'} onclick={() => activeTab = 'checklist'}>
           <i class="las la-clipboard-check"></i>
           Review Checklist
@@ -256,21 +261,30 @@
       <div class="editor-wrap">
         {#if activeTab === 'guidance'}
           <div class="tab-help">
-            Instructions injected into the prompt when drafting this document — covering expected structure, emphasis, development-type nuances, and what the document must cover.
+            Instructions injected into the prompt when drafting this document. Supports markdown — use ## for headings, **bold**, - for bullet lists.
           </div>
           <textarea
             class="text-area"
             bind:value={form.guidance_content}
-            placeholder="Describe how this document should be written. What sections are required? What should be emphasised? What pitfalls should be avoided?&#10;&#10;Example:&#10;- Always open with a clear description of the proposed development&#10;- Address landscape and visual impact in a dedicated section&#10;- For solar farms, always consider cumulative impact with neighbouring schemes&#10;- Conclude with a clear planning balance summary"
+            placeholder="Describe how this document should be written. What sections are required? What should be emphasised?&#10;&#10;## Structure&#10;- Always open with a clear description of the proposed development&#10;- Address landscape and visual impact in a dedicated section&#10;&#10;## Key issues&#10;- For solar farms, always consider cumulative impact"
           ></textarea>
+        {:else if activeTab === 'guidance-preview'}
+          <div class="tab-help">Formatted preview of the guidance content.</div>
+          <div class="preview-body md-body">
+            {#if form.guidance_content?.trim()}
+              {@html md(form.guidance_content)}
+            {:else}
+              <p class="preview-empty">Nothing written yet — switch to Guidance to add content.</p>
+            {/if}
+          </div>
         {:else}
           <div class="tab-help">
-            Things to check after the document is drafted. Written as plain prose or a bullet list — the LLM will flag anything missing or underdeveloped and suggest prompts to the user.
+            Things to check after the document is drafted. Written as plain prose or a bullet list.
           </div>
           <textarea
             class="text-area"
             bind:value={form.review_checklist}
-            placeholder="List topics or elements to verify in the draft. Example:&#10;&#10;- Ecology: check for SSSI, habitats, biodiversity net gain — flag if not mentioned&#10;- Landscape and visual impact: must be addressed with reference to the relevant LVIA&#10;- Cumulative impact: check if other schemes are referenced&#10;- Highways: look for access route and transport assessment references&#10;- Flood risk: verify that sequential test or Exception Test is mentioned if relevant"
+            placeholder="List topics or elements to verify in the draft. Example:&#10;&#10;- Ecology: check for SSSI, habitats, biodiversity net gain — flag if not mentioned&#10;- Landscape and visual impact: must be addressed with reference to the relevant LVIA&#10;- Cumulative impact: check if other schemes are referenced"
           ></textarea>
         {/if}
       </div>
@@ -369,6 +383,8 @@
   .text-area { flex: 1; width: 100%; padding: 1rem 1.5rem; border: none; resize: none; font-size: 0.875rem; line-height: 1.7; color: #1e293b; font-family: inherit; background: white; box-sizing: border-box; }
   .text-area:focus { outline: none; }
   .text-area::placeholder { color: #94a3b8; }
+  .preview-body { flex: 1; overflow-y: auto; padding: 1.25rem 1.5rem; background: white; font-size: 0.875rem; }
+  .preview-empty { color: #94a3b8; font-style: italic; margin: 0; }
 
   .modal-footer { display: flex; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; flex-shrink: 0; }
   .btn-primary { padding: 0.5rem 1.25rem; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 500; cursor: pointer; }

@@ -257,7 +257,16 @@ Output format — clean HTML only:
 // Single broad-prompt generation — for document types where the user controls
 // the whole prompt rather than per-section prompts.
 // Supports {{GUIDING_BRIEF}} variable substitution in the prompt text.
-export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null }) {
+const STARTING_DOC_VARS = [
+  { slug: 'decision_notice',    variable: 'DECISION_NOTICE',    label: 'Decision Notice' },
+  { slug: 'officers_report',    variable: 'OFFICERS_REPORT',    label: "Officer's Report" },
+  { slug: 'planning_statement', variable: 'PLANNING_STATEMENT', label: 'Planning Statement' },
+  { slug: 'committee_report',   variable: 'COMMITTEE_REPORT',   label: 'Committee Report' },
+  { slug: 'committee_minutes',  variable: 'COMMITTEE_MINUTES',  label: 'Committee Minutes' },
+  { slug: 'other',              variable: 'OTHER_DOCS',         label: 'Other Documents' },
+];
+
+export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {} }) {
   const issueContext = buildIssueContext(issues, {});
 
   const cleanProjectBrief = projectBrief?.trim()
@@ -265,17 +274,35 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     : '(no project brief uploaded)';
 
   const basePrompt = typePrompt?.trim() || DEFAULT_DRAFT_PROMPT;
-  const instructions = basePrompt
+
+  // Substitute all known variables including starting doc slots
+  let instructions = basePrompt
     .replace(/\{\{GUIDING_BRIEF\}\}/g, guidingBrief?.guidance_content?.trim() ?? '(no guiding brief set)')
     .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
     .replace(/\{\{DOCUMENT_TYPE\}\}/g, draftTypeName)
     .replace(/\{\{PROJECT_BRIEF\}\}/g, cleanProjectBrief);
 
+  for (const { slug, variable } of STARTING_DOC_VARS) {
+    instructions = instructions.replace(
+      new RegExp(`\\{\\{${variable}\\}\\}`, 'g'),
+      startingDocs[slug]?.trim() || '(not provided)'
+    );
+  }
+
   const projectBriefBlock = !basePrompt.includes('{{PROJECT_BRIEF}}') && projectBrief?.trim()
     ? `\nProject brief:\n${cleanProjectBrief}`
     : '';
 
-  const prompt = `${instructions}${projectBriefBlock}
+  // Auto-append any starting docs not explicitly referenced in the prompt
+  const appendedDocLines = STARTING_DOC_VARS
+    .filter(({ slug, variable }) => startingDocs[slug]?.trim() && !basePrompt.includes(`{{${variable}}}`))
+    .map(({ slug, label }) => `${label}:\n${startingDocs[slug].trim()}`)
+    .join('\n\n');
+  const startingDocsBlock = appendedDocLines
+    ? `\n\nSource documents:\n${appendedDocLines}`
+    : '';
+
+  const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}
 
 Project: ${projectName}
 Document type: ${draftTypeName}
@@ -287,7 +314,7 @@ Produce the complete ${draftTypeName} as HTML now.`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
-    max_tokens: 6000,
+    max_tokens: 16000,
     system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).`,
     messages: [{ role: 'user', content: prompt }]
   });

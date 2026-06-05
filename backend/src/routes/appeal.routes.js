@@ -55,6 +55,9 @@ import {
   getAppealTypePrompt,
   saveAppealTypePrompt,
   resetAppealTypePrompt,
+  getStartingDocs,
+  upsertStartingDoc,
+  deleteStartingDoc,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -136,6 +139,11 @@ router.get('/projects/:projectId/document-log', getDocumentLog);
 router.post('/projects/:projectId/document-log', createDocumentLogEntry);
 router.patch('/document-log/:entryId', updateDocumentLogEntry);
 router.delete('/document-log/:entryId', deleteDocumentLogEntry);
+
+// Starting documents (PA workspace appeal draft types)
+router.get('/projects/:projectId/starting-docs/:typeId', getStartingDocs);
+router.put('/projects/:projectId/starting-docs/:typeId/:slotSlug', upload.single('file'), upsertStartingDoc);
+router.delete('/projects/:projectId/starting-docs/:typeId/:slotSlug', deleteStartingDoc);
 
 // Documents
 router.get('/projects/:projectId/documents', getDocuments);

@@ -504,3 +504,40 @@ export async function updateDocumentStatus(docId, reviewStatus) {
   if (!res.ok) throw new Error('Failed to update document status');
   return res.json();
 }
+
+// ── Starting documents (PA workspace appeal draft types) ──────────────────────
+
+export async function getStartingDocs(projectId, typeId) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/starting-docs/${typeId}`);
+  if (!res.ok) throw new Error('Failed to fetch starting docs');
+  return res.json();
+}
+
+export async function upsertStartingDocText(projectId, typeId, slotSlug, contentText) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/starting-docs/${typeId}/${slotSlug}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content_text: contentText })
+  });
+  if (!res.ok) throw new Error('Failed to save starting doc');
+  return res.json();
+}
+
+export async function upsertStartingDocFile(projectId, typeId, slotSlug, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await authFetch(`/api/appeal/projects/${projectId}/starting-docs/${typeId}/${slotSlug}`, {
+    method: 'PUT',
+    body: formData
+  });
+  if (!res.ok) throw new Error('Failed to upload starting doc');
+  return res.json();
+}
+
+export async function deleteStartingDoc(projectId, typeId, slotSlug) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/starting-docs/${typeId}/${slotSlug}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error('Failed to remove starting doc');
+  return res.json();
+}
