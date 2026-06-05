@@ -366,6 +366,16 @@ export async function createArgumentPoint(projectId, point) {
 
 // ── Briefing notes ─────────────────────────────────────────────────────────
 
+export async function amendDraftFromBriefing(projectId, typeId, { currentHtml, briefingNoteId, docText, docType }) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/amend-from-briefing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentHtml, briefingNoteId: briefingNoteId ?? null, docText: docText ?? null, docType: docType ?? 'project_briefing' }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to amend draft'); }
+  return res.json(); // { html }
+}
+
 export async function getBriefingNotes(projectId) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-notes`);
   if (!res.ok) throw new Error('Failed to fetch briefing notes');

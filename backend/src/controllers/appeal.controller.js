@@ -7,7 +7,7 @@ import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs, DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT, DEFAULT_INCORPORATE_APPEAL_PROMPT, DEFAULT_DRAFT_ARGUMENTS_PROMPT, DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT, DEFAULT_SCOPE_INCORPORATION_PROMPT } from '../services/llm.service.js';
-import { generateAppealDraftFromPrompt, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
+import { generateAppealDraftFromPrompt, amendDraftFromBriefing as amendDraftFromBriefingService, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
 
 // Keys that this controller reads from admin_console.llm_prompts
 const APPEAL_PROMPT_KEYS = new Set([
@@ -1717,6 +1717,51 @@ export async function incorporateTargeted(req, res) {
     res.json({ updated });
   } catch (err) {
     console.error('incorporateTargeted error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Amend working draft from a briefing note
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function amendDraftFromBriefing(req, res) {
+  const { projectId, typeId } = req.params;
+  const { currentHtml, briefingNoteId, docText, docType = 'project_briefing' } = req.body ?? {};
+
+  if (!currentHtml?.trim()) return res.status(400).json({ error: 'No draft content provided' });
+
+  try {
+    const { rows: typeRows } = await pool.query(
+      `SELECT name FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+    );
+    if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+
+    let docContent;
+    if (briefingNoteId) {
+      const { rows } = await pool.query(
+        `SELECT title, summary_html FROM planning_applications.document_summaries
+         WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
+        [briefingNoteId, projectId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Briefing note not found' });
+      docContent = `${rows[0].title ? `[${rows[0].title}]\n` : ''}${rows[0].summary_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}`;
+    } else if (docText?.trim()) {
+      docContent = docText.trim();
+    } else {
+      return res.status(400).json({ error: 'No document provided' });
+    }
+
+    const html = await amendDraftFromBriefingService({
+      currentHtml,
+      docContent,
+      docType,
+      draftTypeName: typeRows[0].name,
+    });
+
+    res.json({ html });
+  } catch (err) {
+    console.error('amendDraftFromBriefing error:', err);
     res.status(500).json({ error: err.message });
   }
 }

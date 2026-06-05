@@ -331,6 +331,71 @@ Produce the complete ${draftTypeName} as HTML now.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Amend working draft from an uploaded document (briefing note, specialist
+// report, expert evidence, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DOC_TYPE_INSTRUCTIONS = {
+  project_briefing: `A project briefing note is provided below. It contains new instructions, updated strategy, revised arguments, or additional project-specific information from the team following a meeting.
+
+Read it carefully alongside the current draft and return an amended version that incorporates the guidance. Where the briefing note updates a position or argument, reflect that update precisely. Make only the changes clearly indicated or implied by the briefing note — do not rewrite sections it does not address.`,
+
+  specialist_report: `A specialist or technical report is provided below (for example a heritage, ecology, landscape, highways or acoustic report). It may have been produced by a consultant for this appeal.
+
+Read it alongside the current draft. Extract the relevant technical conclusions, findings and recommendations. Incorporate them into the appropriate sections of the draft where they support or inform the case. Do not introduce technical claims that are not in the report.`,
+
+  expert_evidence: `Expert evidence or a proof of evidence is provided below. It sets out the expert's conclusions on the matters in dispute.
+
+Read it alongside the current draft. Identify where the expert's conclusions are relevant to the arguments in the draft and incorporate those conclusions, cross-referencing the evidence where appropriate. Do not misrepresent or overstate the expert's position.`,
+
+  revised_document: `A revised version of a source document is provided below (for example an updated planning statement, revised drawings description, or amended conditions schedule).
+
+Read it alongside the current draft. Identify what has changed and update the draft to reflect those changes, correcting any references or arguments that depend on the earlier version.`,
+
+  other: `A supporting document is provided below.
+
+Read it alongside the current draft and incorporate any information that is relevant to the arguments or content of the draft. Do not introduce content that is not in the document.`,
+};
+
+export async function amendDraftFromBriefing({ currentHtml, docContent, docType = 'project_briefing', draftTypeName }) {
+  const docInstructions = DOC_TYPE_INSTRUCTIONS[docType] ?? DOC_TYPE_INSTRUCTIONS.other;
+
+  const prompt = `You are reviewing a working draft of a ${draftTypeName} for a planning appeal.
+
+${docInstructions}
+
+Rules applying to all document types:
+- Preserve the document structure, headings and overall organisation
+- Do not invent facts, policy references or content not in the document or current draft
+- Write in formal planning language appropriate for submission to the Planning Inspectorate
+- Do not number paragraphs
+
+Uploaded document:
+${docContent}
+
+---
+
+Current draft:
+${currentHtml}
+
+---
+
+Return the complete amended document as clean HTML only:
+- <h2> for main section headings, <h3> for sub-sections
+- <p> for body paragraphs, <ol>/<ul>/<li> for lists
+- No markdown, no em dashes, no document title`;
+
+  const response = await client.messages.create({
+    model: MODEL_SONNET,
+    max_tokens: 16000,
+    system: 'You are a planning appeal consultant. You output clean HTML documents. You never use markdown. Never use em dashes (—).',
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const raw = response.content[0].text.trim();
+  return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Shared prompt context builder
 // ─────────────────────────────────────────────────────────────────────────────
 

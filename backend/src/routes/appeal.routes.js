@@ -58,6 +58,7 @@ import {
   getStartingDocs,
   upsertStartingDoc,
   deleteStartingDoc,
+  amendDraftFromBriefing,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -128,6 +129,7 @@ router.post('/projects/:projectId/drafts/:typeId/upload-example', upload.single(
 // Briefing notes
 router.get('/projects/:projectId/briefing-notes', getBriefingNotes);
 router.post('/projects/:projectId/briefing-notes', upload.single('file'), uploadBriefingNote);
+router.post('/projects/:projectId/drafts/:typeId/amend-from-briefing', amendDraftFromBriefing);
 router.post('/projects/:projectId/draft-arguments-from-briefing', draftArgumentsFromBriefing);
 router.post('/projects/:projectId/draft-arguments-from-issue-notes', draftArgumentsFromIssueNotes);
 router.post('/projects/:projectId/draft-key-summaries-from-briefing', draftKeySummariesFromBriefing);

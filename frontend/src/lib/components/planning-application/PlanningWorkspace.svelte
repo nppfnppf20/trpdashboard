@@ -10,6 +10,7 @@
   import { getStage1Context } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import AppealBriefingAmendPanel from '$lib/components/appeal/AppealBriefingAmendPanel.svelte';
   import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
@@ -603,7 +604,21 @@
                 </div>
               {/if}
             </div>
-          {:else if activeType?.slug !== 'stage1_review' && activeType?.tool !== 'appeal'}
+          {:else if activeType?.tool === 'appeal'}
+            <AppealBriefingAmendPanel
+              {project}
+              typeId={$activeDraftTypeId}
+              briefingNotes={$briefingNotes}
+              currentDraftHtml={$draftEditorHtml}
+              on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
+              on:accepted={(e) => {
+                $draftEditorHtml = e.detail.html;
+                draftEditor?.setHTML(e.detail.html);
+                $draftSaved = false;
+                incorporateReviewMode = false;
+              }}
+            />
+          {:else if activeType?.slug !== 'stage1_review'}
             <PlanningDocIncorporatePanel
               {project}
               typeId={$activeDraftTypeId}
