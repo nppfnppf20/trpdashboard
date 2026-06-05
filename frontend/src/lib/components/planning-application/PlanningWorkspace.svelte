@@ -634,6 +634,15 @@
               {project}
               typeId={$activeDraftTypeId}
               currentDraftHtml={$draftEditorHtml}
+              splitAll={true}
+              manualSelect={true}
+              docTypes={[
+                { value: 'project_briefing',  label: 'Project Briefing' },
+                { value: 'specialist_report', label: 'Specialist Report' },
+                { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
+                { value: 'revised_document',  label: 'Revised Document' },
+                { value: 'other',             label: 'Other Document' },
+              ]}
               on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
               on:accepted={(e) => {
                 $draftEditorHtml = e.detail.html;
