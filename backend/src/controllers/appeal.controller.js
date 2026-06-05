@@ -875,6 +875,26 @@ export async function generateDraftFromPaNotes(req, res) {
     const projectBrief = briefingRows[0]?.summary_html ?? null;
     const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
 
+    // Resolve briefing note selections stored in the starting docs slot
+    let briefingNotes = '';
+    const briefingSelectionJson = startingDocs['briefing_notes'];
+    if (briefingSelectionJson) {
+      try {
+        const ids = JSON.parse(briefingSelectionJson);
+        if (Array.isArray(ids) && ids.length > 0) {
+          const { rows: noteRows } = await pool.query(
+            `SELECT title, summary_html FROM planning_applications.document_summaries
+             WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
+             ORDER BY created_at DESC`,
+            [ids, projectId]
+          );
+          briefingNotes = noteRows
+            .map(r => `${r.title ? `[${r.title}]\n` : ''}${r.summary_html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? ''}`)
+            .join('\n\n---\n\n');
+        }
+      } catch { /* malformed JSON — ignore */ }
+    }
+
     const contentHtml = await generateAppealDraftFromPrompt({
       projectName: projectRows[0].project_name,
       draftTypeName: draftType.name,
@@ -883,6 +903,7 @@ export async function generateDraftFromPaNotes(req, res) {
       guidingBrief,
       projectBrief,
       startingDocs,
+      briefingNotes,
     });
 
     const { rows } = await pool.query(

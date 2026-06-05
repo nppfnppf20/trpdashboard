@@ -266,12 +266,14 @@ const STARTING_DOC_VARS = [
   { slug: 'other',              variable: 'OTHER_DOCS',         label: 'Other Documents' },
 ];
 
-export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {} }) {
+export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '' }) {
   const issueContext = buildIssueContext(issues, {});
 
   const cleanProjectBrief = projectBrief?.trim()
     ? projectBrief.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)
     : '(no project brief uploaded)';
+
+  const cleanBriefingNotes = briefingNotes?.trim() || '(no briefing notes provided for this document)';
 
   const basePrompt = typePrompt?.trim() || DEFAULT_DRAFT_PROMPT;
 
@@ -280,7 +282,8 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     .replace(/\{\{GUIDING_BRIEF\}\}/g, guidingBrief?.guidance_content?.trim() ?? '(no guiding brief set)')
     .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
     .replace(/\{\{DOCUMENT_TYPE\}\}/g, draftTypeName)
-    .replace(/\{\{PROJECT_BRIEF\}\}/g, cleanProjectBrief);
+    .replace(/\{\{PROJECT_BRIEF\}\}/g, cleanProjectBrief)
+    .replace(/\{\{BRIEFING_NOTES\}\}/g, cleanBriefingNotes);
 
   for (const { slug, variable } of STARTING_DOC_VARS) {
     instructions = instructions.replace(
@@ -302,7 +305,12 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     ? `\n\nSource documents:\n${appendedDocLines}`
     : '';
 
-  const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}
+  // Auto-append briefing notes if not explicitly referenced in the prompt
+  const briefingNotesBlock = briefingNotes?.trim() && !basePrompt.includes('{{BRIEFING_NOTES}}')
+    ? `\n\nProject Briefing Notes:\n${briefingNotes.trim()}`
+    : '';
+
+  const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}${briefingNotesBlock}
 
 Project: ${projectName}
 Document type: ${draftTypeName}
