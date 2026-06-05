@@ -637,6 +637,14 @@
               splitAll={true}
               manualSelect={true}
               docTypes={[
+                ...(activeType?.slug === 'planning_statement' ? [
+                  { value: 'pre_app',              label: 'Pre-app Response',      projectDoc: true },
+                  { value: 'eia_response',         label: 'EIA / ES Response',     projectDoc: true },
+                  { value: 'sci',                  label: 'Statement of Community Involvement', projectDoc: true },
+                  { value: 'site_surroundings',    label: 'Site & Surroundings',   projectDoc: true },
+                  { value: 'about_applicant',      label: 'About the Applicant',   projectDoc: true },
+                  { value: 'proposed_development', label: 'Proposed Development',  projectDoc: true },
+                ] : []),
                 { value: 'project_briefing',  label: 'Project Briefing' },
                 { value: 'specialist_report', label: 'Specialist Report' },
                 { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },

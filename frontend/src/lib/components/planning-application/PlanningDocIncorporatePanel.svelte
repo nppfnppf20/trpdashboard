@@ -2,6 +2,7 @@
   import { createEventDispatcher, tick } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
   import { paScopeIncorporation, paIncorporateTargeted } from '$lib/api/planningApplication.js';
+  import { generateDocumentSummary, replaceDocumentSummary } from '$lib/api/projectDocs.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
@@ -16,6 +17,65 @@
   export let incorporateLabel = null;   // button label override
 
   let selectedDocType = docTypes?.[0]?.value ?? null;
+
+  $: if (docTypes && !docTypes.some(dt => dt.value === selectedDocType)) {
+    selectedDocType = docTypes[0]?.value ?? null;
+  }
+
+  $: isProjectDoc = !!docTypes?.find(dt => dt.value === selectedDocType)?.projectDoc;
+  $: selectedDocType, resetProjDoc();
+
+  // project doc state machine: idle | generating | preview | saving | saved
+  let projDocState = 'idle';
+  let projDocSummaryHtml = '';
+  let projDocError = null;
+  let projDocFileName = null;
+
+  function resetProjDoc() {
+    projDocState = 'idle';
+    projDocSummaryHtml = '';
+    projDocError = null;
+    projDocFileName = null;
+  }
+
+  async function startProjectDocSummary() {
+    if (inputTab === 'upload' && !uploadFile) return;
+    if (inputTab === 'paste' && !pasteText.trim()) return;
+    projDocError = null;
+    projDocState = 'generating';
+    try {
+      const result = await generateDocumentSummary(project.id, {
+        file: inputTab === 'upload' ? uploadFile : null,
+        text: inputTab === 'paste' ? pasteText : null,
+        fileName: inputTab === 'upload' ? uploadFile.name : (pasteTitle || null),
+        docType: selectedDocType
+      });
+      projDocSummaryHtml = result.summary_html;
+      projDocFileName = result.file_name ?? null;
+      projDocState = 'preview';
+    } catch (err) {
+      projDocError = err.message;
+      projDocState = 'idle';
+    }
+  }
+
+  async function saveProjectDoc() {
+    projDocState = 'saving';
+    const docTypeLabel = docTypes?.find(dt => dt.value === selectedDocType)?.label ?? selectedDocType;
+    const titleVal = (inputTab === 'upload' ? (uploadTitle || uploadFile?.name) : pasteTitle) || docTypeLabel;
+    try {
+      await replaceDocumentSummary(project.id, {
+        title: titleVal,
+        file_name: projDocFileName || null,
+        doc_type: selectedDocType,
+        summary_html: projDocSummaryHtml
+      });
+      projDocState = 'saved';
+    } catch (err) {
+      projDocError = err.message;
+      projDocState = 'preview';
+    }
+  }
 
   const scopeState       = actionPromptState('scope_incorporation');
   const incorporateState = actionPromptState('incorporate_assessment');
@@ -91,7 +151,7 @@
     return blocks;
   }
 
-  // â”€â”€ File handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ File handling â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   function onDrop(e) {
     e.preventDefault();
     docDragOver = false;
@@ -111,7 +171,7 @@
     uploadError = null;
   }
 
-  // â”€â”€ Scoping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Scoping â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   async function startIncorporate() {
     if (inputTab === 'upload' && !uploadFile) return;
     if (inputTab === 'paste' && !pasteText.trim()) return;
@@ -167,7 +227,7 @@
     const targeted = paragraphsOverride ?? allParagraphs.filter(p => scopedIds.has(p.id));
 
     if (!targeted.length) {
-      incorporateError = 'No paragraphs selected â€” tick at least one to update.';
+      incorporateError = 'No paragraphs selected â€" tick at least one to update.';
       panelState = 'scoped';
       return;
     }
@@ -268,7 +328,7 @@
     return [before, newAssessmentHtml, after].filter(Boolean).join('\n');
   }
 
-  // â”€â”€ Accept / discard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Accept / discard â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   function acceptAll() {
     changeGroups = changeGroups.map(g => g.type === 'unchanged' ? g : { ...g, accepted: true });
     commitAccepted();
@@ -293,10 +353,11 @@
     suggestedHtml = '';
     changeGroups = [];
     incorporateError = null;
+    resetProjDoc();
     dispatch('reviewchange', { active: false });
   }
 
-  // â”€â”€ Paragraph diff â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Paragraph diff â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   function splitIntoParagraphs(html) {
     if (!html?.trim()) return [];
     const parser = new DOMParser();
@@ -402,12 +463,57 @@
       <div class="doc-type-row">
         <label class="doc-type-label">Document type</label>
         <select class="doc-type-select" bind:value={selectedDocType}>
-          {#each docTypes as dt}
-            <option value={dt.value}>{dt.label}</option>
-          {/each}
+          {#if docTypes.some(dt => dt.projectDoc)}
+            <optgroup label="Planning Statement Variables">
+              {#each docTypes.filter(dt => dt.projectDoc) as dt}
+                <option value={dt.value}>{dt.label}</option>
+              {/each}
+            </optgroup>
+            <optgroup label="Survey Reports">
+              {#each docTypes.filter(dt => !dt.projectDoc) as dt}
+                <option value={dt.value}>{dt.label}</option>
+              {/each}
+            </optgroup>
+          {:else}
+            {#each docTypes as dt}
+              <option value={dt.value}>{dt.label}</option>
+            {/each}
+          {/if}
         </select>
       </div>
     {/if}
+
+    {#if isProjectDoc && projDocState !== 'idle'}
+      {#if projDocState === 'generating'}
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <div class="loading-text">
+            <span>Generating summary...</span>
+            <span class="loading-sub">Summarising document for planning statement</span>
+          </div>
+        </div>
+      {:else}
+        <div class="proj-preview">
+          <div class="proj-preview-header">
+            <span class="proj-preview-title">{docTypes?.find(dt => dt.value === selectedDocType)?.label ?? selectedDocType}</span>
+            <button class="btn-secondary" on:click={() => { projDocState = 'idle'; projDocSummaryHtml = ''; projDocError = null; }}>Replace</button>
+          </div>
+          <div class="proj-preview-body">
+            {@html projDocSummaryHtml}
+          </div>
+          {#if projDocError}<p class="proj-error-msg">{projDocError}</p>{/if}
+          <div class="proj-preview-actions">
+            {#if projDocState === 'saved'}
+              <span class="proj-saved-badge"><i class="las la-check-circle"></i> Saved to project</span>
+            {:else}
+              <button class="incorporate-btn" disabled={projDocState === 'saving'} on:click={saveProjectDoc}>
+                {#if projDocState === 'saving'}<div class="mini-spinner"></div> Saving...{:else}<i class="las la-save"></i> Save to project{/if}
+              </button>
+            {/if}
+          </div>
+        </div>
+      {/if}
+    {:else}
     <div class="input-tabs">
       <button class="input-tab" class:active={inputTab === 'upload'} on:click={() => inputTab = 'upload'}>
         <i class="las la-upload"></i> Upload
@@ -436,7 +542,7 @@
           <span class="upload-sub">Click to replace</span>
         {:else}
           <i class="las la-cloud-upload-alt"></i>
-          <span>Drop a specialist report or click to upload</span>
+          <span>{isProjectDoc ? 'Drop the document or click to upload' : 'Drop a specialist report or click to upload'}</span>
           <span class="upload-sub">PDF, TXT or MD</span>
         {/if}
       </div>
@@ -454,18 +560,25 @@
       <div class="notes-area">
         <label class="notes-label">
           <i class="las la-pen"></i> Your notes
-          <span class="notes-hint">Tell Claude what to focus on â€” high priority in the prompt</span>
+          <span class="notes-hint">Tell Claude what to focus on â€" high priority in the prompt</span>
         </label>
         <textarea class="notes-textarea" placeholder="e.g. Focus on the transport conclusions in section 4..." bind:value={userNotes}></textarea>
       </div>
 
       <div class="idle-actions">
-        <button class="incorporate-btn" disabled={!uploadFile} on:click={startIncorporate}>
-          <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
-        </button>
-        <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
-        <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+        {#if isProjectDoc}
+          <button class="incorporate-btn" disabled={!uploadFile} on:click={startProjectDocSummary}>
+            <i class="las la-magic"></i> Generate Summary
+          </button>
+        {:else}
+          <button class="incorporate-btn" disabled={!uploadFile} on:click={startIncorporate}>
+            <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
+          </button>
+          <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+          <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+        {/if}
       </div>
+      {#if projDocError && isProjectDoc}<p class="error-msg">{projDocError}</p>{/if}
 
     {:else}
       <div class="paste-area">
@@ -474,18 +587,26 @@
         <div class="notes-area notes-area--inline">
           <label class="notes-label">
             <i class="las la-pen"></i> Your notes
-            <span class="notes-hint">Tell Claude what to focus on â€” high priority</span>
+            <span class="notes-hint">Tell Claude what to focus on â€" high priority</span>
           </label>
           <textarea class="notes-textarea" placeholder="e.g. Focus only on transport conclusions..." bind:value={userNotes}></textarea>
         </div>
         <div class="idle-actions idle-actions--inline">
-          <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim()} on:click={startIncorporate}>
-            <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
-          </button>
-          <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
-          <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+          {#if isProjectDoc}
+            <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim()} on:click={startProjectDocSummary}>
+              <i class="las la-magic"></i> Generate Summary
+            </button>
+          {:else}
+            <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim()} on:click={startIncorporate}>
+              <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
+            </button>
+            <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+            <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+          {/if}
         </div>
+        {#if projDocError && isProjectDoc}<p class="error-msg">{projDocError}</p>{/if}
       </div>
+    {/if}
     {/if}
 
   {:else if panelState === 'scoping'}
@@ -502,7 +623,7 @@
       <div class="scoped-header">
         <span class="scoped-title"><i class="las la-search"></i> {uploadFile?.name ?? (pasteTitle || 'Document')}</span>
         {#if scopeSummary}<p class="scoped-summary">{scopeSummary}</p>{/if}
-        {#if scopeError}<p class="scoped-error"><i class="las la-exclamation-circle"></i> Scoping failed â€” select paragraphs manually.</p>{/if}
+        {#if scopeError}<p class="scoped-error"><i class="las la-exclamation-circle"></i> Scoping failed â€" select paragraphs manually.</p>{/if}
       </div>
 
       <div class="scoped-instruct-row">
@@ -546,7 +667,7 @@
         {/each}
       </div>
 
-      {#if incorporateError}<p class="error-msg" style="padding:0 1rem">{incorporateError}</p>{/if}
+      {#if incorporateError}<p class="error-msg error-msg--padded">{incorporateError}</p>{/if}
 
       <div class="scoped-actions">
         <button class="btn-secondary" on:click={discard}>Cancel</button>
@@ -562,7 +683,7 @@
       <div class="spinner"></div>
       <div class="loading-text">
         <span>Updating {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}...</span>
-        <span class="loading-sub">This may take 15â€“30 seconds</span>
+        <span class="loading-sub">This may take 15â€"30 seconds</span>
       </div>
     </div>
 
@@ -614,7 +735,7 @@
                   <div class="ctrl-card" class:rejected={!group.accepted}>
                     <div class="ctrl-card-tag">
                       {#if group.type === 'added'}<span class="change-tag change-tag--added">+ Added</span>
-                      {:else if group.type === 'removed'}<span class="change-tag change-tag--removed">âˆ’ Removed</span>
+                      {:else if group.type === 'removed'}<span class="change-tag change-tag--removed">âˆ' Removed</span>
                       {:else}<span class="change-tag change-tag--modified">~ Modified</span>{/if}
                     </div>
                     <div class="para-btns">
@@ -691,6 +812,8 @@
   .upload-sub { font-size: 0.75rem !important; color: #94a3b8 !important; font-weight: 400 !important; }
 
   .error-msg { font-size: 0.8rem; color: #ef4444; margin: 0 1rem 0.5rem; }
+  .error-msg--padded { padding: 0 1rem; }
+  .proj-error-msg { font-size: 0.8rem; color: #ef4444; padding: 0 1rem 0.5rem; margin: 0; }
 
   .notes-area { flex-shrink: 0; padding: 0 1rem 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
   .notes-area--inline { padding: 0; }
@@ -776,6 +899,20 @@
   .btn-commit { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.625rem; background: #7c3aed; color: white; border: none; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
   .btn-commit:hover:not(:disabled) { background: #6d28d9; }
   .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .proj-preview { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  .proj-preview-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.625rem 1rem; background: white; border-bottom: 1px solid #e2e8f0; }
+  .proj-preview-title { font-size: 0.8rem; font-weight: 700; color: #1e293b; }
+  .proj-preview-body { flex: 1; overflow-y: auto; padding: 0.875rem 1rem; font-size: 0.8rem; line-height: 1.6; color: #374151; }
+  .proj-preview-body :global(h1, h2, h3, h4) { font-size: 0.875rem; font-weight: 700; margin: 0.75rem 0 0.375rem; color: #1e293b; }
+  .proj-preview-body :global(p) { margin: 0 0 0.5rem; }
+  .proj-preview-body :global(ul, ol) { padding-left: 1.25rem; margin: 0 0 0.5rem; }
+  .proj-preview-body :global(strong) { font-weight: 600; }
+  .proj-preview-actions { flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; background: white; }
+  .proj-saved-badge { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8rem; font-weight: 600; color: #16a34a; }
+
+  .mini-spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .review-rows { flex: 1; overflow-y: auto; background: white; }
   .diff-no-changes { font-size: 0.875rem; color: #94a3b8; text-align: center; padding: 3rem 2rem; margin: 0; }
