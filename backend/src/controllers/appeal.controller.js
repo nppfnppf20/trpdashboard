@@ -1599,10 +1599,11 @@ export async function incorporateDocumentIntoTdraft(req, res) {
 
 export async function scopeIncorporation(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title, paragraphs } = req.body;
+  const { document_id, document_text, document_title } = req.body ?? {};
+  const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
-  if (!document_id && !document_text) return res.status(400).json({ error: 'document_id or document_text required' });
+  if (!document_id && !document_text && !req.file) return res.status(400).json({ error: 'document_id, document_text, or file required' });
 
   try {
     const { rows: projectRows } = await pool.query(
@@ -1621,6 +1622,10 @@ export async function scopeIncorporation(req, res) {
       if (!rows.length) return res.status(404).json({ error: 'Document not found' });
       documentText = rows[0].file_text ?? '';
       filename = rows[0].filename;
+    } else if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      documentText = parsed.text;
+      filename = document_title || req.file.originalname;
     } else {
       documentText = document_text;
       filename = document_title || 'Pasted document';
@@ -1660,10 +1665,11 @@ export async function scopeIncorporation(req, res) {
 
 export async function incorporateTargeted(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title, paragraphs, user_notes = null } = req.body;
+  const { document_id, document_text, document_title, user_notes = null } = req.body ?? {};
+  const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
-  if (!document_id && !document_text) return res.status(400).json({ error: 'document_id or document_text required' });
+  if (!document_id && !document_text && !req.file) return res.status(400).json({ error: 'document_id, document_text, or file required' });
 
   try {
     const { rows: projectRows } = await pool.query(
@@ -1682,6 +1688,10 @@ export async function incorporateTargeted(req, res) {
       if (!rows.length) return res.status(404).json({ error: 'Document not found' });
       documentText = rows[0].file_text ?? '';
       filename = rows[0].filename;
+    } else if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      documentText = parsed.text;
+      filename = document_title || req.file.originalname;
     } else {
       documentText = document_text;
       filename = document_title || 'Pasted document';

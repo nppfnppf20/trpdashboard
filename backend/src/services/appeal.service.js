@@ -473,19 +473,22 @@ ${documentText}`;
   return JSON.parse(raw);
 }
 
-export const DEFAULT_INCORPORATE_APPEAL_PROMPT = `You are updating a section of a formal planning appeal document to incorporate evidence from a new specialist report.
+export const DEFAULT_INCORPORATE_APPEAL_PROMPT = `You are updating a formal planning appeal document to incorporate content from an uploaded document. The uploaded document may be a project briefing note, a specialist technical report, expert evidence, revised source material, or other supporting information.
 
-The following paragraphs are unlocked for editing. All other parts of the document are fixed. You may update in-scope paragraphs and add new paragraphs where the document warrants it. Leave a paragraph unchanged if the document adds nothing relevant to it.
+The following paragraphs are unlocked for editing — treat them as the sections of the document where changes are permitted. You must actively look for ways to incorporate the uploaded content into these paragraphs. Where the uploaded document provides new information, updated arguments, additional evidence, or revised instructions that relate to a paragraph's subject matter, update that paragraph to reflect it. Only leave a paragraph unchanged if the uploaded document genuinely has no bearing on it whatsoever.
 
-For new paragraphs, use id format "INSERT_AFTER_[id]".
+Where the uploaded document is a project briefing note: follow any strategic direction, updated arguments or specific instructions it contains, even if they require significant rewrites.
+Where it is a technical report: incorporate the relevant conclusions, findings and recommendations into the appropriate paragraphs.
 
-Write in formal planning language. Cite paragraph or section numbers from the document where available. Do not use em dashes. Do not number paragraphs.
+You may also insert new paragraphs where the uploaded document introduces content that has no home in the existing paragraphs. Use id format "INSERT_AFTER_[existing_id]" for these.
 
-Return ONLY a valid JSON array — no markdown, no explanation:
+Write in formal planning language. Do not use em dashes. Do not number paragraphs.
+
+Return ONLY a valid JSON array — no markdown, no explanation. Include every paragraph you are returning, whether changed or not if it needs to appear in the output:
 [
   {"id": "p3", "html": "<p>Updated paragraph...</p>"},
-  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph...</p>"},
-  {"id": "p7", "html": "<p>Unchanged or updated...</p>"}
+  {"id": "INSERT_AFTER_p3", "html": "<p>New paragraph inserted after p3...</p>"},
+  {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
 export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null }) {
@@ -500,28 +503,34 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
     .map(p => `${p.id}:\n${p.html}`)
     .join('\n\n');
 
-  const instructionBlock = customPrompt ?? DEFAULT_INCORPORATE_APPEAL_PROMPT;
+  const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
 
-  const prompt = `Document type: ${draftTypeName}
-Project: ${projectName}
+An uploaded document is provided below. Read it carefully. It may be a project briefing note with strategic direction and revised arguments, a specialist technical report, expert evidence, or other supporting material.${userNotesBlock}
 
-${contextBlocks}
-
-## Key Issues
-${issueContext}
-
-## Document Being Incorporated: ${filename}
+UPLOADED DOCUMENT: ${filename}
 ${documentText}
 
-## In-Scope Paragraphs
-${userNotesBlock}${instructionBlock}
+---
 
-${paraBlock}`;
+SELECTED PARAGRAPHS TO REVISE:
+${paraBlock}
+
+---
+
+Your task: revise the paragraphs above to incorporate the uploaded document. For each paragraph, consider what the uploaded document adds, changes or requires and update it accordingly. Do not leave paragraphs unchanged just because changes are difficult. Where the uploaded document is a briefing note with strategic direction, follow those instructions even if they require significant rewrites. Where it is a technical report, incorporate the relevant conclusions and findings.
+
+You may insert new paragraphs using id "INSERT_AFTER_[id]" where the uploaded document introduces content with no home in the existing paragraphs.
+
+Write in formal planning language — no em dashes, no paragraph numbers.
+
+Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you did not change:
+[{"id": "p2", "html": "<p>...</p>"}, {"id": "INSERT_AFTER_p2", "html": "<p>...</p>"}]`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }]
+    max_tokens: 16000,
+    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.',
+    messages: [{ role: 'user', content: prompt }],
   });
 
   const raw = response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');

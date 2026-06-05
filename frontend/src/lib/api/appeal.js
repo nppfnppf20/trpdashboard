@@ -366,6 +366,37 @@ export async function createArgumentPoint(projectId, point) {
 
 // ── Briefing notes ─────────────────────────────────────────────────────────
 
+export async function appealScopeIncorporation(projectId, typeId, { file, documentText, documentTitle, paragraphs, docType }) {
+  const form = new FormData();
+  form.append('paragraphs', JSON.stringify(paragraphs));
+  if (docType) form.append('doc_type', docType);
+  if (file) {
+    form.append('file', file);
+  } else {
+    form.append('document_text', documentText ?? '');
+    form.append('document_title', documentTitle ?? '');
+  }
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/scope-incorporation`, { method: 'POST', body: form });
+  if (!res.ok) throw new Error('Failed to scope incorporation');
+  return res.json();
+}
+
+export async function appealIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, paragraphs, userNotes, docType }) {
+  const form = new FormData();
+  form.append('paragraphs', JSON.stringify(paragraphs));
+  if (userNotes) form.append('user_notes', userNotes);
+  if (docType) form.append('doc_type', docType);
+  if (file) {
+    form.append('file', file);
+  } else {
+    form.append('document_text', documentText ?? '');
+    form.append('document_title', documentTitle ?? '');
+  }
+  const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/incorporate-targeted`, { method: 'POST', body: form });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to incorporate document'); }
+  return res.json();
+}
+
 export async function amendDraftFromBriefing(projectId, typeId, { currentHtml, briefingNoteId, docText, docType }) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/amend-from-briefing`, {
     method: 'POST',

@@ -65,7 +65,7 @@ const router = express.Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 20 * 1024 * 1024, fieldSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = file.originalname.split('.').pop().toLowerCase();
     const allowed = ['application/pdf', 'text/plain', 'text/markdown'];
@@ -122,8 +122,8 @@ router.post('/projects/:projectId/drafts/:typeId/generate-from-pa', generateDraf
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate', generateSection);
 router.post('/projects/:projectId/drafts/:typeId/sections/:sectionId/generate-from-pa', generateSectionFromPaNotes);
 router.post('/projects/:projectId/drafts/:typeId/incorporate', incorporateDocumentIntoTdraft);
-router.post('/projects/:projectId/drafts/:typeId/scope-incorporate', scopeIncorporation);
-router.post('/projects/:projectId/drafts/:typeId/incorporate-targeted', incorporateTargeted);
+router.post('/projects/:projectId/drafts/:typeId/scope-incorporation', upload.single('file'), scopeIncorporation);
+router.post('/projects/:projectId/drafts/:typeId/incorporate-targeted', upload.single('file'), incorporateTargeted);
 router.post('/projects/:projectId/drafts/:typeId/upload-example', upload.single('file'), uploadDraftExample);
 
 // Briefing notes

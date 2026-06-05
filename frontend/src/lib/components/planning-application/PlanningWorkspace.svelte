@@ -10,7 +10,7 @@
   import { getStage1Context } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
-  import AppealBriefingAmendPanel from '$lib/components/appeal/AppealBriefingAmendPanel.svelte';
+  import { appealScopeIncorporation, appealIncorporateTargeted } from '$lib/api/appeal.js';
   import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
@@ -605,11 +605,22 @@
               {/if}
             </div>
           {:else if activeType?.tool === 'appeal'}
-            <AppealBriefingAmendPanel
+            <PlanningDocIncorporatePanel
               {project}
-              typeId={$activeDraftTypeId}
-              briefingNotes={$briefingNotes}
+              typeId={parseInt($activeDraftTypeId.replace('appeal_', ''), 10)}
               currentDraftHtml={$draftEditorHtml}
+              apiScope={appealScopeIncorporation}
+              apiIncorporate={appealIncorporateTargeted}
+              splitAll={true}
+              manualSelect={true}
+              incorporateLabel="Select paragraphs to update"
+              docTypes={[
+                { value: 'project_briefing',  label: 'Project Briefing' },
+                { value: 'specialist_report', label: 'Specialist Report' },
+                { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
+                { value: 'revised_document',  label: 'Revised Document' },
+                { value: 'other',             label: 'Other Document' },
+              ]}
               on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
               on:accepted={(e) => {
                 $draftEditorHtml = e.detail.html;

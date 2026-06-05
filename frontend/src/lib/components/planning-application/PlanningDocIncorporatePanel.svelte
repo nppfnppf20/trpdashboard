@@ -8,6 +8,14 @@
   export let project;
   export let typeId;
   export let currentDraftHtml = '';
+  export let apiScope = null;           // override for non-PA contexts
+  export let apiIncorporate = null;     // override for non-PA contexts
+  export let docTypes = null;           // array of { value, label } — when set shows a dropdown
+  export let splitAll = false;          // when true, split entire document not just assessment section
+  export let manualSelect = false;      // when true, skip LLM scoping — user ticks paragraphs manually
+  export let incorporateLabel = null;   // button label override
+
+  let selectedDocType = docTypes?.[0]?.value ?? null;
 
   const scopeState       = actionPromptState('scope_incorporation');
   const incorporateState = actionPromptState('incorporate_assessment');
@@ -38,7 +46,23 @@
   let scopedIds = new Set();
   let scopeError = null;
 
-  // â”€â”€ Paragraph splitting â€” assessment section only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Paragraph splitting ──────────────────────────────────────────────────────
+  function splitAllParagraphs(html) {
+    if (!html?.trim()) return [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+    const root = doc.body.firstChild;
+    if (!root) return [];
+    const blocks = [];
+    let idx = 0;
+    root.childNodes.forEach(node => {
+      if (node.nodeType !== 1) return;
+      const text = node.textContent.trim();
+      if (text) blocks.push({ id: `p${idx++}`, html: node.outerHTML, text });
+    });
+    return blocks;
+  }
+
   function splitAssessmentParagraphs(html) {
     if (!html?.trim()) return [];
     const parser = new DOMParser();
@@ -102,10 +126,22 @@
 
   async function runScope() {
     panelState = 'scoping';
-    allParagraphs = splitAssessmentParagraphs(currentDraftHtml);
+    allParagraphs = (splitAll ? splitAllParagraphs : splitAssessmentParagraphs)(currentDraftHtml);
+
+    // Manual selection: skip LLM scoping entirely — user ticks paragraphs themselves
+    if (manualSelect || splitAll) {
+      scopedIds = new Set();
+      scopeSummary = '';
+      if (!allParagraphs.length) {
+        scopeError = 'No content found in the draft — open the draft and make sure it has been generated.';
+      }
+      panelState = 'scoped';
+      return;
+    }
 
     if (!allParagraphs.length) {
-      await runIncorporate(allParagraphs);
+      scopeError = 'No paragraphs found in the draft assessment section.';
+      panelState = 'scoped';
       return;
     }
 
@@ -114,7 +150,7 @@
         ? { file: uploadFile, documentTitle: uploadTitle || null, paragraphs: allParagraphs.map(p => ({ id: p.id, text: p.text })) }
         : { documentText: pasteText, documentTitle: pasteTitle || 'Pasted document', paragraphs: allParagraphs.map(p => ({ id: p.id, text: p.text })) };
 
-      const result = await paScopeIncorporation(project.id, typeId, payload);
+      const result = await (apiScope ?? paScopeIncorporation)(project.id, typeId, { ...payload, docType: selectedDocType });
       scopeSummary = result.summary ?? '';
       scopedIds = new Set(result.relevant_ids ?? []);
       panelState = 'scoped';
@@ -141,7 +177,7 @@
         ? { file: uploadFile, documentTitle: uploadTitle || null, paragraphs: targeted, userNotes: userNotes || null }
         : { documentText: pasteText, documentTitle: pasteTitle || 'Pasted document', paragraphs: targeted, userNotes: userNotes || null };
 
-      const result = await paIncorporateTargeted(project.id, typeId, payload);
+      const result = await (apiIncorporate ?? paIncorporateTargeted)(project.id, typeId, { ...payload, docType: selectedDocType });
 
       const updatedMap = {};
       const insertionsAfter = {};
@@ -181,8 +217,11 @@
 
       const updatedAssessmentHtml = updatedAssessmentParts.join('\n');
 
-      // Replace assessment section in full draft
-      suggestedHtml = replaceAssessmentSection(currentDraftHtml, updatedAssessmentHtml);
+      // For splitAll mode the paragraphs cover the whole document — use directly.
+      // Otherwise splice updated paragraphs back into the Planning Assessment section.
+      suggestedHtml = splitAll
+        ? updatedAssessmentHtml
+        : replaceAssessmentSection(currentDraftHtml, updatedAssessmentHtml);
       changeGroups = computeParagraphDiff(currentDraftHtml, suggestedHtml);
       panelState = 'review';
       dispatch('reviewchange', { active: true });
@@ -227,18 +266,6 @@
     const before = nodes.slice(0, assessmentStart).map(n => n.outerHTML ?? n.textContent).join('\n');
     const after = nodes.slice(assessmentEnd).map(n => n.outerHTML ?? n.textContent).join('\n');
     return [before, newAssessmentHtml, after].filter(Boolean).join('\n');
-  }
-
-  function splitAllParagraphs(html) {
-    if (!html?.trim()) return [];
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
-    const blocks = [];
-    doc.body.firstChild?.childNodes.forEach(node => {
-      if (node.nodeType === 1) blocks.push(node.outerHTML);
-      else if (node.nodeType === 3 && node.textContent.trim()) blocks.push(`<p>${node.textContent.trim()}</p>`);
-    });
-    return blocks;
   }
 
   // â”€â”€ Accept / discard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -371,6 +398,16 @@
 <div class="panel">
 
   {#if panelState === 'idle'}
+    {#if docTypes}
+      <div class="doc-type-row">
+        <label class="doc-type-label">Document type</label>
+        <select class="doc-type-select" bind:value={selectedDocType}>
+          {#each docTypes as dt}
+            <option value={dt.value}>{dt.label}</option>
+          {/each}
+        </select>
+      </div>
+    {/if}
     <div class="input-tabs">
       <button class="input-tab" class:active={inputTab === 'upload'} on:click={() => inputTab = 'upload'}>
         <i class="las la-upload"></i> Upload
@@ -424,7 +461,7 @@
 
       <div class="idle-actions">
         <button class="incorporate-btn" disabled={!uploadFile} on:click={startIncorporate}>
-          <i class="las la-file-import"></i> Incorporate into assessment
+          <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
         </button>
         <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
         <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
@@ -443,7 +480,7 @@
         </div>
         <div class="idle-actions idle-actions--inline">
           <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim()} on:click={startIncorporate}>
-            <i class="las la-file-import"></i> Incorporate into assessment
+            <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
           </button>
           <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
           <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
@@ -468,9 +505,22 @@
         {#if scopeError}<p class="scoped-error"><i class="las la-exclamation-circle"></i> Scoping failed â€” select paragraphs manually.</p>{/if}
       </div>
 
-      <p class="scoped-instruct">
-        {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''} identified in the Planning Assessment. Review and adjust, then incorporate.
-      </p>
+      <div class="scoped-instruct-row">
+        <p class="scoped-instruct">
+          {#if manualSelect || splitAll}
+            Tick the paragraphs you want to update, then click Incorporate.
+          {:else}
+            {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''} identified in the Planning Assessment. Review and adjust, then incorporate.
+          {/if}
+        </p>
+        <div class="scoped-select-all">
+          {#if scopedIds.size === allParagraphs.filter(p => !getHeadingLevel(p.html)).length}
+            <button class="scoped-selectall-btn" on:click={() => scopedIds = new Set()}>Deselect all</button>
+          {:else}
+            <button class="scoped-selectall-btn" on:click={() => scopedIds = new Set(allParagraphs.filter(p => !getHeadingLevel(p.html)).map(p => p.id))}>Select all</button>
+          {/if}
+        </div>
+      </div>
 
       <div class="scoped-list">
         {#each allParagraphs as para, idx}
@@ -623,6 +673,11 @@
 <style>
   .panel { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: #f8fafc; }
 
+  .doc-type-row { display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 0.875rem; background: white; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
+  .doc-type-label { font-size: 0.75rem; font-weight: 600; color: #475569; white-space: nowrap; }
+  .doc-type-select { flex: 1; padding: 0.3rem 0.5rem; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8rem; font-family: inherit; color: #374151; background: white; cursor: pointer; }
+  .doc-type-select:focus { outline: none; border-color: #7c3aed; }
+
   .input-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid #e2e8f0; background: white; }
   .input-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.625rem; border: none; background: transparent; font-size: 0.8rem; font-weight: 500; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; transition: all 0.15s; }
   .input-tab.active { color: #7c3aed; border-bottom-color: #7c3aed; }
@@ -687,7 +742,11 @@
   .scoped-title { font-size: 0.8125rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
   .scoped-summary { margin: 0; font-size: 0.8rem; color: #475569; line-height: 1.5; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 5px; padding: 0.5rem 0.625rem; }
   .scoped-error { margin: 0; font-size: 0.75rem; color: #dc2626; display: flex; align-items: center; gap: 0.3rem; }
-  .scoped-instruct { flex-shrink: 0; margin: 0; padding: 0.625rem 1rem; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #f1f5f9; }
+  .scoped-instruct-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem 0.5rem 1rem; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
+  .scoped-instruct { margin: 0; font-size: 0.75rem; color: #64748b; }
+  .scoped-select-all { flex-shrink: 0; }
+  .scoped-selectall-btn { padding: 0.25rem 0.625rem; background: white; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 0.75rem; color: #374151; cursor: pointer; font-family: inherit; white-space: nowrap; }
+  .scoped-selectall-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
   .scoped-list { flex: 1; overflow-y: auto; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; }
   .scoped-item { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem 0.625rem; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer; transition: all 0.12s; font-size: 0; }
   .scoped-item.selected { background: #f0fdf4; border-color: #86efac; }
