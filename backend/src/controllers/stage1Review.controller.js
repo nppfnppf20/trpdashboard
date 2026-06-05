@@ -212,6 +212,24 @@ Return ONLY valid JSON — no explanation, no markdown fences.`;
       tableHtml,
     ].join('');
 
+    // ── 8. Save to drafts table and return standard draft record ─────────────
+    const { rows: typeRows } = await pool.query(
+      `SELECT id FROM planning_applications.draft_types WHERE slug = 'stage1_review' LIMIT 1`
+    );
+    if (typeRows.length) {
+      const draftTypeId = typeRows[0].id;
+      const { rows: draftRows } = await pool.query(
+        `INSERT INTO planning_applications.drafts
+           (project_id, draft_type_id, content_html, generated_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (project_id, draft_type_id)
+         DO UPDATE SET content_html = $3, generated_at = NOW(), updated_at = NOW()
+         RETURNING *`,
+        [projectId, draftTypeId, documentHtml]
+      );
+      return res.json(draftRows[0]);
+    }
+
     res.json({ html: documentHtml, rows: filledRows });
   } catch (err) {
     console.error('stage1Review.generate error:', err);

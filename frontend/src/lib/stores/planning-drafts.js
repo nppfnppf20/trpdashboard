@@ -34,13 +34,18 @@ import {
   saveAppealTypePrompt as saveAppealTypePromptApi,
   resetAppealTypePrompt as resetAppealTypePromptApi,
 } from '$lib/api/appeal.js';
-import { getStage1Context } from '$lib/api/stage1Review.js';
+import { getStage1Context, generateStage1Review as generateStage1ReviewApi } from '$lib/api/stage1Review.js';
 
 // ── Routing helpers ────────────────────────────────────────────────────────────
 // Appeal types get id: 'appeal_N' to avoid collision with PA numeric IDs.
+// Stage 1 has tool:'stage1' and a plain numeric PA type ID.
 
 function isAppeal(typeId) {
   return typeof typeId === 'string' && typeId.startsWith('appeal_');
+}
+
+function isStage1(typeId) {
+  return get(draftTypes).find(t => t.id === typeId)?.tool === 'stage1';
 }
 
 function rawId(typeId) {
@@ -48,25 +53,37 @@ function rawId(typeId) {
 }
 
 function api(typeId) {
-  return isAppeal(typeId) ? {
-    getDraft:       (pid, _id) => appealGetDraft(pid, rawId(typeId)),
-    saveDraft:      (pid, _id, html) => appealSaveDraft(pid, rawId(typeId), html),
-    getSections:    (_id) => appealGetSections(rawId(typeId)),
-    createSection:  (_id, data) => appealCreateSection(rawId(typeId), data),
-    updateSection:  (sid, data) => appealUpdateSection(sid, data),
-    deleteSection:  (sid) => appealDeleteSection(sid),
+  if (isAppeal(typeId)) return {
+    getDraft:        (pid, _id) => appealGetDraft(pid, rawId(typeId)),
+    saveDraft:       (pid, _id, html) => appealSaveDraft(pid, rawId(typeId), html),
+    getSections:     (_id) => appealGetSections(rawId(typeId)),
+    createSection:   (_id, data) => appealCreateSection(rawId(typeId), data),
+    updateSection:   (sid, data) => appealUpdateSection(sid, data),
+    deleteSection:   (sid) => appealDeleteSection(sid),
     reorderSections: (_id, order) => appealReorderSections(rawId(typeId), order),
-    generateDraft:  (pid, _id, opts) => generateDraftFromPaNotes(pid, rawId(typeId), opts),
+    generateDraft:   (pid, _id, opts) => generateDraftFromPaNotes(pid, rawId(typeId), opts),
     generateSection: (pid, _id, sid) => generateSectionFromPaNotes(pid, rawId(typeId), sid),
-  } : {
-    getDraft:       paGetDraft,
-    saveDraft:      paSaveDraft,
-    getSections:    paGetSections,
-    createSection:  paCreateSection,
-    updateSection:  paUpdateSection,
-    deleteSection:  paDeleteSection,
+  };
+  if (isStage1(typeId)) return {
+    getDraft:        paGetDraft,
+    saveDraft:       paSaveDraft,
+    getSections:     () => Promise.resolve([]),
+    createSection:   () => Promise.resolve(null),
+    updateSection:   () => Promise.resolve(null),
+    deleteSection:   () => Promise.resolve(null),
+    reorderSections: () => Promise.resolve(null),
+    generateDraft:   (pid, _id, opts) => generateStage1ReviewApi(pid, opts),
+    generateSection: () => Promise.resolve(null),
+  };
+  return {
+    getDraft:        paGetDraft,
+    saveDraft:       paSaveDraft,
+    getSections:     paGetSections,
+    createSection:   paCreateSection,
+    updateSection:   paUpdateSection,
+    deleteSection:   paDeleteSection,
     reorderSections: paReorderSections,
-    generateDraft:  paGenerateDraft,
+    generateDraft:   paGenerateDraft,
     generateSection: paGenerateDraftSection,
   };
 }
@@ -125,20 +142,19 @@ export const sectionExampleSaved = writable(false);
 
 export async function loadDraftTypes() {
   try {
-    const [paTypes, hasNotes, appealTypesRaw] = await Promise.all([
+    const [paTypes, appealTypesRaw] = await Promise.all([
       paGetDraftTypes(),
-      hasPaIssueNotes(_projectId),
       appealGetDraftTypes(),
     ]);
 
     const tagged = [
-      ...paTypes.map(t => ({ ...t, tool: 'pa' })),
-      ...(hasNotes ? appealTypesRaw.map(t => ({
+      ...paTypes.map(t => ({ ...t, tool: t.slug === 'stage1_review' ? 'stage1' : 'pa' })),
+      ...appealTypesRaw.map(t => ({
         ...t,
         id: `appeal_${t.id}`,
         _rawId: t.id,
         tool: 'appeal',
-      })) : []),
+      })),
     ];
 
     draftTypes.set(tagged);
@@ -534,7 +550,7 @@ export async function toggleCardContext(projectId, key) {
   cardContextState.update(s => ({ ...s, [key]: { ...(s[key] ?? {}), expanded: true, loading: !s[key]?.loaded } }));
   if (current?.loaded) return;
   try {
-    const data = key === 'stage1_review'
+    const data = isStage1(key)
       ? await getStage1Context(projectId)
       : isAppeal(key)
         ? await appealGetDraftContext(projectId, rawId(key))
