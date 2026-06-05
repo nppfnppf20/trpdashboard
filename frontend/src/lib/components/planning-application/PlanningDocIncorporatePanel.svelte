@@ -1,8 +1,8 @@
 ﻿<script>
-  import { createEventDispatcher, tick } from 'svelte';
+  import { createEventDispatcher, tick, onMount } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
   import { paScopeIncorporation, paIncorporateTargeted } from '$lib/api/planningApplication.js';
-  import { generateDocumentSummary, replaceDocumentSummary } from '$lib/api/projectDocs.js';
+  import { generateDocumentSummary, replaceDocumentSummary, getDocumentSummaries } from '$lib/api/projectDocs.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
@@ -30,6 +30,20 @@
   let projDocSummaryHtml = '';
   let projDocError = null;
   let projDocFileName = null;
+
+  // existing summaries (keyed by doc_type) — loaded once on mount, refreshed after save
+  let summariesByType = {};
+
+  async function loadExistingSummaries() {
+    try {
+      const rows = await getDocumentSummaries(project.id);
+      summariesByType = Object.fromEntries(rows.map(r => [r.doc_type, r]));
+    } catch (_) { /* non-critical */ }
+  }
+
+  onMount(loadExistingSummaries);
+
+  $: existingSummary = isProjectDoc ? (summariesByType[selectedDocType] ?? null) : null;
 
   function resetProjDoc() {
     projDocState = 'idle';
@@ -71,6 +85,8 @@
         summary_html: projDocSummaryHtml
       });
       projDocState = 'saved';
+      await loadExistingSummaries();
+      dispatch('summarysaved', { docType: selectedDocType, summaryHtml: projDocSummaryHtml });
     } catch (err) {
       projDocError = err.message;
       projDocState = 'preview';
@@ -502,18 +518,34 @@
             {@html projDocSummaryHtml}
           </div>
           {#if projDocError}<p class="proj-error-msg">{projDocError}</p>{/if}
+          {#if existingSummary && projDocState !== 'saved'}
+            <p class="proj-replace-warning"><i class="las la-exclamation-triangle"></i> Saving will replace the existing {docTypes?.find(dt => dt.value === selectedDocType)?.label ?? ''} summary.</p>
+          {/if}
           <div class="proj-preview-actions">
             {#if projDocState === 'saved'}
-              <span class="proj-saved-badge"><i class="las la-check-circle"></i> Saved to project</span>
+              <span class="proj-saved-badge"><i class="las la-check-circle"></i> Saved — planning statement will use this on next generate</span>
             {:else}
               <button class="incorporate-btn" disabled={projDocState === 'saving'} on:click={saveProjectDoc}>
-                {#if projDocState === 'saving'}<div class="mini-spinner"></div> Saving...{:else}<i class="las la-save"></i> Save to project{/if}
+                {#if projDocState === 'saving'}<div class="mini-spinner"></div> Saving...{:else}<i class="las la-save"></i> {existingSummary ? 'Replace summary' : 'Save summary'}{/if}
               </button>
             {/if}
           </div>
         </div>
       {/if}
     {:else}
+    {#if isProjectDoc}
+      {#if existingSummary}
+        <div class="existing-summary-notice existing-summary-notice--has">
+          <i class="las la-check-circle"></i>
+          <span>Existing summary saved ({new Date(existingSummary.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}). Upload a new document to replace it.</span>
+        </div>
+      {:else}
+        <div class="existing-summary-notice existing-summary-notice--none">
+          <i class="las la-exclamation-circle"></i>
+          <span>No summary saved yet for this variable. Generate one below.</span>
+        </div>
+      {/if}
+    {/if}
     <div class="input-tabs">
       <button class="input-tab" class:active={inputTab === 'upload'} on:click={() => inputTab = 'upload'}>
         <i class="las la-upload"></i> Upload
@@ -900,13 +932,23 @@
   .btn-commit:hover:not(:disabled) { background: #6d28d9; }
   .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .existing-summary-notice { display: flex; align-items: flex-start; gap: 0.4rem; padding: 0.5rem 0.875rem; font-size: 0.75rem; line-height: 1.4; flex-shrink: 0; }
+  .existing-summary-notice i { flex-shrink: 0; margin-top: 0.05rem; }
+  .existing-summary-notice--has { background: #f0fdf4; color: #15803d; border-bottom: 1px solid #bbf7d0; }
+  .existing-summary-notice--none { background: #fffbeb; color: #92400e; border-bottom: 1px solid #fde68a; }
+  .proj-replace-warning { display: flex; align-items: center; gap: 0.375rem; margin: 0; padding: 0.375rem 1rem; font-size: 0.75rem; color: #b45309; background: #fffbeb; border-top: 1px solid #fde68a; flex-shrink: 0; }
+
   .proj-preview { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
   .proj-preview-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.625rem 1rem; background: white; border-bottom: 1px solid #e2e8f0; }
   .proj-preview-title { font-size: 0.8rem; font-weight: 700; color: #1e293b; }
   .proj-preview-body { flex: 1; overflow-y: auto; padding: 0.875rem 1rem; font-size: 0.8rem; line-height: 1.6; color: #374151; }
-  .proj-preview-body :global(h1, h2, h3, h4) { font-size: 0.875rem; font-weight: 700; margin: 0.75rem 0 0.375rem; color: #1e293b; }
+  .proj-preview-body :global(h1) { font-size: 0.875rem; font-weight: 700; margin: 0.75rem 0 0.375rem; color: #1e293b; }
+  .proj-preview-body :global(h2) { font-size: 0.875rem; font-weight: 700; margin: 0.75rem 0 0.375rem; color: #1e293b; }
+  .proj-preview-body :global(h3) { font-size: 0.875rem; font-weight: 700; margin: 0.75rem 0 0.375rem; color: #1e293b; }
+  .proj-preview-body :global(h4) { font-size: 0.875rem; font-weight: 700; margin: 0.75rem 0 0.375rem; color: #1e293b; }
   .proj-preview-body :global(p) { margin: 0 0 0.5rem; }
-  .proj-preview-body :global(ul, ol) { padding-left: 1.25rem; margin: 0 0 0.5rem; }
+  .proj-preview-body :global(ul) { padding-left: 1.25rem; margin: 0 0 0.5rem; }
+  .proj-preview-body :global(ol) { padding-left: 1.25rem; margin: 0 0 0.5rem; }
   .proj-preview-body :global(strong) { font-weight: 600; }
   .proj-preview-actions { flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; background: white; }
   .proj-saved-badge { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8rem; font-weight: 600; color: #16a34a; }

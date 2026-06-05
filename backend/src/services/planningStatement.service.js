@@ -86,21 +86,21 @@ const OUTPUT_VAR_PLACEHOLDER_LABELS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_SUMMARY_PROMPTS = {
-  pre_app: `You are a planning consultant. Summarise this pre-application response from the Local Planning Authority.
-Structure your summary with these headings: Overview of Proposal Assessed, Key Concerns Raised, Aspects Supported or Not Objected To, Recommended Changes or Conditions.
-Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+  pre_app: `You are a planning consultant preparing a Planning Statement. Summarise the key content of this pre-application response in 2–3 short paragraphs.
+Write as a factual account of what the LPA said — the position taken, the issues raised, and what was supported or accepted. Keep each paragraph brief and to the point. Do not use headings or bullet points.
+Output clean HTML using only <p> tags.`,
 
-  eia_response: `You are a planning consultant. Summarise this EIA Scoping Opinion or Environmental Statement response.
-Structure your summary with these headings: Topics Scoped In and Out, Key Technical Concerns or Requirements, Methodology Recommendations, Overarching Comments.
-Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+  eia_response: `You are a planning consultant preparing a Planning Statement. Summarise the key content of this EIA scoping opinion or environmental response in 2–3 short paragraphs.
+Write as a factual account of what the document covers — topics scoped in or out, requirements set, and overarching conclusions. Keep each paragraph brief and to the point. Do not use headings or bullet points.
+Output clean HTML using only <p> tags.`,
 
-  sci: `You are a planning consultant. Summarise this Statement of Community Involvement or consultation document.
-Structure your summary with these headings: Consultation Methods and Timeline, Key Themes from Community Feedback, Objections and Concerns Raised, Support Received, How Feedback Has Been Addressed.
-Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+  sci: `You are a planning consultant preparing a Planning Statement. Summarise the key content of this community consultation document in 2–3 short paragraphs.
+Write as a factual account of what the consultation involved — how it was carried out, what feedback was received, and how it has been addressed. Keep each paragraph brief and to the point. Do not use headings or bullet points.
+Output clean HTML using only <p> tags.`,
 
-  site_surroundings: `You are a planning consultant. Summarise this Site and Surroundings document.
-Structure your summary with these headings: Site Description and Key Characteristics, Surrounding Context and Land Uses, Planning Constraints and Designations, Access and Infrastructure, Development Opportunities and Constraints.
-Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
+  site_surroundings: `You are a planning consultant preparing a Planning Statement. Summarise the key content of this site and surroundings description in 2–3 short paragraphs.
+Write as a factual account of the site — its location and characteristics, the surrounding context, and any relevant designations or constraints. Keep each paragraph brief and to the point. Do not use headings or bullet points.
+Output clean HTML using only <p> tags.`,
 
   about_applicant: `You are a planning consultant. This document contains the applicant's standard 'About the Applicant' text for use in a Planning Statement.
 Format this content clearly for inclusion in the statement. Preserve the original wording exactly — do not paraphrase, shorten, or alter the substance.
@@ -233,7 +233,10 @@ export async function generatePlanningStatementAssessment({ projectName, section
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
     const evidence = evidenceByTrack[issue.id] ?? [];
     const issueType = issueTypesByTrack[issue.id] ?? null;
-    if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length && !issueType) continue;
+    if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length && !issueType) {
+      parts.push(`<h3>${issue.label}</h3>`);
+      continue;
+    }
     console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
     const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType, briefingSummary, guidingBrief });
     parts.push(html);

@@ -16,7 +16,6 @@
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
-  import FormattingPanel from '$lib/components/planning-application/FormattingPanel.svelte';
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
@@ -107,6 +106,27 @@
 
   let draftEditor;
   let sectionExampleEditor;
+
+  const PROJ_DOC_PLACEHOLDER_LABELS = {
+    pre_app:              'Pre-Application Response Summary',
+    eia_response:         'EIA / Environmental Statement Summary',
+    sci:                  'Statement of Community Involvement Summary',
+    site_surroundings:    'Site and Surroundings',
+    about_applicant:      'About the Applicant',
+    proposed_development: 'Proposed Development',
+  };
+
+  function injectSummaryIntoDraft(docType, summaryHtml) {
+    const label = PROJ_DOC_PLACEHOLDER_LABELS[docType];
+    if (!label || !$draftEditorHtml) return;
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`<p[^>]*class="draft-placeholder"[^>]*>\\[${escaped}[^\\]]*\\]<\\/p>`, 'i');
+    if (!re.test($draftEditorHtml)) return;
+    const newHtml = $draftEditorHtml.replace(re, summaryHtml);
+    $draftEditorHtml = newHtml;
+    draftEditor?.setHTML(newHtml);
+    $draftSaved = false;
+  }
 
   $: setDraftEditor(draftEditor);
   $: setSectionExampleEditor(sectionExampleEditor);
@@ -321,9 +341,6 @@
     </button>
     <button class="tab" class:active={activeTab === 'log'} on:click={() => activeTab = 'log'}>
       Document Log
-    </button>
-    <button class="tab" class:active={activeTab === 'formatting'} on:click={() => activeTab = 'formatting'}>
-      Formatting
     </button>
   </div>
 
@@ -658,6 +675,7 @@
                 $draftSaved = false;
                 incorporateReviewMode = false;
               }}
+              on:summarysaved={(e) => injectSummaryIntoDraft(e.detail.docType, e.detail.summaryHtml)}
             />
           {/if}
         </div>
@@ -850,10 +868,6 @@
         </div>
       </div>
     {/if}
-
-  {:else if activeTab === 'formatting'}
-    <!-- ── Formatting ── -->
-    <FormattingPanel />
 
   {/if}
 
