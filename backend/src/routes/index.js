@@ -33,6 +33,8 @@ import meetingNotesRoutes from './meetingNotes.routes.js';
 import emailDigestRoutes from './emailDigest.routes.js';
 import scraperFiltersRoutes from './scraperFilters.routes.js';
 import stage1ReviewRoutes from './stage1Review.routes.js';
+import planningHistoryRoutes from './planningHistory.routes.js';
+import policyDocumentsRoutes from './policyDocuments.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -111,6 +113,8 @@ router.use('/api/meeting-notes', meetingNotesRoutes);
 router.use('/api/admin-console/email', emailDigestRoutes);
 router.use('/api/scraper-filters', scraperFiltersRoutes);
 router.use('/api/stage1-review', stage1ReviewRoutes);
+router.use('/api/lpa', planningHistoryRoutes);
+router.use('/api/lpa', policyDocumentsRoutes);
 
 export default router;
 

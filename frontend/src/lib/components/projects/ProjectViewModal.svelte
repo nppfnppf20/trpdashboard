@@ -8,6 +8,8 @@
   import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
   import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
   import ProjectDocsTab from '$lib/components/projects/ProjectDocsTab.svelte';
+  import PlanningHistoryTab from '$lib/components/projects/PlanningHistoryTab.svelte';
+  import RelevantDocumentsSection from '$lib/components/projects/RelevantDocumentsSection.svelte';
   import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
@@ -27,7 +29,7 @@
   let activeTab = 'site_boundary';
   let betaDropdownOpen = false;
 
-  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv'];
+  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs'];
 
   function closeBetaDropdown() {
     betaDropdownOpen = false;
@@ -507,28 +509,16 @@
           Project Details
         </button>
         <button
-          class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
-          on:click={() => activeTab = 'surveyor'}
-        >
-          Surveyor Management
-        </button>
-        <button
           class="tab-button {activeTab === 'stages' ? 'active' : ''}"
           on:click={() => activeTab = 'stages'}
         >
-          Project Stages <span class="beta-tag">Beta</span>
+          Key Issues
         </button>
         <button
-          class="tab-button {activeTab === 'relevant_policy' ? 'active' : ''}"
-          on:click={() => activeTab = 'relevant_policy'}
+          class="tab-button {activeTab === 'policy_and_history' ? 'active' : ''}"
+          on:click={() => activeTab = 'policy_and_history'}
         >
-          Relevant Policy
-        </button>
-        <button
-          class="tab-button {activeTab === 'project_docs' ? 'active' : ''}"
-          on:click={() => activeTab = 'project_docs'}
-        >
-          Project Docs
+          Policy & Planning History
         </button>
         <button
           class="tab-button {activeTab === 'meeting_notes' ? 'active' : ''}"
@@ -541,6 +531,12 @@
           on:click={() => activeTab = 'completeness'}
         >
           Completeness
+        </button>
+        <button
+          class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
+          on:click={() => activeTab = 'surveyor'}
+        >
+          Surveyor Management
         </button>
         <div class="beta-dropdown-wrapper">
           <button
@@ -578,6 +574,13 @@
                 role="menuitem"
               >
                 Renewables HLPV Analysis
+              </button>
+              <button
+                class="beta-dropdown-item {activeTab === 'project_docs' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('project_docs')}
+                role="menuitem"
+              >
+                Project Docs
               </button>
             </div>
           {/if}
@@ -1395,8 +1398,24 @@
             </div>
           {:else if activeTab === 'stages'}
             <ProjectStagesBoard project={projectData} />
-          {:else if activeTab === 'relevant_policy'}
-            <RelevantPolicyTab project={projectData} />
+          {:else if activeTab === 'policy_and_history'}
+            <div class="policy-history-split">
+              <div class="split-card">
+                <div class="split-card-label">Policy</div>
+                <div class="split-card-body split-card-body--scroll">
+                  <div class="left-panel-section-divider">Relevant Documents</div>
+                  <RelevantDocumentsSection project={projectData} />
+                  <div class="left-panel-section-divider">Relevant Planning Policy</div>
+                  <RelevantPolicyTab project={projectData} />
+                </div>
+              </div>
+              <div class="split-card">
+                <div class="split-card-label"><i class="las la-history"></i> Planning History</div>
+                <div class="split-card-body">
+                  <PlanningHistoryTab project={projectData} />
+                </div>
+              </div>
+            </div>
           {:else if activeTab === 'similar_schemes'}
             <SimilarSchemesTab project={projectData} />
           {:else if activeTab === 'lpa_decision_analysis'}
@@ -2413,5 +2432,89 @@
   .beta-dropdown-item.active {
     color: #9333ea;
     background: #faf5ff;
+  }
+
+  /* Policy & Planning History split layout */
+  .policy-history-split {
+    display: flex;
+    gap: 1rem;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .split-card {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .split-card-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #9333ea;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    background: #faf5ff;
+    border-bottom: 1px solid #e9d5ff;
+    flex-shrink: 0;
+  }
+
+  .split-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .split-card-body--scroll {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Override child components' own scroll when they live in the shared scrolling left panel */
+  .split-card-body--scroll :global(.policy-tab) {
+    height: auto;
+    overflow-y: visible;
+    padding: 0;
+  }
+
+  .left-panel-section-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.25rem 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #7e22ce;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    background: #f5f3ff;
+    border-top: 1px solid #e9d5ff;
+    border-bottom: 1px solid #e9d5ff;
+    flex-shrink: 0;
+  }
+
+  .left-panel-section-divider:first-child {
+    border-top: none;
+  }
+
+  .left-panel-section-divider span {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .left-panel-section-divider i {
+    font-size: 1rem;
   }
 </style>

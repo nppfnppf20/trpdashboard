@@ -128,7 +128,37 @@ export async function generateStage1Review(req, res) {
     // Strip HTML tags — keep full text, no character cap
     const briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
-    // ── 3. Guiding brief ──────────────────────────────────────────────────────
+    // ── 3. Planning history from project_planning_history table ──────────────
+    const { rows: planningHistoryRows } = await pool.query(
+      `SELECT section, planning_ref, description, decision, decision_date
+       FROM public.project_planning_history
+       WHERE project_id = $1
+       ORDER BY section, id`,
+      [projectId]
+    );
+
+    const formatHistoryPlain = (rows) => {
+      if (!rows.length) return 'None recorded.';
+      const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+      return rows.map(h => {
+        const parts = [];
+        if (h.planning_ref) parts.push(`Ref: ${h.planning_ref}`);
+        if (h.description) parts.push(h.description);
+        if (h.decision) parts.push(`Decision: ${h.decision}`);
+        const d = formatDate(h.decision_date);
+        if (d) parts.push(`Date: ${d}`);
+        return parts.join(' — ');
+      }).join('\n');
+    };
+
+    const onSiteRows  = planningHistoryRows.filter(r => r.section === 'on_site');
+    const nearbyRows  = planningHistoryRows.filter(r => r.section === 'nearby');
+
+    const planningHistoryBlock = planningHistoryRows.length
+      ? `\n\n## Planning History (use this data for the "Planning history" row — do not infer from the briefing note)\nOn-site:\n${formatHistoryPlain(onSiteRows)}\n\nNearby:\n${formatHistoryPlain(nearbyRows)}`
+      : '';
+
+    // ── 4. Guiding brief ──────────────────────────────────────────────────────
     const guidingBrief = await getGuidingBrief('stage1_review', project.development_type || null);
 
     // ── 4. Load prompt from global table ─────────────────────────────────────
@@ -150,7 +180,7 @@ LPA: ${lpa}
 Proposal: ${proposal}${guidanceSection}
 
 ## Full Briefing Note
-${briefingPlain}
+${briefingPlain}${planningHistoryBlock}
 
 ## Task
 You are completing a Stage 1 Planning Appraisal table. For each row below, extract and synthesise ALL relevant information from the briefing note above. These entries must be detailed and comprehensive — this is a substantive planning appraisal, not a summary. Include specific policy references, constraint names, distances, designations, risk assessments, and recommended next steps where the briefing note provides them.

@@ -962,6 +962,12 @@ async function resolvePlanningStatementVariables(projectId) {
      WHERE project_id = $1 ORDER BY sort_order, id`, [projectId]
   );
 
+  const { rows: projectHistory } = await pool.query(
+    `SELECT section, planning_ref, description, decision, decision_date
+     FROM public.project_planning_history
+     WHERE project_id = $1 ORDER BY section, id`, [projectId]
+  );
+
   const { rows: policies } = await pool.query(
     `SELECT policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, is_key_policy
      FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, policy_reference`, [projectId]
@@ -1070,6 +1076,22 @@ ${history.map(h => {
 
   const pct = policyContextTemplate ?? {};
 
+  const buildProjectHistoryTable = (rows) => {
+    if (!rows.length) return '<p>None.</p>';
+    const formatD = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+    const rowsHtml = rows.map(h =>
+      `<tr><td>${h.planning_ref ?? '—'}</td><td>${h.description ?? '—'}</td><td>${h.decision ?? '—'}</td><td>${formatD(h.decision_date)}</td></tr>`
+    ).join('\n');
+    return `<table>\n<thead><tr><th>Reference</th><th>Description</th><th>Decision</th><th>Decision Date</th></tr></thead>\n<tbody>\n${rowsHtml}\n</tbody>\n</table>`;
+  };
+
+  const onSiteHistory  = projectHistory.filter(h => h.section === 'on_site');
+  const nearbyHistory  = projectHistory.filter(h => h.section === 'nearby');
+
+  const projectPlanningHistoryHtml =
+    `<h4>On Site Planning History</h4>\n${buildProjectHistoryTable(onSiteHistory)}\n` +
+    `<h4>Relevant Nearby Planning History</h4>\n${buildProjectHistoryTable(nearbyHistory)}`;
+
   const variables = {
     PROJECT_NAME:              project.project_name ?? '[Project Name]',
     APPLICANT_NAME:            project.client ?? '[Applicant Name]',
@@ -1084,8 +1106,9 @@ ${history.map(h => {
     DOCUMENT_LIST_DRAWINGS:    formatDocListHtml(logDrawings),
     SITE_SURROUNDINGS:         stripHtml(summaryByType.site_surroundings),
     SITE_SURROUNDINGS_HTML:    summaryByType.site_surroundings ?? '',
-    PLANNING_HISTORY:          planningHistoryText,
-    PLANNING_HISTORY_TABLE:    planningHistoryTable,
+    PLANNING_HISTORY:              planningHistoryText,
+    PLANNING_HISTORY_TABLE:        planningHistoryTable,
+    PROJECT_PLANNING_HISTORY:      projectPlanningHistoryHtml,
     PRE_APP_SUMMARY:           summaryByType.pre_app ?? '',
     EIA_SUMMARY:               summaryByType.eia_response ?? '',
     SCI_SUMMARY:               summaryByType.sci ?? '',

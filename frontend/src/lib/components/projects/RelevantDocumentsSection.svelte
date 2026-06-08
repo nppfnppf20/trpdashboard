@@ -1,0 +1,422 @@
+<script>
+  import { onMount } from 'svelte';
+  import {
+    getPolicyDocuments,
+    createPolicyDocument,
+    updatePolicyDocument,
+    deletePolicyDocument
+  } from '$lib/api/policyDocuments.js';
+
+  export let project;
+  $: projectId = project?.id;
+
+  let docs = [];
+  let loading = true;
+  let error = null;
+
+  let showForm = false;
+  let formSection = 'adopted';
+  let editingId = null;
+  let saving = false;
+  let formError = null;
+
+  const emptyForm = () => ({ plan_name: '', year_adopted: '' });
+  let form = emptyForm();
+
+  onMount(() => { if (projectId) load(); });
+  $: if (projectId) load();
+
+  async function load() {
+    loading = true;
+    error = null;
+    try {
+      docs = await getPolicyDocuments(projectId);
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
+    }
+  }
+
+  $: adoptedDocs  = docs.filter(d => d.section === 'adopted');
+  $: emergingDocs = docs.filter(d => d.section === 'emerging');
+  $: otherDocs    = docs.filter(d => d.section === 'other');
+
+  function openAdd(section) {
+    formSection = section;
+    editingId = null;
+    form = emptyForm();
+    formError = null;
+    showForm = true;
+  }
+
+  function openEdit(doc) {
+    formSection = doc.section;
+    editingId = doc.id;
+    form = {
+      plan_name: doc.plan_name || '',
+      year_adopted: doc.year_adopted ?? ''
+    };
+    formError = null;
+    showForm = true;
+  }
+
+  function cancel() {
+    showForm = false;
+    editingId = null;
+    form = emptyForm();
+    formError = null;
+  }
+
+  async function save() {
+    if (!form.plan_name.trim()) { formError = 'Plan name is required'; return; }
+    saving = true;
+    formError = null;
+    try {
+      const payload = {
+        section: formSection,
+        plan_name: form.plan_name.trim(),
+        year_adopted: formSection === 'adopted' && form.year_adopted ? parseInt(form.year_adopted) : null
+      };
+      if (editingId) {
+        const updated = await updatePolicyDocument(editingId, payload);
+        docs = docs.map(d => d.id === editingId ? updated : d);
+      } else {
+        const created = await createPolicyDocument(projectId, payload);
+        docs = [...docs, created];
+      }
+      cancel();
+    } catch (err) {
+      formError = err.message;
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function remove(doc) {
+    if (!confirm(`Delete "${doc.plan_name}"?`)) return;
+    try {
+      await deletePolicyDocument(doc.id);
+      docs = docs.filter(d => d.id !== doc.id);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  const SECTIONS = [
+    { key: 'adopted',  label: 'Development Plan Adopted' },
+    { key: 'emerging', label: 'Development Plan Emerging' },
+    { key: 'other',    label: 'Other Material Considerations' }
+  ];
+
+  function docsForSection(key) {
+    return docs.filter(d => d.section === key);
+  }
+</script>
+
+<div class="rd-section">
+  {#if loading}
+    <div class="rd-loading">
+      <div class="spinner"></div>
+      <span>Loading…</span>
+    </div>
+  {:else if error}
+    <div class="rd-error">
+      <i class="las la-exclamation-circle"></i>
+      <span>{error}</span>
+      <button on:click={load}>Retry</button>
+    </div>
+  {:else}
+
+    {#if showForm}
+      <div class="rd-form-card">
+        <div class="form-title">
+          {editingId ? 'Edit Entry' : 'Add Entry'}
+          <span class="form-badge">{SECTIONS.find(s => s.key === formSection)?.label}</span>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <label>Plan Name <span class="required">*</span></label>
+            <input type="text" bind:value={form.plan_name} placeholder="e.g. Local Plan 2019" />
+          </div>
+        </div>
+
+        {#if formSection === 'adopted'}
+          <div class="form-row">
+            <div class="field">
+              <label>Year Adopted</label>
+              <input type="number" bind:value={form.year_adopted} placeholder="e.g. 2021" min="1900" max="2100" />
+            </div>
+          </div>
+        {/if}
+
+        {#if formError}
+          <div class="form-error">{formError}</div>
+        {/if}
+
+        <div class="form-actions">
+          <button class="btn-cancel" on:click={cancel} disabled={saving}>Cancel</button>
+          <button class="btn-save" on:click={save} disabled={saving}>
+            {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Entry'}
+          </button>
+        </div>
+      </div>
+    {/if}
+
+    {#each SECTIONS as sec}
+      <div class="rd-card">
+        <div class="rd-card-header">
+          <span class="rd-card-title">{sec.label}</span>
+          <button class="btn-add" on:click={() => openAdd(sec.key)}>
+            <i class="las la-plus"></i> Add
+          </button>
+        </div>
+
+        {#if docsForSection(sec.key).length === 0}
+          <div class="rd-empty">No entries yet.</div>
+        {:else}
+          <table class="rd-table">
+            <thead>
+              <tr>
+                <th>Plan Name</th>
+                {#if sec.key === 'adopted'}<th>Year Adopted</th>{/if}
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each docsForSection(sec.key) as doc (doc.id)}
+                <tr>
+                  <td class="cell-name">{doc.plan_name}</td>
+                  {#if sec.key === 'adopted'}
+                    <td class="cell-year">{doc.year_adopted ?? '—'}</td>
+                  {/if}
+                  <td class="cell-actions">
+                    <button class="icon-btn" on:click={() => openEdit(doc)} title="Edit">
+                      <i class="las la-pen"></i>
+                    </button>
+                    <button class="icon-btn danger" on:click={() => remove(doc)} title="Delete">
+                      <i class="las la-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      </div>
+    {/each}
+
+  {/if}
+</div>
+
+<style>
+  .rd-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.25rem;
+  }
+
+  .rd-loading, .rd-error {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    color: #64748b;
+    font-size: 0.85rem;
+  }
+  .rd-error i { color: #ef4444; }
+  .rd-error button {
+    padding: 0.3rem 0.75rem;
+    background: #9333ea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-family: inherit;
+  }
+
+  .spinner {
+    width: 1.25rem; height: 1.25rem;
+    border: 2px solid #f3f4f6; border-top-color: #9333ea;
+    border-radius: 50%; animation: spin 1s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Form */
+  .rd-form-card {
+    background: #faf5ff;
+    border: 1px solid #e9d5ff;
+    border-radius: 10px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .form-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #7e22ce;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .form-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    background: #e9d5ff;
+    color: #7e22ce;
+    padding: 0.15rem 0.5rem;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .form-row { display: flex; flex-direction: column; gap: 0.3rem; }
+  .field { display: flex; flex-direction: column; gap: 0.25rem; }
+  label { font-size: 0.75rem; font-weight: 600; color: #475569; }
+  .required { color: #ef4444; }
+  input[type="text"], input[type="number"] {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: white;
+  }
+  input[type="text"]:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: #9333ea;
+    box-shadow: 0 0 0 3px #f3e8ff;
+  }
+  .form-error {
+    font-size: 0.78rem;
+    color: #dc2626;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 0.4rem 0.65rem;
+  }
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
+  .btn-cancel {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid #d1d5db;
+    background: white;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    cursor: pointer;
+    color: #64748b;
+  }
+  .btn-cancel:hover { background: #f8fafc; }
+  .btn-save {
+    padding: 0.4rem 1rem;
+    background: #9333ea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .btn-save:hover:not(:disabled) { background: #7e22ce; }
+  .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  /* Section cards */
+  .rd-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .rd-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.9rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 0.5rem;
+  }
+
+  .rd-card-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1e293b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-add {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    background: #9333ea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+  .btn-add:hover { background: #7e22ce; }
+
+  .rd-empty {
+    padding: 0.75rem 0.9rem;
+    color: #94a3b8;
+    font-size: 0.82rem;
+    font-style: italic;
+  }
+
+  /* Table */
+  .rd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .rd-table thead tr {
+    background: #fafafa;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .rd-table th {
+    padding: 0.4rem 0.75rem;
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .rd-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+  .rd-table tbody tr:last-child { border-bottom: none; }
+  .rd-table tbody tr:hover { background: #f8fafc; }
+  .rd-table td { padding: 0.5rem 0.75rem; color: #334155; vertical-align: middle; }
+
+  .cell-name { line-height: 1.4; }
+  .cell-year { color: #64748b; white-space: nowrap; width: 5rem; }
+  .cell-actions { text-align: right; white-space: nowrap; width: 4rem; }
+
+  .icon-btn {
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; background: none; cursor: pointer;
+    border-radius: 5px; color: #64748b; font-size: 0.88rem;
+  }
+  .icon-btn:hover { background: #f1f5f9; color: #1e293b; }
+  .icon-btn.danger:hover { background: #fef2f2; color: #dc2626; }
+</style>

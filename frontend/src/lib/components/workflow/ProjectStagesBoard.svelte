@@ -43,6 +43,9 @@
   let newTrackDiscipline = '';
   let newTrackLabel = '';
 
+  // Stage columns visibility — set false to show simplified Key Issues view
+  const showStageColumns = false;
+
   // Custom stage state
   let showAddStageForm = false;
   let newStageName = '';
@@ -426,23 +429,25 @@
     <button class="btn btn-secondary btn-sm" on:click={() => (showAddIssueModal = true)}>
       <i class="las la-plus"></i> Add issue row
     </button>
-    <button class="btn btn-secondary btn-sm" on:click={() => { showAddStageForm = !showAddStageForm; newStageName = ''; }}>
-      <i class="las la-plus"></i> Add stage
-    </button>
-    {#if showAddStageForm}
-      <div class="add-stage-form">
-        <input
-          class="rename-input"
-          placeholder="Stage name"
-          bind:value={newStageName}
-          on:keydown={onAddStageKeydown}
-          use:focusOnMount
-        />
-        <button class="btn btn-primary btn-sm" disabled={addingStage} on:click={handleAddStage}>
-          {addingStage ? 'Adding…' : 'Add'}
-        </button>
-        <button class="btn btn-secondary btn-sm" on:click={() => { showAddStageForm = false; newStageName = ''; }}>Cancel</button>
-      </div>
+    {#if showStageColumns}
+      <button class="btn btn-secondary btn-sm" on:click={() => { showAddStageForm = !showAddStageForm; newStageName = ''; }}>
+        <i class="las la-plus"></i> Add stage
+      </button>
+      {#if showAddStageForm}
+        <div class="add-stage-form">
+          <input
+            class="rename-input"
+            placeholder="Stage name"
+            bind:value={newStageName}
+            on:keydown={onAddStageKeydown}
+            use:focusOnMount
+          />
+          <button class="btn btn-primary btn-sm" disabled={addingStage} on:click={handleAddStage}>
+            {addingStage ? 'Adding…' : 'Add'}
+          </button>
+          <button class="btn btn-secondary btn-sm" on:click={() => { showAddStageForm = false; newStageName = ''; }}>Cancel</button>
+        </div>
+      {/if}
     {/if}
   </div>
 
@@ -454,49 +459,50 @@
           <th class="no-sort track-col">Specific Issue</th>
           <th class="no-sort risk-col">Risk</th>
           <th class="no-sort key-issue-col">Key Issue?</th>
-          {#each stages as stage, i}
-            <th
-              class="no-sort stage-col"
-              class:stage-complete={stage.is_complete}
-              class:stage-na={!stage.is_applicable}
-              class:drag-over={dragOverIdx === i}
-              class:dragging={draggedIdx === i}
-              draggable={true}
-              on:dragstart={e => onDragStart(e, i)}
-              on:dragover={e => onDragOver(e, i)}
-              on:dragleave={onDragLeave}
-              on:drop={e => onDrop(e, i)}
-              on:dragend={onDragEnd}
-            >
-              <div class="stage-th-inner">
-                <button class="btn btn-ghost btn-sm btn-icon eye-toggle" title={stage.is_applicable ? 'Mark N/A' : 'Mark applicable'} on:click={() => handleToggleApplicability(stage)}>
-                  <i class="las {stage.is_applicable ? 'la-eye' : 'la-eye-slash'}"></i>
-                </button>
-                <span class:na-text={!stage.is_applicable}>{stage.stage_name}</span>
-                <button
-                  class="btn btn-ghost btn-sm btn-icon complete-toggle"
-                  class:is-done={stage.is_complete}
-                  title={stage.is_complete ? 'Completed' : 'Mark complete'}
-                  on:click={() => openCompletionModal(stage)}
-                  disabled={!stage.is_applicable}
-                >
-                  <i class="{stage.is_complete ? 'las la-check-square' : 'lar la-square'}"></i>
-                </button>
-              </div>
-            </th>
-          {/each}
+          {#if showStageColumns}
+            {#each stages as stage, i}
+              <th
+                class="no-sort stage-col"
+                class:stage-complete={stage.is_complete}
+                class:stage-na={!stage.is_applicable}
+                class:drag-over={dragOverIdx === i}
+                class:dragging={draggedIdx === i}
+                draggable={true}
+                on:dragstart={e => onDragStart(e, i)}
+                on:dragover={e => onDragOver(e, i)}
+                on:dragleave={onDragLeave}
+                on:drop={e => onDrop(e, i)}
+                on:dragend={onDragEnd}
+              >
+                <div class="stage-th-inner">
+                  <button class="btn btn-ghost btn-sm btn-icon eye-toggle" title={stage.is_applicable ? 'Mark N/A' : 'Mark applicable'} on:click={() => handleToggleApplicability(stage)}>
+                    <i class="las {stage.is_applicable ? 'la-eye' : 'la-eye-slash'}"></i>
+                  </button>
+                  <span class:na-text={!stage.is_applicable}>{stage.stage_name}</span>
+                  <button
+                    class="btn btn-ghost btn-sm btn-icon complete-toggle"
+                    class:is-done={stage.is_complete}
+                    title={stage.is_complete ? 'Completed' : 'Mark complete'}
+                    on:click={() => openCompletionModal(stage)}
+                    disabled={!stage.is_applicable}
+                  >
+                    <i class="{stage.is_complete ? 'las la-check-square' : 'lar la-square'}"></i>
+                  </button>
+                </div>
+              </th>
+            {/each}
+          {/if}
         </tr>
       </thead>
       <tbody>
         <!-- KEY ISSUES SECTION -->
         {#if keyIssues.length > 0}
           <tr class="section-header-row">
-            <td colspan={stages.length + 4} class="section-header-cell">
+            <td colspan={showStageColumns ? stages.length + 4 : 4} class="section-header-cell">
               <i class="las la-exclamation-triangle"></i> Key Issues
             </td>
           </tr>
           {#each keyIssues as ki}
-            {@const kiEntry0 = getKeyIssueEntry(stages[0]?.instance_id, ki.id)}
             <tr class="key-issue-row ki-row">
               <td class="discipline-cell">
                 <div class="discipline-inner">
@@ -520,32 +526,34 @@
               <td class="key-issue-cell">
                 <span class="ki-flag-static" title="Key Issue"><i class="las la-flag"></i></span>
               </td>
-              {#each stages as stage}
-                {@const kiEntry = getKeyIssueEntry(stage.instance_id, ki.id)}
-                <td
-                  class="entry-cell"
-                  class:na-cell={!stage.is_applicable}
-                  class:entry-clickable={stage.is_applicable && !isHLPVStage(stage)}
-                  class:hlpv-cell={isHLPVStage(stage)}
-                >
-                  {#if !stage.is_applicable}
-                    <span class="text-muted">N/A</span>
-                  {:else if kiEntry}
-                    <div class="entry-inner">
-                      {#if kiEntry.risk_level}
-                        <span class="risk-chip" style={riskStyle(kiEntry.risk_level)}>{riskLabel(kiEntry.risk_level)}</span>
-                      {/if}
-                      {#if kiEntry.summary}<p class="entry-summary">{kiEntry.summary}</p>{/if}
-                    </div>
-                  {:else}
-                    <span class="text-muted">{isHLPVStage(stage) ? '—' : '—'}</span>
-                  {/if}
-                </td>
-              {/each}
+              {#if showStageColumns}
+                {#each stages as stage}
+                  {@const kiEntry = getKeyIssueEntry(stage.instance_id, ki.id)}
+                  <td
+                    class="entry-cell"
+                    class:na-cell={!stage.is_applicable}
+                    class:entry-clickable={stage.is_applicable && !isHLPVStage(stage)}
+                    class:hlpv-cell={isHLPVStage(stage)}
+                  >
+                    {#if !stage.is_applicable}
+                      <span class="text-muted">N/A</span>
+                    {:else if kiEntry}
+                      <div class="entry-inner">
+                        {#if kiEntry.risk_level}
+                          <span class="risk-chip" style={riskStyle(kiEntry.risk_level)}>{riskLabel(kiEntry.risk_level)}</span>
+                        {/if}
+                        {#if kiEntry.summary}<p class="entry-summary">{kiEntry.summary}</p>{/if}
+                      </div>
+                    {:else}
+                      <span class="text-muted">—</span>
+                    {/if}
+                  </td>
+                {/each}
+              {/if}
             </tr>
           {/each}
           <tr class="section-header-row">
-            <td colspan={stages.length + 4} class="section-header-cell">
+            <td colspan={showStageColumns ? stages.length + 4 : 4} class="section-header-cell">
               <i class="las la-layer-group"></i> Disciplines
             </td>
           </tr>
@@ -600,29 +608,31 @@
                 <i class="las la-flag"></i>
               </button>
             </td>
-            {#each stages as stage}
-              {@const entry = getEntry(stage.instance_id, track.id)}
-              <td
-                class="entry-cell"
-                class:na-cell={!stage.is_applicable}
-                class:entry-clickable={stage.is_applicable && !isHLPVStage(stage)}
-                class:hlpv-cell={isHLPVStage(stage)}
-                on:click={() => { if (!isHLPVStage(stage)) openEntryModal(stage, track); }}
-              >
-                {#if !stage.is_applicable}
-                  <span class="text-muted">N/A</span>
-                {:else if entry}
-                  <div class="entry-inner">
-                    {#if entry.risk_level}
-                      <span class="risk-chip" style={riskStyle(entry.risk_level)}>{riskLabel(entry.risk_level)}</span>
-                    {/if}
-                    {#if entry.summary}<p class="entry-summary">{entry.summary}</p>{/if}
-                  </div>
-                {:else}
-                  <span class="text-muted">{isHLPVStage(stage) ? '—' : '—'}</span>
-                {/if}
-              </td>
-            {/each}
+            {#if showStageColumns}
+              {#each stages as stage}
+                {@const entry = getEntry(stage.instance_id, track.id)}
+                <td
+                  class="entry-cell"
+                  class:na-cell={!stage.is_applicable}
+                  class:entry-clickable={stage.is_applicable && !isHLPVStage(stage)}
+                  class:hlpv-cell={isHLPVStage(stage)}
+                  on:click={() => { if (!isHLPVStage(stage)) openEntryModal(stage, track); }}
+                >
+                  {#if !stage.is_applicable}
+                    <span class="text-muted">N/A</span>
+                  {:else if entry}
+                    <div class="entry-inner">
+                      {#if entry.risk_level}
+                        <span class="risk-chip" style={riskStyle(entry.risk_level)}>{riskLabel(entry.risk_level)}</span>
+                      {/if}
+                      {#if entry.summary}<p class="entry-summary">{entry.summary}</p>{/if}
+                    </div>
+                  {:else}
+                    <span class="text-muted">—</span>
+                  {/if}
+                </td>
+              {/each}
+            {/if}
           </tr>
         {/each}
         <!-- Inline add-track row -->
@@ -649,14 +659,14 @@
                 />
               </div>
             </td>
-            <td colspan={stages.length + 2} style="vertical-align:middle; padding-left:0.5rem;">
+            <td colspan={showStageColumns ? stages.length + 2 : 2} style="vertical-align:middle; padding-left:0.5rem;">
               <button class="btn btn-primary btn-sm" on:click={commitAddTrack}>Save</button>
               <button class="btn btn-ghost btn-sm" on:click={() => { addingTrack = false; newTrackDiscipline = ''; newTrackLabel = ''; }}>Cancel</button>
             </td>
           </tr>
         {:else}
           <tr class="add-track-row">
-            <td colspan={stages.length + 4}>
+            <td colspan={showStageColumns ? stages.length + 4 : 4}>
               <button class="btn btn-ghost btn-sm add-row-btn" on:click={() => (addingTrack = true)}>
                 <i class="las la-plus"></i> Add row
               </button>

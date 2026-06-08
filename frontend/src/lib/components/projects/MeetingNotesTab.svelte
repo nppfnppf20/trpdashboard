@@ -728,7 +728,7 @@
 
 <style>
   /* ── Layout ────────────────────────────────────────────────────────────── */
-  .mn-tab { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem 0; }
+  .mn-tab { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem 0; overflow-y: auto; flex: 1; min-height: 0; }
 
   .mn-header {
     display: flex;
