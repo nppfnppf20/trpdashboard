@@ -17,6 +17,7 @@
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
+  import SectionChatPanel from '$lib/components/planning-application/SectionChatPanel.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
   import { getStartingDocs, getDraftContext } from '$lib/api/appeal.js';
@@ -285,11 +286,60 @@
 
   let incorporateReviewMode = false;
   let contextPanelOpen = false;
+  let sectionChatOpen = false;
   let contextData = null;
   let contextLoading = false;
   let contextExpanded = { guidingBrief: true, projectBrief: false };
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; contextPanelOpen = false; contextData = null; }
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; contextPanelOpen = false; sectionChatOpen = false; contextData = null; }
+
+  function applySectionChat(e) {
+    const { selected_paragraphs: selectedParas, new_html: newHtml, mode } = e.detail;
+    const current = $draftEditorHtml || '';
+
+    if (!current.trim() || !selectedParas?.length) {
+      const updated = (current + '\n' + newHtml).trim();
+      $draftEditorHtml = updated;
+      draftEditor?.setHTML(updated);
+      $draftSaved = false;
+      return;
+    }
+
+    // Split draft into blocks the same way the panel does
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${current}</div>`, 'text/html');
+    const allNodes = Array.from(doc.body.firstChild?.childNodes ?? [])
+      .filter(n => n.nodeType === 1 && n.textContent.trim());
+    const allParas = allNodes.map((node, idx) => ({ id: `p${idx}`, html: node.outerHTML }));
+
+    const selectedIds = new Set(selectedParas.map(p => p.id));
+    const selectedIndices = allParas.map((p, i) => selectedIds.has(p.id) ? i : -1).filter(i => i >= 0);
+
+    if (!selectedIndices.length) {
+      const updated = (current + '\n' + newHtml).trim();
+      $draftEditorHtml = updated;
+      draftEditor?.setHTML(updated);
+      $draftSaved = false;
+      return;
+    }
+
+    const firstIdx = selectedIndices[0];
+    const lastIdx  = selectedIndices[selectedIndices.length - 1];
+    const before = allParas.slice(0, firstIdx).map(p => p.html).join('\n');
+    const after  = allParas.slice(lastIdx + 1).map(p => p.html).join('\n');
+
+    let updated;
+    if (mode === 'replace') {
+      updated = [before, newHtml, after].filter(Boolean).join('\n');
+    } else {
+      const kept = allParas.slice(firstIdx, lastIdx + 1).map(p => p.html).join('\n');
+      updated = [before, kept, newHtml, after].filter(Boolean).join('\n');
+    }
+
+    $draftEditorHtml = updated;
+    draftEditor?.setHTML(updated);
+    $draftSaved = false;
+  }
 
   async function toggleContextPanel() {
     if (contextPanelOpen) { contextPanelOpen = false; return; }
@@ -523,6 +573,11 @@
           <button class="draft-context-btn" class:active={contextPanelOpen} on:click={toggleContextPanel} title="View prompt context — guiding brief, project brief">
             <i class="las la-layer-group"></i> Context
           </button>
+          {#if activeType?.slug !== 'stage1_review'}
+            <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) contextPanelOpen = false; }} title="Chat with a document to draft a section">
+              <i class="las la-comments"></i> Doc Chat
+            </button>
+          {/if}
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
           </button>
@@ -581,7 +636,14 @@
           <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
-          {#if contextPanelOpen}
+          {#if sectionChatOpen}
+            <SectionChatPanel
+              {project}
+              currentDraftHtml={$draftEditorHtml}
+              on:close={() => sectionChatOpen = false}
+              on:apply={applySectionChat}
+            />
+          {:else if contextPanelOpen}
             <div class="context-panel">
               <div class="context-panel-header">
                 <span class="context-panel-title"><i class="las la-layer-group"></i> Prompt context</span>

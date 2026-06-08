@@ -24,7 +24,6 @@
   let form = emptyForm();
 
   onMount(() => { if (projectId) load(); });
-  $: if (projectId) load();
 
   async function load() {
     loading = true;
@@ -76,7 +75,7 @@
       const payload = {
         section: formSection,
         plan_name: form.plan_name.trim(),
-        year_adopted: formSection === 'adopted' && form.year_adopted ? parseInt(form.year_adopted) : null
+        year_adopted: (formSection === 'adopted' || formSection === 'other') && form.year_adopted ? parseInt(form.year_adopted) : null
       };
       if (editingId) {
         const updated = await updatePolicyDocument(editingId, payload);
@@ -128,43 +127,41 @@
     </div>
   {:else}
 
-    {#if showForm}
-      <div class="rd-form-card">
-        <div class="form-title">
-          {editingId ? 'Edit Entry' : 'Add Entry'}
-          <span class="form-badge">{SECTIONS.find(s => s.key === formSection)?.label}</span>
-        </div>
-
-        <div class="form-row">
-          <div class="field">
-            <label>Plan Name <span class="required">*</span></label>
-            <input type="text" bind:value={form.plan_name} placeholder="e.g. Local Plan 2019" />
+    {#each SECTIONS as sec}
+      {#if showForm && formSection === sec.key}
+        <div class="rd-form-card">
+          <div class="form-title">
+            {editingId ? 'Edit Entry' : 'Add Entry'}
           </div>
-        </div>
 
-        {#if formSection === 'adopted'}
           <div class="form-row">
             <div class="field">
-              <label>Year Adopted</label>
-              <input type="number" bind:value={form.year_adopted} placeholder="e.g. 2021" min="1900" max="2100" />
+              <label>Plan Name <span class="required">*</span></label>
+              <input type="text" bind:value={form.plan_name} placeholder="e.g. Local Plan 2019" />
             </div>
           </div>
-        {/if}
 
-        {#if formError}
-          <div class="form-error">{formError}</div>
-        {/if}
+          {#if sec.key === 'adopted' || sec.key === 'other'}
+            <div class="form-row">
+              <div class="field">
+                <label>Year Adopted</label>
+                <input type="number" bind:value={form.year_adopted} placeholder="e.g. 2021" min="1900" max="2100" />
+              </div>
+            </div>
+          {/if}
 
-        <div class="form-actions">
-          <button class="btn-cancel" on:click={cancel} disabled={saving}>Cancel</button>
-          <button class="btn-save" on:click={save} disabled={saving}>
-            {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Entry'}
-          </button>
+          {#if formError}
+            <div class="form-error">{formError}</div>
+          {/if}
+
+          <div class="form-actions">
+            <button class="btn-cancel" on:click={cancel} disabled={saving}>Cancel</button>
+            <button class="btn-save" on:click={save} disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Entry'}
+            </button>
+          </div>
         </div>
-      </div>
-    {/if}
-
-    {#each SECTIONS as sec}
+      {/if}
       <div class="rd-card">
         <div class="rd-card-header">
           <span class="rd-card-title">{sec.label}</span>
@@ -180,7 +177,7 @@
             <thead>
               <tr>
                 <th>Plan Name</th>
-                {#if sec.key === 'adopted'}<th>Year Adopted</th>{/if}
+                {#if sec.key === 'adopted' || sec.key === 'other'}<th>Year Adopted</th>{/if}
                 <th></th>
               </tr>
             </thead>
@@ -188,7 +185,7 @@
               {#each docsForSection(sec.key) as doc (doc.id)}
                 <tr>
                   <td class="cell-name">{doc.plan_name}</td>
-                  {#if sec.key === 'adopted'}
+                  {#if sec.key === 'adopted' || sec.key === 'other'}
                     <td class="cell-year">{doc.year_adopted ?? '—'}</td>
                   {/if}
                   <td class="cell-actions">
@@ -350,11 +347,9 @@
   }
 
   .rd-card-title {
-    font-size: 0.8rem;
-    font-weight: 700;
+    font-size: 0.85rem;
+    font-weight: 600;
     color: #1e293b;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
   .btn-add {

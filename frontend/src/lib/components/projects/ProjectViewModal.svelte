@@ -1410,7 +1410,7 @@
                 </div>
               </div>
               <div class="split-card">
-                <div class="split-card-label"><i class="las la-history"></i> Planning History</div>
+                <div class="split-card-label">Planning History</div>
                 <div class="split-card-body">
                   <PlanningHistoryTab project={projectData} />
                 </div>
@@ -2458,11 +2458,9 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 1rem;
-    font-size: 0.75rem;
-    font-weight: 700;
+    font-size: 0.8rem;
+    font-weight: 600;
     color: #9333ea;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
     background: #faf5ff;
     border-bottom: 1px solid #e9d5ff;
     flex-shrink: 0;
@@ -2489,15 +2487,10 @@
   }
 
   .left-panel-section-divider {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     padding: 0.6rem 1.25rem 0.4rem;
-    font-size: 0.72rem;
-    font-weight: 700;
+    font-size: 0.8rem;
+    font-weight: 600;
     color: #7e22ce;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
     background: #f5f3ff;
     border-top: 1px solid #e9d5ff;
     border-bottom: 1px solid #e9d5ff;
@@ -2506,15 +2499,5 @@
 
   .left-panel-section-divider:first-child {
     border-top: none;
-  }
-
-  .left-panel-section-divider span {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
-  .left-panel-section-divider i {
-    font-size: 1rem;
   }
 </style>

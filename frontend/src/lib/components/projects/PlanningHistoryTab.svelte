@@ -30,7 +30,6 @@
   let form = emptyForm();
 
   onMount(() => { if (projectId) load(); });
-  $: if (projectId) load();
 
   async function load() {
     loading = true;
@@ -62,7 +61,7 @@
       planning_ref: entry.planning_ref || '',
       description: entry.description || '',
       decision: entry.decision || '',
-      decision_date: entry.decision_date ? entry.decision_date.split('T')[0] : ''
+      decision_date: entry.decision_date || ''
     };
     formError = null;
     showForm = true;
@@ -116,8 +115,7 @@
   }
 
   function formatDate(d) {
-    if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return d || '—';
   }
 </script>
 
@@ -135,15 +133,10 @@
     </div>
   {:else}
 
-    <!-- Add / Edit form -->
-    {#if showForm}
+    <!-- On Site Planning History -->
+    {#if showForm && formSection === 'on_site'}
       <div class="ph-form-card">
-        <div class="form-title">
-          {editingId ? 'Edit Entry' : 'Add Planning History'}
-          <span class="form-section-badge">
-            {formSection === 'on_site' ? 'On Site' : 'Nearby'}
-          </span>
-        </div>
+        <div class="form-title">{editingId ? 'Edit Entry' : 'Add Entry'}</div>
 
         <div class="form-row two-col">
           <div class="field">
@@ -163,7 +156,7 @@
           </div>
           <div class="field">
             <label>Decision Date</label>
-            <input type="date" bind:value={form.decision_date} />
+            <input type="text" bind:value={form.decision_date} placeholder="e.g. Jan 2021 or 15 Jan 2021" />
           </div>
         </div>
 
@@ -179,8 +172,6 @@
         </div>
       </div>
     {/if}
-
-    <!-- On Site Planning History -->
     <div class="ph-section">
       <div class="section-header">
         <div class="section-info">
@@ -232,6 +223,44 @@
     </div>
 
     <!-- Nearby Planning History -->
+    {#if showForm && formSection === 'nearby'}
+      <div class="ph-form-card">
+        <div class="form-title">{editingId ? 'Edit Entry' : 'Add Entry'}</div>
+
+        <div class="form-row two-col">
+          <div class="field">
+            <label>Planning Application Reference</label>
+            <input type="text" bind:value={form.planning_ref} placeholder="e.g. 22/01234/FUL" />
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <input type="text" bind:value={form.description} placeholder="Brief description of development" />
+          </div>
+        </div>
+
+        <div class="form-row two-col">
+          <div class="field">
+            <label>Decision</label>
+            <input type="text" bind:value={form.decision} placeholder="e.g. Approved, Refused, Withdrawn" />
+          </div>
+          <div class="field">
+            <label>Decision Date</label>
+            <input type="text" bind:value={form.decision_date} placeholder="e.g. Jan 2021 or 15 Jan 2021" />
+          </div>
+        </div>
+
+        {#if formError}
+          <div class="form-error">{formError}</div>
+        {/if}
+
+        <div class="form-actions">
+          <button class="btn-cancel" on:click={cancel} disabled={saving}>Cancel</button>
+          <button class="btn-save" on:click={save} disabled={saving}>
+            {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Entry'}
+          </button>
+        </div>
+      </div>
+    {/if}
     <div class="ph-section">
       <div class="section-header">
         <div class="section-info">

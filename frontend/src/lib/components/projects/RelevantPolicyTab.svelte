@@ -28,7 +28,6 @@
   let form = emptyForm();
 
   onMount(() => { if (projectId) load(); });
-  $: if (projectId) load();
 
   async function load() {
     loading = true;
@@ -127,10 +126,6 @@
     </div>
   {:else}
     <div class="tab-header">
-      <div class="header-info">
-        <h3>Relevant Planning Policies</h3>
-        <p>Policies the LPA will consider when determining this application. Used to contextualise LPA decision analysis.</p>
-      </div>
       <button class="btn-add" on:click={openAdd}>
         <i class="las la-plus"></i> Add Policy
       </button>
@@ -205,13 +200,7 @@
       </div>
     {/if}
 
-    {#if policies.length === 0 && !showForm}
-      <div class="empty-state">
-        <i class="las la-balance-scale"></i>
-        <p>No policies added yet.</p>
-        <p class="sub">Add the planning policies relevant to this project. These will be used to analyse how the LPA has treated them in similar decisions.</p>
-      </div>
-    {:else if policies.length > 0}
+    {#if policies.length > 0}
       <div class="policy-list">
         {#each policies as policy (policy.id)}
           <div class="policy-card" class:key={policy.is_key_policy}>
@@ -297,20 +286,9 @@
 
   .tab-header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-  .header-info h3 {
-    margin: 0 0 0.25rem;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #1e293b;
-  }
-  .header-info p {
-    margin: 0;
-    font-size: 0.8rem;
-    color: #64748b;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0.75rem 1.25rem;
   }
 
   .btn-add {
@@ -432,16 +410,14 @@
   /* Empty state */
   .empty-state {
     display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 0.5rem;
-    padding: 3rem;
+    padding: 1.25rem 0.5rem;
     color: #94a3b8;
-    text-align: center;
+    font-size: 0.875rem;
   }
-  .empty-state i { font-size: 2.5rem; }
-  .empty-state p { margin: 0; font-size: 0.875rem; }
-  .empty-state .sub { font-size: 0.8rem; max-width: 400px; line-height: 1.5; }
+  .empty-state i { font-size: 1.25rem; opacity: 0.6; }
+  .empty-state p { margin: 0; }
 
   /* Policy cards */
   .policy-list {
