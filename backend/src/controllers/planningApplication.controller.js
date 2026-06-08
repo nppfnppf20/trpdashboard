@@ -6,6 +6,7 @@
 import { pool } from '../db.js';
 import { parseFile, chunkText } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
+import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 import {
   extractPointsFromDocument,
   buildExtractPointsTemplate,
@@ -1172,7 +1173,10 @@ export async function generateDraft(req, res) {
     const hasTemplatedSections = sections.some(s => s.generation_prompt?.includes('{{') || !!s.template_html);
     let contentHtml;
 
-    const guidingBrief = await getGuidingBrief('planning_statement', projectRows[0].development_type);
+    const [guidingBrief, styleTemplate] = await Promise.all([
+      getGuidingBrief('planning_statement', projectRows[0].development_type),
+      getDocumentStyleTemplateByDocType('planning_statement', projectRows[0].development_type),
+    ]);
 
     if (hasTemplatedSections) {
       const { variables, briefingSummary } = await resolvePlanningStatementVariables(projectId);
@@ -1186,21 +1190,22 @@ export async function generateDraft(req, res) {
         console.log(`[generateDraft] generating section: ${section.name}`);
         let html;
         if (section.template_html) {
-          html = await generateFromTemplate({ section, variables, briefingSummary });
+          html = await generateFromTemplate({ section, variables, briefingSummary, styleTemplate });
         } else if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary, guidingBrief
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary, guidingBrief, styleTemplate
           });
         } else if (section.generation_prompt?.includes('{{')) {
-          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief });
+          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate });
         } else {
           html = await generateDraftSection({
             section,
             projectName: projectRows[0].project_name,
             draftTypeName: typeRows[0].name,
             issueContext,
-            guidingBrief
+            guidingBrief,
+            exampleDoc: styleTemplate ? { text: styleTemplate.style_text } : null,
           });
         }
         sectionHtmlMap.set(section.id, html);
@@ -1213,8 +1218,8 @@ export async function generateDraft(req, res) {
         for (const section of lastSections) {
           console.log(`[generateDraft] generating runs_last section: ${section.name}`);
           const html = section.template_html
-            ? await generateFromTemplate({ section, variables: runsLastVariables, briefingSummary })
-            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief });
+            ? await generateFromTemplate({ section, variables: runsLastVariables, briefingSummary, styleTemplate })
+            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate });
           sectionHtmlMap.set(section.id, html);
         }
       }
@@ -1235,7 +1240,7 @@ export async function generateDraft(req, res) {
         if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary: fallbackBriefingSummary, guidingBrief
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary: fallbackBriefingSummary, guidingBrief, styleTemplate
           });
         } else {
           html = await generateDraftSection({
@@ -1243,7 +1248,8 @@ export async function generateDraft(req, res) {
             projectName: projectRows[0].project_name,
             draftTypeName: typeRows[0].name,
             issueContext,
-            guidingBrief
+            guidingBrief,
+            exampleDoc: styleTemplate ? { text: styleTemplate.style_text } : null,
           });
         }
         sectionParts.push(html);
@@ -1433,14 +1439,11 @@ export async function deleteDocTypePrompt(req, res) {
 export async function generateSection(req, res) {
   const { projectId, typeId, sectionId } = req.params;
   try {
-    const { rows: projectRows } = await pool.query(
-      `SELECT project_name FROM public.projects WHERE id = $1`, [projectId]
-    );
+    const [{ rows: projectRows }, { rows: typeRows }] = await Promise.all([
+      pool.query(`SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(`SELECT name, slug FROM planning_applications.draft_types WHERE id = $1`, [typeId]),
+    ]);
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
-
-    const { rows: typeRows } = await pool.query(
-      `SELECT name FROM planning_applications.draft_types WHERE id = $1`, [typeId]
-    );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
 
     const { rows: sectionRows } = await pool.query(
@@ -1450,11 +1453,16 @@ export async function generateSection(req, res) {
     if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
     const section = sectionRows[0];
 
+    const [guidingBrief, styleTemplate] = await Promise.all([
+      getGuidingBrief(typeRows[0].slug ?? 'planning_statement', projectRows[0].development_type),
+      getDocumentStyleTemplateByDocType(typeRows[0].slug ?? 'planning_statement', projectRows[0].development_type),
+    ]);
+
     let html;
 
     if (section.template_html) {
       const { variables, briefingSummary } = await resolvePlanningStatementVariables(projectId);
-      html = await generateFromTemplate({ section, variables, briefingSummary });
+      html = await generateFromTemplate({ section, variables, briefingSummary, styleTemplate });
 
     } else if (section.slug === 'planning_assessment') {
       const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, { rows: bsRows }] = await Promise.all([
@@ -1482,7 +1490,8 @@ export async function generateSection(req, res) {
       html = await generatePlanningStatementAssessment({
         projectName: projectRows[0].project_name,
         section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack,
-        briefingSummary: bsRows[0]?.summary_html ?? null
+        briefingSummary: bsRows[0]?.summary_html ?? null,
+        guidingBrief, styleTemplate
       });
 
     } else if (section.generation_prompt?.includes('{{')) {
@@ -1495,7 +1504,7 @@ export async function generateSection(req, res) {
         );
         variables.FULL_STATEMENT = stripHtml(draftRows[0]?.content_html ?? '');
       }
-      html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary });
+      html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate });
 
     } else {
       const [{ rows: issues }, evidenceByTrack] = await Promise.all([
@@ -1518,7 +1527,9 @@ export async function generateSection(req, res) {
         section,
         projectName: projectRows[0].project_name,
         draftTypeName: typeRows[0].name,
-        issueContext
+        issueContext,
+        guidingBrief,
+        exampleDoc: styleTemplate ? { text: styleTemplate.style_text } : null,
       });
     }
 

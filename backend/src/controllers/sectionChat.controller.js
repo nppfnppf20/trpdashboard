@@ -2,23 +2,25 @@ import { pool } from '../db.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { MODEL_SONNET } from '../services/llm.shared.js';
 import { parseFile } from '../services/parser.service.js';
+import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 
 const client = new Anthropic();
 
 export async function sectionChat(req, res) {
   const { projectId } = req.params;
-  const { messages, paragraphs, doc_text, doc_title } = req.body;
+  const { messages, paragraphs, doc_text, doc_title, doc_type_slug } = req.body;
 
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
 
   try {
     const { rows: projectRows } = await pool.query(
-      `SELECT project_name FROM public.projects WHERE id = $1`,
+      `SELECT project_name, development_type FROM public.projects WHERE id = $1`,
       [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
+    const { project_name, development_type } = projectRows[0];
     const stripHtml = html => (html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
     const selectedBlock = paragraphs.map(p => stripHtml(p.html)).filter(Boolean).join('\n\n');
@@ -27,7 +29,12 @@ export async function sectionChat(req, res) {
       ? `\n\n## Source Document${doc_title ? ` — "${doc_title}"` : ''}\nThis is the primary source material. Extract and use the relevant facts and descriptions from it when drafting.\n\n${doc_text.trim().slice(0, 15000)}`
       : '';
 
-    const systemPrompt = `You are a senior planning consultant helping to update specific paragraphs of a planning document for project "${projectRows[0].project_name}".
+    const styleTemplate = await getDocumentStyleTemplateByDocType(doc_type_slug || 'planning_statement', development_type || null);
+    const styleBlock = styleTemplate?.style_text?.trim()
+      ? `\n\n## Style Guide — Example Planning Statement\nThe following is an example planning statement. Find the section that most closely matches what you are working on and write in that style — tone, register, paragraph length, sentence structure. If no section closely matches, use the overall document's tone and language as your guide. Do not copy any content from this example.\n\n${styleTemplate.style_text.trim().slice(0, 12000)}`
+      : '';
+
+    const systemPrompt = `You are a senior planning consultant helping to update specific paragraphs of a planning document for project "${project_name}".
 
 The user has selected the following paragraphs to work on:
 <selected-content>
@@ -43,7 +50,7 @@ Always end your response with the updated content inside exactly these tags — 
 [updated HTML here]
 </section-draft>
 
-HTML rules: <h2> for section headings, <h3> for subsections, <p> for paragraphs, <ul><li> for lists, <strong> for bold. No markdown. No em dashes (—). If a specific fact is not in the source material or the existing content, write [SOURCE REQUIRED] in its place. Never invent project-specific information.${docBlock}`;
+HTML rules: <h2> for section headings, <h3> for subsections, <p> for paragraphs, <ul><li> for lists, <strong> for bold. No markdown. No em dashes (—). If a specific fact is not in the source material or the existing content, write [SOURCE REQUIRED] in its place. Never invent project-specific information.${docBlock}${styleBlock}`;
 
     const response = await client.messages.create({
       model: MODEL_SONNET,

@@ -28,6 +28,7 @@
   // Tab state
   let activeTab = 'site_boundary';
   let betaDropdownOpen = false;
+  let policyFormOpen = false;
 
   const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs'];
 
@@ -458,6 +459,7 @@
     error = null;
     activeTab = 'site_boundary';
     betaDropdownOpen = false;
+    policyFormOpen = false;
     conflictResults = null;
     conflictError = null;
     expandedCategories = {};
@@ -1403,10 +1405,12 @@
               <div class="split-card">
                 <div class="split-card-label">Policy</div>
                 <div class="split-card-body split-card-body--scroll">
-                  <div class="left-panel-section-divider">Relevant Documents</div>
-                  <RelevantDocumentsSection project={projectData} />
-                  <div class="left-panel-section-divider">Relevant Planning Policy</div>
-                  <RelevantPolicyTab project={projectData} />
+                  {#if !policyFormOpen}
+                    <div class="left-panel-section-divider">Relevant Documents</div>
+                    <RelevantDocumentsSection project={projectData} />
+                    <div class="left-panel-section-divider">Relevant Planning Policy</div>
+                  {/if}
+                  <RelevantPolicyTab project={projectData} on:formopen={() => policyFormOpen = true} on:formclose={() => policyFormOpen = false} />
                 </div>
               </div>
               <div class="split-card">

@@ -1,6 +1,8 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
   import { getPolicies, createPolicy, updatePolicy, deletePolicy } from '$lib/api/lpaAnalysis.js';
+
+  const dispatch = createEventDispatcher();
 
   export let project;
   $: projectId = project?.id;
@@ -46,6 +48,7 @@
     form = emptyForm();
     formError = null;
     showForm = true;
+    dispatch('formopen');
   }
 
   function openEdit(policy) {
@@ -61,6 +64,7 @@
     };
     formError = null;
     showForm = true;
+    dispatch('formopen');
   }
 
   function cancel() {
@@ -68,6 +72,7 @@
     editingId = null;
     form = emptyForm();
     formError = null;
+    dispatch('formclose');
   }
 
   async function save() {

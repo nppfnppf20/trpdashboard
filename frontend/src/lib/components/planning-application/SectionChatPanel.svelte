@@ -1,16 +1,23 @@
 <script>
   import { createEventDispatcher, tick } from 'svelte';
+  import { diffArrays, diffWords } from 'diff';
   import { sendSectionChatMessage, parseSectionChatDoc } from '$lib/api/sectionChat.js';
 
   export let project;
+  export let docTypeSlug = 'planning_statement';
   export let currentDraftHtml = '';
 
   const dispatch = createEventDispatcher();
 
   // ── State machine ─────────────────────────────────────────────────────────────
-  // 'selecting' → user ticks paragraphs
-  // 'chatting'  → chat interface active
+  // 'selecting' → user ticks paragraphs from draft
+  // 'chatting'  → multi-turn chat
+  // 'reviewing' → tracked-changes diff view (same as incorporate panel)
   let panelState = 'selecting';
+
+  // Snapshot of draft HTML at the moment the user enters chatting state.
+  // Keeps paragraph IDs stable while the user chats.
+  let draftSnapshot = '';
 
   // ── Paragraph selection ───────────────────────────────────────────────────────
   let allParagraphs = [];
@@ -81,12 +88,6 @@
     scopedIds = next;
   }
 
-  function selectAll() {
-    scopedIds = new Set(allParagraphs.filter(p => !getHeadingLevel(p.html)).map(p => p.id));
-  }
-
-  function deselectAll() { scopedIds = new Set(); }
-
   $: allBodySelected = allParagraphs.filter(p => !getHeadingLevel(p.html)).every(p => scopedIds.has(p.id));
 
   // ── Source doc ────────────────────────────────────────────────────────────────
@@ -136,13 +137,9 @@
   }
 
   function clearDoc() {
-    uploadFile = null;
-    uploadLabel = '';
-    pasteText = '';
-    pasteTitle = '';
-    docText = '';
-    docTitle = '';
-    docError = null;
+    uploadFile = null; uploadLabel = '';
+    pasteText = ''; pasteTitle = '';
+    docText = ''; docTitle = ''; docError = null;
   }
 
   function confirmPaste() {
@@ -157,7 +154,6 @@
   let sending = false;
   let chatError = null;
   let chatEndEl;
-  let previewExpanded = false;
   let applyMode = 'replace';
 
   $: latestHtml = [...messages].reverse().find(m => m.role === 'assistant' && m.sectionHtml)?.sectionHtml ?? null;
@@ -165,6 +161,7 @@
 
   function startChat() {
     if (!scopedIds.size) return;
+    draftSnapshot = currentDraftHtml;
     panelState = 'chatting';
   }
 
@@ -173,16 +170,13 @@
     messages = [];
     inputText = '';
     chatError = null;
-    previewExpanded = false;
-    latestHtml; // reset reactive
   }
 
   async function send() {
     const text = inputText.trim();
     if (!text || sending) return;
 
-    const userMsg = { role: 'user', content: text, sectionHtml: null };
-    messages = [...messages, userMsg];
+    messages = [...messages, { role: 'user', content: text, sectionHtml: null }];
     inputText = '';
     chatError = null;
     sending = true;
@@ -191,23 +185,25 @@
       const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
       const result = await sendSectionChatMessage({
         projectId: project.id,
+        docTypeSlug,
         messages: apiMessages,
         paragraphs: selectedParagraphs.map(p => ({ id: p.id, html: p.html })),
         docText: docText || null,
         docTitle: docTitle || null,
       });
-
       messages = [...messages, {
         role: 'assistant',
         content: result.reply || '',
         sectionHtml: result.section_html || null,
       }];
-
-      if (result.section_html) previewExpanded = true;
+      // Auto-jump to tracked-changes review as soon as AI produces a draft
+      if (result.section_html) {
+        await reviewChanges(result.section_html);
+      }
     } catch (err) {
       chatError = err.message;
       messages = messages.slice(0, -1);
-      inputText = text;
+      inputText = inputText || messages[messages.length - 1]?.content || '';
     } finally {
       sending = false;
     }
@@ -217,13 +213,130 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
-  function applyToSection() {
-    if (!latestHtml) return;
-    dispatch('apply', {
-      selected_paragraphs: selectedParagraphs,
-      new_html: latestHtml,
-      mode: applyMode,
+  // ── Diff / review ─────────────────────────────────────────────────────────────
+  let changeGroups = [];
+  let reviewError = null;
+  let reviewRowsEl;
+
+  $: changedCount  = changeGroups.filter(g => g.type !== 'unchanged').length;
+  $: acceptedCount = changeGroups.filter(g => g.type !== 'unchanged' && g.accepted).length;
+
+  function splitIntoParagraphs(html) {
+    if (!html?.trim()) return [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+    const blocks = [];
+    doc.body.firstChild?.childNodes.forEach(node => {
+      if (node.nodeType === 1) blocks.push(node.outerHTML);
+      else if (node.nodeType === 3 && node.textContent.trim()) blocks.push(`<p>${node.textContent.trim()}</p>`);
     });
+    return blocks;
+  }
+
+  function stripHtml(html) { return (html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function wordDiff(oldHtml, newHtml) { return diffWords(stripHtml(oldHtml), stripHtml(newHtml)); }
+
+  function computeParagraphDiff(oldHtml, newHtml) {
+    const oldParas = splitIntoParagraphs(oldHtml);
+    const newParas = splitIntoParagraphs(newHtml);
+    const raw = diffArrays(oldParas, newParas);
+    const groups = [];
+    let i = 0;
+    while (i < raw.length) {
+      const part = raw[i];
+      if (part.removed && i + 1 < raw.length && raw[i + 1].added) {
+        const oldVals = part.value, newVals = raw[i + 1].value;
+        const pairs = Math.min(oldVals.length, newVals.length);
+        for (let j = 0; j < pairs; j++)
+          groups.push({ type: 'modified', oldHtml: oldVals[j], newHtml: newVals[j], accepted: true, words: wordDiff(oldVals[j], newVals[j]) });
+        for (let j = pairs; j < oldVals.length; j++)
+          groups.push({ type: 'removed',  html: oldVals[j],  accepted: true, words: wordDiff(oldVals[j], '') });
+        for (let j = pairs; j < newVals.length; j++)
+          groups.push({ type: 'added',    html: newVals[j],  accepted: true, words: wordDiff('', newVals[j]) });
+        i += 2;
+      } else if (part.removed) {
+        for (const html of part.value) groups.push({ type: 'removed', html, accepted: true, words: wordDiff(html, '') });
+        i++;
+      } else if (part.added) {
+        for (const html of part.value) groups.push({ type: 'added', html, accepted: true, words: wordDiff('', html) });
+        i++;
+      } else {
+        for (const html of part.value) groups.push({ type: 'unchanged', html });
+        i++;
+      }
+    }
+    return groups;
+  }
+
+  function buildFinalHtml(groups) {
+    return groups.map(g => {
+      if (g.type === 'unchanged') return g.html;
+      if (g.type === 'added')    return g.accepted ? g.html : '';
+      if (g.type === 'removed')  return g.accepted ? '' : g.html;
+      if (g.type === 'modified') return g.accepted ? g.newHtml : g.oldHtml;
+      return '';
+    }).filter(Boolean).join('\n');
+  }
+
+  function computeNewDraftHtml(newSectionHtml, mode) {
+    const base = draftSnapshot || '';
+    if (!base.trim()) return newSectionHtml;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${base}</div>`, 'text/html');
+    const allNodes = Array.from(doc.body.firstChild?.childNodes ?? [])
+      .filter(n => n.nodeType === 1 && n.textContent.trim());
+    const paras = allNodes.map((node, idx) => ({ id: `p${idx}`, html: node.outerHTML }));
+
+    const selectedIds = new Set(selectedParagraphs.map(p => p.id));
+    const selectedIndices = paras.map((p, i) => selectedIds.has(p.id) ? i : -1).filter(i => i >= 0);
+
+    if (!selectedIndices.length) return base + '\n' + newSectionHtml;
+
+    const firstIdx = selectedIndices[0];
+    const lastIdx  = selectedIndices[selectedIndices.length - 1];
+    const before = paras.slice(0, firstIdx).map(p => p.html).join('\n');
+    const after  = paras.slice(lastIdx + 1).map(p => p.html).join('\n');
+
+    if (mode === 'replace') {
+      return [before, newSectionHtml, after].filter(Boolean).join('\n');
+    } else {
+      const kept = paras.slice(firstIdx, lastIdx + 1).map(p => p.html).join('\n');
+      return [before, kept, newSectionHtml, after].filter(Boolean).join('\n');
+    }
+  }
+
+  async function reviewChanges(htmlOverride = null) {
+    const html = htmlOverride ?? latestHtml;
+    if (!html) return;
+    reviewError = null;
+    const newDraftHtml = computeNewDraftHtml(html, applyMode);
+    changeGroups = computeParagraphDiff(draftSnapshot || '', newDraftHtml);
+    panelState = 'reviewing';
+    dispatch('reviewchange', { active: true });
+    await tick();
+    reviewRowsEl?.querySelector('.review-row--changed')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function toggleGroup(idx) {
+    changeGroups = changeGroups.map((g, i) => i === idx ? { ...g, accepted: !g.accepted } : g);
+  }
+
+  function acceptAll() {
+    changeGroups = changeGroups.map(g => g.type === 'unchanged' ? g : { ...g, accepted: true });
+    commitAccepted();
+  }
+
+  function commitAccepted() {
+    const html = buildFinalHtml(changeGroups);
+    dispatch('accepted', { html });
+    discardReview();
+  }
+
+  function discardReview() {
+    changeGroups = [];
+    panelState = 'chatting';
+    dispatch('reviewchange', { active: false });
   }
 </script>
 
@@ -231,12 +344,12 @@
   <div class="sc-header">
     <span class="sc-title">
       <i class="las la-comments"></i>
-      {panelState === 'selecting' ? 'Select paragraphs' : 'Doc Chat'}
+      {#if panelState === 'selecting'}Select paragraphs{:else if panelState === 'reviewing'}Review changes{:else}Doc Chat{/if}
     </span>
     <button class="sc-close" on:click={() => dispatch('close')} title="Close"><i class="las la-times"></i></button>
   </div>
 
-  <!-- ── SELECTING STATE ──────────────────────────────────────────────────────── -->
+  <!-- ── SELECTING ──────────────────────────────────────────────────────────────── -->
   {#if panelState === 'selecting'}
     {#if allParagraphs.length === 0}
       <div class="sc-empty">
@@ -244,53 +357,53 @@
         <p>No draft content yet. Generate the document first, then open Doc Chat to target specific paragraphs.</p>
       </div>
     {:else}
-      <div class="scoped-instruct-row">
-        <p class="scoped-instruct">Tick the paragraphs you want to update, then start the chat.</p>
-        <div class="scoped-select-all">
-          {#if allBodySelected}
-            <button class="scoped-selectall-btn" on:click={deselectAll}>Deselect all</button>
-          {:else}
-            <button class="scoped-selectall-btn" on:click={selectAll}>Select all</button>
-          {/if}
+      <div class="sc-selecting-body">
+        <div class="scoped-instruct-row">
+          <p class="scoped-instruct">Tick the paragraphs you want to update, then start the chat.</p>
+          <div class="scoped-select-all">
+            {#if allBodySelected}
+              <button class="scoped-selectall-btn" on:click={() => scopedIds = new Set()}>Deselect all</button>
+            {:else}
+              <button class="scoped-selectall-btn" on:click={() => scopedIds = new Set(allParagraphs.filter(p => !getHeadingLevel(p.html)).map(p => p.id))}>Select all</button>
+            {/if}
+          </div>
         </div>
-      </div>
 
-      <div class="scoped-list">
-        {#each allParagraphs as para, idx}
-          {@const checked = scopedIds.has(para.id)}
-          {@const headingLevel = getHeadingLevel(para.html)}
-          {#if headingLevel}
-            <div class="scoped-heading">
-              <span class="scoped-heading-text">{para.text}</span>
-              <button class="scoped-section-btn" on:click={() => isSectionSelected(idx) ? deselectSection(idx) : selectSection(idx)}>
-                {isSectionSelected(idx) ? 'Deselect' : 'Select'}
-              </button>
-            </div>
-          {:else}
-            <label class="scoped-item" class:selected={checked}>
-              <input type="checkbox" {checked} on:change={() => toggleParagraph(para.id)} />
-              <span class="scoped-item-text">{para.text.slice(0, 120)}{para.text.length > 120 ? '…' : ''}</span>
-            </label>
-          {/if}
-        {/each}
-      </div>
+        <div class="scoped-list">
+          {#each allParagraphs as para, idx}
+            {@const checked = scopedIds.has(para.id)}
+            {@const headingLevel = getHeadingLevel(para.html)}
+            {#if headingLevel}
+              <div class="scoped-heading">
+                <span class="scoped-heading-text">{para.text}</span>
+                <button class="scoped-section-btn" on:click={() => isSectionSelected(idx) ? deselectSection(idx) : selectSection(idx)}>
+                  {isSectionSelected(idx) ? 'Deselect' : 'Select'}
+                </button>
+              </div>
+            {:else}
+              <label class="scoped-item" class:selected={checked}>
+                <input type="checkbox" {checked} on:change={() => toggleParagraph(para.id)} />
+                <span class="scoped-item-text">{para.text.slice(0, 120)}{para.text.length > 120 ? '…' : ''}</span>
+              </label>
+            {/if}
+          {/each}
+        </div>
 
-      <div class="scoped-actions">
-        <button class="btn-primary" disabled={scopedIds.size === 0} on:click={startChat}>
-          <i class="las la-comments"></i> Chat about {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}
-        </button>
+        <div class="scoped-actions">
+          <button class="btn-primary" disabled={scopedIds.size === 0} on:click={startChat}>
+            <i class="las la-comments"></i> Chat about {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}
+          </button>
+        </div>
       </div>
     {/if}
 
-  <!-- ── CHATTING STATE ───────────────────────────────────────────────────────── -->
-  {:else}
-    <!-- Selection summary -->
+  <!-- ── CHATTING ───────────────────────────────────────────────────────────────── -->
+  {:else if panelState === 'chatting'}
     <div class="sc-selection-bar">
       <span class="sc-selection-count"><i class="las la-check-square"></i> {selectedParagraphs.length} paragraph{selectedParagraphs.length !== 1 ? 's' : ''} selected</span>
       <button class="sc-change-btn" on:click={backToSelection}><i class="las la-edit"></i> Change</button>
     </div>
 
-    <!-- Doc area -->
     {#if docReady}
       <div class="sc-doc-loaded">
         <i class="las la-file-alt"></i>
@@ -305,8 +418,7 @@
         </div>
         {#if docInputTab === 'upload'}
           <div
-            class="sc-dropzone"
-            class:drag-over={docDragOver}
+            class="sc-dropzone" class:drag-over={docDragOver}
             on:dragover|preventDefault={() => docDragOver = true}
             on:dragleave={() => docDragOver = false}
             on:drop={onDrop}
@@ -317,7 +429,7 @@
             {#if docParsing}
               <div class="mini-spinner"></div><span>Parsing…</span>
             {:else if uploadLabel}
-              <i class="las la-check-circle" style="color:var(--success,#16a34a)"></i><span>{uploadLabel}</span>
+              <i class="las la-check-circle" style="color:#16a34a"></i><span>{uploadLabel}</span>
             {:else}
               <i class="las la-cloud-upload-alt"></i>
               <span>Drop file or click to upload</span>
@@ -336,7 +448,6 @@
       </div>
     {/if}
 
-    <!-- Chat history -->
     <div class="sc-messages">
       {#if messages.length === 0}
         <div class="sc-empty">
@@ -354,14 +465,6 @@
               {#if msg.content}
                 <div class="sc-bubble sc-bubble--assistant">{msg.content}</div>
               {/if}
-              {#if msg.sectionHtml}
-                <div class="sc-draft-toggle">
-                  <button class="sc-draft-toggle-btn" on:click={() => previewExpanded = !previewExpanded}>
-                    <i class="las la-file-code"></i> Updated draft
-                    <i class="las la-angle-{previewExpanded ? 'up' : 'down'}"></i>
-                  </button>
-                </div>
-              {/if}
             </div>
           {/if}
         {/each}
@@ -369,31 +472,6 @@
       {/if}
     </div>
 
-    <!-- Draft preview -->
-    {#if latestHtml && previewExpanded}
-      <div class="sc-preview">
-        <div class="sc-preview-header">
-          <span class="sc-preview-label">Current draft</span>
-          <button class="sc-preview-close" on:click={() => previewExpanded = false}><i class="las la-angle-down"></i></button>
-        </div>
-        <div class="sc-preview-body">{@html latestHtml}</div>
-      </div>
-    {/if}
-
-    <!-- Apply bar -->
-    {#if latestHtml}
-      <div class="sc-apply-bar">
-        <div class="sc-mode-toggle">
-          <button class="sc-mode-btn" class:active={applyMode === 'replace'} on:click={() => applyMode = 'replace'}>Replace</button>
-          <button class="sc-mode-btn" class:active={applyMode === 'add'} on:click={() => applyMode = 'add'}>Add</button>
-        </div>
-        <button class="sc-apply-btn" on:click={applyToSection}>
-          <i class="las la-check"></i> Apply to draft
-        </button>
-      </div>
-    {/if}
-
-    <!-- Input area -->
     <div class="sc-input-area">
       {#if chatError}<div class="sc-error sc-error--chat">{chatError}</div>{/if}
       <div class="sc-input-row">
@@ -411,257 +489,221 @@
       </div>
       <p class="sc-hint">Shift+Enter for new line · Enter to send</p>
     </div>
+
+  <!-- ── REVIEWING ──────────────────────────────────────────────────────────────── -->
+  {:else if panelState === 'reviewing'}
+    <div class="review-layout">
+      <div class="review-bar">
+        <div class="review-bar-left">
+          <span class="review-bar-count">{acceptedCount}/{changedCount} changes accepted</span>
+          <div class="sc-mode-toggle">
+            <button class="sc-mode-btn" class:active={applyMode === 'replace'} on:click={() => { applyMode = 'replace'; reviewChanges(); }}>Replace</button>
+            <button class="sc-mode-btn" class:active={applyMode === 'add'} on:click={() => { applyMode = 'add'; reviewChanges(); }}>Add</button>
+          </div>
+        </div>
+        <div class="review-bar-actions">
+          <button class="btn-discard" on:click={discardReview}>Back to chat</button>
+          <button class="btn-accept-all" on:click={acceptAll}><i class="las la-check-double"></i> Accept all</button>
+          <button class="btn-commit" disabled={acceptedCount === 0} on:click={commitAccepted}><i class="las la-check"></i> Apply</button>
+        </div>
+      </div>
+
+      {#if reviewError}<p class="error-msg">{reviewError}</p>{/if}
+
+      <div class="review-rows" bind:this={reviewRowsEl}>
+        {#if changeGroups.length === 0}
+          <p class="diff-no-changes">No changes detected.</p>
+        {:else}
+          {#each changeGroups as group, idx}
+            <div class="review-row" class:review-row--changed={group.type !== 'unchanged'}>
+              <div class="review-row-doc" class:review-row-doc--unchanged={group.type === 'unchanged'}>
+                {#if group.type === 'unchanged'}
+                  {@html group.html}
+                {:else if group.type === 'added'}
+                  <div class="doc-para-change {group.accepted ? 'doc-para-added' : ''}">
+                    <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}{:else}<span>{w.value}</span>{/if}{/each}</div>
+                  </div>
+                {:else if group.type === 'removed'}
+                  {#if group.accepted}
+                    <div class="doc-para-change doc-para-removed"><div class="word-diff">{#each group.words as w}{#if w.removed}<del class="wd-del">{w.value}</del>{:else if w.added}{:else}<span>{w.value}</span>{/if}{/each}</div></div>
+                  {:else}
+                    <div class="doc-para-kept">{@html group.html}</div>
+                  {/if}
+                {:else if group.type === 'modified'}
+                  {#if group.accepted}
+                    <div class="doc-para-change doc-para-modified"><div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}<del class="wd-del">{w.value}</del>{:else}<span>{w.value}</span>{/if}{/each}</div></div>
+                  {:else}
+                    <div class="doc-para-change doc-para-kept-original">{@html group.oldHtml}</div>
+                  {/if}
+                {/if}
+              </div>
+              <div class="review-row-ctrl">
+                {#if group.type !== 'unchanged'}
+                  <div class="ctrl-card" class:rejected={!group.accepted}>
+                    <div class="ctrl-card-tag">
+                      {#if group.type === 'added'}<span class="change-tag change-tag--added">+ Added</span>
+                      {:else if group.type === 'removed'}<span class="change-tag change-tag--removed">− Removed</span>
+                      {:else}<span class="change-tag change-tag--modified">~ Modified</span>{/if}
+                    </div>
+                    <div class="para-btns">
+                      {#if group.type === 'added'}
+                        <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
+                        <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Reject</button>
+                      {:else if group.type === 'removed'}
+                        <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept removal</button>
+                        <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep</button>
+                      {:else}
+                        <button class="para-btn para-btn--accept" class:active={group.accepted} on:click={() => !group.accepted && toggleGroup(idx)}>Accept</button>
+                        <button class="para-btn para-btn--reject" class:active={!group.accepted} on:click={() => group.accepted && toggleGroup(idx)}>Keep original</button>
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+    </div>
   {/if}
 </div>
 
 <style>
-  .sc-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: #fff;
-    border-left: 1px solid #e5e7eb;
-    font-size: 0.8125rem;
-  }
+  .sc-panel { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: #f8fafc; }
+  .sc-selecting-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
   /* Header */
-  .sc-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f9fafb;
-    flex-shrink: 0;
-  }
-  .sc-title {
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: #111827;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .sc-close {
-    background: none; border: none; cursor: pointer;
-    color: #6b7280; font-size: 1.1rem; padding: 0.2rem; line-height: 1;
-  }
+  .sc-header { display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 1rem; border-bottom: 1px solid #e2e8f0; background: white; flex-shrink: 0; }
+  .sc-title { font-weight: 600; font-size: 0.875rem; color: #111827; display: flex; align-items: center; gap: 0.4rem; }
+  .sc-close { background: none; border: none; cursor: pointer; color: #6b7280; font-size: 1.1rem; padding: 0.2rem; line-height: 1; }
   .sc-close:hover { color: #111827; }
 
-  /* Empty state */
-  .sc-empty {
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; text-align: center; gap: 0.5rem;
-    color: #9ca3af; padding: 2rem 1rem; flex: 1;
-  }
+  /* Empty */
+  .sc-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.5rem; color: #9ca3af; padding: 2rem 1rem; flex: 1; }
   .sc-empty i { font-size: 2rem; }
   .sc-empty p { margin: 0; font-size: 0.8rem; max-width: 240px; }
 
-  /* Paragraph selection (matches incorporate panel style) */
-  .scoped-instruct-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.5rem 1rem; gap: 0.5rem; flex-shrink: 0;
-    border-bottom: 1px solid #e5e7eb; background: #fafafa;
-  }
-  .scoped-instruct { margin: 0; font-size: 0.75rem; color: #6b7280; }
-  .scoped-selectall-btn {
-    font-size: 0.72rem; padding: 0.2rem 0.5rem;
-    background: none; border: 1px solid #d1d5db; border-radius: 4px;
-    color: #374151; cursor: pointer; white-space: nowrap;
-  }
-  .scoped-selectall-btn:hover { background: #f3f4f6; }
-
-  .scoped-list {
-    flex: 1; overflow-y: auto; padding: 0.25rem 0;
-  }
-  .scoped-heading {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.4rem 1rem; background: #f3f4f6;
-    border-bottom: 1px solid #e5e7eb; gap: 0.5rem;
-  }
-  .scoped-heading-text {
-    font-size: 0.78rem; font-weight: 600; color: #111827; flex: 1;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .scoped-section-btn {
-    font-size: 0.7rem; padding: 0.15rem 0.45rem; white-space: nowrap;
-    background: none; border: 1px solid #d1d5db; border-radius: 3px;
-    color: #374151; cursor: pointer; flex-shrink: 0;
-  }
-  .scoped-section-btn:hover { background: #e5e7eb; }
-
-  .scoped-item {
-    display: flex; align-items: flex-start; gap: 0.5rem;
-    padding: 0.35rem 1rem; cursor: pointer;
-    border-bottom: 1px solid #f3f4f6; transition: background 0.1s;
-  }
-  .scoped-item:hover { background: #f9fafb; }
+  /* Paragraph selection */
+  .scoped-instruct-row { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; gap: 0.5rem; flex-shrink: 0; border-bottom: 1px solid #e2e8f0; background: white; }
+  .scoped-instruct { margin: 0; font-size: 0.75rem; color: #64748b; }
+  .scoped-selectall-btn { font-size: 0.72rem; padding: 0.2rem 0.5rem; background: none; border: 1px solid #e2e8f0; border-radius: 4px; color: #374151; cursor: pointer; white-space: nowrap; }
+  .scoped-selectall-btn:hover { background: #f1f5f9; }
+  .scoped-list { flex: 1; overflow-y: auto; padding: 0.25rem 0; min-height: 0; }
+  .scoped-heading { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 1rem; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; gap: 0.5rem; }
+  .scoped-heading-text { font-size: 0.78rem; font-weight: 600; color: #1e293b; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scoped-section-btn { font-size: 0.7rem; padding: 0.15rem 0.45rem; white-space: nowrap; background: none; border: 1px solid #e2e8f0; border-radius: 3px; color: #374151; cursor: pointer; flex-shrink: 0; }
+  .scoped-section-btn:hover { background: #e2e8f0; }
+  .scoped-item { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.35rem 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+  .scoped-item:hover { background: #f8fafc; }
   .scoped-item.selected { background: #eff6ff; }
   .scoped-item input[type="checkbox"] { margin-top: 0.1rem; flex-shrink: 0; }
   .scoped-item-text { font-size: 0.76rem; color: #374151; line-height: 1.4; }
-
-  .scoped-actions {
-    padding: 0.75rem 1rem; border-top: 1px solid #e5e7eb; flex-shrink: 0;
-  }
-  .btn-primary {
-    width: 100%; padding: 0.45rem; font-size: 0.82rem; font-weight: 600;
-    background: #1d4ed8; color: #fff; border: none; border-radius: 5px;
-    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
-  }
+  .scoped-actions { padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; flex-shrink: 0; background: white; }
+  .btn-primary { width: 100%; padding: 0.45rem; font-size: 0.82rem; font-weight: 600; background: #7c3aed; color: #fff; border: none; border-radius: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem; font-family: inherit; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-primary:not(:disabled):hover { background: #1e40af; }
+  .btn-primary:not(:disabled):hover { background: #6d28d9; }
 
   /* Selection summary bar */
-  .sc-selection-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.45rem 1rem; border-bottom: 1px solid #e5e7eb;
-    background: #eff6ff; flex-shrink: 0;
-  }
+  .sc-selection-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.45rem 1rem; border-bottom: 1px solid #e2e8f0; background: #eff6ff; flex-shrink: 0; }
   .sc-selection-count { font-size: 0.75rem; font-weight: 500; color: #1d4ed8; }
-  .sc-change-btn {
-    font-size: 0.72rem; padding: 0.2rem 0.5rem; background: none;
-    border: 1px solid #bfdbfe; border-radius: 4px; color: #1d4ed8; cursor: pointer;
-    display: flex; align-items: center; gap: 0.25rem;
-  }
+  .sc-change-btn { font-size: 0.72rem; padding: 0.2rem 0.5rem; background: none; border: 1px solid #bfdbfe; border-radius: 4px; color: #1d4ed8; cursor: pointer; display: flex; align-items: center; gap: 0.25rem; }
   .sc-change-btn:hover { background: #dbeafe; }
 
   /* Doc area */
-  .sc-doc-area {
-    border-bottom: 1px solid #e5e7eb; flex-shrink: 0;
-    padding: 0.5rem 1rem 0.6rem; background: #fafafa;
-  }
+  .sc-doc-area { border-bottom: 1px solid #e2e8f0; flex-shrink: 0; padding: 0.5rem 1rem 0.6rem; background: white; }
   .sc-doc-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
-  .sc-doc-tab {
-    font-size: 0.75rem; padding: 0.2rem 0.6rem;
-    border: 1px solid #d1d5db; border-radius: 4px;
-    background: #fff; color: #6b7280; cursor: pointer;
-  }
-  .sc-doc-tab.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-  .sc-dropzone {
-    border: 1.5px dashed #d1d5db; border-radius: 6px; padding: 0.65rem;
-    text-align: center; cursor: pointer; display: flex; flex-direction: column;
-    align-items: center; gap: 0.2rem; color: #6b7280; font-size: 0.78rem;
-    transition: border-color 0.15s, background 0.15s;
-  }
-  .sc-dropzone:hover, .sc-dropzone.drag-over { border-color: #1d4ed8; background: #eff6ff; color: #1d4ed8; }
+  .sc-doc-tab { font-size: 0.75rem; padding: 0.2rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 4px; background: white; color: #64748b; cursor: pointer; }
+  .sc-doc-tab.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+  .sc-dropzone { border: 1.5px dashed #cbd5e1; border-radius: 6px; padding: 0.65rem; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; color: #64748b; font-size: 0.78rem; transition: border-color 0.15s, background 0.15s; }
+  .sc-dropzone:hover, .sc-dropzone.drag-over { border-color: #7c3aed; background: #f5f3ff; color: #7c3aed; }
   .sc-dropzone i { font-size: 1.2rem; }
-  .sc-drop-hint { font-size: 0.68rem; color: #9ca3af; }
+  .sc-drop-hint { font-size: 0.68rem; color: #94a3b8; }
   .sc-paste-area { display: flex; flex-direction: column; gap: 0.35rem; }
-  .sc-paste-title {
-    font-size: 0.78rem; padding: 0.3rem 0.5rem;
-    border: 1px solid #d1d5db; border-radius: 4px;
-  }
-  .sc-paste-text {
-    font-size: 0.76rem; padding: 0.35rem 0.5rem;
-    border: 1px solid #d1d5db; border-radius: 4px; resize: vertical; font-family: inherit;
-  }
-  .sc-paste-confirm {
-    align-self: flex-end; font-size: 0.76rem; padding: 0.25rem 0.65rem;
-    background: #1d4ed8; color: #fff; border: none; border-radius: 4px; cursor: pointer;
-  }
+  .sc-paste-title { font-size: 0.78rem; padding: 0.3rem 0.5rem; border: 1px solid #e2e8f0; border-radius: 4px; }
+  .sc-paste-text { font-size: 0.76rem; padding: 0.35rem 0.5rem; border: 1px solid #e2e8f0; border-radius: 4px; resize: vertical; font-family: inherit; }
+  .sc-paste-confirm { align-self: flex-end; font-size: 0.76rem; padding: 0.25rem 0.65rem; background: #7c3aed; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
   .sc-paste-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
-  .sc-doc-loaded {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.45rem 1rem; border-bottom: 1px solid #e5e7eb;
-    background: #f0fdf4; flex-shrink: 0;
-  }
+  .sc-doc-loaded { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 1rem; border-bottom: 1px solid #e2e8f0; background: #f0fdf4; flex-shrink: 0; }
   .sc-doc-loaded i { color: #16a34a; }
-  .sc-doc-name {
-    flex: 1; font-size: 0.76rem; color: #15803d; font-weight: 500;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .sc-doc-remove {
-    background: none; border: none; cursor: pointer; color: #6b7280; font-size: 0.9rem; padding: 0.1rem;
-  }
+  .sc-doc-name { flex: 1; font-size: 0.76rem; color: #15803d; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-doc-remove { background: none; border: none; cursor: pointer; color: #64748b; font-size: 0.9rem; padding: 0.1rem; }
   .sc-doc-remove:hover { color: #ef4444; }
 
-  /* Messages */
-  .sc-messages {
-    flex: 1; overflow-y: auto; padding: 0.75rem 1rem;
-    display: flex; flex-direction: column; gap: 0.6rem; min-height: 0;
-  }
+  /* Chat */
+  .sc-messages { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; min-height: 0; }
   .sc-msg { display: flex; }
   .sc-msg--user { justify-content: flex-end; }
   .sc-msg--assistant { flex-direction: column; gap: 0.3rem; }
-  .sc-bubble {
-    padding: 0.45rem 0.65rem; border-radius: 10px;
-    line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-width: 88%;
-  }
-  .sc-bubble--user { background: #1d4ed8; color: #fff; border-bottom-right-radius: 3px; }
-  .sc-bubble--assistant { background: #f3f4f6; color: #111827; border-bottom-left-radius: 3px; }
-  .sc-draft-toggle { display: flex; }
-  .sc-draft-toggle-btn {
-    display: flex; align-items: center; gap: 0.35rem;
-    font-size: 0.74rem; padding: 0.22rem 0.55rem;
-    background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 5px; cursor: pointer;
-  }
-  .sc-draft-toggle-btn:hover { background: #dbeafe; }
-
-  /* Preview */
-  .sc-preview {
-    border-top: 1px solid #e5e7eb; flex-shrink: 0; max-height: 32%;
-    display: flex; flex-direction: column; background: #fff;
-  }
-  .sc-preview-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.35rem 1rem; border-bottom: 1px solid #e5e7eb; background: #f9fafb;
-  }
-  .sc-preview-label { font-size: 0.7rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
-  .sc-preview-close { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 0.85rem; }
-  .sc-preview-body { overflow-y: auto; padding: 0.65rem 1rem; font-size: 0.78rem; line-height: 1.6; color: #111827; }
-  :global(.sc-preview-body h2) { font-size: 0.9rem; font-weight: 700; margin: 0.4rem 0 0.2rem; }
-  :global(.sc-preview-body h3) { font-size: 0.82rem; font-weight: 600; margin: 0.35rem 0 0.15rem; }
-  :global(.sc-preview-body p)  { margin: 0 0 0.4rem; }
-
-  /* Apply bar */
-  .sc-apply-bar {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.45rem 1rem; border-top: 1px solid #e5e7eb;
-    background: #f9fafb; flex-shrink: 0;
-  }
-  .sc-mode-toggle { display: flex; border: 1px solid #d1d5db; border-radius: 5px; overflow: hidden; }
-  .sc-mode-btn {
-    padding: 0.25rem 0.6rem; font-size: 0.74rem;
-    border: none; background: #fff; color: #6b7280; cursor: pointer;
-  }
-  .sc-mode-btn.active { background: #1d4ed8; color: #fff; }
-  .sc-apply-btn {
-    flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
-    padding: 0.32rem 0.75rem; font-size: 0.78rem; font-weight: 600;
-    background: #16a34a; color: #fff; border: none; border-radius: 5px; cursor: pointer;
-  }
-  .sc-apply-btn:hover { background: #15803d; }
+  .sc-bubble { padding: 0.45rem 0.65rem; border-radius: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-width: 88%; font-size: 0.8rem; }
+  .sc-bubble--user { background: #7c3aed; color: #fff; border-bottom-right-radius: 3px; }
+  .sc-bubble--assistant { background: #f1f5f9; color: #1e293b; border-bottom-left-radius: 3px; }
+  /* Mode toggle (in review bar) */
+  .sc-mode-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; }
+  .sc-mode-btn { padding: 0.2rem 0.5rem; font-size: 0.7rem; border: none; background: white; color: #64748b; cursor: pointer; }
+  .sc-mode-btn.active { background: #7c3aed; color: #fff; }
 
   /* Input */
-  .sc-input-area {
-    padding: 0.45rem 0.75rem 0.45rem; border-top: 1px solid #e5e7eb;
-    flex-shrink: 0; background: #fff;
-  }
+  .sc-input-area { padding: 0.45rem 0.75rem; border-top: 1px solid #e2e8f0; flex-shrink: 0; background: white; }
   .sc-input-row { display: flex; gap: 0.35rem; align-items: flex-end; }
-  .sc-input {
-    flex: 1; padding: 0.4rem 0.55rem; border: 1px solid #d1d5db; border-radius: 6px;
-    font-size: 0.78rem; font-family: inherit; resize: none; line-height: 1.5; min-height: 2.5rem;
-  }
-  .sc-input:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 2px #dbeafe; }
-  .sc-input:disabled { background: #f9fafb; color: #9ca3af; }
-  .sc-send-btn {
-    width: 2.2rem; height: 2.2rem; flex-shrink: 0;
-    background: #1d4ed8; color: #fff; border: none; border-radius: 6px;
-    cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.95rem;
-  }
+  .sc-input { flex: 1; padding: 0.4rem 0.55rem; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.78rem; font-family: inherit; resize: none; line-height: 1.5; min-height: 2.5rem; }
+  .sc-input:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 2px #ede9fe; }
+  .sc-input:disabled { background: #f8fafc; color: #94a3b8; }
+  .sc-send-btn { width: 2.2rem; height: 2.2rem; flex-shrink: 0; background: #7c3aed; color: #fff; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; }
   .sc-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .sc-send-btn:not(:disabled):hover { background: #1e40af; }
-  .sc-hint { margin: 0.25rem 0 0; font-size: 0.66rem; color: #9ca3af; text-align: right; }
+  .sc-send-btn:not(:disabled):hover { background: #6d28d9; }
+  .sc-hint { margin: 0.25rem 0 0; font-size: 0.66rem; color: #94a3b8; text-align: right; }
+  .sc-error { font-size: 0.73rem; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 0.28rem 0.45rem; margin-bottom: 0.35rem; }
+  .sc-error--chat { margin-bottom: 0.35rem; }
 
-  .sc-error {
-    font-size: 0.73rem; color: #dc2626; background: #fef2f2;
-    border: 1px solid #fecaca; border-radius: 4px; padding: 0.28rem 0.45rem; margin-bottom: 0.35rem;
-  }
+  /* Review (matches PlanningDocIncorporatePanel exactly) */
+  .review-layout { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  .review-bar { flex-shrink: 0; display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 1rem; background: white; border-bottom: 2px solid #e2e8f0; flex-wrap: wrap; }
+  .review-bar-left { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
+  .review-bar-title { font-size: 0.8rem; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .review-bar-count { font-size: 0.7rem; color: #64748b; }
+  .review-bar-actions { display: flex; gap: 0.375rem; flex-shrink: 0; }
+  .btn-discard { padding: 0.4rem 0.75rem; background: white; color: #64748b; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8125rem; cursor: pointer; font-family: inherit; }
+  .btn-discard:hover { background: #f1f5f9; }
+  .btn-accept-all { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.625rem; background: #16a34a; color: white; border: none; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-accept-all:hover { background: #15803d; }
+  .btn-commit { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.625rem; background: #7c3aed; color: white; border: none; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-commit:hover:not(:disabled) { background: #6d28d9; }
+  .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
+  .error-msg { font-size: 0.75rem; color: #dc2626; padding: 0.375rem 1rem; margin: 0; flex-shrink: 0; }
+  .review-rows { flex: 1; overflow-y: auto; background: white; }
+  .diff-no-changes { font-size: 0.875rem; color: #94a3b8; text-align: center; padding: 3rem 2rem; margin: 0; }
+  .review-row { display: grid; grid-template-columns: 1fr 220px; border-bottom: 1px solid #f1f5f9; }
+  .review-row--changed { border-bottom-color: #e2e8f0; }
+  .review-row-doc { padding: 0.375rem 1.5rem 0.375rem 2rem; font-family: 'Calibri', 'Arial', sans-serif; font-size: 0.9375rem; line-height: 1.6; color: #1e293b; min-width: 0; }
+  .review-row-doc--unchanged { opacity: 0.45; }
+  .review-row-doc :global(h2) { font-size: 1.2rem; font-weight: 300; color: #1F4E78; margin: 0.5rem 0 0.25rem; }
+  .review-row-doc :global(h3) { font-size: 1rem; font-weight: 300; color: #1F4E78; margin: 0.375rem 0 0.2rem; }
+  .review-row-doc :global(p) { margin: 0.25rem 0; }
+  .doc-para-change { border-left: 3px solid transparent; padding-left: 0.625rem; margin-left: -0.625rem; }
+  .doc-para-added   { border-left-color: #22c55e; }
+  .doc-para-removed { border-left-color: #ef4444; }
+  .doc-para-modified { border-left-color: #f59e0b; }
+  .doc-para-kept-original { border-left-color: #94a3b8; }
+  .doc-para-kept { border-left-color: #94a3b8; }
+  .review-row-ctrl { padding: 0.375rem 0.625rem; border-left: 1px solid #f1f5f9; background: #fafafa; display: flex; align-items: flex-start; }
+  .review-row--changed .review-row-ctrl { border-left-color: #e2e8f0; background: #f8fafc; }
+  .ctrl-card { width: 100%; display: flex; flex-direction: column; gap: 0.375rem; transition: opacity 0.15s; }
+  .ctrl-card.rejected { opacity: 0.5; }
+  .ctrl-card-tag { display: flex; }
+  .change-tag { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.4rem; border-radius: 3px; }
+  .change-tag--added   { background: #dcfce7; color: #15803d; }
+  .change-tag--removed { background: #fee2e2; color: #b91c1c; }
+  .change-tag--modified { background: #fef9c3; color: #a16207; }
+  .para-btns { display: flex; gap: 0.375rem; align-self: flex-start; }
+  .para-btn { padding: 0.2rem 0.625rem; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.7rem; font-weight: 500; color: #94a3b8; background: white; cursor: pointer; font-family: inherit; opacity: 0.5; }
+  .para-btn.active { opacity: 1; cursor: default; }
+  .para-btn:not(.active):hover { background: #f1f5f9; color: #374151; opacity: 0.8; }
+  .para-btn--accept.active { background: #dcfce7; border-color: #86efac; color: #15803d; }
+  .para-btn--reject.active { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+  .word-diff { font-size: 0.8rem; line-height: 1.7; color: #1e293b; }
+  .wd-add { background: #bbf7d0; color: #14532d; text-decoration: none; border-radius: 2px; padding: 0 1px; }
+  .wd-del { background: #fecaca; color: #7f1d1d; text-decoration: line-through; border-radius: 2px; padding: 0 1px; }
 
-  .mini-spinner {
-    width: 0.9rem; height: 0.9rem; border: 2px solid currentColor;
-    border-top-color: transparent; border-radius: 50%;
-    animation: spin 0.6s linear infinite; flex-shrink: 0;
-  }
+  .mini-spinner { width: 0.875rem; height: 0.875rem; border: 1.5px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>

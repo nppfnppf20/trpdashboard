@@ -293,54 +293,6 @@
 
   $: if (!$activeDraftTypeId) { incorporateReviewMode = false; contextPanelOpen = false; sectionChatOpen = false; contextData = null; }
 
-  function applySectionChat(e) {
-    const { selected_paragraphs: selectedParas, new_html: newHtml, mode } = e.detail;
-    const current = $draftEditorHtml || '';
-
-    if (!current.trim() || !selectedParas?.length) {
-      const updated = (current + '\n' + newHtml).trim();
-      $draftEditorHtml = updated;
-      draftEditor?.setHTML(updated);
-      $draftSaved = false;
-      return;
-    }
-
-    // Split draft into blocks the same way the panel does
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<div>${current}</div>`, 'text/html');
-    const allNodes = Array.from(doc.body.firstChild?.childNodes ?? [])
-      .filter(n => n.nodeType === 1 && n.textContent.trim());
-    const allParas = allNodes.map((node, idx) => ({ id: `p${idx}`, html: node.outerHTML }));
-
-    const selectedIds = new Set(selectedParas.map(p => p.id));
-    const selectedIndices = allParas.map((p, i) => selectedIds.has(p.id) ? i : -1).filter(i => i >= 0);
-
-    if (!selectedIndices.length) {
-      const updated = (current + '\n' + newHtml).trim();
-      $draftEditorHtml = updated;
-      draftEditor?.setHTML(updated);
-      $draftSaved = false;
-      return;
-    }
-
-    const firstIdx = selectedIndices[0];
-    const lastIdx  = selectedIndices[selectedIndices.length - 1];
-    const before = allParas.slice(0, firstIdx).map(p => p.html).join('\n');
-    const after  = allParas.slice(lastIdx + 1).map(p => p.html).join('\n');
-
-    let updated;
-    if (mode === 'replace') {
-      updated = [before, newHtml, after].filter(Boolean).join('\n');
-    } else {
-      const kept = allParas.slice(firstIdx, lastIdx + 1).map(p => p.html).join('\n');
-      updated = [before, kept, newHtml, after].filter(Boolean).join('\n');
-    }
-
-    $draftEditorHtml = updated;
-    draftEditor?.setHTML(updated);
-    $draftSaved = false;
-  }
-
   async function toggleContextPanel() {
     if (contextPanelOpen) { contextPanelOpen = false; return; }
     incorporateReviewMode = false;
@@ -637,11 +589,19 @@
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
           {#if sectionChatOpen}
+            {@const _activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
             <SectionChatPanel
               {project}
+              docTypeSlug={_activeType?.slug ?? 'planning_statement'}
               currentDraftHtml={$draftEditorHtml}
-              on:close={() => sectionChatOpen = false}
-              on:apply={applySectionChat}
+              on:close={() => { sectionChatOpen = false; incorporateReviewMode = false; }}
+              on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
+              on:accepted={(e) => {
+                $draftEditorHtml = e.detail.html;
+                draftEditor?.setHTML(e.detail.html);
+                $draftSaved = false;
+                incorporateReviewMode = false;
+              }}
             />
           {:else if contextPanelOpen}
             <div class="context-panel">
@@ -2738,6 +2698,7 @@
     flex-direction: column;
     overflow: hidden;
     background: #f8fafc;
+    height: calc(100vh - 160px);
   }
   .draft-right-panel--full { width: 100%; border-left: none; }
 

@@ -2,11 +2,12 @@ import { authFetch } from '$lib/api/client.js';
 
 const BASE = '/api/planning-application';
 
-export async function sendSectionChatMessage({ projectId, messages, paragraphs, docText, docTitle }) {
+export async function sendSectionChatMessage({ projectId, docTypeSlug, messages, paragraphs, docText, docTitle }) {
   const res = await authFetch(`${BASE}/projects/${projectId}/section-chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      doc_type_slug: docTypeSlug || 'planning_statement',
       messages,
       paragraphs,
       doc_text: docText || null,
