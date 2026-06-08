@@ -79,8 +79,13 @@ ACTIONS ARRAY
 - notes: any useful context (e.g. "contingent on design review outcome"); null if nothing to add
 - If there are no actions, return []`;
 
-export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null) {
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief') {
   const parts = [];
+
+  const lengthInstruction = summaryType === 'detailed'
+    ? 'SUMMARY LENGTH: Detailed (3–4 pages). Expand each section with full context and depth. For each discussion point or agenda item include the full background, all viewpoints raised, decisions made with their rationale, and any risks or caveats. Be thorough — do not compress or omit relevant discussion.'
+    : 'SUMMARY LENGTH: Brief (one page). Be concise throughout. Summarise discussion points and decisions in tight bullet form. Omit padding. Aim for content that fits on a single page when printed.';
+  parts.push(lengthInstruction);
 
   if (userNotes?.trim()) {
     parts.push(`CONSULTANT NOTES (take absolute precedence):\n${userNotes.trim()}`);
@@ -93,17 +98,20 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
   parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
 
   const user = parts.join('\n\n');
-  const raw = await callClaude(MEETING_SYSTEM_PROMPT, user);
+  const raw = await callClaude(MEETING_SYSTEM_PROMPT, user, undefined, 8192);
 
   let parsed;
   try {
     parsed = parseJSON(raw);
-  } catch {
-    console.error('[meeting.service] Failed to parse LLM JSON:', raw.slice(0, 300));
+  } catch (parseErr) {
+    console.error('[meeting.service] Failed to parse LLM JSON. Error:', parseErr.message);
+    console.error('[meeting.service] Raw response (first 600 chars):', raw.slice(0, 600));
+    console.error('[meeting.service] Raw response (last 200 chars):', raw.slice(-200));
     throw new Error('LLM returned unexpected format for meeting transcript');
   }
 
   if (!parsed || typeof parsed !== 'object' || !parsed.summary_html) {
+    console.error('[meeting.service] Parsed object missing summary_html. Keys:', parsed ? Object.keys(parsed) : 'null');
     throw new Error('LLM returned unexpected format for meeting transcript');
   }
 

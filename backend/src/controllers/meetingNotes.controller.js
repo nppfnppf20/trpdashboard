@@ -9,7 +9,7 @@ import { processMeetingTranscript } from '../services/meeting.service.js';
 export async function processMeetingNote(req, res) {
   try {
     const { projectId } = req.params;
-    const { title, meeting_date, attendees_text, user_notes, agenda } = req.body;
+    const { title, meeting_date, attendees_text, user_notes, agenda, summary_type } = req.body;
 
     if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
 
@@ -25,7 +25,9 @@ export async function processMeetingNote(req, res) {
       return res.status(400).json({ error: 'No file or text provided' });
     }
 
-    const { summary_html, actions } = await processMeetingTranscript(text, fileName, user_notes || null, agenda || null);
+    const { summary_html, actions } = await processMeetingTranscript(
+      text, fileName, user_notes || null, agenda || null, summary_type || 'brief'
+    );
 
     const client = await pool.connect();
     try {

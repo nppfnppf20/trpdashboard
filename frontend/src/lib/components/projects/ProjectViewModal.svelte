@@ -25,6 +25,18 @@
 
   // Tab state
   let activeTab = 'site_boundary';
+  let betaDropdownOpen = false;
+
+  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv'];
+
+  function closeBetaDropdown() {
+    betaDropdownOpen = false;
+  }
+
+  function handleBetaTabSelect(tab) {
+    activeTab = tab;
+    betaDropdownOpen = false;
+  }
 
   // Map state
   let mapContainer;
@@ -443,6 +455,7 @@
     loading = true;
     error = null;
     activeTab = 'site_boundary';
+    betaDropdownOpen = false;
     conflictResults = null;
     conflictError = null;
     expandedCategories = {};
@@ -463,6 +476,8 @@
     }
   }
 </script>
+
+<svelte:window on:click={(e) => { if (betaDropdownOpen && !e.target.closest('.beta-dropdown-wrapper')) betaDropdownOpen = false; }} />
 
 {#if isOpen}
   <div class="modal-backdrop" on:click={handleBackdropClick} role="presentation">
@@ -510,30 +525,6 @@
           Relevant Policy
         </button>
         <button
-          class="tab-button {activeTab === 'similar_schemes' ? 'active' : ''}"
-          on:click={() => activeTab = 'similar_schemes'}
-        >
-          Similar Schemes <span class="beta-tag">Beta</span>
-        </button>
-        <button
-          class="tab-button {activeTab === 'lpa_decision_analysis' ? 'active' : ''}"
-          on:click={() => activeTab = 'lpa_decision_analysis'}
-        >
-          LPA Decision Analysis <span class="beta-tag">Beta</span>
-        </button>
-        <button
-          class="tab-button {activeTab === 'hlpv' ? 'active' : ''}"
-          on:click={() => activeTab = 'hlpv'}
-        >
-          Renewables HLPV Analysis
-        </button>
-        <button
-          class="tab-button {activeTab === 'conflict' ? 'active' : ''}"
-          on:click={() => activeTab = 'conflict'}
-        >
-          Nearby Renewables Check
-        </button>
-        <button
           class="tab-button {activeTab === 'project_docs' ? 'active' : ''}"
           on:click={() => activeTab = 'project_docs'}
         >
@@ -551,6 +542,46 @@
         >
           Completeness
         </button>
+        <div class="beta-dropdown-wrapper">
+          <button
+            class="tab-button {betaTabs.includes(activeTab) ? 'active' : ''}"
+            on:click={() => betaDropdownOpen = !betaDropdownOpen}
+          >
+            Beta <span class="beta-tag">Beta</span> <i class="las la-angle-down beta-chevron {betaDropdownOpen ? 'open' : ''}"></i>
+          </button>
+          {#if betaDropdownOpen}
+            <div class="beta-dropdown" role="menu">
+              <button
+                class="beta-dropdown-item {activeTab === 'similar_schemes' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('similar_schemes')}
+                role="menuitem"
+              >
+                Similar Schemes
+              </button>
+              <button
+                class="beta-dropdown-item {activeTab === 'lpa_decision_analysis' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('lpa_decision_analysis')}
+                role="menuitem"
+              >
+                LPA Decision Analysis
+              </button>
+              <button
+                class="beta-dropdown-item {activeTab === 'conflict' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('conflict')}
+                role="menuitem"
+              >
+                Nearby Renewables Check
+              </button>
+              <button
+                class="beta-dropdown-item {activeTab === 'hlpv' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('hlpv')}
+                role="menuitem"
+              >
+                Renewables HLPV Analysis
+              </button>
+            </div>
+          {/if}
+        </div>
       </div>
 
       <div class="modal-body">
@@ -2325,5 +2356,62 @@
     color: #94a3b8;
     font-size: 0.875rem;
     margin: 0;
+  }
+
+  /* Beta dropdown */
+  .beta-dropdown-wrapper {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+  }
+
+  .beta-chevron {
+    font-size: 0.75rem;
+    margin-left: 4px;
+    vertical-align: middle;
+    transition: transform 0.2s;
+  }
+
+  .beta-chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .beta-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 200;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    min-width: 220px;
+    padding: 0.375rem 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .beta-dropdown-item {
+    background: none;
+    border: none;
+    padding: 0.625rem 1rem;
+    text-align: left;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #475569;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+
+  .beta-dropdown-item:hover {
+    background: #f8fafc;
+    color: #1e293b;
+  }
+
+  .beta-dropdown-item.active {
+    color: #9333ea;
+    background: #faf5ff;
   }
 </style>

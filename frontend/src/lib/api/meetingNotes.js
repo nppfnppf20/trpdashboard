@@ -1,12 +1,13 @@
 import { authFetch } from './client.js';
 
-export async function processMeetingNote(projectId, { file, text, fileName, title, meetingDate, attendeesText, userNotes, agenda }) {
+export async function processMeetingNote(projectId, { file, text, fileName, title, meetingDate, attendeesText, userNotes, agenda, summaryType }) {
   const formData = new FormData();
   formData.append('title', title);
   if (meetingDate) formData.append('meeting_date', meetingDate);
   if (attendeesText) formData.append('attendees_text', attendeesText);
   if (userNotes) formData.append('user_notes', userNotes);
   if (agenda) formData.append('agenda', agenda);
+  if (summaryType) formData.append('summary_type', summaryType);
 
   if (file) {
     formData.append('file', file);

@@ -85,14 +85,14 @@ export const PLANNING_TIER_ORDER = ['national', 'local', 'neighbourhood', 'suppl
 // Core API wrapper + JSON parser
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function callClaude(system, user, model = MODEL_SONNET) {
+export async function callClaude(system, user, model = MODEL_SONNET, maxTokens = 4096) {
   const MAX_RETRIES = 3;
   let delay = 15000;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const message = await client.messages.create({
         model,
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         system,
         messages: [{ role: 'user', content: user }]
       });
@@ -111,8 +111,24 @@ export async function callClaude(system, user, model = MODEL_SONNET) {
 }
 
 export function parseJSON(text) {
-  const cleaned = text.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
-  return JSON.parse(cleaned);
+  // Strip code fences if present
+  const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  // Try direct parse first
+  try {
+    return JSON.parse(stripped);
+  } catch {}
+
+  // Fall back: find the outermost { ... } and parse that
+  const start = stripped.indexOf('{');
+  const end = stripped.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(stripped.slice(start, end + 1));
+    } catch {}
+  }
+
+  throw new SyntaxError('Could not extract valid JSON from LLM response');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
