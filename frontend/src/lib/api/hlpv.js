@@ -48,3 +48,28 @@ export async function generateHlpvNarrative(projectId, disciplines, briefingNote
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+/**
+ * List saved HLPV analysis sessions for a project (for the starter doc dropdown).
+ * @param {number} projectId
+ * @returns {Array<{id, site_name, created_at}>}
+ */
+export async function listHlpvSessions(projectId) {
+  const res = await authFetch(`${HLPV_BASE}/project/${projectId}/sessions`);
+  if (!res.ok) throw new Error('Failed to list HLPV sessions');
+  return res.json();
+}
+
+/**
+ * Get formatted HLPV discipline text for a session, ready to save into the starter doc slot.
+ * @param {string} sessionId
+ * @returns {{contentText: string}}
+ */
+export async function getFormattedHlpvSession(sessionId) {
+  const res = await authFetch(`${HLPV_BASE}/sessions/${sessionId}/formatted-data`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(body || `HTTP ${res.status}`);
+  }
+  return res.json();
+}

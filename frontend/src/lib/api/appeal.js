@@ -298,11 +298,11 @@ export async function resetAppealTypePrompt(typeId) {
   return res.json();
 }
 
-export async function generateDraftFromPaNotes(projectId, typeId, { briefingNoteId } = {}) {
+export async function generateDraftFromPaNotes(projectId, typeId, { briefingNoteId, developmentType } = {}) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/generate-from-pa`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ briefingNoteId: briefingNoteId ?? null })
+    body: JSON.stringify({ briefingNoteId: briefingNoteId ?? null, developmentType: developmentType ?? null })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate draft'); }
   return res.json();

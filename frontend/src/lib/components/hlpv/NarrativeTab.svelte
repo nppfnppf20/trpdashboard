@@ -594,6 +594,7 @@
     cursor: not-allowed;
   }
 
+
   .btn-check-brief i {
     font-size: 1rem;
   }

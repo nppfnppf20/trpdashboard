@@ -143,6 +143,17 @@
   let developmentType = project.development_type ?? '';
   let devTypeSaving = false;
 
+  // Per-card dev type override for appeal cards that use dev-type-specific guiding briefs.
+  // Defaults to the project dev type and can be changed per-card without saving to DB.
+  let appealCardDevTypes = {};
+  $: {
+    for (const type of $draftTypes ?? []) {
+      if (type.slug === 'hlpv_narrative' && !(type.id in appealCardDevTypes)) {
+        appealCardDevTypes[type.id] = developmentType || '';
+      }
+    }
+  }
+
   async function handleDevTypeChange(e) {
     const value = e.target.value;
     developmentType = value;
@@ -739,8 +750,21 @@
                   {#if type.tool === 'appeal' || type.tool === 'stage1'}
                     {@const selectedNoteId = $appealSelectedNoteIds[type.id] ?? null}
                     {@const selectedNote = selectedNoteId ? $briefingNotes.find(n => n.id === selectedNoteId) : null}
+                    {#if type.slug === 'hlpv_narrative'}
+                      <select
+                        class="card-dev-type-select"
+                        value={appealCardDevTypes[type.id] ?? ''}
+                        on:change={(e) => { appealCardDevTypes[type.id] = e.target.value; appealCardDevTypes = appealCardDevTypes; }}
+                        title="Development type — selects which guiding brief to use"
+                      >
+                        <option value="">Dev type...</option>
+                        {#each DEV_TYPES as dt}
+                          <option value={dt}>{dt}</option>
+                        {/each}
+                      </select>
+                    {/if}
                     <div class="briefing-btn-group" use:clickOutside={() => { if ($appealDropdownOpenId === type.id) appealDropdownOpenId.set(null); }}>
-                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => handleGenerate(type.id, { briefingNoteId: selectedNoteId })}>
+                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => handleGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null })}>
                         {#if $draftGenerating === type.id}
                           <div class="mini-spinner"></div> Generating...
                         {:else}

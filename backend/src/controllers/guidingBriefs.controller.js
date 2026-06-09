@@ -22,7 +22,7 @@ export async function listGuidingBriefs(req, res) {
 export async function getGuidingBrief(document_type, development_type) {
   const { rows } = await pool.query(
     `SELECT id, name, document_type, development_type,
-            guidance_content, review_checklist
+            guidance_content, review_checklist, style_example
      FROM admin_console.guiding_briefs
      WHERE document_type = $1
        AND (development_type = $2 OR development_type IS NULL)

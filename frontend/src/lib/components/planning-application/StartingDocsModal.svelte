@@ -9,6 +9,7 @@
     getBriefingNotes,
     uploadBriefingNote,
   } from '$lib/api/appeal.js';
+  import { listHlpvSessions, getFormattedHlpvSession } from '$lib/api/hlpv.js';
 
   export let project;
   export let typeId;   // e.g. 'appeal_1'
@@ -33,6 +34,10 @@
       { slug: 'committee_report',   label: 'Committee Report',   variable: '{{COMMITTEE_REPORT}}' },
       { slug: 'committee_minutes',  label: 'Committee Minutes',  variable: '{{COMMITTEE_MINUTES}}' },
     ],
+    hlpv_narrative: [
+      { slug: 'hlpv_data',               label: 'HLPV Tool Data',                    variable: '{{HLPV_DATA}}' },
+      { slug: 'additional_designations', label: 'Additional Designations & Site Notes', variable: '{{ADDITIONAL_DESIGNATIONS}}' },
+    ],
   };
 
   const OTHER_SLOT = { slug: 'other', label: 'Other Documents', variable: '{{OTHER_DOCS}}' };
@@ -55,6 +60,29 @@
   let pasteText = '';
   let pasteTitle = '';
 
+  // HLPV session dropdown (for hlpv_narrative draft type, hlpv_data slot)
+  let hlpvSessions = [];
+  let selectedSessionId = '';
+  let importingSession = false;
+  let sessionImportError = null;
+
+  async function handleImportHlpvSession() {
+    if (!selectedSessionId) return;
+    importingSession = true;
+    sessionImportError = null;
+    try {
+      const { contentText } = await getFormattedHlpvSession(selectedSessionId);
+      const saved = await upsertStartingDocText(project.id, rawTypeId, 'hlpv_data', contentText);
+      slotState['hlpv_data'].content_text = contentText;
+      slotState['hlpv_data'].file_name = saved.file_name ?? null;
+      slotState = slotState;
+    } catch (err) {
+      sessionImportError = err.message || 'Import failed';
+    } finally {
+      importingSession = false;
+    }
+  }
+
   // Baseline context chars: prompt template overhead + guiding brief + project brief
   // Fetched on mount so the bar starts at the real baseline, not zero.
   let baselineChars = 1500; // rough prompt template overhead
@@ -71,12 +99,14 @@
   onMount(async () => {
     initSlotState();
     try {
-      const [rows, ctx, notes] = await Promise.all([
+      const [rows, ctx, notes, sessions] = await Promise.all([
         getStartingDocs(project.id, rawTypeId),
         getDraftContext(project.id, rawTypeId).catch(() => null),
         getBriefingNotes(project.id).catch(() => []),
+        typeSlug === 'hlpv_narrative' ? listHlpvSessions(project.id).catch(() => []) : Promise.resolve([]),
       ]);
       briefingNotes = notes;
+      hlpvSessions = sessions;
       for (const row of rows) {
         if (slotState[row.slot_slug] !== undefined) {
           slotState[row.slot_slug].content_text = row.content_text;
@@ -297,46 +327,90 @@
                 <code class="sd-var-badge">{slot.variable}</code>
               </div>
 
-              {#if st?.file_name}
-                <span class="sd-file-name"><i class="las la-file-alt"></i> {st.file_name}</span>
-              {/if}
-
-              <textarea
-                class="sd-textarea"
-                placeholder="Paste document text here..."
-                value={st?.content_text ?? ''}
-                on:input={(e) => { slotState[slot.slug].content_text = e.target.value; slotState = slotState; }}
-                on:blur={() => handleBlur(slot.slug)}
-                disabled={st?.uploading}
-              ></textarea>
-
-              <div class="sd-card-actions">
-                <label class="sd-upload-btn" title="Upload file">
-                  {#if st?.uploading}
-                    <div class="mini-spinner"></div> Parsing...
-                  {:else}
-                    <i class="las la-file-upload"></i> Upload
-                  {/if}
-                  <input
-                    type="file"
-                    accept=".pdf,.txt,.md"
-                    style="display:none"
-                    bind:this={fileInputs[slot.slug]}
-                    on:change={(e) => handleFileChange(slot.slug, e)}
-                    disabled={st?.uploading}
-                  />
-                </label>
-                {#if st?.content_text || st?.file_name}
-                  <button
-                    class="sd-remove-btn"
-                    disabled={st?.saving || st?.uploading}
-                    on:click={() => handleRemove(slot.slug)}
-                    title="Remove"
-                  >
-                    {#if st?.saving}<div class="mini-spinner"></div>{:else}<i class="las la-trash"></i>{/if}
-                  </button>
+              {#if slot.slug === 'hlpv_data'}
+                <!-- HLPV session selector -->
+                {#if st?.content_text}
+                  <span class="sd-file-name"><i class="las la-check-circle"></i> HLPV data loaded</span>
                 {/if}
-              </div>
+                {#if hlpvSessions.length === 0}
+                  <p class="sd-hlpv-empty">No saved HLPV analyses found for this project. Run the HLPV tool first.</p>
+                {:else}
+                  <div class="sd-hlpv-import">
+                    <select class="sd-hlpv-select" bind:value={selectedSessionId} disabled={importingSession}>
+                      <option value="">Select a saved HLPV analysis...</option>
+                      {#each hlpvSessions as s (s.id)}
+                        <option value={s.id}>
+                          {s.site_name || 'Unnamed site'} — {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </option>
+                      {/each}
+                    </select>
+                    <button
+                      class="sd-hlpv-import-btn"
+                      disabled={!selectedSessionId || importingSession}
+                      on:click={handleImportHlpvSession}
+                    >
+                      {#if importingSession}<div class="mini-spinner"></div> Importing...{:else}<i class="las la-download"></i> Import{/if}
+                    </button>
+                  </div>
+                  {#if sessionImportError}
+                    <span class="sd-hlpv-error">{sessionImportError}</span>
+                  {/if}
+                {/if}
+                {#if st?.content_text}
+                  <div class="sd-card-actions">
+                    <button
+                      class="sd-remove-btn"
+                      disabled={st?.saving}
+                      on:click={() => handleRemove(slot.slug)}
+                      title="Remove"
+                    >
+                      {#if st?.saving}<div class="mini-spinner"></div>{:else}<i class="las la-trash"></i>{/if}
+                    </button>
+                  </div>
+                {/if}
+
+              {:else}
+                {#if st?.file_name}
+                  <span class="sd-file-name"><i class="las la-file-alt"></i> {st.file_name}</span>
+                {/if}
+
+                <textarea
+                  class="sd-textarea"
+                  placeholder="Paste document text here..."
+                  value={st?.content_text ?? ''}
+                  on:input={(e) => { slotState[slot.slug].content_text = e.target.value; slotState = slotState; }}
+                  on:blur={() => handleBlur(slot.slug)}
+                  disabled={st?.uploading}
+                ></textarea>
+
+                <div class="sd-card-actions">
+                  <label class="sd-upload-btn" title="Upload file">
+                    {#if st?.uploading}
+                      <div class="mini-spinner"></div> Parsing...
+                    {:else}
+                      <i class="las la-file-upload"></i> Upload
+                    {/if}
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,.md"
+                      style="display:none"
+                      bind:this={fileInputs[slot.slug]}
+                      on:change={(e) => handleFileChange(slot.slug, e)}
+                      disabled={st?.uploading}
+                    />
+                  </label>
+                  {#if st?.content_text || st?.file_name}
+                    <button
+                      class="sd-remove-btn"
+                      disabled={st?.saving || st?.uploading}
+                      on:click={() => handleRemove(slot.slug)}
+                      title="Remove"
+                    >
+                      {#if st?.saving}<div class="mini-spinner"></div>{:else}<i class="las la-trash"></i>{/if}
+                    </button>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -708,6 +782,59 @@
   }
   .sd-remove-btn:hover:not(:disabled) { background: #fef2f2; }
   .sd-remove-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .sd-hlpv-empty {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    color: #64748b;
+    font-style: italic;
+  }
+
+  .sd-hlpv-import {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  .sd-hlpv-select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: #374151;
+    background: white;
+  }
+
+  .sd-hlpv-import-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.75rem;
+    background: #4f46e5;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+
+  .sd-hlpv-import-btn:hover:not(:disabled) { background: #4338ca; }
+  .sd-hlpv-import-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+  .sd-hlpv-error {
+    display: block;
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: #dc2626;
+  }
 
   .sd-context-bar {
     display: flex;

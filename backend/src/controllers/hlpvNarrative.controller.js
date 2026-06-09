@@ -4,8 +4,9 @@
  */
 
 import { pool } from '../db.js';
-import { generateHlpvNarrative } from '../services/llm.service.js';
+import { generateHlpvNarrative, formatHlpvDataAsText, buildDisciplinesFromSessionData } from '../services/llm.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
+import { getFullSessionData } from '../services/analysisSession.service.js';
 
 /**
  * POST /api/hlpv/generate-narrative
@@ -52,5 +53,48 @@ export async function generateNarrative(req, res) {
   } catch (err) {
     console.error('hlpvNarrative.generateNarrative error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate narrative' });
+  }
+}
+
+/**
+ * GET /api/hlpv/project/:projectId/sessions
+ * Lists saved HLPV analysis sessions for a project (for the starter doc dropdown).
+ */
+export async function listProjectSessions(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, site_name, created_at
+       FROM public.analysis_sessions
+       WHERE project_id = $1
+       ORDER BY created_at DESC`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('hlpvNarrative.listProjectSessions error:', err);
+    res.status(500).json({ error: err.message || 'Failed to list sessions' });
+  }
+}
+
+/**
+ * GET /api/hlpv/sessions/:sessionId/formatted-data
+ * Returns the formatted HLPV discipline text for a session, ready to save into the starter doc slot.
+ */
+export async function getFormattedSessionData(req, res) {
+  const { sessionId } = req.params;
+  try {
+    const { summaries, rules, findings, edits } = await getFullSessionData(sessionId);
+
+    if (!summaries.length) {
+      return res.status(404).json({ error: 'Session not found or has no discipline data' });
+    }
+
+    const disciplines = buildDisciplinesFromSessionData(summaries, rules, findings, edits);
+    const contentText = formatHlpvDataAsText(disciplines);
+    res.json({ contentText });
+  } catch (err) {
+    console.error('hlpvNarrative.getFormattedSessionData error:', err);
+    res.status(500).json({ error: err.message || 'Failed to get session data' });
   }
 }

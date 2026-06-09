@@ -258,12 +258,14 @@ Output format — clean HTML only:
 // the whole prompt rather than per-section prompts.
 // Supports {{GUIDING_BRIEF}} variable substitution in the prompt text.
 const STARTING_DOC_VARS = [
-  { slug: 'decision_notice',    variable: 'DECISION_NOTICE',    label: 'Decision Notice' },
-  { slug: 'officers_report',    variable: 'OFFICERS_REPORT',    label: "Officer's Report" },
-  { slug: 'planning_statement', variable: 'PLANNING_STATEMENT', label: 'Planning Statement' },
-  { slug: 'committee_report',   variable: 'COMMITTEE_REPORT',   label: 'Committee Report' },
-  { slug: 'committee_minutes',  variable: 'COMMITTEE_MINUTES',  label: 'Committee Minutes' },
-  { slug: 'other',              variable: 'OTHER_DOCS',         label: 'Other Documents' },
+  { slug: 'decision_notice',         variable: 'DECISION_NOTICE',         label: 'Decision Notice' },
+  { slug: 'officers_report',         variable: 'OFFICERS_REPORT',         label: "Officer's Report" },
+  { slug: 'planning_statement',      variable: 'PLANNING_STATEMENT',      label: 'Planning Statement' },
+  { slug: 'committee_report',        variable: 'COMMITTEE_REPORT',        label: 'Committee Report' },
+  { slug: 'committee_minutes',       variable: 'COMMITTEE_MINUTES',       label: 'Committee Minutes' },
+  { slug: 'other',                   variable: 'OTHER_DOCS',              label: 'Other Documents' },
+  { slug: 'hlpv_data',               variable: 'HLPV_DATA',               label: 'HLPV Tool Data' },
+  { slug: 'additional_designations', variable: 'ADDITIONAL_DESIGNATIONS', label: 'Additional Designations & Site Notes' },
 ];
 
 export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '' }) {
@@ -310,7 +312,11 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     ? `\n\nProject Briefing Notes:\n${briefingNotes.trim()}`
     : '';
 
-  const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}${briefingNotesBlock}
+  const styleExampleBlock = guidingBrief?.style_example?.trim()
+    ? `\n\nStyle reference (use only to calibrate register and structure — do not reproduce names, facts, or arguments from it):\n${guidingBrief.style_example.trim()}`
+    : '';
+
+  const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}${briefingNotesBlock}${styleExampleBlock}
 
 Project: ${projectName}
 Document type: ${draftTypeName}

@@ -824,7 +824,7 @@ export async function generateDraft(req, res) {
 
 export async function generateDraftFromPaNotes(req, res) {
   const { projectId, typeId } = req.params;
-  const { briefingNoteId } = req.body ?? {};
+  const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
@@ -865,7 +865,7 @@ export async function generateDraftFromPaNotes(req, res) {
     }
     const [{ rows: briefingRows }, guidingBrief, { rows: startingDocRows }] = await Promise.all([
       briefingNoteQuery,
-      getGuidingBrief(draftType.slug, projectRows[0].development_type),
+      getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? projectRows[0].development_type),
       pool.query(
         `SELECT slot_slug, content_text FROM appeals.pa_draft_starting_docs
          WHERE project_id = $1 AND draft_type_id = $2`,
@@ -1110,7 +1110,13 @@ export async function uploadDraftExample(req, res) {
   }
 }
 
+// Some draft type slugs share guiding briefs stored under a different document_type key.
+const GUIDING_BRIEF_SLUG_ALIAS = {
+  hlpv_narrative: 'hlpv',
+};
+
 async function fetchPromptContext(projectId, typeSlug, developmentType) {
+  const briefDocType = GUIDING_BRIEF_SLUG_ALIAS[typeSlug] || typeSlug;
   const [projectBriefRows, guidingBrief] = await Promise.all([
     pool.query(
       `SELECT summary_html FROM planning_applications.document_summaries
@@ -1118,7 +1124,7 @@ async function fetchPromptContext(projectId, typeSlug, developmentType) {
        ORDER BY created_at DESC LIMIT 1`,
       [projectId]
     ),
-    getGuidingBrief(typeSlug, developmentType)
+    getGuidingBrief(briefDocType, developmentType)
   ]);
   return {
     projectBrief: projectBriefRows.rows[0]?.summary_html ?? null,

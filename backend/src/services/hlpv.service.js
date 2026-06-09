@@ -98,12 +98,153 @@ function buildHlpvCombinedPrompt(disciplines, briefingText) {
   return parts.join('');
 }
 
+const DISCIPLINE_DISPLAY_NAMES = {
+  heritage: 'Heritage',
+  landscape: 'Landscape',
+  ecology: 'Ecology',
+  trees: 'Ancient Woodland',
+  renewables: 'Renewables Development',
+  airfields: 'Airfields',
+  ag_land: 'Agricultural Land',
+  flood: 'Flood Risk',
+  aviation: 'Aviation',
+  highways: 'Highways',
+  amenity: 'Amenity',
+};
+
+const FEATURE_TYPE_LABELS = {
+  listed_building:          'Listed Buildings',
+  conservation_area:        'Conservation Areas',
+  scheduled_monument:       'Scheduled Monuments',
+  registered_park_garden:   'Registered Parks & Gardens',
+  world_heritage_site:      'World Heritage Sites',
+  aonb:                     'AONBs / National Landscapes',
+  national_park:            'National Parks',
+  green_belt:               'Green Belt',
+  sssi:                     'SSSIs',
+  sac:                      'SACs',
+  spa:                      'SPAs',
+  ramsar:                   'Ramsar Sites',
+  national_nature_reserve:  'National Nature Reserves',
+  gcn:                      'Great Crested Newt Records',
+  os_priority_pond:         'Priority Ponds',
+  drinking_water:           'Drinking Water Safeguard Zones',
+  ancient_woodland:         'Ancient Woodland',
+  renewable_development:    'Nearby Renewable Developments',
+  uk_airport:               'Airports / Airfields',
+  agricultural_land:        'Agricultural Land',
+};
+
+function fmtDistance(dist_m, on_site) {
+  if (on_site) return 'within site';
+  if (!dist_m && dist_m !== 0) return 'unknown distance';
+  return dist_m >= 1000 ? `${(dist_m / 1000).toFixed(1)}km` : `${Math.round(dist_m)}m`;
+}
+
+/**
+ * Convert raw DB rows (from analysis_discipline_summary, analysis_rules_triggered,
+ * analysis_findings, analysis_edits) into the disciplines array shape expected by
+ * formatHlpvDataAsText.
+ */
+export function buildDisciplinesFromSessionData(summaries, rules, findings, edits) {
+  return summaries
+    .filter(s => s.overall_risk || rules.some(r => r.discipline === s.discipline))
+    .map(summary => {
+      const discipline = summary.discipline;
+      const edit = edits.find(e => e.discipline === discipline);
+      const overallRisk = edit?.edited_overall_risk || summary.overall_risk || 'unknown';
+      const editedRecs = edit?.edited_recommendations;
+      const disciplineRecommendation = editedRecs?.length
+        ? (Array.isArray(editedRecs) ? editedRecs.join('\n') : editedRecs)
+        : (summary.discipline_recommendation || null);
+
+      const triggeredRules = rules
+        .filter(r => r.discipline === discipline)
+        .map(r => ({ rule: r.rule_name, level: r.risk_level, findings: r.findings_text }));
+
+      // Build designation details text grouped by feature type
+      const disciplineFindings = findings.filter(f => f.discipline === discipline);
+      const byType = {};
+      for (const f of disciplineFindings) {
+        const type = f.feature_type;
+        if (!byType[type]) byType[type] = [];
+        byType[type].push(f);
+      }
+      const detailLines = [];
+      for (const [type, feats] of Object.entries(byType)) {
+        const label = FEATURE_TYPE_LABELS[type] || type;
+        detailLines.push(`${label}:`);
+        for (const f of feats) {
+          const name = f.feature_name || 'Unnamed';
+          const grade = f.grade ? ` (${f.grade})` : '';
+          const pct = f.percentage_coverage ? ` (~${Math.round(f.percentage_coverage)}% of site)` : '';
+          detailLines.push(`  - ${name}${grade}: ${fmtDistance(f.distance_m, f.on_site)}${pct}`);
+        }
+      }
+
+      return {
+        name: DISCIPLINE_DISPLAY_NAMES[discipline] || discipline,
+        overallRisk,
+        triggeredRules,
+        designationDetails: detailLines.length ? detailLines.join('\n') : null,
+        disciplineRecommendation,
+      };
+    })
+    .filter(d => d.triggeredRules.length > 0 || d.designationDetails);
+}
+
+/**
+ * Format disciplines array as structured plain text for the PA Workspace starter doc slot.
+ * Keeps designation names and distances precise so the LLM can't hallucinate them.
+ */
+export function formatHlpvDataAsText(disciplines) {
+  const lines = ['HLPV Planning Constraint Data', '='.repeat(30), ''];
+
+  for (const d of disciplines) {
+    const riskLabel = (d.overallRisk ?? 'unknown').replace(/_/g, ' ');
+    lines.push(`DISCIPLINE: ${d.name}`);
+    lines.push(`Overall risk: ${riskLabel}`);
+
+    if (d.triggeredRules?.length) {
+      lines.push('');
+      lines.push('Triggered rules:');
+      for (const r of d.triggeredRules) {
+        lines.push(`  - ${r.rule} [${(r.level ?? '').replace(/_/g, ' ')}]: ${r.findings}`);
+      }
+    }
+
+    if (d.designationDetails?.trim()) {
+      lines.push('');
+      lines.push('Designations:');
+      for (const dl of d.designationDetails.split('\n')) {
+        lines.push(`  ${dl}`);
+      }
+    }
+
+    if (d.disciplineRecommendation?.trim()) {
+      lines.push('');
+      lines.push('Suggested text (style reference only — do not copy verbatim):');
+      lines.push(d.disciplineRecommendation.trim());
+    }
+
+    lines.push('');
+    lines.push('-'.repeat(30));
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
 export async function generateHlpvNarrative(disciplines, briefingText, guidingBrief = null) {
   const guidingBlock = guidingBrief?.guidance_content?.trim()
     ? `\n\n## Practice Guidance\nThe following is practice guidance from this consultancy on approaching HLPV assessments. Use it only to inform how you structure, frame and prioritise the information already provided above — the discipline data and any briefing note. Do NOT introduce any topic, issue, observation, or recommendation that is not directly supported by the specific data you have been given. If the guidance refers to something that has no basis in the data provided, ignore it entirely. Every sentence in your output must be grounded in the designation data or briefing note above — the guidance is a professional reference, not a list of things to write about.\n\n${guidingBrief.guidance_content.trim()}`
     : '';
 
-  const system = HLPV_NARRATIVE_SYSTEM + HLPV_TONE_EXAMPLE_BLOCK + guidingBlock;
+  const briefStyleBlock = guidingBrief?.style_example?.trim()
+    ? `\n\nThe following is a real example HLPV written by this consultancy. Use it ONLY as a style reference — to learn the professional register, structure, and level of detail. Do NOT reproduce any place names, designation names, distances, policy references, or factual content from it. Every fact in your output must come solely from the designation data provided:\n<style_example>\n${guidingBrief.style_example.trim()}\n</style_example>`
+    : HLPV_TONE_EXAMPLE_BLOCK;
+
+  const system = HLPV_NARRATIVE_SYSTEM + briefStyleBlock + guidingBlock;
   const user = buildHlpvCombinedPrompt(disciplines, briefingText);
   const raw = await callClaude(system, user, MODEL_SONNET);
   return cleanHlpvHtml(noEmDash(raw));
