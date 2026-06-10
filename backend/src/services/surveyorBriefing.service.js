@@ -15,12 +15,17 @@ Only include disciplines that are clearly needed or strongly implied by the brie
  * Analyse a briefing note and return which disciplines from the provided list are needed.
  * @param {string} briefingText - Briefing note content (may be HTML)
  * @param {string[]} availableDisciplines - Discipline names from templates in the DB
+ * @param {object|null} guidingBrief - Optional guiding brief for this development type
  * @returns {Promise<Array<{discipline: string, reasoning: string}>>}
  */
-export async function analyseBriefingForDisciplines(briefingText, availableDisciplines) {
+export async function analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief = null) {
   const list = availableDisciplines.map(d => `- ${d}`).join('\n');
-  const user = `Review this project briefing note and identify which of the following surveyor disciplines are needed.
-Only include disciplines clearly required or strongly implied by the content.
+
+  const guidingBlock = guidingBrief?.guidance_content?.trim()
+    ? `\n\nStandard discipline requirements for this development type:\n${guidingBrief.guidance_content.trim()}\n\nUse this as a baseline — disciplines listed here should be included unless the briefing clearly indicates they are not relevant to this specific site.`
+    : '';
+
+  const user = `Review this project briefing note and identify which of the following surveyor disciplines are needed.${guidingBlock}
 
 Available disciplines:
 ${list}
@@ -39,28 +44,28 @@ ${briefingText}`;
   return Array.isArray(parsed) ? parsed : [];
 }
 
-const EMAIL_EDIT_SYSTEM = `You are a planning consultant reviewing a surveyor briefing email.
-You will be given a project briefing note and an existing email template for a specific discipline.
-Your task: identify whether the briefing note contains project-specific requirements that would meaningfully change what we are asking from this surveyor.
+const EMAIL_EDIT_SYSTEM = `You are a planning consultant reviewing a surveyor briefing email alongside a project briefing note.
+Your only task is to identify project-specific information in the briefing note that is NOT already covered by the existing scope of work, and return it as a new section.
 
 Rules:
-- Only suggest changes when the briefing explicitly mentions something different from the standard scope.
-- Do not suggest changes speculatively or for minor wording differences.
-- Do NOT modify any [PLACEHOLDER] tokens (e.g. [PROJECT_NAME], [ADDRESS], [CLIENT_NAME]).
-- Only modify the scope-of-work / requirements section of the email body.
-- If nothing needs changing, return hasChanges: false.`;
+- You may ONLY add content — never modify or remove anything from the existing scope.
+- If there is relevant additional information, return it as a new HTML section with the exact heading <h3>Additional Information</h3>, formatted as a concise bullet list.
+- Do not repeat anything already stated in the existing scope.
+- Do not add speculative content — only items directly supported by the briefing note.
+- Do NOT modify any [PLACEHOLDER] tokens.
+- If there is nothing to add, return hasChanges: false.`;
 
 /**
- * Suggest edits to an email template's scope section based on a briefing note.
+ * Suggest edits to the scope sections of a briefing email based on a briefing note.
  * @param {string} briefingText - Briefing note content
  * @param {string} discipline - Discipline name (e.g. "Heritage")
- * @param {string} templateContent - Current HTML email template content
+ * @param {string} templateContent - Scope sections HTML only (extracted client-side)
  * @returns {Promise<{hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
  */
 export async function suggestEmailEdits(briefingText, discipline, templateContent) {
   const user = `Discipline: ${discipline}
 
-Current email template:
+Existing scope sections from email template:
 ${templateContent}
 
 ---
@@ -70,10 +75,10 @@ ${briefingText}
 
 ---
 
-Does the briefing note contain project-specific requirements that would meaningfully change what we ask from this ${discipline} surveyor?
+Is there any project-specific information in the briefing note that is NOT already covered by the scope above and that would be relevant to ask the ${discipline} surveyor about?
 
-If YES: return the full modified email HTML with only the scope/requirements section updated. Keep all [PLACEHOLDER] tokens unchanged.
-If NO: return hasChanges as false and suggestedContent as null.
+If YES: return ONLY an <h3>Additional Information</h3> section as HTML with bullet points covering the new items. Do not repeat anything already in the scope.
+If NO: return hasChanges as false.
 
 Respond with JSON only:
 { "hasChanges": boolean, "reasoning": string, "suggestedContent": string | null }`;

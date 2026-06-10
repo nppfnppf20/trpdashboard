@@ -128,11 +128,11 @@ export async function deleteSentRequest(requestId) {
  * @param {number|null} briefingNoteId - Optional specific briefing note ID (null = latest)
  * @returns {Promise<{suggestions: Array}>} suggestions: [{ discipline, reasoning, template, surveyors }]
  */
-export async function analyseDisciplines(projectId, briefingNoteId = null) {
+export async function analyseDisciplines(projectId, { briefingNoteId = null, developmentType = null } = {}) {
   const response = await authFetch(`${API_BASE}/projects/${projectId}/analyse-disciplines`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ briefing_note_id: briefingNoteId })
+    body: JSON.stringify({ briefing_note_id: briefingNoteId, development_type: developmentType })
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -185,6 +185,12 @@ export async function sendBriefingEmails(projectId, data) {
  * @param {Object} updates - { templateName, description, subjectLine, templateContent }
  * @returns {Promise<Object>} Updated template object
  */
+export async function getSurveyorsForDiscipline(discipline) {
+  const response = await authFetch(`${API_BASE}/surveyors?discipline=${encodeURIComponent(discipline)}`);
+  if (!response.ok) throw new Error('Failed to fetch surveyors');
+  return response.json();
+}
+
 export async function updateTemplate(templateId, updates) {
   const response = await authFetch(`${API_BASE}/templates/${templateId}`, {
     method: 'PUT',

@@ -1,24 +1,34 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { analyseDisciplines } from '$lib/api/quoteRequests.js';
+  import { analyseDisciplines, getTemplates, getSurveyorsForDiscipline } from '$lib/api/quoteRequests.js';
 
   export let show = false;
   export let projectId;
+  export let developmentType = null;
+  export let briefingNoteId = null;
 
   const dispatch = createEventDispatcher();
 
   let loading = false;
   let error = null;
-  let suggestions = []; // [{ discipline, reasoning, template, surveyors }]
+  let suggestions = []; // [{ discipline, reasoning, template, surveyors, manual? }]
+  let allTemplates = [];
 
   // Per-discipline: accepted/skipped + selected surveyor IDs
   let accepted = new Set();
-  let skipped = new Set();
   let selectedSurveyors = {}; // { [discipline]: Set<id> }
 
-  $: acceptedCount = [...accepted].filter(d => !skipped.has(d)).length;
+  // Add-discipline UI
+  let addDisciplineValue = '';
+  let addDisciplineLoading = false;
+
+  $: suggestedDisciplines = new Set(suggestions.map(s => s.discipline));
+  $: availableToAdd = [...new Set(
+    allTemplates.map(t => t.discipline).filter(d => d && !suggestedDisciplines.has(d))
+  )];
+
   $: acceptedWithSurveyors = suggestions.filter(s =>
-    accepted.has(s.discipline) && !skipped.has(s.discipline) &&
+    accepted.has(s.discipline) &&
     (selectedSurveyors[s.discipline]?.size ?? 0) > 0
   );
 
@@ -27,21 +37,40 @@
     error = null;
     suggestions = [];
     accepted = new Set();
-    skipped = new Set();
     selectedSurveyors = {};
     try {
-      const { suggestions: result } = await analyseDisciplines(projectId);
+      const [{ suggestions: result }, templates] = await Promise.all([
+        analyseDisciplines(projectId, { briefingNoteId, developmentType }),
+        getTemplates()
+      ]);
+      allTemplates = templates;
       suggestions = result;
-      // Default: accept all disciplines, no surveyors pre-selected
       for (const s of suggestions) {
         accepted = new Set([...accepted, s.discipline]);
         selectedSurveyors[s.discipline] = new Set();
       }
     } catch (err) {
-      // Surface the actual server message if available
       error = err.message || 'Failed to analyse disciplines';
     } finally {
       loading = false;
+    }
+  }
+
+  async function addDiscipline() {
+    if (!addDisciplineValue || suggestedDisciplines.has(addDisciplineValue)) return;
+    addDisciplineLoading = true;
+    try {
+      const surveyors = await getSurveyorsForDiscipline(addDisciplineValue);
+      const template = allTemplates.find(t => t.discipline?.toLowerCase() === addDisciplineValue.toLowerCase()) ?? null;
+      const newEntry = { discipline: addDisciplineValue, reasoning: null, template, surveyors, manual: true };
+      suggestions = [...suggestions, newEntry];
+      accepted = new Set([...accepted, addDisciplineValue]);
+      selectedSurveyors[addDisciplineValue] = new Set();
+      addDisciplineValue = '';
+    } catch (err) {
+      console.error('Failed to add discipline:', err);
+    } finally {
+      addDisciplineLoading = false;
     }
   }
 
@@ -167,13 +196,20 @@
                 </div>
               </div>
 
-              <div class="card-reasoning">
-                <i class="las la-info-circle"></i>
-                <span class="reasoning-text">{suggestion.reasoning}</span>
-                <button class="btn-view-detail" on:click={(e) => openDetail(suggestion, e)} title="View full details">
-                  <i class="las la-eye"></i> View
-                </button>
-              </div>
+              {#if suggestion.manual}
+                <div class="card-reasoning card-reasoning--manual">
+                  <i class="las la-plus-circle"></i>
+                  <span class="reasoning-text">Added manually</span>
+                </div>
+              {:else}
+                <div class="card-reasoning">
+                  <i class="las la-info-circle"></i>
+                  <span class="reasoning-text">{suggestion.reasoning}</span>
+                  <button class="btn-view-detail" on:click={(e) => openDetail(suggestion, e)} title="View full details">
+                    <i class="las la-eye"></i> View
+                  </button>
+                </div>
+              {/if}
 
               {#if isAccepted}
                 <div class="surveyors-section">
@@ -213,6 +249,38 @@
               {/if}
             </div>
           {/each}
+
+          <!-- Add discipline -->
+          <div class="add-discipline-section">
+            <div class="add-discipline-label">
+              <i class="las la-plus-circle"></i>
+              Add a discipline not identified above
+            </div>
+            <div class="add-discipline-controls">
+              <select
+                bind:value={addDisciplineValue}
+                class="add-discipline-select"
+                disabled={addDisciplineLoading || availableToAdd.length === 0}
+              >
+                <option value="">— select discipline —</option>
+                {#each availableToAdd as d}
+                  <option value={d}>{d}</option>
+                {/each}
+              </select>
+              <button
+                class="btn btn-secondary btn-add-discipline"
+                disabled={!addDisciplineValue || addDisciplineLoading}
+                on:click={addDiscipline}
+              >
+                {#if addDisciplineLoading}
+                  <div class="spinner-sm"></div>
+                {:else}
+                  <i class="las la-plus"></i>
+                {/if}
+                Add
+              </button>
+            </div>
+          </div>
         {/if}
       </div>
 
@@ -853,5 +921,75 @@
     gap: 0.625rem;
     padding: 0.875rem 1.25rem;
     border-top: 1px solid #e2e8f0;
+  }
+
+  /* ── Manual badge ────────────────────────────────────────────────────────── */
+  .card-reasoning--manual i {
+    color: #6366f1;
+  }
+
+  .card-reasoning--manual .reasoning-text {
+    color: #6366f1;
+    font-style: italic;
+  }
+
+  /* ── Add discipline section ──────────────────────────────────────────────── */
+  .add-discipline-section {
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 0.875rem 1.125rem;
+    margin-top: 0.5rem;
+  }
+
+  .add-discipline-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+    margin-bottom: 0.625rem;
+  }
+
+  .add-discipline-label i {
+    color: #94a3b8;
+  }
+
+  .add-discipline-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .add-discipline-select {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #1e293b;
+    background: white;
+    cursor: pointer;
+  }
+
+  .add-discipline-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-add-discipline {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .spinner-sm {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #e2e8f0;
+    border-top-color: #7c3aed;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
   }
 </style>

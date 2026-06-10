@@ -1,11 +1,18 @@
 <script>
   import { onMount } from 'svelte';
-  import { getTemplates, getSentRequestsForProject } from '$lib/api/quoteRequests.js';
+  import { getTemplates, getSentRequestsForProject, mergeTemplate, suggestEmailEditsForDiscipline } from '$lib/api/quoteRequests.js';
+  import { getBriefingNotes } from '$lib/api/planningApplication.js';
   import BriefingEditor from './BriefingEditor.svelte';
   import SentBriefingsHistory from './SentBriefingsHistory.svelte';
   import EditEmailTemplate from './EditEmailTemplate.svelte';
   import EditMasterWarningModal from '$lib/components/shared/EditMasterWarningModal.svelte';
   import DraftBriefingsModal from './DraftBriefingsModal.svelte';
+
+  function clickOutside(node, handler) {
+    function onClick(e) { if (!node.contains(e.target)) handler(); }
+    document.addEventListener('click', onClick, true);
+    return { destroy() { document.removeEventListener('click', onClick, true); } };
+  }
 
   export let selectedProject;
 
@@ -21,12 +28,75 @@
 
   // Draft from briefing note (Flow 2)
   let showDraftModal = false;
+  let draftDevelopmentType = '';
+  let fromDraftFlow = false;
+
+  // Briefing note picker
+  let briefingNotes = [];
+  let selectedBriefingNoteId = null;
+  let briefingDropdownOpen = false;
+
+  $: selectedBriefingNote = selectedBriefingNoteId ? briefingNotes.find(n => n.id === selectedBriefingNoteId) : null;
+
+  async function loadBriefingNotes(projectUniqueId) {
+    try {
+      briefingNotes = await getBriefingNotes(projectUniqueId);
+    } catch {
+      briefingNotes = [];
+    }
+    selectedBriefingNoteId = null;
+  }
   let pendingDrafts = []; // [{ discipline, template, surveyors }] — queued after modal
   let currentDraftIndex = 0; // which pending draft is open in BriefingEditor
   let editorPreselectedSurveyors = []; // passed to BriefingEditor when opening a queued draft
+  // Background scope checks: keyed by discipline
+  // { status: 'loading'|'ready'|'error', apiResult: {hasChanges,suggestedContent}|null, error?: string }
+  let draftCheckResults = {};
+
+  function extractScopeFromHtml(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const children = Array.from(doc.body.childNodes);
+    const scopeIdx = children.findIndex(n => n.nodeName === 'H3' && n.textContent.trim().toLowerCase() === 'scope of work');
+    if (scopeIdx === -1) return null;
+    const endIdx = children.findIndex(n => n.nodeName === 'H3' && n.textContent.trim().toLowerCase() === 'key requirements');
+    const end = endIdx === -1 ? children.length : endIdx;
+    return children.slice(scopeIdx, end).map(n => n.nodeType === 3 ? n.textContent : n.outerHTML).join('');
+  }
+
+  async function runBackgroundChecks(drafts, projectUniqueId, noteId) {
+    const initial = {};
+    for (const d of drafts) initial[d.discipline] = { status: 'loading' };
+    draftCheckResults = { ...initial };
+
+    await Promise.all(drafts.map(async (draft) => {
+      try {
+        if (!draft.template) {
+          draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'ready', apiResult: null } };
+          return;
+        }
+        const surveyorIds = draft.surveyors.map(sv => sv.id);
+        const merged = await mergeTemplate(draft.template.id, projectUniqueId, surveyorIds);
+        const scopeContent = extractScopeFromHtml(merged.content);
+        if (!scopeContent) {
+          draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'ready', apiResult: null } };
+          return;
+        }
+        const apiResult = await suggestEmailEditsForDiscipline(projectUniqueId, {
+          briefingNoteId: noteId,
+          discipline: draft.discipline,
+          templateContent: scopeContent
+        });
+        draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'ready', apiResult } };
+      } catch (err) {
+        draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'error', error: err.message } };
+      }
+    }));
+  }
 
   $: if (selectedProject) {
     loadData();
+    loadBriefingNotes(selectedProject.id);
   }
 
   async function loadData() {
@@ -67,6 +137,7 @@
   function openNewRequest() {
     selectedTemplate = null;
     editorPreselectedSurveyors = [];
+    fromDraftFlow = false;
     showEditor = true;
   }
 
@@ -74,6 +145,9 @@
     pendingDrafts = event.detail.drafts;
     currentDraftIndex = 0;
     showDraftModal = false;
+    draftCheckResults = {};
+    // Fire all scope checks in background — no await
+    runBackgroundChecks(pendingDrafts, selectedProject.unique_id, selectedBriefingNoteId);
     openNextDraft();
   }
 
@@ -98,6 +172,7 @@
         contactEmail: primaryContact.email ?? ''
       }];
     });
+    fromDraftFlow = true;
     showEditor = true;
   }
 
@@ -120,6 +195,7 @@
     showEditor = false;
     selectedTemplate = null;
     editorPreselectedSurveyors = [];
+    fromDraftFlow = false;
     await loadSentRequests();
     // Advance to next queued draft if any
     currentDraftIndex += 1;
@@ -130,6 +206,7 @@
     showEditor = false;
     selectedTemplate = null;
     editorPreselectedSurveyors = [];
+    fromDraftFlow = false;
     // User closed without saving — skip this draft and open next
     if (pendingDrafts.length > 0) {
       currentDraftIndex += 1;
@@ -154,10 +231,34 @@
   <div class="panel-header">
     <h2>Surveyor Quote Requests</h2>
     <div class="header-actions">
-      <button class="btn btn-draft" on:click={() => showDraftModal = true} disabled={!selectedProject?.unique_id}>
-        <i class="las la-magic"></i>
-        Draft from Briefing Note
-      </button>
+      <select class="dev-type-select" bind:value={draftDevelopmentType}>
+        <option value="">Development type...</option>
+        <option value="Renewables">Renewables</option>
+        <option value="Residential">Residential</option>
+      </select>
+      <div class="briefing-btn-group" use:clickOutside={() => briefingDropdownOpen = false}>
+        <button class="btn-draft-main" on:click={() => showDraftModal = true} disabled={!selectedProject?.unique_id}>
+          <i class="las la-magic"></i>
+          Draft from Briefing Note
+          {#if selectedBriefingNote}<span class="briefing-note-pill">{selectedBriefingNote.title || selectedBriefingNote.file_name}</span>{/if}
+        </button>
+        <button class="btn-briefing-chevron" disabled={!selectedProject?.unique_id} on:click={() => briefingDropdownOpen = !briefingDropdownOpen} title="Select briefing note">
+          <i class="las la-angle-down"></i>
+        </button>
+        {#if briefingDropdownOpen}
+          <div class="briefing-dropdown">
+            <button class="briefing-dropdown-item" class:active={!selectedBriefingNoteId} on:click={() => { selectedBriefingNoteId = null; briefingDropdownOpen = false; }}>
+              <span>Latest briefing note</span>
+            </button>
+            {#each briefingNotes as note}
+              <button class="briefing-dropdown-item" class:active={selectedBriefingNoteId === note.id} on:click={() => { selectedBriefingNoteId = note.id; briefingDropdownOpen = false; }}>
+                <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
+                <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
       <button class="btn btn-primary" on:click={openNewRequest}>
         <i class="las la-plus"></i>
         New Quote Request
@@ -217,6 +318,8 @@
     projectId={selectedProject?.unique_id}
     preSelectedTemplate={selectedTemplate}
     preSelectedSurveyors={editorPreselectedSurveyors}
+    briefingNoteId={selectedBriefingNoteId}
+    precomputedCheck={draftCheckResults[pendingDrafts[currentDraftIndex]?.discipline]}
     on:saved={handleSaved}
     on:close={handleClose}
   />
@@ -226,6 +329,8 @@
 <DraftBriefingsModal
   show={showDraftModal}
   projectId={selectedProject?.unique_id}
+  developmentType={draftDevelopmentType || null}
+  briefingNoteId={selectedBriefingNoteId}
   on:proceed={handleDraftProceed}
   on:close={() => showDraftModal = false}
 />
@@ -279,19 +384,118 @@
     gap: 0.5rem;
   }
 
-  .btn-draft {
+  .dev-type-select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #475569;
     background: white;
+    cursor: pointer;
+  }
+
+  .dev-type-select:focus {
+    outline: none;
+    border-color: #7c3aed;
+  }
+
+  .briefing-btn-group {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+  }
+
+  .btn-draft-main {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    background: #faf5ff;
+    border: 1px solid #d8b4fe;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
     color: #7c3aed;
-    border: 1px solid #7c3aed;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-draft-main:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
+  .btn-draft-main:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-briefing-chevron {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.5rem;
+    background: #faf5ff;
+    border: 1px solid #d8b4fe;
+    border-radius: 0 6px 6px 0;
+    color: #7c3aed;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-briefing-chevron:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
+  .btn-briefing-chevron:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .briefing-note-pill {
+    background: #ede9fe;
+    color: #6d28d9;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .btn-draft:hover:not(:disabled) {
-    background: #f5f3ff;
+  .briefing-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    min-width: 240px;
+    z-index: 100;
+    overflow: hidden;
   }
 
-  .btn-draft:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+  .briefing-dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.6rem 0.875rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: left;
+    font-size: 0.8125rem;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.1s;
+    font-family: inherit;
+  }
+  .briefing-dropdown-item:last-child { border-bottom: none; }
+  .briefing-dropdown-item:hover { background: #f8fafc; }
+  .briefing-dropdown-item.active { background: #faf5ff; color: #7c3aed; }
+
+  .briefing-dropdown-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .briefing-dropdown-date {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .btn {

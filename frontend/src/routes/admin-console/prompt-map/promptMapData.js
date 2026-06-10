@@ -1690,6 +1690,125 @@ Includes full Rotherham template document as structural reference.
     ]
   },
 
+  // ── Surveyor Briefing ───────────────────────────────────────────────────────
+  {
+    id: 'surveyor-briefing',
+    name: 'Surveyor Briefing',
+    icon: 'la-envelope-open-text',
+    description: 'Two LLM calls used in the Surveyor Management page: one to identify which disciplines are needed from a briefing note, and one to suggest scope edits to a discipline email template.',
+    operations: [
+      {
+        id: 'analyse-disciplines',
+        name: 'Identify Required Disciplines from Briefing',
+        output: 'JSON array: [{ discipline, reasoning }] — disciplines clearly needed based on the briefing, with a 1–2 sentence reason each',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role',
+            source: 'surveyorBriefing.service.js — DISCIPLINE_SYSTEM',
+            content: `You are a planning consultant reviewing a project briefing note. Your task is to identify which specialist surveyor disciplines are required based on the project description, site characteristics, and constraints mentioned. Only include disciplines that are clearly needed or strongly implied by the briefing — do not speculate.`
+          },
+          {
+            type: 'runtime',
+            label: 'Available Disciplines',
+            description: 'List of discipline names loaded from surveyor email templates in the DB. The model must use exact names from this list.'
+          },
+          {
+            type: 'runtime',
+            label: 'Briefing Note',
+            description: 'Full briefing note content (may be HTML). Passed in the user message after the discipline list.'
+          },
+          {
+            type: 'format',
+            label: 'Output Format',
+            source: 'surveyorBriefing.service.js — analyseBriefingForDisciplines()',
+            content: `JSON array only — no explanation, no markdown:
+[{ "discipline": "<exact name from list>", "reasoning": "<why needed — 1–2 sentences>" }]
+
+Only include disciplines clearly required or strongly implied. Omit the rest entirely.`
+          }
+        ],
+        assembledPreview: `[SYSTEM ROLE: planning consultant identifying required surveyor disciplines]
+
+Review this project briefing note and identify which of the following surveyor disciplines are needed.
+Only include disciplines clearly required or strongly implied by the content.
+
+Available disciplines:
+[RUNTIME: bullet list of discipline names from DB templates]
+
+For each discipline needed, give a brief reason (1–2 sentences).
+Use the exact discipline name from the list above.
+
+Briefing note:
+[RUNTIME: full briefing note content]
+
+[FORMAT: JSON array — discipline + reasoning, omit anything not clearly needed]`
+      },
+      {
+        id: 'suggest-email-edits',
+        name: 'Suggest Scope Edits to Discipline Email',
+        output: 'JSON: { hasChanges, reasoning, suggestedContent } — full modified email HTML if changes needed, or hasChanges: false if the standard scope is fine',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role',
+            source: 'surveyorBriefing.service.js — EMAIL_EDIT_SYSTEM',
+            content: `You are a planning consultant reviewing a surveyor briefing email. You will be given a project briefing note and an existing email template for a specific discipline. Your task: identify whether the briefing note contains project-specific requirements that would meaningfully change what we are asking from this surveyor.
+
+Rules:
+- Only suggest changes when the briefing explicitly mentions something different from the standard scope.
+- Do not suggest changes speculatively or for minor wording differences.
+- Do NOT modify any [PLACEHOLDER] tokens (e.g. [PROJECT_NAME], [ADDRESS], [CLIENT_NAME]).
+- Only modify the scope-of-work / requirements section of the email body.
+- If nothing needs changing, return hasChanges: false.`
+          },
+          {
+            type: 'runtime',
+            label: 'Discipline',
+            description: 'The discipline being scoped (e.g. "Heritage", "Ecology"). Included in the user prompt.'
+          },
+          {
+            type: 'runtime',
+            label: 'Email Template',
+            description: 'Current HTML email template for this discipline, loaded from the DB. Contains [PLACEHOLDER] tokens that must not be modified.'
+          },
+          {
+            type: 'runtime',
+            label: 'Briefing Note',
+            description: 'Full project briefing note text — used to identify any project-specific requirements that differ from the standard scope.'
+          },
+          {
+            type: 'format',
+            label: 'Output Format',
+            source: 'surveyorBriefing.service.js — suggestEmailEdits()',
+            content: `JSON only:
+{ "hasChanges": boolean, "reasoning": string, "suggestedContent": string | null }
+
+If hasChanges is true: suggestedContent is the full modified email HTML with only the scope/requirements section updated and all [PLACEHOLDER] tokens preserved.
+If hasChanges is false: suggestedContent is null.`
+          }
+        ],
+        assembledPreview: `[SYSTEM ROLE: planning consultant reviewing surveyor briefing email — only suggest meaningful scope changes]
+
+Discipline: [RUNTIME: discipline name]
+
+Current email template:
+[RUNTIME: HTML email template from DB]
+
+---
+
+Project briefing note:
+[RUNTIME: briefing note text]
+
+---
+
+Does the briefing note contain project-specific requirements that would meaningfully change what we ask from this [discipline] surveyor?
+
+[FORMAT: JSON — hasChanges / reasoning / suggestedContent (full modified HTML or null)]`
+      }
+    ]
+  },
+
   // ── Stage 1 Review ──────────────────────────────────────────────────────────
   {
     id: 'stage1-review',

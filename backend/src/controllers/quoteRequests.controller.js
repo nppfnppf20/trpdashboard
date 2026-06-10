@@ -2,6 +2,7 @@ import * as quoteRequestsService from '../services/quoteRequests.service.js';
 import { pool } from '../db.js';
 import { analyseBriefingForDisciplines, suggestEmailEdits } from '../services/surveyorBriefing.service.js';
 import { sendEmail, sendBatch } from '../services/emailService.js';
+import { getGuidingBrief } from './guidingBriefs.controller.js';
 
 /**
  * GET /api/admin-console/quote-request-templates
@@ -190,7 +191,7 @@ export async function deleteSentRequest(req, res) {
  */
 export async function analyseDisciplines(req, res) {
   const { projectId } = req.params;
-  const { briefing_note_id } = req.body;
+  const { briefing_note_id, development_type: developmentType = null } = req.body;
   try {
     const noteQuery = briefing_note_id
       ? `SELECT ds.summary_html
@@ -211,10 +212,13 @@ export async function analyseDisciplines(req, res) {
     }
     const briefingText = noteRows[0].summary_html;
 
-    const templates = await quoteRequestsService.getTemplates({});
+    const [templates, guidingBrief] = await Promise.all([
+      quoteRequestsService.getTemplates({}),
+      getGuidingBrief('surveyor_briefing', developmentType)
+    ]);
     const availableDisciplines = [...new Set(templates.filter(t => t.discipline).map(t => t.discipline))];
 
-    const disciplineSuggestions = await analyseBriefingForDisciplines(briefingText, availableDisciplines);
+    const disciplineSuggestions = await analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief);
 
     const results = await Promise.all(
       disciplineSuggestions.map(async ({ discipline, reasoning }) => {
@@ -247,6 +251,38 @@ export async function analyseDisciplines(req, res) {
   } catch (err) {
     console.error('analyseDisciplines error:', err);
     res.status(500).json({ error: 'Failed to analyse disciplines', details: err.message });
+  }
+}
+
+/**
+ * GET /api/admin-console/quote-requests/surveyors?discipline=X
+ * Return 4★+ approved surveyors for a given discipline.
+ */
+export async function getSurveyorsForDiscipline(req, res) {
+  const { discipline } = req.query;
+  if (!discipline) return res.status(400).json({ error: 'discipline is required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT so.id, so.organisation, so.discipline, so.location,
+              so.avg_overall, so.avg_quality, so.avg_responsiveness, so.avg_on_time, so.total_reviews,
+              json_agg(
+                DISTINCT jsonb_build_object(
+                  'id', c.id, 'name', c.name, 'email', c.email, 'is_primary', c.is_primary
+                )
+              ) FILTER (WHERE c.id IS NOT NULL) AS contacts
+       FROM admin_console.surveyor_organisations so
+       LEFT JOIN admin_console.contacts c
+         ON c.organisation_id = so.id AND c.organisation_type = 'surveyor'
+       WHERE LOWER(so.discipline) = LOWER($1)
+         AND so.avg_overall >= 4
+         AND so.approval_status = 'approved'
+       GROUP BY so.id
+       ORDER BY so.avg_overall DESC`,
+      [discipline]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch surveyors', details: err.message });
   }
 }
 

@@ -21,5 +21,6 @@ router.post('/projects/:projectId/send-briefings', quoteRequestsController.sendB
 // LLM-assisted briefing routes
 router.post('/projects/:projectId/analyse-disciplines', quoteRequestsController.analyseDisciplines);
 router.post('/projects/:projectId/suggest-email-edits', quoteRequestsController.suggestEmailEditsForDiscipline);
+router.get('/surveyors', quoteRequestsController.getSurveyorsForDiscipline);
 
 export default router;
