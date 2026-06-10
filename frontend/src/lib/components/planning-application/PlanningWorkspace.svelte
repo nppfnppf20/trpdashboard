@@ -729,7 +729,7 @@
             <div class="draft-type-card">
               <div class="draft-type-main">
                 <div class="draft-type-info">
-                  <span class="draft-type-name">{type.name}</span>
+                  <span class="draft-type-name">{type.name}<span class="beta-badge">BETA</span></span>
                   {#if type.description}<span class="draft-type-desc">{type.description}</span>{/if}
                   {#if draft?.generated_at}
                     <span class="draft-type-meta">Last generated {new Date(draft.generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
@@ -2314,6 +2314,7 @@
   }
 
   .draft-type-name { font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
+  .beta-badge { display: inline-block; margin-left: 6px; font-size: 0.65rem; font-weight: 700; color: #7c3aed; background: #ede9fe; border: 1px solid #c4b5fd; border-radius: 4px; padding: 1px 5px; vertical-align: middle; letter-spacing: 0.02em; }
   .draft-type-desc { font-size: 0.8125rem; color: #64748b; }
   .draft-type-meta { font-size: 0.75rem; color: #94a3b8; }
 

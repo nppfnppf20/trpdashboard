@@ -266,6 +266,7 @@ const STARTING_DOC_VARS = [
   { slug: 'other',                   variable: 'OTHER_DOCS',              label: 'Other Documents' },
   { slug: 'hlpv_data',               variable: 'HLPV_DATA',               label: 'HLPV Tool Data' },
   { slug: 'additional_designations', variable: 'ADDITIONAL_DESIGNATIONS', label: 'Additional Designations & Site Notes' },
+  { slug: 'socio_data',              variable: 'SOCIO_DATA',              label: 'Socio-economic Data' },
 ];
 
 export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '' }) {

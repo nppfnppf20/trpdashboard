@@ -1,5 +1,6 @@
 <script>
   import SocioeconomicsCharts from './SocioeconomicsCharts.svelte';
+  import { saveSocioSession } from '$lib/api/socioeconomics.js';
 
   /**
    * @typedef {Object} SocioeconomicsData
@@ -20,6 +21,12 @@
   export let error = '';
   /** @type {{totalLayers: number, layersWithData: number, generatedAt: string} | undefined} */
   export let summaryStats = undefined;
+  /** @type {number | null} */
+  export let projectId = null;
+
+  let saving = false;
+  let savedOk = false;
+  let saveError = '';
 
   /** @type {string[]} */
   let allColumns = [];
@@ -430,6 +437,39 @@
     a.click();
     window.URL.revokeObjectURL(url);
   }
+
+  function buildCsvString() {
+    const headers = displayColumns.map(col => {
+      const cleaned = cleanColumnName(col);
+      return cleaned.includes(',') || cleaned.includes('"')
+        ? `"${cleaned.replace(/"/g, '""')}"` : cleaned;
+    }).join(',');
+    const rows = flattenedData.map(row =>
+      displayColumns.map(col => {
+        const value = row[col];
+        if (value === null || value === undefined) return '';
+        const s = String(value);
+        return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(',')
+    );
+    return [headers, ...rows].join('\n');
+  }
+
+  async function handleSave() {
+    if (!projectId || !flattenedData.length) return;
+    saving = true;
+    savedOk = false;
+    saveError = '';
+    try {
+      await saveSocioSession(projectId, buildCsvString());
+      savedOk = true;
+      setTimeout(() => { savedOk = false; }, 3000);
+    } catch (err) {
+      saveError = err.message || 'Failed to save';
+    } finally {
+      saving = false;
+    }
+  }
 </script>
 
 {#if loading}
@@ -465,6 +505,12 @@
         <button class="charts-button" on:click={() => showCharts = true}>
           View Charts
         </button>
+        {#if projectId}
+          <button class="save-button" on:click={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : savedOk ? 'Saved!' : 'Save to Workspace'}
+          </button>
+          {#if saveError}<span class="save-error">{saveError}</span>{/if}
+        {/if}
       </div>
     </div>
 

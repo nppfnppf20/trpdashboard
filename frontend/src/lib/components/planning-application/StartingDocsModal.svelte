@@ -10,6 +10,7 @@
     uploadBriefingNote,
   } from '$lib/api/appeal.js';
   import { listHlpvSessions, getFormattedHlpvSession } from '$lib/api/hlpv.js';
+  import { listSocioSessions, getSocioSession } from '$lib/api/socioeconomics.js';
 
   export let project;
   export let typeId;   // e.g. 'appeal_1'
@@ -37,6 +38,9 @@
     hlpv_narrative: [
       { slug: 'hlpv_data',               label: 'HLPV Tool Data',                    variable: '{{HLPV_DATA}}' },
       { slug: 'additional_designations', label: 'Additional Designations & Site Notes', variable: '{{ADDITIONAL_DESIGNATIONS}}' },
+    ],
+    socio_economic_baseline: [
+      { slug: 'socio_data', label: 'Socio-economic Data', variable: '{{SOCIO_DATA}}' },
     ],
   };
 
@@ -83,6 +87,28 @@
     }
   }
 
+  // Socio-economics session dropdown (for socio_economic_baseline draft type, socio_data slot)
+  let socioSessions = [];
+  let selectedSocioSessionId = '';
+  let importingSocioSession = false;
+  let socioImportError = null;
+
+  async function handleImportSocioSession() {
+    if (!selectedSocioSessionId) return;
+    importingSocioSession = true;
+    socioImportError = null;
+    try {
+      const session = await getSocioSession(selectedSocioSessionId);
+      await upsertStartingDocText(project.id, rawTypeId, 'socio_data', session.csv_data);
+      slotState['socio_data'].content_text = session.csv_data;
+      slotState = slotState;
+    } catch (err) {
+      socioImportError = err.message || 'Import failed';
+    } finally {
+      importingSocioSession = false;
+    }
+  }
+
   // Baseline context chars: prompt template overhead + guiding brief + project brief
   // Fetched on mount so the bar starts at the real baseline, not zero.
   let baselineChars = 1500; // rough prompt template overhead
@@ -99,14 +125,16 @@
   onMount(async () => {
     initSlotState();
     try {
-      const [rows, ctx, notes, sessions] = await Promise.all([
+      const [rows, ctx, notes, hlpvSessionsData, socioSessionsData] = await Promise.all([
         getStartingDocs(project.id, rawTypeId),
         getDraftContext(project.id, rawTypeId).catch(() => null),
         getBriefingNotes(project.id).catch(() => []),
         typeSlug === 'hlpv_narrative' ? listHlpvSessions(project.id).catch(() => []) : Promise.resolve([]),
+        typeSlug === 'socio_economic_baseline' ? listSocioSessions(project.id).catch(() => []) : Promise.resolve([]),
       ]);
       briefingNotes = notes;
-      hlpvSessions = sessions;
+      hlpvSessions = hlpvSessionsData;
+      socioSessions = socioSessionsData;
       for (const row of rows) {
         if (slotState[row.slot_slug] !== undefined) {
           slotState[row.slot_slug].content_text = row.content_text;
@@ -354,6 +382,48 @@
                   </div>
                   {#if sessionImportError}
                     <span class="sd-hlpv-error">{sessionImportError}</span>
+                  {/if}
+                {/if}
+                {#if st?.content_text}
+                  <div class="sd-card-actions">
+                    <button
+                      class="sd-remove-btn"
+                      disabled={st?.saving}
+                      on:click={() => handleRemove(slot.slug)}
+                      title="Remove"
+                    >
+                      {#if st?.saving}<div class="mini-spinner"></div>{:else}<i class="las la-trash"></i>{/if}
+                    </button>
+                  </div>
+                {/if}
+
+              {:else if slot.slug === 'socio_data'}
+                <!-- Socio-economics session selector -->
+                {#if st?.content_text}
+                  <span class="sd-file-name"><i class="las la-check-circle"></i> Socio-economic data loaded</span>
+                {/if}
+                {#if socioSessions.length === 0}
+                  <p class="sd-hlpv-empty">No saved socio-economic analyses found for this project. Run the Socio-economics tool first and click Save to Workspace.</p>
+                {:else}
+                  <div class="sd-hlpv-import">
+                    <select class="sd-hlpv-select" bind:value={selectedSocioSessionId} disabled={importingSocioSession}>
+                      <option value="">Select a saved analysis...</option>
+                      {#each socioSessions as s (s.id)}
+                        <option value={s.id}>
+                          {s.session_name || 'Analysis'} — {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </option>
+                      {/each}
+                    </select>
+                    <button
+                      class="sd-hlpv-import-btn"
+                      disabled={!selectedSocioSessionId || importingSocioSession}
+                      on:click={handleImportSocioSession}
+                    >
+                      {#if importingSocioSession}<div class="mini-spinner"></div> Importing...{:else}<i class="las la-download"></i> Import{/if}
+                    </button>
+                  </div>
+                  {#if socioImportError}
+                    <span class="sd-hlpv-error">{socioImportError}</span>
                   {/if}
                 {/if}
                 {#if st?.content_text}

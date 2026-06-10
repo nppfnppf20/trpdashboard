@@ -253,6 +253,7 @@
         <div class="results-content">
           <SocioeconomicsSpreadsheet
             {socioeconomicsResult}
+            projectId={selectedProject?.id || null}
             summaryStats={{
               totalLayers: socioeconomicsResult.metadata?.totalLayers || 0,
               layersWithData: socioeconomicsResult.metadata?.layersWithData || 0,

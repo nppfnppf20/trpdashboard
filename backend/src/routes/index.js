@@ -25,6 +25,7 @@ import lpaAnalysisRoutes from './lpaAnalysis.routes.js';
 import appealRoutes from './appeal.routes.js';
 import planningApplicationRoutes from './planningApplication.routes.js';
 import hlpvNarrativeRoutes from './hlpvNarrative.routes.js';
+import socioeconomicsSessionRoutes from './socioeconomicsSession.routes.js';
 import policyTemplatesRoutes from './policyTemplates.routes.js';
 import policyContextTemplatesRoutes from './policyContextTemplates.routes.js';
 import issueTypesRoutes from './issueTypes.routes.js';
@@ -105,6 +106,9 @@ router.use('/api/planning-application', planningApplicationRoutes);
 
 // HLPV narrative generation
 router.use('/api/hlpv', hlpvNarrativeRoutes);
+
+// Socio-economics session persistence
+router.use('/api/socioeconomics', socioeconomicsSessionRoutes);
 
 // Policy template library (admin only — requireAdmin already applied above for /api/admin-console)
 router.use('/api/admin-console/policy-templates', policyTemplatesRoutes);

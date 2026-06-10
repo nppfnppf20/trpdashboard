@@ -885,6 +885,129 @@ Document:
 [RUNTIME: issue output block]`
       },
       {
+        id: 'draft-issue-summaries',
+        name: 'Draft Key Issue Summaries from Briefing',
+        output: 'JSON array: [{ track_id, argument_for }] — compliance argument starters for each issue derived from a briefing transcript',
+        components: [
+          {
+            type: 'runtime',
+            label: 'Briefing Summary',
+            description: 'HTML briefing summary stripped to plain text, truncated to 6,000 chars.'
+          },
+          {
+            type: 'runtime',
+            label: 'Issues',
+            description: 'Planning application issues with id, label, discipline, and existing argument_for (truncated to 200 chars). Issues with existing notes are supplemented rather than replaced.'
+          },
+          {
+            type: 'format',
+            label: 'Output Instructions',
+            source: 'planningStatement.service.js — draftKeyIssueSummariesFromBriefing()',
+            content: `- Write compliance argument starters (2–5 sentences) from the planning application perspective
+- Do not reference "the briefing" — state the argument as a working position
+- Only include issues where the briefing provides material evidence
+- Omit issues entirely if nothing relevant
+- Return JSON array only: [{ "track_id": 42, "argument_for": "The proposals..." }]`
+          }
+        ],
+        assembledPreview: `You are a planning consultant building the compliance case for a planning application.
+
+[TASK: extract compliance argument positions from briefing]
+
+Briefing summary:
+[RUNTIME: briefing summary plain text, up to 6,000 chars]
+
+Issues:
+[RUNTIME: issue list with existing compliance notes]
+
+[FORMAT: JSON array of argument starters — omit issues with nothing relevant]`
+      },
+      {
+        id: 'draft-arguments-from-summaries',
+        name: 'Draft Arguments from Issue Summaries',
+        output: 'JSON array: [{ track_id, argument_for }] — detailed compliance arguments built from existing issue summaries',
+        components: [
+          {
+            type: 'runtime',
+            label: 'Issue Summaries',
+            description: 'Issues with existing key_issue_summary notes as the basis for generating fuller compliance arguments.'
+          },
+          {
+            type: 'runtime',
+            label: 'Project Context',
+            description: 'Project name, LPA, development description — used to frame the compliance arguments correctly.'
+          },
+          {
+            type: 'format',
+            label: 'Output Instructions',
+            source: 'planningStatement.service.js — draftArgumentsFromIssueSummaries()',
+            content: `- Expand issue summaries into fuller planning compliance arguments
+- Write in formal planning language suitable for a Planning Statement
+- Each argument should address how the proposals comply with the relevant policy context
+- Return JSON array: [{ "track_id": 42, "argument_for": "..." }]`
+          }
+        ],
+        assembledPreview: `You are a planning consultant drafting the compliance case for a planning application.
+
+[TASK: expand issue summaries into full compliance arguments]
+
+Issues with summaries:
+[RUNTIME: issue list with key_issue_summary notes]
+
+Project: [RUNTIME: project context]
+
+[FORMAT: JSON array of compliance arguments per issue]`
+      },
+      {
+        id: 'incorporate-assessment',
+        name: 'Incorporate Document into Planning Assessment',
+        output: 'Revised HTML planning assessment section — amended to incorporate evidence from an uploaded specialist report or supporting document',
+        components: [
+          {
+            type: 'system',
+            label: 'System Role',
+            source: 'planningStatement.service.js — incorporatePlanningAssessment()',
+            content: `You are a planning consultant amending a Planning Statement section to incorporate new evidence from a specialist report or supporting document. Write in formal planning language. Output clean HTML only — no markdown, no em dashes.`
+          },
+          {
+            type: 'runtime',
+            label: 'Existing Section HTML',
+            description: 'The current HTML content of the planning assessment section being amended.'
+          },
+          {
+            type: 'runtime',
+            label: 'Document Text',
+            description: 'Text of the specialist report or supporting document being incorporated, chunked and joined.'
+          },
+          {
+            type: 'runtime',
+            label: 'Issue Context',
+            description: 'The issue(s) this section relates to — label, linked policies, and current compliance notes.'
+          },
+          {
+            type: 'format',
+            label: 'Output Instructions',
+            source: 'planningStatement.service.js — incorporatePlanningAssessment()',
+            content: `- Integrate new evidence naturally into the existing section structure
+- Cite the document by name, referencing paragraph numbers where available
+- Do not remove or contradict existing content unless the new document supersedes it
+- Return the complete revised section as clean HTML`
+          }
+        ],
+        assembledPreview: `[SYSTEM ROLE: planning consultant amending a Planning Statement section]
+
+Existing section:
+[RUNTIME: current HTML of the section]
+
+Document to incorporate:
+[RUNTIME: specialist report text]
+
+Issue context:
+[RUNTIME: issue label, linked policies, compliance notes]
+
+[FORMAT: complete revised HTML section with new evidence integrated]`
+      },
+      {
         id: 'suggest-transcript',
         name: 'Suggest Field Updates from Transcript',
         output: 'JSON array: [{ field, label, suggested_content (HTML), reason }] — fields to update from transcript',
@@ -1430,6 +1553,139 @@ Respond with a JSON array:
   { "id": 789, "relevant": true, "reason": "..." },
   ...
 ]`
+      }
+    ]
+  },
+
+  // ── PA Workspace ────────────────────────────────────────────────────────────
+  {
+    id: 'pa-workspace',
+    name: 'PA Workspace',
+    icon: 'la-drafting-compass',
+    description: 'Single-prompt document generation cards in the Planning Application Workspace. Each card uses a prompt stored in appeals.appeal_draft_types with {{VARIABLE}} substitution for guiding brief, starting docs, and briefing notes.',
+    operations: [
+      {
+        id: 'hlpv-narrative',
+        name: 'HLPV Narrative Card',
+        output: 'HTML HLPV narrative assessment — one section per discipline and designation, using HLPV tool data and consultant site notes',
+        components: [
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=hlpv, matched by selected development type)',
+            content: `Fetched using document_type='hlpv' (aliased from slug 'hlpv_narrative' via GUIDING_BRIEF_SLUG_ALIAS in appeal.controller.js). Development type comes from the per-card dropdown in the workspace, defaulting to the project's development type.
+
+Substituted into {{GUIDING_BRIEF}} in the generation prompt.`
+          },
+          {
+            type: 'template',
+            label: 'Generation Prompt',
+            source: 'DB: appeals.appeal_draft_types WHERE slug = \'hlpv_narrative\' (generation_prompt column)',
+            content: `Stored in the database. Key variables substituted at call time:
+  {{GUIDING_BRIEF}}           — practice guidance from the guiding briefs library
+  {{HLPV_DATA}}               — formatted planning constraint text imported from a saved HLPV analysis session
+  {{ADDITIONAL_DESIGNATIONS}} — consultant notes on additional designations and site context (user-pasted)
+
+Prompt instructs the model to write a complete HLPV narrative, discipline by discipline, using only the data provided. Never invent designations, distances, or names.`
+          },
+          {
+            type: 'runtime',
+            label: 'HLPV Tool Data',
+            description: 'Formatted plain-text export from a saved HLPV analysis session — discipline risk levels, triggered rules, designation names and distances, and optional suggested text. Imported via the Starting Docs modal and substituted into {{HLPV_DATA}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Additional Designations',
+            description: 'User-pasted consultant notes covering any further designations, allocations, or site narrative not captured by the HLPV tool. Substituted into {{ADDITIONAL_DESIGNATIONS}}.'
+          },
+          {
+            type: 'format',
+            label: 'Output Instructions',
+            source: 'DB: appeals.appeal_draft_types WHERE slug = \'hlpv_narrative\'',
+            content: `- <h2> for each discipline or topic heading
+- <p><strong>Overall risk: [level]</strong></p> immediately after each discipline heading
+- <p> tags for body paragraphs
+- No document-wrapper tags, no markdown, no em dashes
+- Start directly with the first <h2>
+- Do not reference source documents — this is a client-facing document`
+          }
+        ],
+        assembledPreview: `[GUIDE: hlpv guiding brief for the selected development type]
+
+[TEMPLATE: generation prompt from DB — hlpv_narrative]
+
+## Guiding Brief
+[RUNTIME: guidance_content from guiding_briefs]
+
+## HLPV Tool Data
+[RUNTIME: formatted discipline text from saved HLPV session — {{HLPV_DATA}}]
+
+## Additional Designations and Site Notes
+[RUNTIME: consultant-pasted site notes — {{ADDITIONAL_DESIGNATIONS}}]
+
+[FORMAT: HTML fragment, h2 + risk paragraph per discipline, no invented data]`
+      },
+      {
+        id: 'socio-economic-baseline',
+        name: 'Socio-economic Baseline Assessment',
+        output: 'HTML full socio-economic baseline assessment document — complete structured report with data tables, populated from CSV data, with [PLACEHOLDER] sections preserved for manual completion',
+        components: [
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=socio_economic_baseline, matched by development type)',
+            content: `Fetched using document_type='socio_economic_baseline'. Falls back to a generic brief if no development-type-specific match exists.
+
+Substituted into {{GUIDING_BRIEF}} in the generation prompt.`
+          },
+          {
+            type: 'template',
+            label: 'Generation Prompt',
+            source: 'DB: appeals.appeal_draft_types WHERE slug = \'socio_economic_baseline\' (generation_prompt column)',
+            content: `Stores the full template document from a real previous project (Rotherham) alongside instructions to:
+1. Reproduce the template structure exactly for the current project
+2. Replace all Rotherham-specific data (population, BRES, unemployment, qualifications, health etc.) with data from the CSV
+3. Keep every [PLACEHOLDER – ...] and [INSERT X] tag exactly as written — these require manual research
+4. Use LAD25 row as the local authority, Regions row as regional comparator, Countries/England as national
+
+Key variables substituted at call time:
+  {{GUIDING_BRIEF}} — practice guidance
+  {{SOCIO_DATA}}    — CSV from the socio-economics analysis tool (saved via Save to Workspace)
+  {{BRIEFING_NOTES}} — project briefing notes`
+          },
+          {
+            type: 'runtime',
+            label: 'Socio-economic Data (CSV)',
+            description: 'Full CSV export from a saved socio-economics analysis session — all geographic layers (Countries, Regions, LAD25), containing census, employment, BRES, qualifications, health, commuting, EV charging, renewables, and population projection data. Imported via the Starting Docs modal and substituted into {{SOCIO_DATA}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Briefing Notes',
+            description: 'Selected project briefing notes, substituted into {{BRIEFING_NOTES}}.'
+          },
+          {
+            type: 'format',
+            label: 'Output Instructions',
+            source: 'DB: appeals.appeal_draft_types WHERE slug = \'socio_economic_baseline\'',
+            content: `- h1/h2/h3 for document structure, p for paragraphs, table/thead/tbody/tr/th/td for all data tables, ul/li for bullets
+- No document-wrapper tags, no markdown, no em dashes
+- All [PLACEHOLDER – ...] and [INSERT X] tags reproduced verbatim — never fabricated
+- All Rotherham place references replaced with correct local authority from CSV geo_name
+- Missing data cells marked [DATA NOT AVAILABLE]`
+          }
+        ],
+        assembledPreview: `[GUIDE: socio_economic_baseline guiding brief]
+
+[TEMPLATE: generation prompt from DB — socio_economic_baseline]
+Includes full Rotherham template document as structural reference.
+
+## Socio-economic Data (CSV)
+[RUNTIME: CSV from saved socioeconomics session — {{SOCIO_DATA}}]
+
+## Briefing Notes
+[RUNTIME: selected briefing notes — {{BRIEFING_NOTES}}]
+
+[FORMAT: full HTML document, all tables populated from CSV, [PLACEHOLDER] tags preserved]`
       }
     ]
   },
