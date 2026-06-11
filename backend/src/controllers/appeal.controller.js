@@ -710,28 +710,81 @@ export async function getDraft(req, res) {
 export async function getDraftContext(req, res) {
   const { projectId, typeId } = req.params;
   try {
-    const { rows: projectRows } = await pool.query(
-      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
-    );
+    const [{ rows: projectRows }, { rows: typeRows }] = await Promise.all([
+      pool.query(`SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]),
+      pool.query(`SELECT name, slug, generation_prompt FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]),
+    ]);
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
-
-    const { rows: typeRows } = await pool.query(
-      `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
-    );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
 
+    const project = projectRows[0];
+    const draftType = typeRows[0];
+    const promptTemplate = draftType.generation_prompt ?? '';
+
     const [{ projectBrief, guidingBrief }, exampleDoc] = await Promise.all([
-      fetchPromptContext(projectId, typeRows[0].slug, projectRows[0].development_type),
-      fetchExampleDoc(projectId, typeId)
+      fetchPromptContext(projectId, draftType.slug, project.development_type),
+      fetchExampleDoc(projectId, typeId),
     ]);
+
+    // Char counts for server-side injected content
+    const contextChars = {
+      promptTemplate: promptTemplate.length,
+      styleExample:   guidingBrief?.style_example?.length ?? 0,
+      policies:       0,
+      planningHistory: 0,
+      issueNotes:     0,
+    };
+
+    // Only fetch what the prompt actually uses
+    const conditionalQueries = [];
+
+    if (/\{\{(LOCAL_POLICIES|NATIONAL_POLICIES)\}\}/.test(promptTemplate)) {
+      conditionalQueries.push(
+        pool.query(
+          `SELECT coalesce(length(policy_reference), 0) + coalesce(length(policy_name), 0) + coalesce(length(policy_text), 0) AS chars
+           FROM public.project_policies WHERE project_id = $1`,
+          [projectId]
+        ).then(({ rows }) => {
+          contextChars.policies = rows.reduce((acc, r) => acc + (r.chars ?? 0), 0);
+        })
+      );
+    }
+
+    if (/\{\{PLANNING_HISTORY\}\}/.test(promptTemplate)) {
+      conditionalQueries.push(
+        pool.query(
+          `SELECT coalesce(length(planning_ref), 0) + coalesce(length(description), 0) + coalesce(length(decision), 0) AS chars
+           FROM public.project_planning_history WHERE project_id = $1`,
+          [projectId]
+        ).then(({ rows }) => {
+          contextChars.planningHistory = rows.reduce((acc, r) => acc + (r.chars ?? 0), 0);
+        })
+      );
+    }
+
+    // Issue notes always contribute (argument_for / argument_against on key issues)
+    conditionalQueries.push(
+      pool.query(
+        `SELECT coalesce(length(ain.argument_against), 0) + coalesce(length(ain.argument_for), 0) AS chars
+         FROM admin_console.project_issue_tracks pit
+         LEFT JOIN planning_applications.issue_notes ain ON ain.track_id = pit.id AND ain.project_id = $1
+         WHERE pit.project_id = $1 AND pit.is_active = TRUE`,
+        [projectId]
+      ).then(({ rows }) => {
+        contextChars.issueNotes = rows.reduce((acc, r) => acc + (r.chars ?? 0), 0);
+      })
+    );
+
+    await Promise.all(conditionalQueries);
 
     res.json({
       guidingBrief: guidingBrief ? {
         name: guidingBrief.name,
-        content: guidingBrief.guidance_content ?? null
+        content: guidingBrief.guidance_content ?? null,
       } : null,
       projectBrief: projectBrief ?? null,
-      exampleDoc: exampleDoc ? { filename: exampleDoc.filename } : null
+      exampleDoc: exampleDoc ? { filename: exampleDoc.filename } : null,
+      contextChars,
     });
   } catch (err) {
     console.error('getDraftContext error:', err);
@@ -1377,7 +1430,8 @@ export async function getBriefingNotes(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, title, file_name, created_at FROM planning_applications.document_summaries
+      `SELECT id, title, file_name, created_at, length(summary_html) AS summary_length
+       FROM planning_applications.document_summaries
        WHERE project_id = $1 AND doc_type = 'briefing_transcript'
        ORDER BY created_at DESC`,
       [projectId]

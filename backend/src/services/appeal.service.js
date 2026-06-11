@@ -330,7 +330,7 @@ Produce the complete ${draftTypeName} as HTML now.`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
-    max_tokens: 16000,
+    max_tokens: 64000,
     system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).
 
 The guiding brief describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it. Never fabricate facts, figures, policy references, site details, or project-specific claims.`,

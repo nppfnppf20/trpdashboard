@@ -109,9 +109,9 @@
     }
   }
 
-  // Baseline context chars: prompt template overhead + guiding brief + project brief
-  // Fetched on mount so the bar starts at the real baseline, not zero.
-  let baselineChars = 1500; // rough prompt template overhead
+  // Baseline context chars: everything injected server-side that isn't a starting doc slot or briefing note.
+  // Seeded from getDraftContext on mount; briefing note chars added reactively below.
+  let baselineChars = 800; // system prompt + fixed overhead
 
   function initSlotState() {
     slotState = Object.fromEntries(allSlots.map(s => [s.slug, {
@@ -150,8 +150,15 @@
         } catch { /* ignore malformed */ }
       }
       if (ctx) {
-        if (ctx.guidingBrief?.content) baselineChars += ctx.guidingBrief.content.length;
-        if (ctx.projectBrief) baselineChars += ctx.projectBrief.replace(/<[^>]+>/g, '').length;
+        if (ctx.guidingBrief?.content)  baselineChars += ctx.guidingBrief.content.length;
+        if (ctx.projectBrief)           baselineChars += ctx.projectBrief.replace(/<[^>]+>/g, '').length;
+        if (ctx.contextChars) {
+          baselineChars += ctx.contextChars.promptTemplate   ?? 0;
+          baselineChars += ctx.contextChars.styleExample     ?? 0;
+          baselineChars += ctx.contextChars.policies         ?? 0;
+          baselineChars += ctx.contextChars.planningHistory  ?? 0;
+          baselineChars += ctx.contextChars.issueNotes       ?? 0;
+        }
       }
     } catch (err) {
       console.error('Failed to load starting docs:', err);
@@ -257,9 +264,12 @@
     }
   }
 
-  // Context % — baseline (prompt + guiding brief + project brief) + uploaded docs, out of 200 000 chars
+  // Context % — all injected content, out of 200 000 chars
   $: docsChars = Object.values(slotState).reduce((acc, st) => acc + (st.content_text?.length ?? 0), 0);
-  $: totalChars = baselineChars + docsChars;
+  $: briefingNotesChars = briefingNotes
+    .filter(n => selectedNoteIds.has(n.id))
+    .reduce((acc, n) => acc + (n.summary_length ?? 0), 0);
+  $: totalChars = baselineChars + docsChars + briefingNotesChars;
   $: contextPct = Math.min(100, Math.round(totalChars / 200000 * 100));
   $: contextColour = contextPct >= 75 ? '#dc2626' : contextPct >= 50 ? '#d97706' : '#16a34a';
 </script>
@@ -486,7 +496,7 @@
         </div>
 
         <div class="sd-context-bar">
-          <span class="sd-context-label">~{contextPct}% of context window used (prompt + guiding brief + project brief + documents)</span>
+          <span class="sd-context-label">~{contextPct}% of context window used (prompt + guiding brief + style template + project brief + policies + briefing notes + documents)</span>
           <div class="sd-context-track">
             <div class="sd-context-fill" style="width:{contextPct}%; background:{contextColour}"></div>
           </div>
