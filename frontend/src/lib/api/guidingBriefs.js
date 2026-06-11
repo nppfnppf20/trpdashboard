@@ -1,5 +1,11 @@
 import { authFetch } from '$lib/api/client.js';
 
+export async function listDocumentTypes() {
+  const res = await authFetch('/api/guiding-briefs/doc-types');
+  if (!res.ok) throw new Error('Failed to fetch document types');
+  return res.json();
+}
+
 export async function listGuidingBriefs() {
   const res = await authFetch('/api/guiding-briefs');
   if (!res.ok) throw new Error('Failed to fetch guiding briefs');

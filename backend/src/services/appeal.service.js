@@ -21,7 +21,8 @@ Instructions:
 - Produce clean HTML using <h2> for main sections, <h3> for sub-sections, <p> for body text, <ol>/<li> for numbered lists
 - Do not include a title — start directly with the first section
 - Do not add placeholder text or "[INSERT X]" gaps — write the full document from the material provided
-- Do not number paragraphs — do not prefix paragraphs with numbers like 1.1, 2.3 etc.`;
+- Do not number paragraphs — do not prefix paragraphs with numbers like 1.1, 2.3 etc.
+- Do not invent facts, policy references, or project details not present in the material provided`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue context builder (shared with draft generation)
@@ -156,7 +157,7 @@ export async function generateDraftSection({ section, projectName, draftTypeName
     `Write the "${section.name}" section of a ${draftTypeName}. Use formal planning language suitable for submission to the Planning Inspectorate. Produce clean HTML: <h2> for the section heading, <p> for body text, <ol>/<li> for numbered lists. Do not add placeholder text — write the full section from the material provided.`;
 
   const sectionExampleBlock = section.example_text?.trim()
-    ? `Section style example (match tone/format, use NO content from it):\n<section_example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</section_example>\n`
+    ? `## Example Document\nThe following is a real example section from this type of document written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Most content is project-specific and must not be reproduced. The guiding brief takes precedence — do not follow the example more closely than the guiding brief.\n<section_example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</section_example>\n`
     : '';
 
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
@@ -314,7 +315,7 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     : '';
 
   const styleExampleBlock = guidingBrief?.style_example?.trim()
-    ? `\n\nStyle reference (use only to calibrate register and structure — do not reproduce names, facts, or arguments from it):\n${guidingBrief.style_example.trim()}`
+    ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${guidingBrief.style_example.trim()}`
     : '';
 
   const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}${briefingNotesBlock}${styleExampleBlock}
@@ -330,7 +331,9 @@ Produce the complete ${draftTypeName} as HTML now.`;
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 16000,
-    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).`,
+    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).
+
+The guiding brief describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it. Never fabricate facts, figures, policy references, site details, or project-specific claims.`,
     messages: [{ role: 'user', content: prompt }]
   });
   const raw = response.content[0].text.trim();
@@ -425,7 +428,7 @@ ${projectBrief.trim().slice(0, 4000)}`);
 
   if (exampleDoc?.text?.trim()) {
     blocks.push(`## Example Document
-The following is an example of this document type from this project. Use it as a guide to the preferred tone, register, structure, and level of detail. Do not copy content from it — use it only to calibrate style.
+The following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.
 
 ${exampleDoc.text.trim().slice(0, 6000)}`);
   }

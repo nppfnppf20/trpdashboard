@@ -827,15 +827,76 @@ export async function generateDraftFromPaNotes(req, res) {
   const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
-      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+      `SELECT project_name, development_type, address, local_planning_authority, development_description
+       FROM public.projects WHERE id = $1`, [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+    const project = projectRows[0];
 
     const { rows: typeRows } = await pool.query(
       `SELECT id, name, slug, generation_prompt FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
     const draftType = typeRows[0];
+
+    // Pre-substitute project-level and data-driven variables into the prompt so they are
+    // resolved before generateAppealDraftFromPrompt handles the remaining {{vars}}.
+    // This is a no-op for doc types whose prompts don't use these variables.
+    let typePrompt = draftType.generation_prompt;
+    if (typePrompt) {
+      const lpaName = Array.isArray(project.local_planning_authority)
+        ? project.local_planning_authority.join(', ')
+        : project.local_planning_authority || '';
+
+      typePrompt = typePrompt
+        .replace(/\{\{SITE_ADDRESS\}\}/g, project.address || '(not set)')
+        .replace(/\{\{LPA_NAME\}\}/g, lpaName || '(not set)')
+        .replace(/\{\{DEVELOPMENT_DESCRIPTION\}\}/g, project.development_description || '(not set)');
+
+      if (/\{\{(LOCAL_POLICIES|NATIONAL_POLICIES)\}\}/.test(typePrompt)) {
+        const { rows: policyRows } = await pool.query(
+          `SELECT policy_reference, policy_name, policy_text, policy_type
+           FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, id`,
+          [projectId]
+        );
+        const formatPolicies = rows => rows.length
+          ? rows.map(p => {
+              const header = `${p.policy_reference}${p.policy_name ? ` — ${p.policy_name}` : ''}`;
+              const text = p.policy_text?.trim() ? `\n${p.policy_text.trim()}` : '';
+              return header + text;
+            }).join('\n\n')
+          : '(none recorded)';
+        typePrompt = typePrompt
+          .replace(/\{\{LOCAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'local')))
+          .replace(/\{\{NATIONAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'national')));
+      }
+
+      if (/\{\{PLANNING_HISTORY\}\}/.test(typePrompt)) {
+        const { rows: historyRows } = await pool.query(
+          `SELECT section, planning_ref, description, decision, decision_date
+           FROM public.project_planning_history WHERE project_id = $1 ORDER BY section, id`,
+          [projectId]
+        );
+        const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+        const fmtHistory = rows => rows.length
+          ? rows.map(h => {
+              const parts = [];
+              if (h.planning_ref) parts.push(`Ref: ${h.planning_ref}`);
+              if (h.description)  parts.push(h.description);
+              if (h.decision)     parts.push(`Decision: ${h.decision}`);
+              const d = fmtDate(h.decision_date);
+              if (d) parts.push(`Date: ${d}`);
+              return parts.join(' — ');
+            }).join('\n')
+          : 'None recorded.';
+        const onSite = historyRows.filter(r => r.section === 'on_site');
+        const nearby = historyRows.filter(r => r.section === 'nearby');
+        const block = historyRows.length
+          ? `On-site:\n${fmtHistory(onSite)}\n\nNearby:\n${fmtHistory(nearby)}`
+          : '(none recorded)';
+        typePrompt = typePrompt.replace(/\{\{PLANNING_HISTORY\}\}/g, block);
+      }
+    }
 
     const { rows: issues } = await pool.query(
       `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
@@ -865,7 +926,7 @@ export async function generateDraftFromPaNotes(req, res) {
     }
     const [{ rows: briefingRows }, guidingBrief, { rows: startingDocRows }] = await Promise.all([
       briefingNoteQuery,
-      getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? projectRows[0].development_type),
+      getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
       pool.query(
         `SELECT slot_slug, content_text FROM appeals.pa_draft_starting_docs
          WHERE project_id = $1 AND draft_type_id = $2`,
@@ -896,9 +957,9 @@ export async function generateDraftFromPaNotes(req, res) {
     }
 
     const contentHtml = await generateAppealDraftFromPrompt({
-      projectName: projectRows[0].project_name,
+      projectName: project.project_name,
       draftTypeName: draftType.name,
-      typePrompt: draftType.generation_prompt,
+      typePrompt,
       issues,
       guidingBrief,
       projectBrief,

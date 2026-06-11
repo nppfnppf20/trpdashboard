@@ -237,11 +237,11 @@ export function formatHlpvDataAsText(disciplines) {
 
 export async function generateHlpvNarrative(disciplines, briefingText, guidingBrief = null) {
   const guidingBlock = guidingBrief?.guidance_content?.trim()
-    ? `\n\n## Practice Guidance\nThe following is practice guidance from this consultancy on approaching HLPV assessments. Use it only to inform how you structure, frame and prioritise the information already provided above — the discipline data and any briefing note. Do NOT introduce any topic, issue, observation, or recommendation that is not directly supported by the specific data you have been given. If the guidance refers to something that has no basis in the data provided, ignore it entirely. Every sentence in your output must be grounded in the designation data or briefing note above — the guidance is a professional reference, not a list of things to write about.\n\n${guidingBrief.guidance_content.trim()}`
+    ? `\n\n## Guiding Brief\nThe following describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The designation data and briefing note provided above are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it. Every fact in your output must come from the data provided, not from the guiding brief.\n\n${guidingBrief.guidance_content.trim()}`
     : '';
 
   const briefStyleBlock = guidingBrief?.style_example?.trim()
-    ? `\n\nThe following is a real example HLPV written by this consultancy. Use it ONLY as a style reference — to learn the professional register, structure, and level of detail. Do NOT reproduce any place names, designation names, distances, policy references, or factual content from it. Every fact in your output must come solely from the designation data provided:\n<style_example>\n${guidingBrief.style_example.trim()}\n</style_example>`
+    ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n<style_example>\n${guidingBrief.style_example.trim()}\n</style_example>`
     : HLPV_TONE_EXAMPLE_BLOCK;
 
   const system = HLPV_NARRATIVE_SYSTEM + briefStyleBlock + guidingBlock;

@@ -80,9 +80,7 @@
     }
     if (preSelectedSurveyors?.length > 0) {
       selectedSurveyors = [...preSelectedSurveyors];
-    }
-    if (selectedTemplateId && selectedSurveyorIds.length > 0) {
-      await mergeTemplateContent();
+      // Setting selectedSurveyors triggers the reactive merge statement above — don't call it again here
     }
   });
 
@@ -131,6 +129,7 @@
 
   function applyPrecomputedCheck(currentHtml) {
     const result = precomputedCheck?.apiResult;
+    console.log('[BriefingEditor] applyPrecomputedCheck', { hasChanges: result?.hasChanges, hasSuggestedContent: !!result?.suggestedContent });
     if (!result?.hasChanges || !result?.suggestedContent) return;
     const newHtml = appendAdditionalSection(currentHtml, result.suggestedContent);
     richTextEditor?.setHTML(newHtml);

@@ -4,11 +4,37 @@ import { MODEL_FAST } from '../services/llm.shared.js';
 
 const client = new Anthropic();
 
+export async function listDocumentTypes(req, res) {
+  try {
+    const { rows } = await pool.query(`
+      SELECT value, label FROM (
+        SELECT slug AS value, name AS label FROM appeals.appeal_draft_types
+        UNION
+        SELECT slug AS value, name AS label FROM planning_applications.draft_types
+        UNION
+        -- Legacy values that exist in guiding briefs but have no draft type entry (e.g. 'hlpv' alias)
+        SELECT document_type AS value, document_type AS label
+        FROM admin_console.guiding_briefs
+        WHERE document_type NOT IN (
+          SELECT slug FROM appeals.appeal_draft_types
+          UNION ALL
+          SELECT slug FROM planning_applications.draft_types
+        )
+      ) t
+      ORDER BY label
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('listDocumentTypes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function listGuidingBriefs(req, res) {
   try {
     const { rows } = await pool.query(
       `SELECT id, name, document_type, development_type,
-              guidance_content, review_checklist, sort_order
+              guidance_content, review_checklist, meeting_prompt, style_example, sort_order
        FROM admin_console.guiding_briefs
        ORDER BY document_type, sort_order, name`
     );
@@ -34,22 +60,24 @@ export async function getGuidingBrief(document_type, development_type) {
 }
 
 export async function createGuidingBrief(req, res) {
-  const { name, document_type, development_type, guidance_content, review_checklist } = req.body;
+  const { name, document_type, development_type, guidance_content, review_checklist, meeting_prompt, style_example } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
   if (!document_type?.trim()) return res.status(400).json({ error: 'document_type is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO admin_console.guiding_briefs
-         (name, document_type, development_type, guidance_content, review_checklist)
-       VALUES ($1, $2, $3, $4, $5)
+         (name, document_type, development_type, guidance_content, review_checklist, meeting_prompt, style_example)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, name, document_type, development_type,
-                 guidance_content, review_checklist, sort_order`,
+                 guidance_content, review_checklist, meeting_prompt, style_example, sort_order`,
       [
         name.trim(),
         document_type.trim(),
         development_type?.trim() || null,
         guidance_content?.trim() || null,
         review_checklist?.trim() || null,
+        meeting_prompt?.trim() || null,
+        style_example?.trim() || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -64,7 +92,7 @@ export async function createGuidingBrief(req, res) {
 
 export async function updateGuidingBrief(req, res) {
   const { id } = req.params;
-  const { name, document_type, development_type, guidance_content, review_checklist, sort_order } = req.body;
+  const { name, document_type, development_type, guidance_content, review_checklist, meeting_prompt, style_example, sort_order } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE admin_console.guiding_briefs
@@ -73,17 +101,21 @@ export async function updateGuidingBrief(req, res) {
            development_type = $3,
            guidance_content = $4,
            review_checklist = $5,
-           sort_order       = COALESCE($6, sort_order),
+           meeting_prompt   = $6,
+           style_example    = $7,
+           sort_order       = COALESCE($8, sort_order),
            updated_at       = NOW()
-       WHERE id = $7
+       WHERE id = $9
        RETURNING id, name, document_type, development_type,
-                 guidance_content, review_checklist, sort_order`,
+                 guidance_content, review_checklist, meeting_prompt, style_example, sort_order`,
       [
         name?.trim() || null,
         document_type?.trim() || null,
         development_type?.trim() || null,
         guidance_content?.trim() || null,
         review_checklist?.trim() || null,
+        meeting_prompt?.trim() ?? null,
+        style_example?.trim() ?? null,
         sort_order ?? null,
         id,
       ]

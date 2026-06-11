@@ -1,24 +1,14 @@
 <script>
   import { onMount } from 'svelte';
-  import { listGuidingBriefs, createGuidingBrief, updateGuidingBrief, deleteGuidingBrief } from '$lib/api/guidingBriefs.js';
+  import { listDocumentTypes, listGuidingBriefs, createGuidingBrief, updateGuidingBrief, deleteGuidingBrief } from '$lib/api/guidingBriefs.js';
   import { md } from '$lib/utils/markdown.js';
 
-  const DOCUMENT_TYPES = [
-    { value: 'hlpv',                      label: 'HLPV Narrative' },
-    { value: 'planning_statement',        label: 'Planning Statement' },
-    { value: 'statement_of_case',         label: 'Statement of Case' },
-    { value: 'statement_of_common_ground',label: 'Statement of Common Ground' },
-    { value: 'proof_of_evidence',         label: 'Proof of Evidence' },
-    { value: 'planning_notice',           label: 'Planning Notice' },
-    { value: 'stage1_review',             label: 'Stage 1 Review' },
-  ];
+  let documentTypes = $state([]);
 
   const DEVELOPMENT_TYPES = [
     'Residential', 'Co-Living', 'Commercial', 'Solar', 'Wind',
     'Mixed Use', 'Industrial', 'Change of Use', 'Agricultural', 'Urban Site', 'Other',
   ];
-
-  const DOC_LABEL = Object.fromEntries(DOCUMENT_TYPES.map(d => [d.value, d.label]));
 
   let briefs = $state([]);
   let loading = $state(true);
@@ -30,7 +20,7 @@
   let isNew = $state(false);
   let activeId = $state(null);
   let activeTab = $state('guidance');
-  let form = $state({ name: '', document_type: '', development_type: '', guidance_content: '', review_checklist: '' });
+  let form = $state({ name: '', document_type: '', development_type: '', guidance_content: '', review_checklist: '', meeting_prompt: '', style_example: '' });
 
   let confirmDeleteId = $state(null);
 
@@ -38,22 +28,37 @@
 
   async function load() {
     loading = true; error = null;
-    try { briefs = await listGuidingBriefs(); }
-    catch (err) { error = err.message; }
-    finally { loading = false; }
+    try {
+      [documentTypes, briefs] = await Promise.all([listDocumentTypes(), listGuidingBriefs()]);
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
+    }
   }
 
-  // Group briefs by document_type for display
+  // Group briefs by document_type for display.
+  // Includes any doc type that has at least one brief, even if not in the DB draft types list.
   const grouped = $derived(
-    DOCUMENT_TYPES.map(dt => ({
-      ...dt,
-      items: briefs.filter(b => b.document_type === dt.value),
-    })).filter(g => g.items.length > 0)
+    (() => {
+      const knownValues = new Set(documentTypes.map(d => d.value));
+      const allTypes = [
+        ...documentTypes,
+        // Briefs whose doc type isn't in the fetched list (shouldn't happen, but safe fallback)
+        ...briefs
+          .filter(b => !knownValues.has(b.document_type))
+          .map(b => ({ value: b.document_type, label: b.document_type }))
+          .filter((d, i, arr) => arr.findIndex(x => x.value === d.value) === i),
+      ];
+      return allTypes
+        .map(dt => ({ ...dt, items: briefs.filter(b => b.document_type === dt.value) }))
+        .filter(g => g.items.length > 0);
+    })()
   );
 
   function openNew() {
     isNew = true; activeId = null;
-    form = { name: '', document_type: DOCUMENT_TYPES[0].value, development_type: '', guidance_content: '', review_checklist: '' };
+    form = { name: '', document_type: documentTypes[0]?.value ?? '', development_type: '', guidance_content: '', review_checklist: '', meeting_prompt: '', style_example: '' };
     activeTab = 'guidance';
     modalError = null;
     modalOpen = true;
@@ -67,6 +72,8 @@
       development_type: b.development_type ?? '',
       guidance_content: b.guidance_content ?? '',
       review_checklist: b.review_checklist ?? '',
+      meeting_prompt:   b.meeting_prompt ?? '',
+      style_example:    b.style_example ?? '',
     };
     activeTab = 'guidance';
     modalError = null;
@@ -84,6 +91,8 @@
         development_type: form.development_type || null,
         guidance_content: form.guidance_content.trim() || null,
         review_checklist: form.review_checklist.trim() || null,
+        meeting_prompt:   form.meeting_prompt.trim() || null,
+        style_example:    form.style_example.trim() || null,
       };
       if (isNew) {
         const created = await createGuidingBrief(payload);
@@ -154,6 +163,8 @@
               <th>Dev Type</th>
               <th>Guidance</th>
               <th>Review Checklist</th>
+              <th>Meeting Agenda</th>
+              <th>Style Template</th>
               <th></th>
             </tr>
           </thead>
@@ -178,6 +189,20 @@
                 <td class="content-cell">
                   {#if b.review_checklist?.trim()}
                     <span class="pill pill-blue">{lineCount(b.review_checklist)} line{lineCount(b.review_checklist) !== 1 ? 's' : ''}</span>
+                  {:else}
+                    <span class="pill pill-empty">—</span>
+                  {/if}
+                </td>
+                <td class="content-cell">
+                  {#if b.meeting_prompt?.trim()}
+                    <span class="pill pill-teal">{wordCount(b.meeting_prompt)}w</span>
+                  {:else}
+                    <span class="pill pill-empty">—</span>
+                  {/if}
+                </td>
+                <td class="content-cell">
+                  {#if b.style_example?.trim()}
+                    <span class="pill pill-amber">{wordCount(b.style_example)}w</span>
                   {:else}
                     <span class="pill pill-empty">—</span>
                   {/if}
@@ -225,7 +250,7 @@
         <div class="meta-field">
           <label for="gb-doctype">Document Type</label>
           <select id="gb-doctype" bind:value={form.document_type}>
-            {#each DOCUMENT_TYPES as dt}
+            {#each documentTypes as dt}
               <option value={dt.value}>{dt.label}</option>
             {/each}
           </select>
@@ -256,6 +281,16 @@
           Review Checklist
           {#if form.review_checklist?.trim()}<span class="tab-dot tab-dot-ok"></span>{:else}<span class="tab-dot tab-dot-empty"></span>{/if}
         </button>
+        <button class="field-tab" class:active={activeTab === 'meeting'} onclick={() => activeTab = 'meeting'}>
+          <i class="las la-calendar-alt"></i>
+          Meeting Agenda
+          {#if form.meeting_prompt?.trim()}<span class="tab-dot tab-dot-ok"></span>{:else}<span class="tab-dot tab-dot-empty"></span>{/if}
+        </button>
+        <button class="field-tab" class:active={activeTab === 'style'} onclick={() => activeTab = 'style'}>
+          <i class="las la-file-alt"></i>
+          Style Template
+          {#if form.style_example?.trim()}<span class="tab-dot tab-dot-ok"></span>{:else}<span class="tab-dot tab-dot-empty"></span>{/if}
+        </button>
       </div>
 
       <div class="editor-wrap">
@@ -277,7 +312,7 @@
               <p class="preview-empty">Nothing written yet — switch to Guidance to add content.</p>
             {/if}
           </div>
-        {:else}
+        {:else if activeTab === 'checklist'}
           <div class="tab-help">
             Things to check after the document is drafted. Written as plain prose or a bullet list.
           </div>
@@ -285,6 +320,24 @@
             class="text-area"
             bind:value={form.review_checklist}
             placeholder="List topics or elements to verify in the draft. Example:&#10;&#10;- Ecology: check for SSSI, habitats, biodiversity net gain — flag if not mentioned&#10;- Landscape and visual impact: must be addressed with reference to the relevant LVIA&#10;- Cumulative impact: check if other schemes are referenced"
+          ></textarea>
+        {:else if activeTab === 'meeting'}
+          <div class="tab-help">
+            LLM prompt used to generate a meeting agenda for this document type. The agenda generator will inject the guiding brief, project brief, briefing notes, and any prior meeting transcripts alongside this prompt.
+          </div>
+          <textarea
+            class="text-area"
+            bind:value={form.meeting_prompt}
+            placeholder="Describe how to structure the meeting agenda. What topics must be covered? What questions should be raised? What decisions need to be made?&#10;&#10;Example:&#10;&#10;## Purpose&#10;Generate an agenda for an initial project meeting with the client and design team.&#10;&#10;## Required topics&#10;- Site description and key constraints identified in the HLPV&#10;- Planning policy context and key policies&#10;- Proposal design and layout&#10;- Likely application timeline"
+          ></textarea>
+        {:else if activeTab === 'style'}
+          <div class="tab-help">
+            Paste a real example of this document type. Used by the LLM to calibrate tone, register, sentence structure, and level of detail — not as content to copy. The guiding brief always takes precedence.
+          </div>
+          <textarea
+            class="text-area"
+            bind:value={form.style_example}
+            placeholder="Paste a real example document here. Plain text is fine — HTML will be stripped automatically before the LLM sees it."
           ></textarea>
         {/if}
       </div>
@@ -333,6 +386,8 @@
   .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
   .pill-ok { background: #dcfce7; color: #15803d; }
   .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-teal { background: #ccfbf1; color: #0d9488; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
   .pill-empty { background: #f1f5f9; color: #94a3b8; }
 
   .actions-cell { white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; }

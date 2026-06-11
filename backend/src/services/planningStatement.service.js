@@ -211,7 +211,7 @@ async function generateLlmSlot({ instruction, variables, briefingSummary, styleT
     : '';
 
   const styleBlock = styleTemplate?.style_text?.trim()
-    ? `\n\n## Style Guide\nThe following is an example of this document type. Use it to calibrate tone, register, and paragraph structure. Do not copy any content from it.\n\n${styleTemplate.style_text.trim().slice(0, 4000)}`
+    ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${styleTemplate.style_text.trim().slice(0, 4000)}`
     : '';
 
   const response = await client.messages.create({
@@ -251,7 +251,7 @@ export async function generatePlanningStatementAssessment({ projectName, section
 
 export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType = null, briefingSummary, guidingBrief = null, styleTemplate = null }) {
   const exampleBlock = section.example_text?.trim()
-    ? `Match the tone and style of this example. Use NO content from it — all content must come from the notes and policies provided:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
+    ? `## Example Document\nThe following is a real example section from this type of document written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Most content is project-specific and must not be reproduced. The guiding brief takes precedence — do not follow the example more closely than the guiding brief.\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
     : '';
 
   const customPromptTemplate = section.generation_prompt?.trim() || null;
@@ -261,11 +261,11 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
     : '';
 
   const guidingBlock = guidingBrief?.guidance_content?.trim()
-    ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
+    ? `\n\n## Guiding Brief\nThe following describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it.\n\n${guidingBrief.guidance_content.trim()}`
     : '';
 
   const styleBlock = styleTemplate?.style_text?.trim()
-    ? `\n\n## Style Guide\nThe following is an example of this document type. Find the section most similar to what you are writing and use that section's style — tone, register, paragraph length, sentence structure. Do not copy any content from it.\n\n${styleTemplate.style_text.trim().slice(0, 8000)}`
+    ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${styleTemplate.style_text.trim().slice(0, 8000)}`
     : '';
 
   const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`;
@@ -345,7 +345,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
   }
 
   const exampleBlock = section.example_text?.trim()
-    ? `The following example shows the target tone and structure. Match the style — do NOT use any content from it:\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)}\n</example>\n\n`
+    ? `## Example Document\nThe following is a real example section from this type of document written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Most content is project-specific and must not be reproduced. The guiding brief takes precedence — do not follow the example more closely than the guiding brief.\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)}\n</example>\n\n`
     : '';
 
   const fullPrompt = outputVarInstruction + numberingInstruction + exampleBlock + prompt;
@@ -355,11 +355,11 @@ export async function generatePlanningStatementSection({ section, variables, sec
     : '';
 
   const guidingBlock = guidingBrief?.guidance_content?.trim()
-    ? `\n\n## Guiding Brief\nThe following is practice guidance for writing this type of document. Use it to inform your approach, structure, and emphasis where relevant — it is directional, not a script. Apply professional judgement and only follow it where it genuinely applies to the material provided.\n\n${guidingBrief.guidance_content.trim()}`
+    ? `\n\n## Guiding Brief\nThe following describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it.\n\n${guidingBrief.guidance_content.trim()}`
     : '';
 
   const styleBlock = styleTemplate?.style_text?.trim()
-    ? `\n\n## Style Guide\nThe following is an example of this document type. Find the section most similar to what you are writing and use that section's style — tone, register, paragraph length, sentence structure. Do not copy any content from it.\n\n${styleTemplate.style_text.trim().slice(0, 8000)}`
+    ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${styleTemplate.style_text.trim().slice(0, 8000)}`
     : '';
 
   const response = await client.messages.create({
@@ -537,7 +537,7 @@ export async function incorporatePlanningAssessment({ paragraphs, documentText, 
   }).join('\n\n---\n\n');
 
   const guidingBlock = guidingBrief?.guidance_content?.trim()
-    ? `\n\n## Guiding Brief\n${guidingBrief.guidance_content.trim()}`
+    ? `\n\n## Guiding Brief\nThe following describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it.\n\n${guidingBrief.guidance_content.trim()}`
     : '';
 
   const projectBriefBlock = projectBrief?.trim()
@@ -545,7 +545,7 @@ export async function incorporatePlanningAssessment({ paragraphs, documentText, 
     : '';
 
   const exampleBlock = exampleText?.trim()
-    ? `\n\n## Example Planning Assessment\nThe following is an example of a planning assessment section from a different project. Use it as a guide for tone, paragraph length, structure, and how policy framework flows into compliance argument and conclusion. Do not copy any content from it — all content must come from the policies, argument notes, and specialist report provided.\nThis example covers multiple issues. Your task is per-issue — apply the same style to the specific issue sub-section you are updating.\n\n${exampleText.trim().slice(0, 8000)}`
+    ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${exampleText.trim().slice(0, 8000)}`
     : '';
 
   const userNotesBlock = userNotes?.trim()

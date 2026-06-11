@@ -87,6 +87,7 @@
           discipline: draft.discipline,
           templateContent: scopeContent
         });
+        console.log(`[BriefingCheck] ${draft.discipline}:`, { hasChanges: apiResult.hasChanges, reasoning: apiResult.reasoning });
         draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'ready', apiResult } };
       } catch (err) {
         draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'error', error: err.message } };

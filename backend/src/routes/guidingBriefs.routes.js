@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  listDocumentTypes,
   listGuidingBriefs,
   createGuidingBrief,
   updateGuidingBrief,
@@ -9,6 +10,7 @@ import {
 
 const router = express.Router();
 
+router.get('/doc-types', listDocumentTypes);
 router.get('/', listGuidingBriefs);
 router.post('/', createGuidingBrief);
 router.post('/review', reviewDraft);
