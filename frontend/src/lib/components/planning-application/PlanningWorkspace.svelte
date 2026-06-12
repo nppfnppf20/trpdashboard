@@ -11,7 +11,7 @@
   import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { appealScopeIncorporation, appealIncorporateTargeted } from '$lib/api/appeal.js';
-  import { reviewDraftAgainstBrief } from '$lib/api/guidingBriefs.js';
+  import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
@@ -291,22 +291,21 @@
     }
   }
 
-  let briefCheckResults = null;
-  let briefChecking = false;
-  let briefCheckError = null;
-
   let incorporateReviewMode = false;
   let contextPanelOpen = false;
   let sectionChatOpen = false;
+  let checkPanelOpen = false;
   let contextData = null;
   let contextLoading = false;
   let contextExpanded = { guidingBrief: true, projectBrief: false };
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; contextPanelOpen = false; sectionChatOpen = false; contextData = null; }
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; contextPanelOpen = false; sectionChatOpen = false; checkPanelOpen = false; contextData = null; }
+  $: if (!checkPanelOpen) draftEditor?.clearHighlight();
 
   async function toggleContextPanel() {
     if (contextPanelOpen) { contextPanelOpen = false; return; }
     incorporateReviewMode = false;
+    checkPanelOpen = false;
     contextPanelOpen = true;
     if (!contextData) {
       contextLoading = true;
@@ -316,22 +315,12 @@
     }
   }
 
-  async function checkBrief() {
-    const html = draftEditor?.getHTML();
-    if (!html?.trim()) return;
-    briefChecking = true; briefCheckResults = null; briefCheckError = null;
-    try {
-      const result = await reviewDraftAgainstBrief({
-        draft_html: html,
-        document_type: 'planning_statement',
-        development_type: developmentType || null
-      });
-      briefCheckResults = result;
-    } catch (err) {
-      briefCheckError = err.message;
-    } finally {
-      briefChecking = false;
-    }
+  function toggleCheckPanel() {
+    if (checkPanelOpen) { checkPanelOpen = false; return; }
+    incorporateReviewMode = false;
+    contextPanelOpen = false;
+    sectionChatOpen = false;
+    checkPanelOpen = true;
   }
 </script>
 
@@ -537,10 +526,13 @@
             <i class="las la-layer-group"></i> Context
           </button>
           {#if activeType?.slug !== 'stage1_review'}
-            <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) contextPanelOpen = false; }} title="Chat with a document to draft a section">
+            <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { contextPanelOpen = false; checkPanelOpen = false; } }} title="Chat with a document to draft a section">
               <i class="las la-comments"></i> Doc Chat
             </button>
           {/if}
+          <button class="draft-context-btn" class:active={checkPanelOpen} on:click={toggleCheckPanel} title="Check the draft against the guiding brief, project information, and grammar">
+            <i class="las la-clipboard-check"></i> Check
+          </button>
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
           </button>
@@ -550,56 +542,22 @@
         </div>
       </div>
 
-      {#if briefCheckError}
-        <div class="brief-check-panel brief-check-error">
-          <i class="las la-exclamation-circle"></i> {briefCheckError}
-          <button class="brief-check-dismiss" on:click={() => briefCheckError = null}><i class="las la-times"></i></button>
-        </div>
-      {/if}
-
-      {#if briefCheckResults}
-        {#if briefCheckResults.no_brief}
-          <div class="brief-check-panel brief-check-info">
-            <i class="las la-info-circle"></i> No guiding brief found for Planning Statement with this development type. Add one in Admin Console → Guiding Briefs.
-            <button class="brief-check-dismiss" on:click={() => briefCheckResults = null}><i class="las la-times"></i></button>
-          </div>
-        {:else if briefCheckResults.no_checklist}
-          <div class="brief-check-panel brief-check-info">
-            <i class="las la-info-circle"></i> A guiding brief exists but has no review checklist. Add one in Admin Console → Guiding Briefs.
-            <button class="brief-check-dismiss" on:click={() => briefCheckResults = null}><i class="las la-times"></i></button>
-          </div>
-        {:else if briefCheckResults.items?.length}
-          <div class="brief-check-panel">
-            <div class="brief-check-header">
-              <span class="brief-check-title"><i class="las la-clipboard-check"></i> Guiding Brief Check</span>
-              <button class="brief-check-dismiss" on:click={() => briefCheckResults = null}><i class="las la-times"></i></button>
-            </div>
-            <div class="brief-check-items">
-              {#each briefCheckResults.items as item}
-                <div class="brief-check-item brief-check-item--{item.status}">
-                  <span class="brief-check-icon">
-                    {#if item.status === 'present'}<i class="las la-check-circle"></i>
-                    {:else if item.status === 'partial'}<i class="las la-exclamation-triangle"></i>
-                    {:else}<i class="las la-times-circle"></i>{/if}
-                  </span>
-                  <div class="brief-check-text">
-                    <span class="brief-check-topic">{item.topic}</span>
-                    {#if item.suggestion}<span class="brief-check-suggestion">{item.suggestion}</span>{/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      {/if}
-
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
         <div class="draft-left-panel" class:panel-hidden={incorporateReviewMode}>
           <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
-          {#if sectionChatOpen}
+          {#if checkPanelOpen}
+            <DraftCheckPanel
+              {project}
+              docTypeSlug={activeType?.slug ?? 'planning_statement'}
+              developmentType={developmentType || null}
+              getDraftHtml={() => draftEditor?.getHTML() ?? $draftEditorHtml}
+              locateText={(text) => draftEditor?.highlightText(text) ?? false}
+              on:close={() => checkPanelOpen = false}
+            />
+          {:else if sectionChatOpen}
             {@const _activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
             <SectionChatPanel
               {project}
@@ -2639,57 +2597,6 @@
   .draft-save-btn:hover:not(:disabled) { background: #6d28d9; }
   .draft-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .draft-check-btn {
-    display: flex; align-items: center; gap: 0.35rem;
-    padding: 0.4rem 0.75rem;
-    background: #f0fdfa; color: #0d9488;
-    border: 1px solid #99f6e4; border-radius: 6px;
-    font-size: 0.8125rem; cursor: pointer; font-family: inherit; transition: all 0.15s;
-  }
-  .draft-check-btn:hover:not(:disabled) { background: #ccfbf1; }
-  .draft-check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .brief-check-panel {
-    margin: 0 1.5rem 0.75rem;
-    background: white; border: 1px solid #e2e8f0; border-radius: 8px;
-    font-size: 0.8125rem; flex-shrink: 0;
-  }
-  .brief-check-panel.brief-check-error {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.625rem 0.875rem;
-    background: #fef2f2; border-color: #fecaca; color: #dc2626;
-  }
-  .brief-check-panel.brief-check-info {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.625rem 0.875rem;
-    background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8;
-  }
-  .brief-check-dismiss {
-    margin-left: auto; background: none; border: none; cursor: pointer;
-    color: inherit; opacity: 0.6; padding: 0.15rem; display: flex; align-items: center;
-  }
-  .brief-check-dismiss:hover { opacity: 1; }
-  .brief-check-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.625rem 0.875rem; border-bottom: 1px solid #f1f5f9;
-  }
-  .brief-check-title { font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
-  .brief-check-title i { color: #0d9488; }
-  .brief-check-items { padding: 0.5rem 0.75rem; display: flex; flex-direction: column; gap: 0.375rem; }
-  .brief-check-item {
-    display: flex; align-items: flex-start; gap: 0.625rem;
-    padding: 0.5rem 0.625rem; border-radius: 6px;
-  }
-  .brief-check-item--present { background: #f0fdf4; }
-  .brief-check-item--partial { background: #fffbeb; }
-  .brief-check-item--missing { background: #fef2f2; }
-  .brief-check-icon { flex-shrink: 0; font-size: 1rem; margin-top: 0.05rem; }
-  .brief-check-item--present .brief-check-icon { color: #16a34a; }
-  .brief-check-item--partial .brief-check-icon { color: #ca8a04; }
-  .brief-check-item--missing .brief-check-icon { color: #dc2626; }
-  .brief-check-text { display: flex; flex-direction: column; gap: 0.2rem; }
-  .brief-check-topic { font-weight: 600; color: #1e293b; }
-  .brief-check-suggestion { color: #475569; line-height: 1.5; }
 
   .draft-editor-wrap {
     flex: 1;

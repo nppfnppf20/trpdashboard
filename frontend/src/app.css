@@ -596,3 +596,9 @@ h1 {
 }
 
 /* end */
+
+/* Check Draft panel - click-to-locate highlight in the draft editor */
+::highlight(draft-locate) {
+  background-color: #fde047;
+  color: #1e293b;
+}

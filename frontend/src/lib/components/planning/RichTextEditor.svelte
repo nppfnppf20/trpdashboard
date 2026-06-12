@@ -103,6 +103,79 @@
       editorElement.innerHTML = '';
     }
   }
+
+  // ── Locate text in the document (used by the Check Draft panel) ──
+  // Highlights via the CSS Custom Highlight API (or selection fallback) so the
+  // DOM is never mutated — the highlight can't leak into saved draft HTML.
+  const LOCATE_HIGHLIGHT = 'draft-locate';
+
+  export function highlightText(needle) {
+    if (!editorElement || !needle?.trim()) return false;
+    const range = findTextRange(needle.trim());
+    if (!range) return false;
+    const el = range.startContainer.nodeType === Node.TEXT_NODE
+      ? range.startContainer.parentElement
+      : range.startContainer;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof CSS !== 'undefined' && CSS.highlights) {
+      CSS.highlights.set(LOCATE_HIGHLIGHT, new Highlight(range));
+    } else {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    return true;
+  }
+
+  export function clearHighlight() {
+    if (typeof CSS !== 'undefined' && CSS.highlights) {
+      CSS.highlights.delete(LOCATE_HIGHLIGHT);
+    }
+  }
+
+  function findTextRange(needle) {
+    const walker = document.createTreeWalker(editorElement, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let full = '';
+    let n;
+    while ((n = walker.nextNode())) {
+      nodes.push({ node: n, start: full.length });
+      full += n.textContent;
+    }
+    if (!full) return null;
+
+    // Tolerate whitespace runs and straight/curly quote differences between
+    // the LLM's excerpt and the document text
+    const pattern = needle
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/['‘’]/g, "['‘’]")
+      .replace(/["“”]/g, '["“”]')
+      .replace(/\s+/g, '\\s+');
+    let match;
+    try {
+      match = full.match(new RegExp(pattern, 'i'));
+    } catch {
+      return null;
+    }
+    if (!match) return null;
+
+    const pointAt = (idx) => {
+      for (const { node, start } of nodes) {
+        if (idx <= start + node.textContent.length) {
+          return { node, offset: Math.max(0, idx - start) };
+        }
+      }
+      const last = nodes[nodes.length - 1];
+      return { node: last.node, offset: last.node.textContent.length };
+    };
+
+    const s = pointAt(match.index);
+    const e = pointAt(match.index + match[0].length);
+    const range = document.createRange();
+    range.setStart(s.node, s.offset);
+    range.setEnd(e.node, e.offset);
+    return range;
+  }
 </script>
 
 <div class="rich-text-editor" class:full-height={fullHeight}>

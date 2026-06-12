@@ -38,6 +38,7 @@ import planningHistoryRoutes from './planningHistory.routes.js';
 import policyDocumentsRoutes from './policyDocuments.routes.js';
 import sectionChatRoutes from './sectionChat.routes.js';
 import documentStyleTemplatesRoutes from './documentStyleTemplates.routes.js';
+import draftCheckRoutes from './draftCheck.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -116,6 +117,7 @@ router.use('/api/admin-console/planning-templates', policyContextTemplatesRoutes
 router.use('/api/admin-console/style-templates', documentStyleTemplatesRoutes);
 router.use('/api/issue-types', issueTypesRoutes);
 router.use('/api/guiding-briefs', guidingBriefsRoutes);
+router.use('/api/draft-check', draftCheckRoutes);
 router.use('/api/meeting-notes', meetingNotesRoutes);
 router.use('/api/admin-console/email', emailDigestRoutes);
 router.use('/api/scraper-filters', scraperFiltersRoutes);
