@@ -683,7 +683,6 @@
             {@const isExpanded = $cardExpandedTypeId === type.id}
             {@const typeSections = $cardSections[type.id] ?? []}
             {@const typeLoading = $cardSectionsLoading[type.id] ?? false}
-            {@const ctx = $cardContextState[type.id]}
             <div class="draft-type-card">
               <div class="draft-type-main">
                 <div class="draft-type-info">
@@ -781,33 +780,6 @@
                 </div>
               {/if}
 
-              <!-- Context accordion -->
-              <button class="draft-sections-toggle" on:click={() => toggleCardContext(project.id, type.id)}>
-                <i class="las la-layer-group"></i> Context
-                <i class="las {ctx?.expanded ? 'la-angle-up' : 'la-angle-down'} toggle-chevron"></i>
-              </button>
-              {#if ctx?.expanded}
-                <div class="draft-inline-context">
-                  {#if ctx.loading}
-                    <div class="draft-inline-loading"><div class="mini-spinner"></div><span>Loading...</span></div>
-                  {:else}
-                    <div class="ctx-row">
-                      <span class="ctx-label">Guiding brief</span>
-                      <span class="ctx-value {ctx.guidingBrief ? 'ctx-set' : 'ctx-missing'}">{ctx.guidingBrief?.name ?? 'Not set — add in Admin Console → Guiding Briefs'}</span>
-                    </div>
-                    <div class="ctx-row">
-                      <span class="ctx-label">Project brief</span>
-                      <span class="ctx-value {ctx.projectBrief ? 'ctx-set' : 'ctx-missing'}">{ctx.projectBrief ? 'Set' : 'Not uploaded — upload a briefing note in the Key Issues tab'}</span>
-                    </div>
-                    {#if type.tool === 'stage1' && ctx.toneExampleLoaded != null}
-                      <div class="ctx-row">
-                        <span class="ctx-label">Tone example</span>
-                        <span class="ctx-value {ctx.toneExampleLoaded ? 'ctx-set' : 'ctx-missing'}">{ctx.toneExampleLoaded ? 'Loaded (stage1reviewexample.md)' : 'Not loaded — add stage1reviewexample.md to backend root'}</span>
-                      </div>
-                    {/if}
-                  {/if}
-                </div>
-              {/if}
 
               <!-- Sections toggle row — hidden for appeal and stage1 types (broad-prompt generation) -->
               {#if type.tool !== 'appeal' && type.tool !== 'stage1'}
@@ -2241,10 +2213,9 @@
 
   /* ── Draft Document tab ── */
   .draft-types-list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
     gap: 0.75rem;
-    max-width: 680px;
   }
 
   .draft-type-card {
@@ -2259,9 +2230,8 @@
 
   .draft-type-main {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
+    flex-direction: column;
+    gap: 0.625rem;
   }
 
   .draft-type-info {
@@ -2279,7 +2249,7 @@
   .draft-type-actions {
     display: flex;
     gap: 0.5rem;
-    flex-shrink: 0;
+    flex-wrap: wrap;
     align-items: center;
   }
 

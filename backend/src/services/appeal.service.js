@@ -328,15 +328,14 @@ ${issueContext}
 
 Produce the complete ${draftTypeName} as HTML now.`;
 
-  const response = await client.messages.create({
+  const raw = (await client.messages.stream({
     model: MODEL_SONNET,
     max_tokens: 64000,
     system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).
 
 The guiding brief describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it. Never fabricate facts, figures, policy references, site details, or project-specific claims.`,
     messages: [{ role: 'user', content: prompt }]
-  });
-  const raw = response.content[0].text.trim();
+  }).finalText()).trim();
   return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
@@ -395,13 +394,12 @@ Return the complete amended document as clean HTML only:
 - <p> for body paragraphs, <ol>/<ul>/<li> for lists
 - No markdown, no em dashes, no document title`;
 
-  const response = await client.messages.create({
+  const raw = (await client.messages.stream({
     model: MODEL_SONNET,
     max_tokens: 16000,
     system: 'You are a planning appeal consultant. You output clean HTML documents. You never use markdown. Never use em dashes (—).',
     messages: [{ role: 'user', content: prompt }],
-  });
-  const raw = response.content[0].text.trim();
+  }).finalText()).trim();
   return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
@@ -536,14 +534,12 @@ Write in formal planning language — no em dashes, no paragraph numbers.
 Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you did not change:
 [{"id": "p2", "html": "<p>...</p>"}, {"id": "INSERT_AFTER_p2", "html": "<p>...</p>"}]`;
 
-  const response = await client.messages.create({
+  const raw = (await client.messages.stream({
     model: MODEL_SONNET,
     max_tokens: 16000,
     system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.',
     messages: [{ role: 'user', content: prompt }],
-  });
-
-  const raw = response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  }).finalText()).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   return JSON.parse(raw);
 }
 
@@ -597,14 +593,13 @@ Instructions:
     ...conversation
   ];
 
-  const response = await client.messages.create({
+  const raw = (await client.messages.stream({
     model: MODEL_SONNET,
     max_tokens: 8000,
     messages
-  });
+  }).finalText()).trim();
 
-  return noEmDash(response.content[0].text.trim()
-    .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+  return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

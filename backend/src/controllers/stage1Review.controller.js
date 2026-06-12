@@ -159,15 +159,12 @@ export async function generateStage1Review(req, res) {
     const systemPrompt = DEFAULT_STAGE1_SYSTEM_PROMPT + TONE_EXAMPLE_BLOCK;
 
     // ── 7. Call LLM — expect HTML output directly ─────────────────────────────
-    const response = await client.messages.create({
+    const bodyHtml = (await client.messages.stream({
       model: MODEL_SONNET,
       max_tokens: 8000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
-    });
-
-    const bodyHtml = response.content[0].text.trim()
-      .replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+    }).finalText()).trim().replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
 
     // ── 8. Build document HTML ────────────────────────────────────────────────
     const now = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
