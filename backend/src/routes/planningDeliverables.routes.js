@@ -8,6 +8,7 @@ import {
   getAllTemplates,
   getTemplateById,
   updateTemplate,
+  generateDeliverableByType,
   createDeliverable,
   getDeliverablesForProject,
   getDeliverableById,
@@ -25,6 +26,7 @@ router.get('/templates/:id', getTemplateById);
 router.put('/templates/:id', updateTemplate);
 
 // Deliverable routes
+router.post('/deliverables/generate-by-type', generateDeliverableByType);
 router.post('/deliverables', createDeliverable);
 router.get('/deliverables/project/:projectId', getDeliverablesForProject);
 router.get('/deliverables/:id', getDeliverableById);

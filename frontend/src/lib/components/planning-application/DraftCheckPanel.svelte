@@ -1,6 +1,8 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
   import { checkBriefCoverage, checkConsistency, checkGrammar } from '$lib/api/draftCheck.js';
+  import { getActionPrompt, saveActionPrompt, resetActionPrompt } from '$lib/api/planningApplication.js';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
 
   export let project;
   export let docTypeSlug = 'planning_statement';
@@ -19,9 +21,9 @@
   }
 
   const SECTION_DEFS = [
-    { key: 'brief',       label: 'Guiding Brief Coverage',  icon: 'la-book',           run: checkBriefCoverage },
-    { key: 'consistency', label: 'Project Information',     icon: 'la-clipboard-list', run: checkConsistency },
-    { key: 'grammar',     label: 'Grammar & Style',         icon: 'la-spell-check',    run: checkGrammar },
+    { key: 'brief',       promptKey: 'draft_check_brief',       label: 'Guiding Brief Coverage', icon: 'la-book',           run: checkBriefCoverage },
+    { key: 'consistency', promptKey: 'draft_check_consistency', label: 'Project Information',    icon: 'la-clipboard-list', run: checkConsistency },
+    { key: 'grammar',     promptKey: 'draft_check_grammar',     label: 'Grammar & Style',        icon: 'la-spell-check',    run: checkGrammar },
   ];
 
   let sections = {
@@ -56,8 +58,6 @@
     SECTION_DEFS.forEach(def => runSection(def));
   }
 
-  onMount(runAll);
-
   $: anyRunning = SECTION_DEFS.some(def => sections[def.key].status === 'running');
 
   function issueCount(key) {
@@ -73,14 +73,56 @@
   const CONSISTENCY_TONES = { consistent: 'present', mismatch: 'missing', not_mentioned: 'neutral' };
   const GRAMMAR_TONES = { high: 'missing', medium: 'partial', low: 'neutral' };
   const GRAMMAR_ICONS = { high: 'la-times-circle', medium: 'la-exclamation-triangle', low: 'la-info-circle' };
+
+  // Prompt modal state
+  let promptModalKey = null;
+  let promptModalTitle = '';
+  let promptState = { text: '', loading: false, saving: false, saved: false };
+
+  async function openCheckPrompt(def) {
+    promptModalKey = def.promptKey;
+    promptModalTitle = def.label;
+    promptState = { text: '', loading: true, saving: false, saved: false };
+    try {
+      const data = await getActionPrompt(def.promptKey);
+      promptState = { text: data.prompt ?? '', loading: false, saving: false, saved: false };
+    } catch {
+      promptState = { text: '', loading: false, saving: false, saved: false };
+    }
+  }
+
+  function closeCheckPrompt() { promptModalKey = null; }
+
+  async function saveCheckPrompt() {
+    promptState = { ...promptState, saving: true };
+    try {
+      await saveActionPrompt(promptModalKey, promptState.text);
+      promptState = { ...promptState, saving: false, saved: true };
+      setTimeout(() => { promptState = { ...promptState, saved: false }; }, 2500);
+    } catch {
+      promptState = { ...promptState, saving: false };
+    }
+  }
+
+  async function resetCheckPrompt() {
+    promptState = { ...promptState, saving: true };
+    try {
+      const data = await resetActionPrompt(promptModalKey);
+      promptState = { text: data.prompt ?? '', saving: false, saved: true };
+      setTimeout(() => { promptState = { ...promptState, saved: false }; }, 2500);
+    } catch {
+      promptState = { ...promptState, saving: false };
+    }
+  }
 </script>
 
 <div class="check-panel">
   <div class="check-panel-header">
     <span class="check-panel-title"><i class="las la-clipboard-check"></i> Check Draft</span>
     <div class="check-panel-actions">
-      <button class="check-rerun-all" disabled={anyRunning} on:click={runAll} title="Re-run all checks">
-        <i class="las la-sync"></i> Run again
+      <button class="check-rerun-all" disabled={anyRunning} on:click={runAll} title="Run all checks">
+        {#if anyRunning}<span class="check-mini-spinner"></span>{:else}<i class="las la-play"></i>{/if}
+        Run all
       </button>
       <button class="check-panel-close" aria-label="Close check panel" on:click={() => dispatch('close')}><i class="las la-times"></i></button>
     </div>
@@ -94,24 +136,39 @@
     {#each SECTION_DEFS as def}
       {@const s = sections[def.key]}
       <div class="check-section">
-        <button class="check-section-header" on:click={() => expanded[def.key] = !expanded[def.key]}>
-          <span class="check-section-label"><i class="las {def.icon}"></i> {def.label}</span>
-          {#if s.status === 'running'}
-            <span class="check-mini-spinner"></span>
-          {:else if s.status === 'error'}
-            <span class="check-badge check-badge--error">Failed</span>
-          {:else if s.status === 'done'}
-            {@const n = issueCount(def.key)}
-            <span class="check-badge {n === 0 ? 'check-badge--ok' : 'check-badge--issues'}">
-              {n === 0 ? 'All clear' : `${n} to review`}
-            </span>
-          {/if}
-          <i class="las la-angle-{expanded[def.key] ? 'up' : 'down'} check-chevron"></i>
-        </button>
+        <div class="check-section-header">
+          <button class="check-section-toggle" on:click={() => expanded[def.key] = !expanded[def.key]}>
+            <span class="check-section-label"><i class="las {def.icon}"></i> {def.label}</span>
+            {#if s.status === 'running'}
+              <span class="check-mini-spinner"></span>
+            {:else if s.status === 'error'}
+              <span class="check-badge check-badge--error">Failed</span>
+            {:else if s.status === 'done'}
+              {@const n = issueCount(def.key)}
+              <span class="check-badge {n === 0 ? 'check-badge--ok' : 'check-badge--issues'}">
+                {n === 0 ? 'All clear' : `${n} to review`}
+              </span>
+            {:else}
+              <span class="check-badge check-badge--idle">Not run</span>
+            {/if}
+            <i class="las la-angle-{expanded[def.key] ? 'up' : 'down'} check-chevron"></i>
+          </button>
+          <div class="check-section-btns">
+            <button class="check-prompt-btn" title="View / edit prompt" on:click={() => openCheckPrompt(def)}>
+              <i class="las la-sliders-h"></i>
+            </button>
+            <button class="check-run-btn" disabled={s.status === 'running'} title="Run this check" on:click={() => runSection(def)}>
+              {#if s.status === 'running'}<span class="check-mini-spinner"></span>{:else}<i class="las la-play"></i>{/if}
+            </button>
+          </div>
+        </div>
 
         {#if expanded[def.key]}
           <div class="check-section-body">
-            {#if s.status === 'running'}
+            {#if s.status === 'idle'}
+              <p class="check-section-empty">Press <i class="las la-play"></i> to run this check.</p>
+
+            {:else if s.status === 'running'}
               <div class="check-section-loading"><span class="check-mini-spinner"></span> Checking...</div>
 
             {:else if s.status === 'error'}
@@ -185,7 +242,7 @@
                 >
                   <span class="check-item-icon"><i class="las {GRAMMAR_ICONS[item.severity] ?? 'la-info-circle'}"></i></span>
                   <div class="check-item-text">
-                    {#if item.excerpt}<span class="check-item-excerpt">“{item.excerpt}”</span>{/if}
+                    {#if item.excerpt}<span class="check-item-excerpt">"{item.excerpt}"</span>{/if}
                     <span class="check-item-topic">{item.issue}</span>
                     {#if item.suggestion}<span class="check-item-detail">{item.suggestion}</span>{/if}
                     {#if notFoundKey === `${def.key}:${idx}`}
@@ -203,11 +260,13 @@
 
     <!-- Phase 2: Policy Review -->
     <div class="check-section check-section--placeholder">
-      <button class="check-section-header" on:click={() => expanded.policy = !expanded.policy}>
-        <span class="check-section-label"><i class="las la-balance-scale"></i> Policy Review</span>
-        <span class="check-badge check-badge--soon">Coming soon</span>
-        <i class="las la-angle-{expanded.policy ? 'up' : 'down'} check-chevron"></i>
-      </button>
+      <div class="check-section-header">
+        <button class="check-section-toggle" on:click={() => expanded.policy = !expanded.policy}>
+          <span class="check-section-label"><i class="las la-balance-scale"></i> Policy Review</span>
+          <span class="check-badge check-badge--soon">Coming soon</span>
+          <i class="las la-angle-{expanded.policy ? 'up' : 'down'} check-chevron"></i>
+        </button>
+      </div>
       {#if expanded.policy}
         <div class="check-section-body">
           <p class="check-section-empty">Will test the draft's policy arguments against the verbatim wording of the project's policies — flagging weak interpretations, unused arguments, and relevant policies not yet cited.</p>
@@ -217,11 +276,13 @@
 
     <!-- Phase 3: Policy Updates -->
     <div class="check-section check-section--placeholder">
-      <button class="check-section-header" on:click={() => expanded.policyUpdates = !expanded.policyUpdates}>
-        <span class="check-section-label"><i class="las la-bell"></i> Policy Updates</span>
-        <span class="check-badge check-badge--soon">Coming soon</span>
-        <i class="las la-angle-{expanded.policyUpdates ? 'up' : 'down'} check-chevron"></i>
-      </button>
+      <div class="check-section-header">
+        <button class="check-section-toggle" on:click={() => expanded.policyUpdates = !expanded.policyUpdates}>
+          <span class="check-section-label"><i class="las la-bell"></i> Policy Updates</span>
+          <span class="check-badge check-badge--soon">Coming soon</span>
+          <i class="las la-angle-{expanded.policyUpdates ? 'up' : 'down'} check-chevron"></i>
+        </button>
+      </div>
       {#if expanded.policyUpdates}
         <div class="check-section-body">
           <p class="check-section-empty">Will check the draft against a maintained table of new and emerging policy — flagging outdated references, contradictions, and new policy that could strengthen the case.</p>
@@ -230,6 +291,19 @@
     </div>
   </div>
 </div>
+
+<PromptEditModal
+  open={promptModalKey !== null}
+  title="Edit Prompt — {promptModalTitle}"
+  promptText={promptState.text}
+  loading={promptState.loading}
+  saving={promptState.saving}
+  saved={promptState.saved}
+  on:close={closeCheckPrompt}
+  on:change={(e) => { promptState = { ...promptState, text: e.detail }; }}
+  on:save={saveCheckPrompt}
+  on:reset={resetCheckPrompt}
+/>
 
 <style>
   .check-panel { height: 100%; overflow-y: auto; }
@@ -262,20 +336,40 @@
 
   .check-section { border: 1px solid #e2e8f0; border-radius: 7px; overflow: hidden; background: white; }
   .check-section--placeholder { opacity: 0.75; }
+
   .check-section-header {
-    width: 100%; display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.625rem 0.75rem; background: #f8fafc; border: none;
+    display: flex; align-items: center;
+    background: #f8fafc; border: none;
+  }
+  .check-section-toggle {
+    flex: 1; display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.625rem 0.75rem; background: none; border: none;
     cursor: pointer; font-family: inherit; text-align: left; transition: background 0.12s;
   }
-  .check-section-header:hover { background: #f1f5f9; }
+  .check-section-toggle:hover { background: #f1f5f9; }
   .check-section-label { flex: 1; font-size: 0.8rem; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
   .check-chevron { font-size: 0.7rem; color: #94a3b8; flex-shrink: 0; }
+
+  .check-section-btns {
+    display: flex; align-items: center; gap: 0.25rem;
+    padding: 0 0.5rem; flex-shrink: 0;
+  }
+  .check-prompt-btn, .check-run-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 5px; border: 1px solid #e2e8f0;
+    background: white; color: #64748b; cursor: pointer; font-size: 0.8rem;
+    transition: all 0.12s;
+  }
+  .check-prompt-btn:hover { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }
+  .check-run-btn:hover:not(:disabled) { background: #eff6ff; color: #0369a1; border-color: #bae6fd; }
+  .check-run-btn:disabled { opacity: 0.5; cursor: default; }
 
   .check-badge { font-size: 0.68rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 4px; flex-shrink: 0; }
   .check-badge--ok { background: #dcfce7; color: #15803d; }
   .check-badge--issues { background: #fef3c7; color: #b45309; }
   .check-badge--error { background: #fee2e2; color: #dc2626; }
   .check-badge--soon { background: #f1f5f9; color: #64748b; }
+  .check-badge--idle { background: #f1f5f9; color: #94a3b8; }
 
   .check-section-body { padding: 0.5rem 0.625rem; display: flex; flex-direction: column; gap: 0.375rem; border-top: 1px solid #e2e8f0; }
   .check-section-loading { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; font-size: 0.78rem; color: #64748b; }

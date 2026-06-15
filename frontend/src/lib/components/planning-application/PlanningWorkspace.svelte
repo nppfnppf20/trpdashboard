@@ -8,7 +8,8 @@
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt } from '$lib/stores/planning-suggestion.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt, appealSelectedNoteIds, appealDropdownOpenId} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
-  import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
+  import { getTemplates, createDeliverable, updateDeliverableFromHTML, getProjectDeliverables } from '$lib/services/planningDeliverablesApi.js';
+  import { authFetch } from '$lib/api/client.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { appealScopeIncorporation, appealIncorporateTargeted } from '$lib/api/appeal.js';
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
@@ -207,6 +208,7 @@
     // Run independently — failures must not block the rest of the workspace
     await Promise.all([loadDraftTypes(), loadAssessmentIssues(), loadBriefingNotes(project.id)]);
     loadCardContextPcts();
+    loadLetterDocs();
   }
 
 
@@ -240,6 +242,88 @@
   };
 
   let exportingWord = false;
+
+  // Letter docs (Certificate B Notice, Cover Letter)
+  let letterDeliverables = { certificate_b_notice: null, cover_letter: null };
+  let letterGenerating = null;
+  let letterModal = null; // { type, deliverableId, html, name }
+  let letterModalEditor;
+  let letterModalSaving = false;
+  let letterModalSaved = false;
+  let exportingLetterWord = false;
+
+  async function loadLetterDocs() {
+    try {
+      const all = await getProjectDeliverables(project.id);
+      letterDeliverables = {
+        certificate_b_notice: all.find(d => d.deliverable_type === 'certificate_b_notice') ?? null,
+        cover_letter: all.find(d => d.deliverable_type === 'cover_letter') ?? null,
+      };
+    } catch { /* non-critical */ }
+  }
+
+  async function handleLetterGenerate(templateType) {
+    letterGenerating = templateType;
+    try {
+      const res = await authFetch('/api/planning/deliverables/generate-by-type', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, templateType })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { deliverable, html } = await res.json();
+      letterDeliverables = { ...letterDeliverables, [templateType]: deliverable };
+      letterModal = { type: templateType, deliverableId: deliverable.id, html, name: deliverable.deliverable_name };
+    } catch (err) {
+      console.error('Letter generation failed:', err);
+      alert('Generation failed: ' + err.message);
+    } finally {
+      letterGenerating = null;
+    }
+  }
+
+  async function handleLetterOpen(templateType) {
+    const deliverable = letterDeliverables[templateType];
+    if (!deliverable) return;
+    try {
+      const res = await authFetch(`/api/planning/deliverables/${deliverable.id}/html`);
+      const { html } = await res.json();
+      letterModal = { type: templateType, deliverableId: deliverable.id, html, name: deliverable.deliverable_name };
+    } catch (err) {
+      console.error('Failed to open letter:', err);
+    }
+  }
+
+  async function handleLetterSave() {
+    if (!letterModal) return;
+    const html = letterModalEditor?.getHTML() ?? letterModal.html;
+    letterModalSaving = true;
+    try {
+      await updateDeliverableFromHTML(letterModal.deliverableId, html);
+      letterModalSaved = true;
+      setTimeout(() => { letterModalSaved = false; }, 2000);
+    } catch (err) {
+      console.error('Failed to save letter:', err);
+    } finally {
+      letterModalSaving = false;
+    }
+  }
+
+  function openBlankDoc() {
+    $activeDraftTypeId = 'blank';
+    $draftEditorHtml = '';
+    $draftSaved = false;
+  }
+
+  async function handleLetterExport() {
+    if (!letterModalEditor) return;
+    exportingLetterWord = true;
+    try {
+      await exportHtmlToWord(letterModalEditor.getHTML(), letterModal?.name ?? 'document', '/basicdocument.docx');
+    } finally {
+      exportingLetterWord = false;
+    }
+  }
 
   let startingDocsType = null; // { id, slug, name } of the appeal type whose modal is open
   let cardContextPct = {}; // typeId -> 0-100
@@ -291,6 +375,43 @@
     }
   }
 
+  // Auto-save
+  let autoSaveTimer = null;
+
+  function onDraftChange(e) {
+    if (e?.detail?.html !== undefined) $draftEditorHtml = e.detail.html;
+    $draftSaved = false;
+    if ($activeDraftTypeId === 'blank') return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(handleSaveDraft, 2000);
+  }
+
+  async function closeDraftWithSave() {
+    clearTimeout(autoSaveTimer);
+    if (!$draftSaved && $activeDraftTypeId && $activeDraftTypeId !== 'blank') {
+      await handleSaveDraft();
+    }
+    incorporateReviewMode = false;
+    closeDraft();
+  }
+
+  // Regenerate confirmation modal
+  let regenPending = null; // { typeId, opts } | null
+
+  function requestGenerate(typeId, opts, hasDraft) {
+    if (hasDraft) {
+      regenPending = { typeId, opts };
+    } else {
+      handleGenerate(typeId, opts);
+    }
+  }
+
+  function confirmRegen() {
+    if (!regenPending) return;
+    handleGenerate(regenPending.typeId, regenPending.opts);
+    regenPending = null;
+  }
+
   let incorporateReviewMode = false;
   let contextPanelOpen = false;
   let sectionChatOpen = false;
@@ -337,14 +458,12 @@
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab" class:active={activeTab === 'key-issues'} on:click={() => activeTab = 'key-issues'}>
-      Key Issues
+      Planning Issues
     </button>
     <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
       Draft Document
     </button>
-    <button class="tab" class:active={activeTab === 'log'} on:click={() => activeTab = 'log'}>
-      Document Log
-    </button>
+
   </div>
 
   <!-- Body -->
@@ -400,7 +519,7 @@
       {#if keyIssues.length === 0}
         <div class="empty-state">
           <i class="las la-list-alt"></i>
-          <p>No key issues have been added to this project yet. Add them via the project workflow.</p>
+          <p>No planning issues have been added to this project yet. Add them via the project information page.</p>
         </div>
       {:else}
         <div class="issues-list">
@@ -463,69 +582,24 @@
       {/if}
     </div>
 
-  {:else if activeTab === 'log'}
-    <!-- ── Tab 4: Document Log ── -->
-    <div class="tab-body">
-      {#if $documentLog.length === 0}
-        <div class="empty-state">
-          <i class="las la-file-alt"></i>
-          <p>No documents logged yet. Analyse a document, tick the useful arguments, then click "Save to log".</p>
-        </div>
-      {:else}
-        <div class="log-list">
-          {#each $documentLog as entry (entry.id)}
-            <div class="log-card">
-              <div class="log-card-header">
-                <div class="log-card-title-row">
-                  <span class="log-card-title">{entry.title}</span>
-                  {#if entry.code}<span class="log-card-code">{entry.code}</span>{/if}
-                </div>
-                <div class="log-card-header-right">
-                  <span class="log-card-date">{new Date(entry.logged_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  <button class="log-action-btn" title="Edit" on:click={() => openEditModal(entry)}><i class="las la-pen"></i></button>
-                  <button class="log-action-btn log-action-delete" title="Delete" on:click={() => { if (confirm('Delete this log entry?')) deleteEntry(entry.id); }}><i class="las la-trash"></i></button>
-                </div>
-              </div>
-              {#if entry.document_summary}
-                <p class="log-card-summary">{entry.document_summary}</p>
-              {/if}
-              {#if entry.argument_points?.length > 0}
-                <div class="log-points">
-                  {#each entry.argument_points as pt}
-                    <div class="log-point">
-                      <div class="log-point-meta">
-                        <span class="result-field-tag" class:against={pt.field === 'argument_against'} class:for={pt.field === 'argument_for'}>
-                          {pt.field === 'argument_against' ? 'Against' : 'For'}
-                        </span>
-                        <span class="log-point-issue">{pt.issue_label}</span>
-                      </div>
-                      <p class="log-point-text">{pt.point}</p>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-
   {:else if activeTab === 'draft'}
     <!-- ── Tab 3: Draft Document ── -->
     {#if $activeDraftTypeId !== null}
       <!-- Two-panel editor view -->
       {@const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
       <div class="draft-editor-bar">
-        <button class="reset-btn" on:click={() => { incorporateReviewMode = false; closeDraft(); }}><i class="las la-arrow-left"></i> Documents</button>
-        <span class="draft-editor-title">{activeType?.name ?? ''}</span>
+        <button class="reset-btn" on:click={closeDraftWithSave}><i class="las la-arrow-left"></i> Documents</button>
+        <span class="draft-editor-title">{activeType?.name ?? 'Blank Document'}</span>
         <div class="draft-editor-actions">
-          <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => handleGenerate($activeDraftTypeId)}>
+          {#if $activeDraftTypeId !== 'blank'}
+          <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => requestGenerate($activeDraftTypeId, undefined, true)}>
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
           <button class="draft-context-btn" class:active={contextPanelOpen} on:click={toggleContextPanel} title="View prompt context — guiding brief, project brief">
             <i class="las la-layer-group"></i> Context
           </button>
-          {#if activeType?.slug !== 'stage1_review'}
+          {/if}
+          {#if activeType?.slug !== 'stage1_review' && $activeDraftTypeId !== 'blank'}
             <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { contextPanelOpen = false; checkPanelOpen = false; } }} title="Chat with a document to draft a section">
               <i class="las la-comments"></i> Doc Chat
             </button>
@@ -533,9 +607,11 @@
           <button class="draft-context-btn" class:active={checkPanelOpen} on:click={toggleCheckPanel} title="Check the draft against the guiding brief, project information, and grammar">
             <i class="las la-clipboard-check"></i> Check
           </button>
+          {#if $activeDraftTypeId !== 'blank'}
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
           </button>
+          {/if}
           <button class="draft-save-btn" disabled={exportingWord} on:click={handleExportToWord}>
             {#if exportingWord}<div class="mini-spinner"></div> Exporting...{:else}<i class="las la-file-word"></i> Export{/if}
           </button>
@@ -545,7 +621,7 @@
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
         <div class="draft-left-panel" class:panel-hidden={incorporateReviewMode}>
-          <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={() => { $draftSaved = false; }} />
+          <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={onDraftChange} />
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
           {#if checkPanelOpen}
@@ -613,6 +689,8 @@
                 </div>
               {/if}
             </div>
+          {:else if $activeDraftTypeId === 'blank'}
+            <!-- blank doc — no right panel content -->
           {:else if activeType?.tool === 'appeal'}
             <PlanningDocIncorporatePanel
               {project}
@@ -721,7 +799,7 @@
                       </select>
                     {/if}
                     <div class="briefing-btn-group" use:clickOutside={() => { if ($appealDropdownOpenId === type.id) appealDropdownOpenId.set(null); }}>
-                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => handleGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null })}>
+                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null }, !!draft)}>
                         {#if $draftGenerating === type.id}
                           <div class="mini-spinner"></div> Generating...
                         {:else}
@@ -747,7 +825,7 @@
                       {/if}
                     </div>
                   {:else}
-                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => handleGenerate(type.id)}>
+                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, undefined, !!draft)}>
                     {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
                     {:else}
@@ -841,6 +919,49 @@
               {/if}
             </div>
           {/each}
+
+          <!-- ── Certificate B Notice — Coming Soon ── -->
+          <div class="draft-type-card draft-type-card--coming-soon">
+            <div class="draft-type-main">
+              <div class="draft-type-info">
+                <span class="draft-type-name">Certificate B Notice <span class="coming-soon-badge">Coming Soon</span></span>
+                <span class="draft-type-desc">Article 13 DMPO 2015 ownership certificate — merged from project data.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Cover Letter — Coming Soon ── -->
+          <div class="draft-type-card draft-type-card--coming-soon">
+            <div class="draft-type-main">
+              <div class="draft-type-info">
+                <span class="draft-type-name">Cover Letter <span class="coming-soon-badge">Coming Soon</span></span>
+                <span class="draft-type-desc">Covering letter for submission — merged from project data.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Site Justification — Coming Soon ── -->
+          <div class="draft-type-card draft-type-card--coming-soon">
+            <div class="draft-type-main">
+              <div class="draft-type-info">
+                <span class="draft-type-name">Site Justification <span class="coming-soon-badge">Coming Soon</span></span>
+                <span class="draft-type-desc">LLM-generated site justification drawing on project data and planning context.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Blank Document ── -->
+          <div class="draft-type-card">
+            <div class="draft-type-main">
+              <div class="draft-type-info">
+                <span class="draft-type-name">Blank Document</span>
+                <span class="draft-type-desc">Open an empty editor — paste in any document to use Check, Export, and Doc Chat.</span>
+              </div>
+              <div class="draft-type-actions">
+                <button class="draft-open-btn" on:click={openBlankDoc}>Open</button>
+              </div>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -1490,6 +1611,28 @@
     typeName={startingDocsType.name}
     on:close={() => { startingDocsType = null; loadCardContextPcts(); }}
   />
+{/if}
+
+<!-- Regenerate confirmation modal -->
+{#if regenPending}
+  <div class="modal-overlay" on:click|self={() => regenPending = null} role="dialog" aria-modal="true">
+    <div class="modal modal-regen-confirm">
+      <div class="modal-header">
+        <span class="modal-title"><i class="las la-exclamation-triangle" style="color:#d97706"></i> Regenerate document?</span>
+      </div>
+      <div class="modal-body">
+        <p class="regen-confirm-text">This will replace the entire document with a freshly generated version. Any unsaved changes will be lost.</p>
+        <p class="regen-confirm-text">Save the document first if you want to keep the current version.</p>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left"></div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={() => regenPending = null}>Cancel</button>
+          <button class="modal-run modal-run--danger" on:click={confirmRegen}>Regenerate</button>
+        </div>
+      </div>
+    </div>
+  </div>
 {/if}
 
 <PromptEditModal
@@ -3988,5 +4131,59 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  /* Letter doc modal */
+  .letter-modal {
+    width: 90vw;
+    max-width: 900px;
+    height: 85vh;
+    background: white;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  }
+
+  .letter-modal-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: white;
+  }
+
+  .letter-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Coming soon card */
+  .draft-type-card--coming-soon {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .modal-run--danger { background: #dc2626 !important; }
+  .modal-run--danger:hover { background: #b91c1c !important; }
+
+  .regen-confirm-text { margin: 0 0 0.625rem; font-size: 0.875rem; color: #374151; line-height: 1.6; }
+  .regen-confirm-text:last-child { margin-bottom: 0; color: #64748b; }
+
+  .coming-soon-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: #e2e8f0;
+    color: #64748b;
+    border-radius: 4px;
+    padding: 1px 6px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: 0.4rem;
   }
 </style>

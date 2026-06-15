@@ -105,6 +105,66 @@ export async function updateTemplate(req, res) {
 }
 
 /**
+ * Generate (upsert) a deliverable by template_type — used by PA workspace letter-doc cards
+ */
+export async function generateDeliverableByType(req, res) {
+  const { projectId, templateType } = req.body;
+  try {
+    if (!projectId || !templateType) {
+      return res.status(400).json({ error: 'projectId and templateType are required' });
+    }
+
+    const [templateResult, projectResult] = await Promise.all([
+      pool.query(
+        `SELECT * FROM planning_deliverables.planning_templates
+         WHERE template_type = $1 AND is_active = true
+         ORDER BY version DESC LIMIT 1`,
+        [templateType]
+      ),
+      pool.query('SELECT * FROM public.projects WHERE id = $1', [projectId])
+    ]);
+
+    if (!templateResult.rows.length) return res.status(404).json({ error: `No active template found for type: ${templateType}` });
+    if (!projectResult.rows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const template = templateResult.rows[0];
+    const project = projectResult.rows[0];
+    const mergedContent = mergeTemplateWithProject(template, project);
+    const html = contentToHTML(mergedContent);
+
+    const existing = await pool.query(
+      `SELECT id FROM planning_deliverables.planning_deliverables
+       WHERE project_id = $1 AND deliverable_type = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [projectId, templateType]
+    );
+
+    let deliverable;
+    if (existing.rows.length) {
+      const upd = await pool.query(
+        `UPDATE planning_deliverables.planning_deliverables
+         SET content = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+        [JSON.stringify(mergedContent), existing.rows[0].id]
+      );
+      deliverable = upd.rows[0];
+    } else {
+      const ins = await pool.query(
+        `INSERT INTO planning_deliverables.planning_deliverables
+           (project_id, template_id, deliverable_name, deliverable_type, content, status)
+         VALUES ($1, $2, $3, $4, $5, 'draft') RETURNING *`,
+        [projectId, template.id, `${template.template_name} - ${project.project_name}`, templateType, JSON.stringify(mergedContent)]
+      );
+      deliverable = ins.rows[0];
+    }
+
+    res.json({ deliverable, html });
+  } catch (error) {
+    console.error('Error generating deliverable by type:', error);
+    res.status(500).json({ error: 'Failed to generate deliverable', details: error.message });
+  }
+}
+
+/**
  * Create a new deliverable by merging template with project data
  */
 export async function createDeliverable(req, res) {

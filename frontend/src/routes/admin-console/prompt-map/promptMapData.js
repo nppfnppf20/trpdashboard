@@ -1626,6 +1626,309 @@ Prompt instructs the model to write a complete HLPV narrative, discipline by dis
 [FORMAT: HTML fragment, h2 + risk paragraph per discipline, no invented data]`
       },
       {
+        id: 'statement-of-case',
+        name: 'Statement of Case',
+        output: 'HTML appeal document — formal statement of the appellant\'s case on the main issues',
+        components: [
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=statement_of_case, matched by development type)',
+            description: 'Fetched using document_type=\'statement_of_case\'. Substituted into {{GUIDING_BRIEF}} in the generation prompt.'
+          },
+          {
+            type: 'runtime',
+            label: 'Document Type',
+            description: 'The human-readable name of the document type ("Statement of Case"). Substituted into {{DOCUMENT_TYPE}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Project Brief',
+            description: 'Selected project briefing notes. Substituted into {{PROJECT_BRIEF}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Key Issue Notes',
+            description: 'Full working argument per issue — argument_for and argument_against — used to ground the appeal case.'
+          }
+        ],
+        assembledPreview: `You are a planning appeal consultant preparing a {{DOCUMENT_TYPE}}.
+
+Read the guiding brief below carefully — it tells you exactly what this document is, what it must achieve, and how it should be structured:
+
+{{GUIDING_BRIEF}}
+
+You also have access to the project brief which sets out the project background and context, and the key issue notes which set out the planning case for each issue.
+
+Using only the information you have been given, write a first draft of this document following the structure and approach set out in the guiding brief above.
+
+Important:
+- Do not invent facts, arguments, or technical information. Every statement must be grounded in the material provided.
+- If the notes are thin on a particular issue, reflect that honestly — do not fabricate supporting content.
+- Write in formal planning language appropriate for submission to the Planning Inspectorate.
+- Do not number paragraphs (no 1.1, 2.3 etc.).
+
+Output format — clean HTML only:
+- <h2> for main section headings
+- <h3> for sub-section headings
+- <p> for body paragraphs
+- <ol>/<li> for numbered lists, <ul>/<li> for bullets
+- Do not include a document title — start directly with the first section heading
+- No markdown characters (**, *, #, ---) and no em dashes (—)`
+      },
+      {
+        id: 'statement-of-common-ground',
+        name: 'Statement of Common Ground',
+        output: 'HTML document — records matters agreed between appellant and LPA',
+        components: [
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=statement_of_common_ground, matched by development type)',
+            description: 'Fetched using document_type=\'statement_of_common_ground\'. Substituted into {{GUIDING_BRIEF}} in the generation prompt.'
+          },
+          {
+            type: 'runtime',
+            label: 'Document Type',
+            description: 'The human-readable name of the document type ("Statement of Common Ground"). Substituted into {{DOCUMENT_TYPE}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Project Brief',
+            description: 'Selected project briefing notes. Substituted into {{PROJECT_BRIEF}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Key Issue Notes',
+            description: 'Full working argument per issue — argument_for and argument_against — used to identify agreed and disputed matters.'
+          }
+        ],
+        assembledPreview: `You are a planning appeal consultant preparing a {{DOCUMENT_TYPE}}.
+
+Read the guiding brief below carefully — it tells you exactly what this document is, what it must achieve, and how it should be structured:
+
+{{GUIDING_BRIEF}}
+
+You also have access to the project brief which sets out the project background and context, and the key issue notes which set out the planning case for each issue.
+
+Using only the information you have been given, write a first draft of this document following the structure and approach set out in the guiding brief above.
+
+Important:
+- Do not invent facts, arguments, or technical information. Every statement must be grounded in the material provided.
+- If the notes are thin on a particular issue, reflect that honestly — do not fabricate supporting content.
+- Write in formal planning language appropriate for submission to the Planning Inspectorate.
+- Do not number paragraphs (no 1.1, 2.3 etc.).
+
+Output format — clean HTML only:
+- <h2> for main section headings
+- <h3> for sub-section headings
+- <p> for body paragraphs
+- <ol>/<li> for numbered lists, <ul>/<li> for bullets
+- Do not include a document title — start directly with the first section heading
+- No markdown characters (**, *, #, ---) and no em dashes (—)`
+      },
+      {
+        id: 'planning-statement-v2',
+        name: 'Planning Statement v2',
+        output: 'HTML planning statement — generated from guiding brief, policy context, planning history, and briefing notes',
+        components: [
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=planning_statement_v2, matched by development type)',
+            description: 'Fetched using document_type=\'planning_statement_v2\'. Substituted into {{GUIDING_BRIEF}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Document Type',
+            description: 'The human-readable name ("Planning Statement v2"). Substituted into {{DOCUMENT_TYPE}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Site Address',
+            description: 'Site address from the project record. Substituted into {{SITE_ADDRESS}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'LPA Name',
+            description: 'Local planning authority name from the project record. Substituted into {{LPA_NAME}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Development Description',
+            description: 'Description of the proposed development from the project record. Substituted into {{DEVELOPMENT_DESCRIPTION}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Local Policies',
+            description: 'Policies linked to the project, formatted with reference, name, and wording. Substituted into {{LOCAL_POLICIES}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'National Policies',
+            description: 'National policy context (NPPF etc.) linked to the project. Substituted into {{NATIONAL_POLICIES}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Planning History',
+            description: 'Planning history records from the project. Substituted into {{PLANNING_HISTORY}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Briefing Notes',
+            description: 'Selected project briefing notes containing key project information, context, and strategy. Substituted into {{BRIEFING_NOTES}}.'
+          }
+        ],
+        assembledPreview: `You are a specialist planning consultant preparing a {{DOCUMENT_TYPE}}.
+
+Read the guiding brief below carefully — it tells you exactly what this document is, what it must achieve, and how it should be structured:
+
+{{GUIDING_BRIEF}}
+
+## Site Details
+Address: {{SITE_ADDRESS}}
+Local Planning Authority: {{LPA_NAME}}
+Proposed Development: {{DEVELOPMENT_DESCRIPTION}}
+
+## Local Policy Context
+The following local policies have been identified as relevant to this proposal. Reference specific policies by number and name throughout the document where applicable.
+
+{{LOCAL_POLICIES}}
+
+## National Policy Context
+{{NATIONAL_POLICIES}}
+
+## Planning History
+{{PLANNING_HISTORY}}
+
+## Briefing Notes
+The following has been prepared by the project team and contains key project information, context, and strategy.
+
+{{BRIEFING_NOTES}}
+
+---
+
+Write a complete {{DOCUMENT_TYPE}} following the structure set out in the guiding brief above.
+
+Important:
+- Follow the structure described in the guiding brief precisely.
+- Reference specific policies from the policy context provided — use the exact policy reference numbers and names. Do not cite policies not in the list provided.
+- Extract specific detail from the briefing notes — site characteristics, proposal details, technical information, and the planning case.
+- Do not invent facts. Every statement must be grounded in the material provided.
+- Write in formal planning language appropriate for submission to a local planning authority.
+- This document is client-facing: do not reference the briefing notes or internal documents in your output — present all content as established fact.
+- Do not number paragraphs (no 1.1, 2.3 etc.).
+
+Output format — clean HTML only:
+- <h2> for main section headings
+- <h3> for sub-section headings
+- <p> for body paragraphs
+- <ul>/<li> for bullet points
+- <table>/<thead>/<tbody>/<tr>/<th>/<td> for tables
+- Do not include a document title — start directly with the first section heading
+- No markdown characters (**, *, #, ---) and no em dashes (—)`
+      },
+      {
+        id: 'pre-application-request',
+        name: 'Pre-application Request',
+        output: 'HTML formal letter to the LPA requesting pre-application advice',
+        components: [
+          {
+            type: 'guide',
+            label: 'Guiding Brief',
+            source: 'DB: admin_console.guiding_briefs (document_type=pre_application_request, matched by development type)',
+            description: 'Fetched using document_type=\'pre_application_request\'. Substituted into {{GUIDING_BRIEF}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Document Type',
+            description: 'The human-readable name ("Pre-application Request"). Substituted into {{DOCUMENT_TYPE}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Site Address',
+            description: 'Site address from the project record. Substituted into {{SITE_ADDRESS}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'LPA Name',
+            description: 'Local planning authority name from the project record. Substituted into {{LPA_NAME}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Development Description',
+            description: 'Description of the proposed development from the project record. Substituted into {{DEVELOPMENT_DESCRIPTION}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Local Policies',
+            description: 'Local policies linked to the project. Substituted into {{LOCAL_POLICIES}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'National Policies',
+            description: 'National policy context linked to the project. Substituted into {{NATIONAL_POLICIES}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Planning History',
+            description: 'Planning history records from the project. Substituted into {{PLANNING_HISTORY}}.'
+          },
+          {
+            type: 'runtime',
+            label: 'Briefing Notes',
+            description: 'Project briefing notes covering site description, proposal details, key planning issues, and the matters on which pre-application advice is sought. Substituted into {{BRIEFING_NOTES}}.'
+          }
+        ],
+        assembledPreview: `You are a specialist planning consultant preparing a {{DOCUMENT_TYPE}}.
+
+Read the guiding brief below carefully — it tells you exactly what this document is, what it must achieve, and how it should be structured:
+
+{{GUIDING_BRIEF}}
+
+## Site Details
+Address: {{SITE_ADDRESS}}
+Local Planning Authority: {{LPA_NAME}}
+Proposed Development: {{DEVELOPMENT_DESCRIPTION}}
+
+## Planning Policy Context
+
+### Local Policies
+{{LOCAL_POLICIES}}
+
+### National Policies
+{{NATIONAL_POLICIES}}
+
+## Planning History
+{{PLANNING_HISTORY}}
+
+## Briefing Notes
+The following has been prepared by the project team and contains key project information, context, and the matters on which pre-application advice is sought.
+
+{{BRIEFING_NOTES}}
+
+---
+
+Write a complete {{DOCUMENT_TYPE}} following the structure set out in the guiding brief above.
+
+Important:
+- Follow the structure described in the guiding brief precisely.
+- Extract specific detail from the briefing notes — site description, proposal details, key planning issues, and the specific matters on which pre-application advice is sought.
+- Reference relevant policies from the policy context provided where they are material to the issues being raised. Do not cite policies not in the list provided.
+- Do not invent facts. Every statement must be grounded in the material provided.
+- Write in formal planning language appropriate for submission to a local planning authority.
+- Do not number paragraphs (no 1.1, 2.3 etc.).
+
+Output format — clean HTML only:
+- <h2> for main section headings
+- <h3> for sub-section headings
+- <p> for body paragraphs
+- <ul>/<li> for bullet points
+- <table>/<thead>/<tbody>/<tr>/<th>/<td> for tables
+- Do not include a document title — start directly with the first section heading
+- No markdown characters (**, *, #, ---) and no em dashes (—)`
+      },
+      {
         id: 'socio-economic-baseline',
         name: 'Socio-economic Baseline Assessment',
         output: 'HTML full socio-economic baseline assessment document — complete structured report with data tables, populated from CSV data, with [PLACEHOLDER] sections preserved for manual completion',

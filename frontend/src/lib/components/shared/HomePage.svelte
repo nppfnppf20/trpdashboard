@@ -212,46 +212,70 @@
         </div>
       </div>
 
-      <!-- Planning Deliverables Card -->
+      <!-- Planning Application Tool Card -->
+      <div class="tool-card" on:click={navigateToPlanning} on:keydown={(e) => e.key === 'Enter' && navigateToPlanning()} role="button" tabindex="0">
+        <div class="card-content">
+          <div class="card-icon card-icon-blue">
+            <i class="las la-clipboard-list"></i>
+          </div>
+
+          <h2 class="card-title">
+            Planning Application Tool
+          </h2>
+
+          <p class="card-description">
+            Structure and develop your planning argument issue by issue, with AI-powered document review and live editable drafts.
+          </p>
+
+          <div class="features-list">
+            <div class="feature-item">
+              <i class="las la-magic feature-icon-blue"></i>
+              <span>AI-Generated Starting Argument</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-file-upload feature-icon-blue"></i>
+              <span>Document-by-Document Review</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-edit feature-icon-blue"></i>
+              <span>Live Editable Working Draft</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-layer-group feature-icon-blue"></i>
+              <span>Seeded from Key Issues</span>
+            </div>
+          </div>
+
+          <button class="tool-button tool-button-blue" on:click|stopPropagation={navigateToPlanning}>
+            Open Planning Application Tool
+            <i class="las la-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Planning Deliverables Card — hidden pending migration into Planning Application Tool -->
+      <!--
       <div class="tool-card" on:click={navigateToPlanningDeliverables} on:keydown={(e) => e.key === 'Enter' && navigateToPlanningDeliverables()} role="button" tabindex="0">
         <div class="card-content">
           <div class="card-icon card-icon-teal">
             <i class="las la-file-alt"></i>
           </div>
-
-          <h2 class="card-title">
-            Planning Deliverables
-          </h2>
-
+          <h2 class="card-title">Planning Deliverables</h2>
           <p class="card-description">
             Create professional planning documents from templates. Generate screening opinions, scoping reports, planning statements and more with automated project data integration.
           </p>
-
           <div class="features-list">
-            <div class="feature-item">
-              <i class="las la-file-invoice feature-icon-teal"></i>
-              <span>Document Templates</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-edit feature-icon-teal"></i>
-              <span>Rich Text Editor</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-magic feature-icon-teal"></i>
-              <span>Auto Project Data Merge</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-download feature-icon-teal"></i>
-              <span>Export to PDF/Word</span>
-            </div>
+            <div class="feature-item"><i class="las la-file-invoice feature-icon-teal"></i><span>Document Templates</span></div>
+            <div class="feature-item"><i class="las la-edit feature-icon-teal"></i><span>Rich Text Editor</span></div>
+            <div class="feature-item"><i class="las la-magic feature-icon-teal"></i><span>Auto Project Data Merge</span></div>
+            <div class="feature-item"><i class="las la-download feature-icon-teal"></i><span>Export to PDF/Word</span></div>
           </div>
-
           <button class="tool-button tool-button-teal" on:click|stopPropagation={navigateToPlanningDeliverables}>
-            Create Documents
-            <i class="las la-arrow-right"></i>
+            Create Documents <i class="las la-arrow-right"></i>
           </button>
         </div>
       </div>
+      -->
 
       <!-- Web Scraper Tool Card -->
       <div class="tool-card" on:click={navigateToWebScraper} on:keydown={(e) => e.key === 'Enter' && navigateToWebScraper()} role="button" tabindex="0">
@@ -377,87 +401,29 @@
         </div>
       </div>
 
-      <!-- Appeal Drafting Card -->
+      <!-- Appeal Drafting Card — hidden from home page
       <div class="tool-card" on:click={navigateToAppeal} on:keydown={(e) => e.key === 'Enter' && navigateToAppeal()} role="button" tabindex="0">
         <div class="card-content">
           <div class="card-icon card-icon-violet">
             <i class="las la-balance-scale"></i>
           </div>
-
-          <h2 class="card-title">
-            Appeal Drafting
-          </h2>
-
+          <h2 class="card-title">Appeal Drafting</h2>
           <p class="card-description">
             Generate a structured working argument from refusal reasons and key issues, then iteratively strengthen it by uploading documents one at a time for AI-powered review.
           </p>
-
           <div class="features-list">
-            <div class="feature-item">
-              <i class="las la-magic feature-icon-violet"></i>
-              <span>AI-Generated Starting Argument</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-file-upload feature-icon-violet"></i>
-              <span>Document-by-Document Review</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-edit feature-icon-violet"></i>
-              <span>Live Editable Working Draft</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-layer-group feature-icon-violet"></i>
-              <span>Seeded from Key Issues</span>
-            </div>
+            <div class="feature-item"><i class="las la-magic feature-icon-violet"></i><span>AI-Generated Starting Argument</span></div>
+            <div class="feature-item"><i class="las la-file-upload feature-icon-violet"></i><span>Document-by-Document Review</span></div>
+            <div class="feature-item"><i class="las la-edit feature-icon-violet"></i><span>Live Editable Working Draft</span></div>
+            <div class="feature-item"><i class="las la-layer-group feature-icon-violet"></i><span>Seeded from Key Issues</span></div>
           </div>
-
           <button class="tool-button tool-button-violet" on:click|stopPropagation={navigateToAppeal}>
-            Open Appeal Drafting
-            <i class="las la-arrow-right"></i>
+            Open Appeal Drafting <i class="las la-arrow-right"></i>
           </button>
         </div>
       </div>
+      -->
 
-      <!-- Planning Application Tool Card -->
-      <div class="tool-card" on:click={navigateToPlanning} on:keydown={(e) => e.key === 'Enter' && navigateToPlanning()} role="button" tabindex="0">
-        <div class="card-content">
-          <div class="card-icon" style="background: #e0f2fe; color: #0369a1;">
-            <i class="las la-clipboard-list"></i>
-          </div>
-
-          <h2 class="card-title">
-            Planning Application Tool
-          </h2>
-
-          <p class="card-description">
-            Structure and develop your planning argument issue by issue, with AI-powered document review and live editable drafts.
-          </p>
-
-          <div class="features-list">
-            <div class="feature-item">
-              <i class="las la-magic" style="color: #0369a1;"></i>
-              <span>AI-Generated Starting Argument</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-file-upload" style="color: #0369a1;"></i>
-              <span>Document-by-Document Review</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-edit" style="color: #0369a1;"></i>
-              <span>Live Editable Working Draft</span>
-            </div>
-            <div class="feature-item">
-              <i class="las la-layer-group" style="color: #0369a1;"></i>
-              <span>Seeded from Key Issues</span>
-            </div>
-          </div>
-
-          <button class="tool-button" style="background: #0369a1;" on:click|stopPropagation={navigateToPlanning}>
-            Open Planning Application Tool
-            <i class="las la-arrow-right"></i>
-          </button>
-        </div>
-      </div>
     </div>
 
     <!-- Footer Info -->
