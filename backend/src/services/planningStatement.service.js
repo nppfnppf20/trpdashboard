@@ -4,7 +4,7 @@
  * document summarisation, briefing transcript processing, and prose suggestion.
  */
 
-import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, PLANNING_TIER_LABELS, PLANNING_TIER_ORDER } from './llm.shared.js';
+import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, HOUSE_STYLE_BLOCK } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants — Assessment
@@ -268,7 +268,7 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
     ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${styleTemplate.style_text.trim().slice(0, 8000)}`
     : '';
 
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`;
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`;
 
   const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence, issueType);
 
@@ -365,7 +365,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 4096,
-    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`,
+    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${HOUSE_STYLE_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`,
     messages: [{ role: 'user', content: fullPrompt }]
   });
 

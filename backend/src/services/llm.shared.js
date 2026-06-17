@@ -38,6 +38,16 @@ try {
 }
 export { TONE_EXAMPLE_BLOCK };
 
+export const HOUSE_STYLE_BLOCK = `\n\nHOUSE STYLE — apply these rules consistently throughout:
+- Capitalise: document names, organisation names, place names, and formal references to Statements, Sections, Figures, Tables, the Application, the Appeal.
+- Lower case: site, development area, proposed development, planning officer, local planning authority, council, applicant, appellant, planning committee, planning condition.
+- Bulleted list items begin with a capital letter and end with a full stop.
+- Quotations: use italics (<em>) and double quotation marks "like this".
+- Acronyms: write in full on first use with the acronym in brackets, e.g. Local Planning Authority (LPA), then use the acronym only thereafter.
+- Use digits not words for numbers: "2 storeys" not "two storeys".
+- Use commas in numbers of 1,000 or more: 1,000 not 1000.
+- Single space after full stops.`;
+
 export const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const MODEL_FAST   = 'claude-haiku-4-5-20251001';

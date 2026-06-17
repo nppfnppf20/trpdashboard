@@ -142,14 +142,46 @@ function elementToOOXML(el, styles = DEF_STYLES) {
       if (el.classList.contains('trp-appraisal-table')) {
         return appraisalTableToOOXML(el);
       }
-      return el.textContent.trim()
-        ? paragraph(styles.p, `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
-        : '';
+      return generalTableToOOXML(el);
     default:
       return el.textContent.trim()
         ? paragraph(styles.p, `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
         : '';
   }
+}
+
+function generalTableToOOXML(tableEl) {
+  const rows = Array.from(tableEl.querySelectorAll('tr'));
+  if (!rows.length) return '';
+
+  // Count max columns to distribute width evenly
+  const colCount = Math.max(...rows.map(tr => tr.querySelectorAll('th, td').length)) || 1;
+  const totalWidth = 9072; // twips (~15.9cm, standard page width minus margins)
+  const colWidth = Math.floor(totalWidth / colCount);
+
+  const tblPr = `<w:tblPr>
+    <w:tblStyle w:val="TableGrid"/>
+    <w:tblW w:w="${totalWidth}" w:type="dxa"/>
+    <w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>
+  </w:tblPr>`;
+
+  const tblGrid = `<w:tblGrid>${Array(colCount).fill(`<w:gridCol w:w="${colWidth}"/>`).join('')}</w:tblGrid>`;
+
+  const rowsXml = rows.map(tr => {
+    const cells = Array.from(tr.querySelectorAll('th, td'));
+    const isHeader = cells.some(c => c.tagName.toLowerCase() === 'th');
+    const cellsXml = cells.map(cell => {
+      const text = escapeXml(cell.textContent.trim());
+      const runs = isHeader || cell.tagName.toLowerCase() === 'th'
+        ? `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`
+        : `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/></w:tcPr><w:p>${runs}</w:p></w:tc>`;
+    }).join('');
+    const trPr = isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
+    return `<w:tr>${trPr}${cellsXml}</w:tr>`;
+  }).join('');
+
+  return `<w:tbl>${tblPr}${tblGrid}${rowsXml}</w:tbl>`;
 }
 
 function appraisalTableToOOXML(tableEl) {
