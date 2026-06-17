@@ -218,7 +218,7 @@ export async function createProjectIssueTrackHandler(req, res) {
     const projectId = parseInt(req.params.projectId);
     if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
 
-    const { label, discipline, issue_type_id, sortOrder } = req.body;
+    const { label, discipline, issue_type_id, sortOrder, riskLevel, isKeyIssue } = req.body;
     if (!label && !discipline) {
       return res.status(400).json({ error: 'At least one of label or discipline is required' });
     }
@@ -227,7 +227,9 @@ export async function createProjectIssueTrackHandler(req, res) {
       label: label?.trim() || null,
       discipline: discipline?.trim() || null,
       issue_type_id: issue_type_id ? parseInt(issue_type_id) : null,
-      sortOrder
+      sortOrder,
+      riskLevel: riskLevel || null,
+      isKeyIssue: !!isKeyIssue,
     });
     res.status(201).json(track);
   } catch (error) {

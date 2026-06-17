@@ -3,20 +3,57 @@ import fileSaver from 'file-saver';
 
 const { saveAs } = fileSaver;
 
-// Map template_type values to static .docx template files
+const CS_TEMPLATE   = '/planning%20statement%20template%20c%20and%20s.docx';
+const SOC_TEMPLATE  = '/appeal%20soc%20template%20c%20and%20s.docx';
+const SOCG_TEMPLATE = '/appeal%20socg%20template%20c%20and%20s.docx';
+
+// Map deliverable_type values to static .docx template files
 const TEMPLATE_MAP = {
-  planning_statement_solar: '/planningstatementsolar.docx',
-  site_justification:       '/planningstatementsolar.docx',
-  eia_screening:            '/planningstatementsolar.docx',
+  planning_statement_solar: CS_TEMPLATE,
+  site_justification:       CS_TEMPLATE,
+  eia_screening:            CS_TEMPLATE,
   cover_letter:             '/letter.docx',
   certificate_b_notice:     '/letter.docx',
   stage1_review:            '/stage1reviewtemplate.docx'
 };
 
-const DEFAULT_TEMPLATE = '/planningstatementsolar.docx';
+// Map draft type slugs (from the workspace) to static .docx template files
+const SLUG_TEMPLATE_MAP = {
+  planning_statement:           CS_TEMPLATE,
+  planning_statement_v2:        CS_TEMPLATE,
+  planning_statement_solar:     CS_TEMPLATE,
+  site_justification:           CS_TEMPLATE,
+  eia_screening:                CS_TEMPLATE,
+  stage1_review:                '/stage1reviewtemplate.docx',
+  // Appeal Statement of Case
+  statement_of_case:            SOC_TEMPLATE,
+  appeal_statement_of_case:     SOC_TEMPLATE,
+  // Statement of Common Ground
+  statement_of_common_ground:   SOCG_TEMPLATE,
+  appeal_statement_of_common_ground: SOCG_TEMPLATE,
+};
+
+const DEFAULT_TEMPLATE = CS_TEMPLATE;
+
+// Style maps keyed by template path
+// C&S family: h2 = section headings → Heading1, h3 = subsections → Heading3, bullets → Bullet1
+const CS_STYLES  = { h1: 'Heading1', h2: 'Heading1', h3: 'Heading3', h4: 'Heading3', p: 'Appealnumberedparagarphs', ul: 'Bullet1', ol: 'Bullet1' };
+const DEF_STYLES = { h1: 'Heading1', h2: 'Heading2', h3: 'Heading3', h4: 'Heading4', p: 'Normal', ul: 'ListBullet', ol: 'ListNumber' };
+
+const CS_FAMILY = new Set([CS_TEMPLATE, SOC_TEMPLATE, SOCG_TEMPLATE]);
+
+function getStyleMap(templatePath) {
+  return CS_FAMILY.has(templatePath) ? CS_STYLES : DEF_STYLES;
+}
 
 function getTemplatePath(deliverable) {
   return TEMPLATE_MAP[deliverable.deliverable_type] || DEFAULT_TEMPLATE;
+}
+
+/** Returns { templatePath, styles } for a given draft type slug (used by the workspace export). */
+export function getExportConfigForSlug(slug) {
+  const templatePath = SLUG_TEMPLATE_MAP[slug] ?? '/basicdocument.docx';
+  return { templatePath, styles: getStyleMap(templatePath) };
 }
 
 /**
@@ -33,7 +70,7 @@ export async function exportDeliverableToWord(deliverable, html) {
   const documentXml = new TextDecoder('utf-8').decode(zip.file('word/document.xml').asUint8Array());
 
   // Generate OOXML body content from HTML
-  const bodyContent = htmlToOOXML(html);
+  const bodyContent = htmlToOOXML(html, getStyleMap(templatePath));
 
   // Insert content before the final sectPr, preserving all existing body content (logo, text etc.)
   const insertAt = documentXml.lastIndexOf('<w:sectPr');
@@ -55,7 +92,7 @@ export async function exportDeliverableToWord(deliverable, html) {
 /**
  * Convert HTML to OOXML paragraphs
  */
-function htmlToOOXML(html) {
+function htmlToOOXML(html, styles = DEF_STYLES) {
   const div = document.createElement('div');
   div.innerHTML = html;
 
@@ -63,54 +100,54 @@ function htmlToOOXML(html) {
   if (div.children.length === 0) {
     return (div.textContent || '').split('\n')
       .map(l => l.trim()).filter(Boolean)
-      .map(l => paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(l)}</w:t></w:r>`))
+      .map(l => paragraph(styles.p, `<w:r><w:t xml:space="preserve">${escapeXml(l)}</w:t></w:r>`))
       .join('');
   }
 
   return Array.from(div.childNodes).map(node => {
-    if (node.nodeType === Node.ELEMENT_NODE) return elementToOOXML(node);
+    if (node.nodeType === Node.ELEMENT_NODE) return elementToOOXML(node, styles);
     // Orphaned top-level text node
     const t = node.textContent.trim();
-    return t ? paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(t)}</w:t></w:r>`) : '';
+    return t ? paragraph(styles.p, `<w:r><w:t xml:space="preserve">${escapeXml(t)}</w:t></w:r>`) : '';
   }).filter(Boolean).join('');
 }
 
-function elementToOOXML(el) {
+function elementToOOXML(el, styles = DEF_STYLES) {
   const tag = el.tagName.toLowerCase();
 
   switch (tag) {
     case 'h1':
       stripLeadingNumber(el);
-      return paragraph('Heading1', inlineRuns(el));
+      return paragraph(styles.h1, inlineRuns(el));
     case 'h2':
       stripLeadingNumber(el);
-      return paragraph('Heading2', inlineRuns(el));
+      return paragraph(styles.h2, inlineRuns(el));
     case 'h3':
       stripLeadingNumber(el);
-      return paragraph('Heading3', inlineRuns(el));
+      return paragraph(styles.h3, inlineRuns(el));
     case 'h4':
       stripLeadingNumber(el);
-      return paragraph('Heading4', inlineRuns(el));
+      return paragraph(styles.h4, inlineRuns(el));
     case 'p':
-      return paragraph('Normal', inlineRuns(el));
+      return paragraph(styles.p, inlineRuns(el));
     case 'ul':
       return Array.from(el.querySelectorAll('li')).map(li =>
-        paragraph('ListBullet', inlineRuns(li))
+        paragraph(styles.ul, inlineRuns(li))
       ).join('');
     case 'ol':
       return Array.from(el.querySelectorAll('li')).map(li =>
-        paragraph('ListNumber', inlineRuns(li))
+        paragraph(styles.ol, inlineRuns(li))
       ).join('');
     case 'table':
       if (el.classList.contains('trp-appraisal-table')) {
         return appraisalTableToOOXML(el);
       }
       return el.textContent.trim()
-        ? paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
+        ? paragraph(styles.p, `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
         : '';
     default:
       return el.textContent.trim()
-        ? paragraph('Normal', `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
+        ? paragraph(styles.p, `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
         : '';
   }
 }
@@ -211,7 +248,7 @@ function escapeXml(text) {
 /**
  * Generic export: any HTML content to a named .docx using a given template path
  */
-export async function exportHtmlToWord(html, filename, templatePath = '/basicdocument.docx') {
+export async function exportHtmlToWord(html, filename, templatePath = '/basicdocument.docx', styles = null) {
   const response = await fetch(templatePath);
   if (!response.ok) throw new Error(`Could not load template: ${templatePath}`);
 
@@ -219,7 +256,7 @@ export async function exportHtmlToWord(html, filename, templatePath = '/basicdoc
   const zip = new PizZip(arrayBuffer);
 
   const documentXml = new TextDecoder('utf-8').decode(zip.file('word/document.xml').asUint8Array());
-  const bodyContent = htmlToOOXML(html);
+  const bodyContent = htmlToOOXML(html, styles ?? getStyleMap(templatePath));
 
   const insertAt = documentXml.lastIndexOf('<w:sectPr');
   const bodyClose = documentXml.lastIndexOf('</w:body>');

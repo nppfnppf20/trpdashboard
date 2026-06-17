@@ -229,7 +229,7 @@
 
   async function handleAddIssue(event) {
     try {
-      await createIssueTrack(project.id, { label: event.detail.label, discipline: event.detail.discipline, issue_type_id: event.detail.issue_type_id });
+      await createIssueTrack(project.id, { label: event.detail.label, discipline: event.detail.discipline, issue_type_id: event.detail.issue_type_id, riskLevel: event.detail.riskLevel, isKeyIssue: event.detail.isKeyIssue });
       showAddIssueModal = false;
       const board = await getStageBoard(project.id);
       stages = board.stages; tracks = board.tracks; keyIssues = board.keyIssues || []; entries = board.entries;

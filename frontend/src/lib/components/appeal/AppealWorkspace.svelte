@@ -9,7 +9,7 @@
   import { md } from '$lib/utils/markdown.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import AppealDocIncorporatePanel from '$lib/components/appeal/AppealDocIncorporatePanel.svelte';
-  import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { exportHtmlToWord, getExportConfigForSlug } from '$lib/services/planningDeliverablesExport.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
@@ -166,9 +166,11 @@
     if (!html) return;
     const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
     const filename = activeType?.name ?? 'appeal_document';
+    const { templatePath, styles } = getExportConfigForSlug(activeType?.slug ?? '');
+    console.log('[Appeal Export] slug:', activeType?.slug, '| template:', templatePath);
     exportingWord = true;
     try {
-      await exportHtmlToWord(html, filename, '/basicdocument.docx');
+      await exportHtmlToWord(html, filename, templatePath, styles);
     } finally {
       exportingWord = false;
     }

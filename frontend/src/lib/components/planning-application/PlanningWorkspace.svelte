@@ -15,7 +15,7 @@
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
-  import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { exportHtmlToWord, getExportConfigForSlug } from '$lib/services/planningDeliverablesExport.js';
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
   import SectionChatPanel from '$lib/components/planning-application/SectionChatPanel.svelte';
@@ -367,9 +367,12 @@
     if (!html) return;
     const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
     const filename = activeType?.name ?? 'document';
+    const { templatePath, styles } = getExportConfigForSlug(activeType?.slug ?? '');
+    console.log('[Export] slug:', activeType?.slug, '| template:', templatePath, '| styles:', styles);
+    console.log('[Export] HTML preview:', html.slice(0, 500));
     exportingWord = true;
     try {
-      await exportHtmlToWord(html, filename, '/basicdocument.docx');
+      await exportHtmlToWord(html, filename, templatePath, styles);
     } finally {
       exportingWord = false;
     }

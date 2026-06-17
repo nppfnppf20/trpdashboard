@@ -563,7 +563,7 @@ async function applyPolicyTemplate(projectId, trackId, discipline) {
 /**
  * Create a custom issue track for a project.
  */
-export async function createProjectIssueTrack(projectId, { label, discipline, issue_type_id, sortOrder }) {
+export async function createProjectIssueTrack(projectId, { label, discipline, issue_type_id, sortOrder, riskLevel, isKeyIssue }) {
   let order = sortOrder;
   if (order == null) {
     const maxRow = await pool.query(
@@ -575,10 +575,10 @@ export async function createProjectIssueTrack(projectId, { label, discipline, is
 
   const result = await pool.query(
     `INSERT INTO admin_console.project_issue_tracks
-       (project_id, track_type, discipline, label, issue_type_id, sort_order, is_active, created_from_hlpv)
-     VALUES ($1, 'custom', $2, $3, $4, $5, TRUE, FALSE)
+       (project_id, track_type, discipline, label, issue_type_id, sort_order, is_active, created_from_hlpv, is_key_issue, last_known_risk_level)
+     VALUES ($1, 'custom', $2, $3, $4, $5, TRUE, FALSE, $6, $7)
      RETURNING *`,
-    [projectId, discipline || null, label || discipline || null, issue_type_id || null, order]
+    [projectId, discipline || null, label || discipline || null, issue_type_id || null, order, isKeyIssue || false, riskLevel || null]
   );
   const track = result.rows[0];
   await applyPolicyTemplate(projectId, track.id, track.discipline).catch(err =>

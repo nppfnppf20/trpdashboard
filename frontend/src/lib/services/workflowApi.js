@@ -149,11 +149,11 @@ export async function reorderIssueTracks(projectId, orderedIds) {
   return res.json();
 }
 
-export async function createIssueTrack(projectId, { label, discipline, issue_type_id, sortOrder }) {
+export async function createIssueTrack(projectId, { label, discipline, issue_type_id, sortOrder, riskLevel, isKeyIssue }) {
   const res = await authFetch(`${BASE}/projects/${projectId}/issues`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ label, discipline, issue_type_id, sortOrder })
+    body: JSON.stringify({ label, discipline, issue_type_id, sortOrder, riskLevel, isKeyIssue })
   });
   if (!res.ok) throw new Error('Failed to create issue track');
   return res.json();

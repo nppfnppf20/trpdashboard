@@ -13,6 +13,18 @@
   let dropdownOpen = false;
   let creating = false;
   let error = null;
+  let riskLevel = '';
+  let isKeyIssue = false;
+
+  const RISK_LEVELS = [
+    { value: 'showstopper',         label: 'Showstopper' },
+    { value: 'extremely_high_risk', label: 'Extremely High' },
+    { value: 'high_risk',           label: 'High' },
+    { value: 'medium_high_risk',    label: 'Med-High' },
+    { value: 'medium_risk',         label: 'Medium' },
+    { value: 'medium_low_risk',     label: 'Med-Low' },
+    { value: 'low_risk',            label: 'Low' },
+  ];
 
   onMount(async () => {
     try {
@@ -82,6 +94,8 @@
       discipline: d || null,
       label: issueTypeLabel || search.trim() || null,
       issue_type_id: issueTypeId || null,
+      riskLevel: riskLevel || null,
+      isKeyIssue,
     });
   }
 
@@ -144,6 +158,23 @@
         </div>
       </div>
 
+      <div class="form-row">
+        <div class="form-group form-group-half">
+          <label for="risk-level">Risk Level <span class="optional">optional</span></label>
+          <select id="risk-level" bind:value={riskLevel}>
+            <option value="">— None —</option>
+            {#each RISK_LEVELS as r}<option value={r.value}>{r.label}</option>{/each}
+          </select>
+        </div>
+        <div class="form-group form-group-half key-issue-group">
+          <label>Key Issue?</label>
+          <label class="toggle-label">
+            <input type="checkbox" bind:checked={isKeyIssue} />
+            <span>Mark as key issue</span>
+          </label>
+        </div>
+      </div>
+
       {#if error}<p class="error-msg">{error}</p>{/if}
     </div>
     <div class="modal-footer">
@@ -177,6 +208,13 @@
   .dev-type { font-size:0.75rem;color:#94a3b8;margin-left:auto; }
   .create-item { color:#3b82f6;font-weight:500; }
   .create-item:disabled { opacity:0.6;cursor:not-allowed; }
+  .form-row { display:flex;gap:1rem; }
+  .form-group-half { flex:1;min-width:0; }
+  select { width:100%;padding:0.625rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.875rem;box-sizing:border-box;background:white;cursor:pointer; }
+  select:focus { outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.1); }
+  .key-issue-group { display:flex;flex-direction:column;gap:0.375rem; }
+  .toggle-label { display:flex;align-items:center;gap:0.5rem;font-weight:400;color:#475569;cursor:pointer;padding-top:0.25rem; }
+  .toggle-label input[type="checkbox"] { width:1rem;height:1rem;accent-color:#9333ea;cursor:pointer;flex-shrink:0; }
   .error-msg { color:#ef4444;font-size:0.8125rem;margin:0; }
   .modal-footer { display:flex;justify-content:flex-end;gap:0.75rem;padding:1rem 1.5rem;border-top:1px solid #e2e8f0; }
 </style>
