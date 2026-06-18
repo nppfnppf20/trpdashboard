@@ -74,12 +74,17 @@ function extractTag(text, tag) {
   return m ? m[1].trim() : null;
 }
 
-export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief') {
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null) {
   const parts = [];
 
-  const lengthInstruction = summaryType === 'detailed'
-    ? 'SUMMARY LENGTH: Detailed (3–4 pages). Expand each section with full context and depth.'
-    : 'SUMMARY LENGTH: Brief (one page). Be concise. Summarise in tight bullet form. Omit padding.';
+  let lengthInstruction;
+  if (summaryType === 'custom' && customPrompt?.trim()) {
+    lengthInstruction = `SUMMARY INSTRUCTIONS: ${customPrompt.trim()}`;
+  } else if (summaryType === 'detailed') {
+    lengthInstruction = 'SUMMARY LENGTH: Detailed (3-4 pages). Expand each section with full context and depth.';
+  } else {
+    lengthInstruction = 'SUMMARY LENGTH: Brief (one page). Be concise. Summarise in tight bullet form. Omit padding.';
+  }
   parts.push(lengthInstruction);
 
   if (userNotes?.trim()) {

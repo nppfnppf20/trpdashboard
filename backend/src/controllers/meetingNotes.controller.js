@@ -9,7 +9,7 @@ import { processMeetingTranscript } from '../services/meeting.service.js';
 export async function processMeetingNote(req, res) {
   try {
     const { projectId } = req.params;
-    const { user_notes, agenda, summary_type } = req.body;
+    const { user_notes, agenda, summary_type, custom_prompt } = req.body;
 
     let text;
     let fileName;
@@ -24,7 +24,7 @@ export async function processMeetingNote(req, res) {
     }
 
     const { meeting_title, meeting_date, attendees, summary_html, actions } = await processMeetingTranscript(
-      text, fileName, user_notes || null, agenda || null, summary_type || 'brief'
+      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null
     );
 
     const title = meeting_title

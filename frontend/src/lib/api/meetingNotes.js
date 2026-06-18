@@ -1,10 +1,11 @@
 import { authFetch } from './client.js';
 
-export async function processMeetingNote(projectId, { file, text, fileName, userNotes, agenda, summaryType }) {
+export async function processMeetingNote(projectId, { file, text, fileName, userNotes, agenda, summaryType, customPrompt }) {
   const formData = new FormData();
   if (userNotes) formData.append('user_notes', userNotes);
   if (agenda) formData.append('agenda', agenda);
   if (summaryType) formData.append('summary_type', summaryType);
+  if (customPrompt) formData.append('custom_prompt', customPrompt);
 
   if (file) {
     formData.append('file', file);

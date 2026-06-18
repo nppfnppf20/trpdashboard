@@ -58,7 +58,8 @@
   // ── Upload panel ──────────────────────────────────────────────────────────
   let showUploadPanel = false;
   let uploadInputTab = 'upload'; // 'upload' | 'paste'
-  let uploadSummaryType = 'brief'; // 'brief' | 'detailed'
+  let uploadSummaryType = 'brief'; // 'brief' | 'detailed' | 'custom'
+  let uploadCustomPrompt = '';
   let uploadFile = null;
   let uploadPasteText = '';
   let uploadUserNotes = '';
@@ -282,7 +283,8 @@
         text: uploadInputTab === 'paste' ? uploadPasteText : null,
         userNotes: uploadUserNotes.trim() || null,
         agenda: uploadAgenda.trim() || null,
-        summaryType: uploadSummaryType
+        summaryType: uploadSummaryType,
+        customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null
       });
 
       const newNote = {
@@ -491,8 +493,12 @@
         <div class="mn-type-row">
           <span class="mn-type-label">Summary</span>
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
-          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3–4 pages</span></button>
+          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3-4 pages</span></button>
+          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>Custom</button>
         </div>
+        {#if uploadSummaryType === 'custom'}
+          <p class="mn-custom-hint"><i class="las la-info-circle"></i> Describe the format you want in the Custom Instructions field in Optional Extras below.</p>
+        {/if}
 
         <div class="mn-input-tabs">
           <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
@@ -546,6 +552,12 @@
               <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes — included verbatim in the summary…"></textarea>
             </div>
           </div>
+          {#if uploadSummaryType === 'custom'}
+            <div class="form-group">
+              <label>Custom Instructions</label>
+              <textarea class="form-input" bind:value={uploadCustomPrompt} rows="3" placeholder="e.g. Produce a short bullet-point briefing note focused on planning policy. Include a risk register at the end."></textarea>
+            </div>
+          {/if}
         {/if}
 
         {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
@@ -1089,10 +1101,11 @@
   }
 
   /* Summary type toggle */
-  .mn-type-row { display: flex; align-items: center; gap: 0.5rem; }
+  .mn-type-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .mn-type-label { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
   .mn-type-sub { font-size: 0.7rem; opacity: 0.8; }
   .mn-input-tabs { display: flex; gap: 0.35rem; }
+  .mn-custom-hint { font-size: 0.8rem; color: #3b82f6; margin: 0; display: flex; align-items: center; gap: 0.35rem; }
 
   /* Drop zone */
   .mn-drop-zone {
