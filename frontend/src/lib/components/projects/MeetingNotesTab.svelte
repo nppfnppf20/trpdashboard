@@ -26,9 +26,9 @@
   let error = null;
 
   // UI toggles
-  let showAllMeetings = true;
+  let showAllMeetings = false;
   let showCompleted = false;
-  let showOutstandingActions = true;
+  let showOutstandingActions = false;
   let showAddForm = false;
   let expandedTranscripts = new Set();
 
@@ -334,38 +334,59 @@
     const th = 'style="text-align:left;padding:0.35rem 0.6rem;background:#f1f5f9;border:1px solid #e2e8f0;font-size:0.72rem;font-weight:600;color:#64748b;text-transform:uppercase;"';
     const rows = suggestedActions.map(a => {
       const date = isoToDisplay(a.due_date);
-      return `<tr><td ${td}>${escapeHtml(a.action_text)}</td><td ${td}>${escapeHtml(a.owner)}</td><td ${td}>${escapeHtml(date)}</td><td ${td}>${escapeHtml(a.notes)}</td></tr>`;
+      return `<tr><td data-col="action" ${td}>${escapeHtml(a.action_text)}</td><td data-col="owner" ${td}>${escapeHtml(a.owner)}</td><td data-col="due_date" ${td}>${escapeHtml(date)}</td><td data-col="notes" ${td}>${escapeHtml(a.notes)}</td></tr>`;
     }).join('');
-    return `<h3>Actions</h3><table class="mn-actions-table" style="border-collapse:collapse;width:100%;font-size:0.875rem;margin-top:0.25rem;"><thead><tr><th ${th}>Action</th><th ${th}>Owner</th><th ${th}>Due date (DD/MM/YYYY)</th><th ${th}>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<h3>Actions</h3><table data-mn-actions="1" style="border-collapse:collapse;width:100%;font-size:0.875rem;margin-top:0.25rem;"><thead><tr><th ${th}>Action</th><th ${th}>Owner</th><th ${th}>Due date (DD/MM/YYYY)</th><th ${th}>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   function parseActionsFromHtml(html) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-    const rows = doc.querySelectorAll('table.mn-actions-table tbody tr');
-    return Array.from(rows).map(row => {
-      const cells = row.querySelectorAll('td');
+    // Prefer data attribute; fall back to finding any table whose first header is "Action"
+    let table = doc.querySelector('table[data-mn-actions]');
+    if (!table) {
+      for (const t of doc.querySelectorAll('table')) {
+        if (t.querySelector('thead th')?.textContent.trim().toLowerCase().startsWith('action')) {
+          table = t; break;
+        }
+      }
+    }
+    if (!table) return [];
+    return Array.from(table.querySelectorAll('tbody tr')).map(row => {
+      const cell = (col) => (row.querySelector(`td[data-col="${col}"]`) ?? row.querySelectorAll('td')[{ action:0, owner:1, due_date:2, notes:3 }[col]])?.textContent.trim();
       return {
-        action_text: cells[0]?.textContent.trim() || '',
-        owner: cells[1]?.textContent.trim() || null,
-        due_date: displayToIso(cells[2]?.textContent.trim()),
-        notes: cells[3]?.textContent.trim() || null,
+        action_text: cell('action') || '',
+        owner: cell('owner') || null,
+        due_date: displayToIso(cell('due_date')),
+        notes: cell('notes') || null,
       };
     }).filter(a => a.action_text);
+  }
+
+  function stripActionsTable(html) {
+    // Remove any <h3>Actions</h3> + following <table> regardless of attributes
+    return html.replace(/<h3[^>]*>\s*Actions\s*<\/h3>\s*<table[\s\S]*?<\/table>/i, '').trim();
   }
 
   function openNoteEditor(note, suggestedActions = null) {
     editorNote = note;
     editorIsNew = suggestedActions !== null;
-    const actionsHtml = suggestedActions?.length ? buildActionsHtml(suggestedActions) : '';
-    editorInitialHtml = (note.summary_html || '') + actionsHtml;
+    if (suggestedActions !== null) {
+      // New note post-processing — append LLM-suggested actions
+      const actionsHtml = suggestedActions.length ? buildActionsHtml(suggestedActions) : '';
+      editorInitialHtml = (note.summary_html || '') + actionsHtml;
+    } else {
+      // Existing note — rebuild actions table fresh from DB state
+      const baseHtml = stripActionsTable(note.summary_html || '');
+      const noteActions = actions.filter(a => a.transcript_id === note.id);
+      editorInitialHtml = baseHtml + (noteActions.length ? buildActionsHtml(noteActions) : '');
+    }
   }
 
   function closeNoteEditor() {
     editorNote = null;
     editorIsNew = false;
     editorInitialHtml = '';
-    showAllMeetings = true;
   }
 
   async function saveNoteEditor() {
@@ -377,10 +398,12 @@
       const updated = await updateMeetingSummary(editorNote.id, html);
       notes = notes.map(n => n.id === editorNote.id ? { ...n, summary_html: updated.summary_html } : n);
 
+      const parsedActions = parseActionsFromHtml(html);
+
       if (editorIsNew) {
-        const toSave = parseActionsFromHtml(html);
+        // Create all action records fresh
         const saved = await Promise.all(
-          toSave.map(a => createMeetingAction(projectId, {
+          parsedActions.map(a => createMeetingAction(projectId, {
             action_text: a.action_text,
             owner: a.owner || null,
             due_date: a.due_date || null,
@@ -391,9 +414,32 @@
         const enriched = saved.map(a => ({ ...a, meeting_title: editorNote.title, meeting_date: editorNote.meeting_date }));
         actions = [...enriched, ...actions];
         notes = notes.map(n => n.id === editorNote.id ? { ...n, pending_count: saved.length } : n);
+      } else if (parsedActions.length > 0) {
+        // Update existing records matched by action_text; create any that are new
+        const existingForNote = actions.filter(a => a.transcript_id === editorNote.id);
+        for (const p of parsedActions) {
+          const match = existingForNote.find(a => a.action_text === p.action_text);
+          if (match) {
+            const upd = await updateMeetingAction(match.id, {
+              action_text: p.action_text,
+              owner: p.owner,
+              due_date: p.due_date,
+              notes: p.notes
+            });
+            actions = actions.map(a => a.id === match.id ? { ...a, ...upd } : a);
+          } else {
+            const created = await createMeetingAction(projectId, {
+              action_text: p.action_text,
+              owner: p.owner || null,
+              due_date: p.due_date || null,
+              notes: p.notes || null,
+              transcript_id: editorNote.id
+            });
+            actions = [...actions, { ...created, meeting_title: editorNote.title, meeting_date: editorNote.meeting_date }];
+          }
+        }
       }
 
-      showOutstandingActions = true;
       closeNoteEditor();
     } catch (err) {
       alert(err.message);
@@ -443,18 +489,16 @@
         <h3 class="mn-card-title">Add Meeting Notes</h3>
 
         <div class="mn-type-row">
-          <span class="mn-type-label">Summary length</span>
-          <div class="mn-type-toggle">
-            <button class="mn-type-btn" class:active={uploadSummaryType === 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· one page</span></button>
-            <button class="mn-type-btn" class:active={uploadSummaryType === 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3–4 pages</span></button>
-          </div>
+          <span class="mn-type-label">Summary</span>
+          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
+          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3–4 pages</span></button>
         </div>
 
         <div class="mn-input-tabs">
-          <button class="mn-input-tab" class:active={uploadInputTab === 'upload'} on:click={() => uploadInputTab = 'upload'}>
+          <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
             <i class="las la-upload"></i> Upload File
           </button>
-          <button class="mn-input-tab" class:active={uploadInputTab === 'paste'} on:click={() => uploadInputTab = 'paste'}>
+          <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
             <i class="las la-clipboard"></i> Paste Text
           </button>
         </div>
@@ -1045,51 +1089,10 @@
   }
 
   /* Summary type toggle */
-  .mn-type-row { display: flex; align-items: center; gap: 0.75rem; }
-  .mn-type-label { font-size: 0.8rem; font-weight: 500; color: #374151; white-space: nowrap; }
-  .mn-type-toggle {
-    display: flex;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .mn-type-btn {
-    background: none;
-    border: none;
-    padding: 0.35rem 0.85rem;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #64748b;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
-  .mn-type-btn:first-child { border-right: 1px solid #d1d5db; }
-  .mn-type-btn.active { background: #3b82f6; color: #fff; font-weight: 600; }
-  .mn-type-btn:hover:not(.active) { background: #f1f5f9; }
-  .mn-type-sub { font-size: 0.72rem; opacity: 0.75; }
-
-  /* Input tabs (upload vs paste) */
-  .mn-input-tabs {
-    display: flex;
-    border-bottom: 2px solid #e2e8f0;
-  }
-  .mn-input-tab {
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #94a3b8;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    transition: color 0.15s;
-  }
-  .mn-input-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-  .mn-input-tab:hover:not(.active) { color: #475569; }
+  .mn-type-row { display: flex; align-items: center; gap: 0.5rem; }
+  .mn-type-label { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
+  .mn-type-sub { font-size: 0.7rem; opacity: 0.8; }
+  .mn-input-tabs { display: flex; gap: 0.35rem; }
 
   /* Drop zone */
   .mn-drop-zone {
