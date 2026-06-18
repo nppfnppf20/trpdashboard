@@ -314,15 +314,29 @@
     return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  function isoToDisplay(iso) {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('T')[0].split('-');
+    return d ? `${d}/${m}/${y}` : iso;
+  }
+
+  function displayToIso(str) {
+    if (!str) return null;
+    const dm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dm) return `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    return null;
+  }
+
   function buildActionsHtml(suggestedActions) {
     if (!suggestedActions?.length) return '';
     const td = 'style="padding:0.35rem 0.6rem;border:1px solid #e2e8f0;vertical-align:top;"';
     const th = 'style="text-align:left;padding:0.35rem 0.6rem;background:#f1f5f9;border:1px solid #e2e8f0;font-size:0.72rem;font-weight:600;color:#64748b;text-transform:uppercase;"';
     const rows = suggestedActions.map(a => {
-      const date = a.due_date ? a.due_date.split('T')[0] : '';
+      const date = isoToDisplay(a.due_date);
       return `<tr><td ${td}>${escapeHtml(a.action_text)}</td><td ${td}>${escapeHtml(a.owner)}</td><td ${td}>${escapeHtml(date)}</td><td ${td}>${escapeHtml(a.notes)}</td></tr>`;
     }).join('');
-    return `<h3>Actions</h3><table class="mn-actions-table" style="border-collapse:collapse;width:100%;font-size:0.875rem;margin-top:0.25rem;"><thead><tr><th ${th}>Action</th><th ${th}>Owner</th><th ${th}>Due date</th><th ${th}>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<h3>Actions</h3><table class="mn-actions-table" style="border-collapse:collapse;width:100%;font-size:0.875rem;margin-top:0.25rem;"><thead><tr><th ${th}>Action</th><th ${th}>Owner</th><th ${th}>Due date (DD/MM/YYYY)</th><th ${th}>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   function parseActionsFromHtml(html) {
@@ -334,7 +348,7 @@
       return {
         action_text: cells[0]?.textContent.trim() || '',
         owner: cells[1]?.textContent.trim() || null,
-        due_date: cells[2]?.textContent.trim() || null,
+        due_date: displayToIso(cells[2]?.textContent.trim()),
         notes: cells[3]?.textContent.trim() || null,
       };
     }).filter(a => a.action_text);
@@ -413,121 +427,7 @@
   }
 </script>
 
-<!-- ── Tab header ────────────────────────────────────────────────────────── -->
 <div class="mn-tab">
-
-  <div class="mn-header">
-    <h2 class="mn-title">Meeting Notes</h2>
-    <button class="btn btn-primary btn-sm" on:click={openUploadPanel} disabled={showUploadPanel}>
-      <i class="las la-plus"></i> Add Meeting Notes
-    </button>
-  </div>
-
-  <!-- ── Upload panel ──────────────────────────────────────────────────── -->
-  {#if showUploadPanel}
-    <div class="mn-upload-panel">
-      <div class="mn-upload-header">
-        <h3>Add Meeting Notes</h3>
-        <button class="btn btn-icon btn-ghost" on:click={closeUploadPanel} disabled={uploadProcessing}>
-          <i class="las la-times"></i>
-        </button>
-      </div>
-
-      <!-- Summary length -->
-      <div class="mn-type-row">
-        <span class="mn-type-label">Summary length</span>
-        <div class="mn-type-toggle">
-          <button
-            class="mn-type-btn"
-            class:active={uploadSummaryType === 'brief'}
-            on:click={() => uploadSummaryType = 'brief'}
-          >Brief <span class="mn-type-sub">· one page</span></button>
-          <button
-            class="mn-type-btn"
-            class:active={uploadSummaryType === 'detailed'}
-            on:click={() => uploadSummaryType = 'detailed'}
-          >Detailed <span class="mn-type-sub">· 3–4 pages</span></button>
-        </div>
-      </div>
-
-      <!-- Upload / Paste tabs -->
-      <div class="mn-input-tabs">
-        <button class="mn-input-tab" class:active={uploadInputTab === 'upload'} on:click={() => uploadInputTab = 'upload'}>
-          <i class="las la-upload"></i> Upload File
-        </button>
-        <button class="mn-input-tab" class:active={uploadInputTab === 'paste'} on:click={() => uploadInputTab = 'paste'}>
-          <i class="las la-clipboard"></i> Paste Text
-        </button>
-      </div>
-
-      {#if uploadInputTab === 'upload'}
-        <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-        <div
-          class="mn-drop-zone"
-          class:drag-over={uploadDragOver}
-          role="button"
-          tabindex="0"
-          on:dragover|preventDefault={() => uploadDragOver = true}
-          on:dragleave={() => uploadDragOver = false}
-          on:drop={handleDrop}
-          on:click={() => fileInput.click()}
-          on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
-        >
-          {#if uploadFile}
-            <i class="las la-file-alt mn-drop-icon"></i>
-            <span class="mn-drop-filename">{uploadFile.name}</span>
-            <span class="mn-drop-hint">Click to change file</span>
-          {:else}
-            <i class="las la-cloud-upload-alt mn-drop-icon"></i>
-            <span>Drop a file here or click to browse</span>
-            <span class="mn-drop-hint">PDF, DOCX or TXT</span>
-          {/if}
-        </div>
-        <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
-      {:else}
-        <textarea
-          class="form-input mn-paste"
-          bind:value={uploadPasteText}
-          placeholder="Paste the meeting transcript here…"
-          rows="8"
-        ></textarea>
-      {/if}
-
-      <!-- Optional extras -->
-      <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
-        <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
-        {showExtras ? 'Hide' : 'Show'} optional extras (agenda, consultant notes)
-      </button>
-
-      {#if showExtras}
-        <div class="form-row">
-          <div class="form-group">
-            <label>Agenda</label>
-            <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the meeting agenda…"></textarea>
-          </div>
-          <div class="form-group">
-            <label>Consultant Notes</label>
-            <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes — included verbatim in the summary…"></textarea>
-          </div>
-        </div>
-      {/if}
-
-      {#if uploadError}
-        <div class="mn-error">{uploadError}</div>
-      {/if}
-
-      <div class="mn-upload-footer">
-        <button class="btn btn-secondary btn-sm" on:click={closeUploadPanel} disabled={uploadProcessing}>Cancel</button>
-        <button class="btn btn-primary" on:click={submitUpload} disabled={uploadProcessing}>
-          {#if uploadProcessing}
-            <span class="mn-spinner"></span> Processing…
-          {:else}
-            <i class="las la-magic"></i> Process Meeting Notes
-          {/if}
-        </button>
-      </div>
-    </div>
-  {/if}
 
   {#if loading}
     <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading meeting notes…</div>
@@ -535,8 +435,130 @@
     <div class="mn-error">{error}</div>
   {:else}
 
+    <!-- ── Top row ────────────────────────────────────────────────────── -->
+    <div class="mn-top-row">
+
+      <!-- Upload card -->
+      <div class="mn-upload-card">
+        <h3 class="mn-card-title">Add Meeting Notes</h3>
+
+        <div class="mn-type-row">
+          <span class="mn-type-label">Summary length</span>
+          <div class="mn-type-toggle">
+            <button class="mn-type-btn" class:active={uploadSummaryType === 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· one page</span></button>
+            <button class="mn-type-btn" class:active={uploadSummaryType === 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3–4 pages</span></button>
+          </div>
+        </div>
+
+        <div class="mn-input-tabs">
+          <button class="mn-input-tab" class:active={uploadInputTab === 'upload'} on:click={() => uploadInputTab = 'upload'}>
+            <i class="las la-upload"></i> Upload File
+          </button>
+          <button class="mn-input-tab" class:active={uploadInputTab === 'paste'} on:click={() => uploadInputTab = 'paste'}>
+            <i class="las la-clipboard"></i> Paste Text
+          </button>
+        </div>
+
+        {#if uploadInputTab === 'upload'}
+          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+          <div
+            class="mn-drop-zone"
+            class:drag-over={uploadDragOver}
+            role="button"
+            tabindex="0"
+            on:dragover|preventDefault={() => uploadDragOver = true}
+            on:dragleave={() => uploadDragOver = false}
+            on:drop={handleDrop}
+            on:click={() => fileInput.click()}
+            on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
+          >
+            {#if uploadFile}
+              <i class="las la-file-alt mn-drop-icon"></i>
+              <span class="mn-drop-filename">{uploadFile.name}</span>
+              <span class="mn-drop-hint">Click to change file</span>
+            {:else}
+              <i class="las la-cloud-upload-alt mn-drop-icon"></i>
+              <span>Drop a file here or click to browse</span>
+              <span class="mn-drop-hint">PDF, DOCX or TXT</span>
+            {/if}
+          </div>
+          <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
+        {:else}
+          <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+        {/if}
+
+        <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
+          <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
+          {showExtras ? 'Hide' : 'Show'} optional extras
+        </button>
+        {#if showExtras}
+          <div class="form-row">
+            <div class="form-group">
+              <label>Agenda</label>
+              <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the meeting agenda…"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Consultant Notes</label>
+              <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes — included verbatim in the summary…"></textarea>
+            </div>
+          </div>
+        {/if}
+
+        {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
+
+        <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
+          {#if uploadProcessing}
+            <span class="mn-spinner"></span> Processing…
+          {:else}
+            <i class="las la-magic"></i> Process Meeting Notes
+          {/if}
+        </button>
+      </div>
+
+      <!-- Latest meeting card -->
+      <div class="mn-latest-card">
+        {#if latestNote}
+          <div class="mn-latest-card-inner">
+            <div class="mn-latest-card-top">
+              <span class="mn-card-label">Latest Meeting</span>
+              <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(latestNote)} title="Edit details">
+                <i class="las la-pen"></i>
+              </button>
+            </div>
+            <div class="mn-latest-title">{latestNote.title}</div>
+            <div class="mn-latest-meta-row">
+              {#if latestNote.meeting_date}<span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>{/if}
+              {#if latestNote.attendees_text}<span class="mn-cell-dim">{latestNote.attendees_text}</span>{/if}
+            </div>
+            <div class="mn-latest-badges">
+              {#if Number(latestNote.pending_count) > 0}
+                <span class="mn-badge mn-badge-warn">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
+              {/if}
+              {#if Number(latestNote.complete_count) > 0}
+                <span class="mn-badge mn-badge-ok">{latestNote.complete_count} completed</span>
+              {/if}
+            </div>
+            <div class="mn-latest-card-btns">
+              <button class="btn btn-primary btn-sm" on:click={() => openNoteEditor(latestNote)}>
+                <i class="las la-eye"></i> View Notes
+              </button>
+              <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(latestNote)}>
+                <i class="las la-download"></i> Download
+              </button>
+            </div>
+          </div>
+        {:else}
+          <div class="mn-latest-empty">
+            <i class="las la-calendar-times"></i>
+            <p>No meetings yet.<br>Upload a transcript to get started.</p>
+          </div>
+        {/if}
+      </div>
+
+    </div>
+
     <!-- ── Outstanding Actions ─────────────────────────────────────────── -->
-    <div class="mn-section">
+    <div class="mn-section mn-section-muted">
       <div class="mn-section-head">
         <button class="mn-concertina-btn" on:click={() => showOutstandingActions = !showOutstandingActions}>
           <i class="las la-{showOutstandingActions ? 'angle-up' : 'angle-down'}"></i>
@@ -651,41 +673,6 @@
 
       {/if}
     </div>
-
-    <!-- ── Latest Meeting ─────────────────────────────────────────────── -->
-    {#if latestNote}
-      <div class="mn-section">
-        <div class="mn-section-head">
-          <h3>Latest Meeting</h3>
-          <div class="mn-ml-auto mn-row-btns">
-            <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(latestNote)}>
-              <i class="las la-eye"></i> View Notes
-            </button>
-            <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(latestNote)}>
-              <i class="las la-download"></i> Download
-            </button>
-            <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(latestNote)} title="Edit details">
-              <i class="las la-pen"></i>
-            </button>
-          </div>
-        </div>
-        <div class="mn-latest-meta">
-          <span class="mn-note-title">{latestNote.title}</span>
-          {#if latestNote.meeting_date}
-            <span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>
-          {/if}
-          {#if latestNote.attendees_text}
-            <span class="mn-cell-dim">{latestNote.attendees_text}</span>
-          {/if}
-          {#if Number(latestNote.pending_count) > 0}
-            <span class="mn-badge mn-badge-warn">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
-          {/if}
-          {#if Number(latestNote.complete_count) > 0}
-            <span class="mn-badge mn-badge-ok">{latestNote.complete_count} completed</span>
-          {/if}
-        </div>
-      </div>
-    {/if}
 
     <!-- ── Completed Actions ──────────────────────────────────────────── -->
     {#if completedActions.length > 0}
@@ -883,12 +870,96 @@
   /* ── Layout ────────────────────────────────────────────────────────────── */
   .mn-tab { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem 0; overflow-y: auto; flex: 1; min-height: 0; }
 
-  .mn-header {
+  /* ── Top row ────────────────────────────────────────────────────────────── */
+  .mn-top-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  /* Upload card */
+  .mn-upload-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .mn-card-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+  }
+  .mn-process-btn { width: 100%; }
+
+  /* Latest meeting card */
+  .mn-latest-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+  .mn-latest-card-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    height: 100%;
+  }
+  .mn-latest-card-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
-  .mn-title { font-size: 1rem; font-weight: 600; color: #1e293b; margin: 0; }
+  .mn-card-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+  }
+  .mn-latest-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.3;
+  }
+  .mn-latest-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+  }
+  .mn-latest-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  .mn-latest-card-btns {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: auto;
+    padding-top: 0.35rem;
+  }
+  .mn-latest-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 100%;
+    min-height: 80px;
+    color: #94a3b8;
+    text-align: center;
+  }
+  .mn-latest-empty i { font-size: 1.5rem; }
+  .mn-latest-empty p { font-size: 0.8rem; margin: 0; line-height: 1.4; }
 
   /* ── Sections ──────────────────────────────────────────────────────────── */
   .mn-section {
@@ -926,28 +997,6 @@
   .mn-table-mt { margin-top: 0.75rem; }
 
   /* ── Upload panel ──────────────────────────────────────────────────────── */
-  .mn-upload-panel {
-    background: #fff;
-    border: 1px solid #bfdbfe;
-    border-radius: 8px;
-    padding: 1.1rem 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-  }
-  .mn-upload-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .mn-upload-header h3 { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0; }
-  .mn-upload-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.6rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid #f1f5f9;
-  }
 
   /* Form overrides (matching site's form style) */
   .form-input {
@@ -1046,7 +1095,7 @@
   .mn-drop-zone {
     border: 2px dashed #bfdbfe;
     border-radius: 6px;
-    padding: 1.75rem 1rem;
+    padding: 0.75rem 1rem;
     text-align: center;
     cursor: pointer;
     color: #64748b;
@@ -1054,15 +1103,15 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.2rem;
     transition: background 0.15s, border-color 0.15s;
   }
   .mn-drop-zone:hover, .mn-drop-zone.drag-over { background: #eff6ff; border-color: #3b82f6; }
-  .mn-drop-icon { font-size: 2rem; color: #93c5fd; }
+  .mn-drop-icon { font-size: 1.4rem; color: #93c5fd; }
   .mn-drop-filename { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
   .mn-drop-hint { font-size: 0.75rem; color: #94a3b8; }
 
-  .mn-paste { min-height: 160px; }
+  .mn-paste { min-height: 72px; }
 
   .mn-extras-toggle { font-size: 0.8rem; }
 
