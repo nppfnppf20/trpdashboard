@@ -161,6 +161,7 @@
       map.remove();
       map = null;
       mapInitialized = false;
+      mapInitError = false;
     }
   });
 
