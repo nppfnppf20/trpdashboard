@@ -6,9 +6,9 @@
 import { callClaude, noEmDash, MODEL_SONNET } from './llm.shared.js';
 
 
-const HLPV_NARRATIVE_SYSTEM = `You are a specialist planning consultant writing a High-Level Planning View (HLPV). \
-This is a professional site appraisal document that assesses the planning constraints affecting a proposed development. \
-Write with authority and precision in clear, professional planning language.`;
+const HLPV_NARRATIVE_SYSTEM = `You are a specialist planning consultant at Third Revolution Projects writing a High-Level Planning View (HLPV). \
+This is a professional client-facing letter that assesses the planning constraints and opportunities affecting a proposed development. \
+Write with authority and precision in clear, professional planning language. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
 
 /**
  * Strip any document-level wrapper elements that the LLM might add despite instructions.
@@ -40,44 +40,104 @@ function cleanHlpvHtml(raw) {
   return html.trim();
 }
 
-function buildHlpvCombinedPrompt(disciplines, briefingText) {
-  const parts = [
-    'Write a complete HLPV (High-Level Planning View) narrative assessment.',
-    '\n\nThe following disciplines have triggered planning risk rules:\n',
-  ];
+function buildHlpvCombinedPrompt(disciplines, briefingText, projectVars = {}) {
+  const {
+    siteName = '[SITE NAME]',
+    developmentType = '[TYPE OF PROJECT]',
+    lpaName = '[ADMINISTRATIVE AREA]',
+    siteLocation = '[LOCATION]',
+  } = projectVars;
 
-  for (const discipline of disciplines) {
-    const riskLabel = (discipline.overallRisk ?? 'unknown').replace(/_/g, ' ');
-    const ruleLines = (discipline.triggeredRules ?? [])
-      .map(r => `  - ${r.rule} [${r.level.replace(/_/g, ' ')}]: ${r.findings}`)
-      .join('\n');
+  const parts = [`Write a complete High-Level Planning View letter in HTML for the following project.
 
-    parts.push(`\n### ${discipline.name}\nOverall risk: ${riskLabel}\nTriggered rules:\n${ruleLines}`);
+PROJECT INFORMATION (use these as defaults — briefing note takes precedence where it provides better or more specific information):
+- Site name: ${siteName}
+- Development type: ${developmentType}
+- Administrative area / LPA: ${lpaName}
+- Location: ${siteLocation}
+`];
 
-    if (discipline.designationDetails) {
-      parts.push(`\nIndividual designations (use these specific names and distances):\n${discipline.designationDetails}`);
-    }
-
-    if (discipline.disciplineRecommendation) {
-      parts.push(`\nSuggested text (calibrate register only — rewrite entirely):\n${discipline.disciplineRecommendation}`);
+  if (disciplines.length > 0) {
+    parts.push(`\nHLPV ANALYSIS DATA — use this alongside the briefing note to populate the relevant table rows:\n`);
+    for (const discipline of disciplines) {
+      const riskLabel = (discipline.overallRisk ?? 'unknown').replace(/_/g, ' ');
+      const ruleLines = (discipline.triggeredRules ?? [])
+        .map(r => `  - ${r.rule} [${r.level.replace(/_/g, ' ')}]: ${r.findings}`)
+        .join('\n');
+      parts.push(`\n### ${discipline.name}\nOverall risk: ${riskLabel}\nTriggered rules:\n${ruleLines}`);
+      if (discipline.designationDetails) {
+        parts.push(`\nDesignations (use exact names and distances):\n${discipline.designationDetails}`);
+      }
+      if (discipline.disciplineRecommendation) {
+        parts.push(`\nConsultant notes (calibrate register only):\n${discipline.disciplineRecommendation}`);
+      }
     }
   }
 
   if (briefingText) {
-    parts.push(`\n\n## Briefing note\n${briefingText}`);
+    parts.push(`\n\nBRIEFING NOTE — primary source for all sections. Use this to inform every part of the letter. Where the briefing note provides better or more specific information than the project fields above, prefer the briefing note:\n${briefingText}`);
   }
 
-  parts.push(`\n\nInstructions:
-1. Write a professional HLPV narrative for each discipline listed above (2-3 paragraphs each).
-2. If a briefing note is provided, also identify any additional planning topics or constraints mentioned in it that are NOT already covered by the disciplines above (e.g. highways, drainage, flood risk, noise, ground conditions, utilities). For each additional topic found, write 1-2 professional paragraphs drawing only on briefing note content.
-3. Output as an HTML fragment — content elements only. For each section:
-   - <h2>Discipline or topic name</h2>
-   - For HLPV disciplines only: <p><strong>Overall risk: [risk level]</strong></p>
-   - Then the assessment paragraphs using <p> tags
-4. Return ONLY the raw HTML content — absolutely no <html>, <head>, <body>, <style>, or <script> tags, no markdown fences, no preamble, no explanation. Start directly with the first <h2> tag.
-5. Every fact about specific designations must come from the designation data provided — do not invent designations, distances, or names.
-6. Never reference "the briefing note" or "briefing" in the output — this is a client-facing document. Incorporate the information naturally as part of the planning assessment.
-7. Do not copy phrases verbatim from the suggested text or tone example — use them only to calibrate register.`);
+  parts.push(`
+
+INSTRUCTIONS — write the complete letter as a clean HTML fragment in this exact order:
+
+1. SALUTATION AND HEADING
+   <p>Dear [NAME],</p>
+   <h2>High Level Planning View – ${siteName}</h2>
+
+2. INTRO PARAGRAPHS — write these verbatim:
+   <p>Thank you for sending through the above land for an initial high-level appraisal.</p>
+   <p>This letter summarises the main, high-level planning related constraints and opportunities for the red line area shown below for the purpose of understanding the likely scope of a future planning application for a ${developmentType} project.</p>
+   <p>Further detailed work will be needed, including a site visit, to determine the position of the development within the preferred parcel and to understand more of the sizing considerations and any constraints. This will form part of our first stage of work, if appointed.</p>
+
+3. SITE LOCATION SUMMARY
+   Write 2-4 sentences summarising the site location and key findings, drawing on both the HLPV analysis data and the briefing note. Then add verbatim: <p>Specialist advice will be needed in respect of the key matters identified.</p>
+
+4. TABLE
+   Output a two-column HTML table. First row is a header row with <th>Topic</th><th>Detail</th>. Then one <tr> per topic below. Where a cell should be blank, output an empty <td></td>. Use <ul><li> for bullet lists within cells.
+
+   Row instructions — populate the Detail cell for each row as follows:
+
+   Administrative area: the LPA or local authority name. Prefer briefing note; fall back to project information (${lpaName}).
+   Location: the site address or location description. Prefer briefing note; fall back to project information (${siteLocation}).
+   Planning designations: bullet list of all relevant planning designations. Draw on both the HLPV designation data and the briefing note — include everything mentioned in either source.
+   Development Plan / relevant planning policy: bullet list of the relevant local plan and key policies. Draw on both HLPV data and briefing note. Leave blank if neither source addresses this.
+   Planning history: any relevant planning history mentioned in the briefing note or HLPV data. Leave blank if nothing is available.
+   [COLSPAN ROW]: output <tr><td colspan="2"><strong>Constraints and opportunities</strong></td></tr>
+   Principle of development: draft from the briefing note if this topic is mentioned. Leave blank if not.
+   Scale, density and character: draft from the briefing note if this topic is mentioned. Leave blank if not.
+   Landscape and visual: draw on HLPV Landscape discipline data and briefing note. Leave blank if neither provides content.
+   Heritage: draw on HLPV Heritage discipline data and briefing note. Do not reference any map in this cell — a heritage map extract will be inserted separately. Leave blank if neither provides content.
+   Ecology and arboriculture: draw on HLPV Ecology and Ancient Woodland discipline data and briefing note combined. Leave blank if neither provides content.
+   Flood risk: draw on HLPV Flood Risk discipline data and briefing note. Do not reference any map in this cell — a flood map extract will be inserted separately. Leave blank if neither provides content.
+   Highways and parking: draw on HLPV Highways discipline data and briefing note. Leave blank if neither provides content.
+   Amenity: draw on HLPV Amenity discipline data and briefing note. Leave blank if neither provides content.
+   CIL and Section 106: draft from the briefing note if this topic is mentioned. Leave blank if not.
+   Other: include anything not already covered above — any HLPV disciplines not mapped to a named row (e.g. Agricultural Land, Renewables, Aviation, Airfields), plus any other planning topics from the briefing note not captured elsewhere. Leave blank if nothing remains.
+
+5. PLANNING STRATEGY
+   If the briefing note addresses planning strategy, write a short paragraph (2-4 sentences). Leave blank if not mentioned.
+   Wrap in: <p><strong>Planning Strategy</strong></p> followed by the content paragraph.
+
+6. SUBMISSION DOCUMENTS
+   If the briefing note addresses submission documents or application requirements, write a brief note. Leave blank if not mentioned.
+   Wrap in: <p><strong>Submission documents</strong></p> followed by the content.
+
+7. SIGN-OFF — write verbatim:
+   <p>I trust this provides the information you need at this stage. We look forward to working with you as the scheme progresses.</p>
+   <p>Yours sincerely</p>
+   <p>[SIGNED]<br>[NAME]<br>[TITLE]<br>e. [EMAIL]</p>
+
+HTML RULES — mandatory:
+- Output a clean HTML fragment only — no <html>, <head>, <body>, <style>, or <script> tags, no markdown fences
+- Use <p> for paragraphs, <h2> for the main heading, <strong> for bold text
+- Use <table><thead><tr><th> for the header row, <tbody><tr><td> for data rows
+- Use <ul><li> for bullet lists within table cells
+- Never use em dashes (—); use a comma, colon, or rewrite instead
+- Every fact about specific designations must come from the data provided — do not invent designations, distances, or names
+- Never refer to "the briefing note" or "the HLPV analysis" in the output — this is a client-facing document
+- Do not copy phrases verbatim from the style example — use it only to calibrate register`);
 
   return parts.join('');
 }
@@ -219,7 +279,7 @@ export function formatHlpvDataAsText(disciplines) {
   return lines.join('\n');
 }
 
-export async function generateHlpvNarrative(disciplines, briefingText, guidingBrief = null, styleTemplate = null) {
+export async function generateHlpvNarrative(disciplines, briefingText, guidingBrief = null, styleTemplate = null, projectVars = {}) {
   const guidingBlock = guidingBrief?.guidance_content?.trim()
     ? `\n\n## Guiding Brief\nThe following describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The designation data and briefing note provided above are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it. Every fact in your output must come from the data provided, not from the guiding brief.\n\n${guidingBrief.guidance_content.trim()}`
     : '';
@@ -230,7 +290,7 @@ export async function generateHlpvNarrative(disciplines, briefingText, guidingBr
     : '';
 
   const system = HLPV_NARRATIVE_SYSTEM + briefStyleBlock + guidingBlock;
-  const user = buildHlpvCombinedPrompt(disciplines, briefingText);
+  const user = buildHlpvCombinedPrompt(disciplines, briefingText, projectVars);
   const raw = await callClaude(system, user, MODEL_SONNET);
   return cleanHlpvHtml(noEmDash(raw));
 }

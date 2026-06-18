@@ -73,9 +73,10 @@
   let errors = {};
   let saving = false;
   let mapInitialized = false;
+  let mapInitError = false;
   let showNudgeBoundary = false;
 
-  $: if (browser && isOpen && !mapInitialized && mapContainer) {
+  $: if (browser && isOpen && !mapInitialized && !mapInitError && mapContainer) {
     initializeMap();
   }
 
@@ -170,8 +171,9 @@
       // Dynamically import Leaflet and Leaflet Draw
       const leafletModule = await import('leaflet');
       L = leafletModule.default || leafletModule;
+      // Required for leaflet-draw UMD plugin to find Leaflet
+      window.L = L;
 
-      // Import Leaflet Draw
       await import('leaflet-draw');
 
       await tick(); // Wait for DOM to be ready
@@ -289,6 +291,7 @@
       mapInitialized = true;
     } catch (error) {
       console.error('Error initializing map:', error);
+      mapInitError = true;
     }
   }
 

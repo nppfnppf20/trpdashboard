@@ -27,13 +27,20 @@ export async function generateNarrative(req, res) {
   try {
     let briefingText = null;
     let developmentType = bodyDevType ?? null;
+    const projectVars = {};
 
     if (projectId) {
       const { rows: projRows } = await pool.query(
-        'SELECT development_type FROM public.projects WHERE id = $1',
+        `SELECT project_name, development_type, lpa_name, site_address
+         FROM public.projects WHERE id = $1`,
         [projectId]
       );
-      developmentType = developmentType ?? projRows[0]?.development_type ?? null;
+      const proj = projRows[0] ?? {};
+      developmentType = developmentType ?? proj.development_type ?? null;
+      projectVars.siteName = proj.project_name ?? null;
+      projectVars.developmentType = developmentType;
+      projectVars.lpaName = proj.lpa_name ?? null;
+      projectVars.siteLocation = proj.site_address ?? null;
 
       if (briefingNoteId) {
         const { rows } = await pool.query(
@@ -52,7 +59,7 @@ export async function generateNarrative(req, res) {
       getGuidingBrief('hlpv', developmentType),
       getDocumentStyleTemplateByDocType('hlpv', developmentType),
     ]);
-    const narrative = await generateHlpvNarrative(disciplines, briefingText, guidingBrief, styleTemplate);
+    const narrative = await generateHlpvNarrative(disciplines, briefingText, guidingBrief, styleTemplate, projectVars);
     res.json({ narrative });
   } catch (err) {
     console.error('hlpvNarrative.generateNarrative error:', err);
