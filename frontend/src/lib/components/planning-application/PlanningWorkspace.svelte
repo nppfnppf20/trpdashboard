@@ -416,33 +416,15 @@
   }
 
   let incorporateReviewMode = false;
-  let contextPanelOpen = false;
   let sectionChatOpen = false;
   let checkPanelOpen = false;
-  let contextData = null;
-  let contextLoading = false;
-  let contextExpanded = { guidingBrief: true, projectBrief: false };
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; contextPanelOpen = false; sectionChatOpen = false; checkPanelOpen = false; contextData = null; }
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; }
   $: if (!checkPanelOpen) draftEditor?.clearHighlight();
-
-  async function toggleContextPanel() {
-    if (contextPanelOpen) { contextPanelOpen = false; return; }
-    incorporateReviewMode = false;
-    checkPanelOpen = false;
-    contextPanelOpen = true;
-    if (!contextData) {
-      contextLoading = true;
-      try { contextData = await getPaDraftContext(project.id, $activeDraftTypeId); }
-      catch (err) { console.error('Failed to load context:', err); }
-      finally { contextLoading = false; }
-    }
-  }
 
   function toggleCheckPanel() {
     if (checkPanelOpen) { checkPanelOpen = false; return; }
     incorporateReviewMode = false;
-    contextPanelOpen = false;
     sectionChatOpen = false;
     checkPanelOpen = true;
   }
@@ -598,12 +580,9 @@
           <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => requestGenerate($activeDraftTypeId, undefined, true)}>
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
-          <button class="draft-context-btn" class:active={contextPanelOpen} on:click={toggleContextPanel} title="View prompt context — guiding brief, project brief">
-            <i class="las la-layer-group"></i> Context
-          </button>
           {/if}
           {#if activeType?.slug !== 'stage1_review' && $activeDraftTypeId !== 'blank'}
-            <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { contextPanelOpen = false; checkPanelOpen = false; } }} title="Chat with a document to draft a section">
+            <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { checkPanelOpen = false; } }} title="Chat with a document to draft a section">
               <i class="las la-comments"></i> Doc Chat
             </button>
           {/if}
@@ -651,47 +630,6 @@
                 incorporateReviewMode = false;
               }}
             />
-          {:else if contextPanelOpen}
-            <div class="context-panel">
-              <div class="context-panel-header">
-                <span class="context-panel-title"><i class="las la-layer-group"></i> Prompt context</span>
-                <button class="context-panel-close" on:click={() => contextPanelOpen = false}><i class="las la-times"></i></button>
-              </div>
-              {#if contextLoading}
-                <div class="context-panel-loading"><div class="spinner"></div><span>Loading...</span></div>
-              {:else}
-                <div class="context-panel-body">
-                  <div class="context-block">
-                    <button class="context-block-header" on:click={() => contextExpanded.guidingBrief = !contextExpanded.guidingBrief}>
-                      <span class="context-block-label"><i class="las la-book"></i> Guiding brief</span>
-                      <span class="context-block-status {contextData?.guidingBrief ? 'status-set' : 'status-missing'}">
-                        {contextData?.guidingBrief ? contextData.guidingBrief.name : 'Not set'}
-                      </span>
-                      <i class="las la-angle-{contextExpanded.guidingBrief ? 'up' : 'down'} context-chevron"></i>
-                    </button>
-                    {#if contextExpanded.guidingBrief && contextData?.guidingBrief?.content}
-                      <div class="context-block-body md-body">{@html md(contextData.guidingBrief.content)}</div>
-                    {:else if contextExpanded.guidingBrief}
-                      <p class="context-block-empty">No guiding brief set for this document type. Add one in Admin Console → Guiding Briefs.</p>
-                    {/if}
-                  </div>
-                  <div class="context-block">
-                    <button class="context-block-header" on:click={() => contextExpanded.projectBrief = !contextExpanded.projectBrief}>
-                      <span class="context-block-label"><i class="las la-file-alt"></i> Project brief</span>
-                      <span class="context-block-status {contextData?.projectBrief ? 'status-set' : 'status-missing'}">
-                        {contextData?.projectBrief ? 'Set' : 'Not set'}
-                      </span>
-                      <i class="las la-angle-{contextExpanded.projectBrief ? 'up' : 'down'} context-chevron"></i>
-                    </button>
-                    {#if contextExpanded.projectBrief && contextData?.projectBrief}
-                      <div class="context-block-body">{@html contextData.projectBrief}</div>
-                    {:else if contextExpanded.projectBrief}
-                      <p class="context-block-empty">No project brief uploaded. Upload a briefing note in the Briefing tab.</p>
-                    {/if}
-                  </div>
-                </div>
-              {/if}
-            </div>
           {:else if $activeDraftTypeId === 'blank'}
             <!-- blank doc — no right panel content -->
           {:else if activeType?.tool === 'appeal'}
@@ -2762,35 +2700,6 @@
   }
   .draft-context-btn:hover { background: #ede9fe; }
   .draft-context-btn.active { background: #7c3aed; color: white; border-color: #7c3aed; }
-
-  /* ── Context panel ── */
-  .context-panel {
-    display: flex; flex-direction: column; height: 100%; overflow: hidden;
-  }
-  .context-panel-header {
-    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
-    padding: 0.75rem 1rem; border-bottom: 1px solid #e2e8f0; background: white;
-  }
-  .context-panel-title { font-size: 0.8rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
-  .context-panel-close { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0.2rem; font-size: 1rem; line-height: 1; }
-  .context-panel-close:hover { color: #374151; }
-  .context-panel-loading { flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.75rem; font-size: 0.8rem; color: #64748b; }
-  .context-panel-body { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-
-  .context-block { border: 1px solid #e2e8f0; border-radius: 7px; overflow: hidden; }
-  .context-block-header {
-    width: 100%; display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.625rem 0.75rem; background: #f8fafc; border: none;
-    cursor: pointer; font-family: inherit; text-align: left; transition: background 0.12s;
-  }
-  .context-block-header:hover { background: #f1f5f9; }
-  .context-block-label { flex: 1; font-size: 0.8rem; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
-  .context-block-status { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 4px; flex-shrink: 0; }
-  .status-set { background: #dcfce7; color: #15803d; }
-  .status-missing { background: #f1f5f9; color: #64748b; }
-  .context-chevron { font-size: 0.7rem; color: #94a3b8; flex-shrink: 0; }
-  .context-block-body { padding: 0.75rem; font-size: 0.8rem; color: #374151; line-height: 1.6; border-top: 1px solid #e2e8f0; max-height: 300px; overflow-y: auto; }
-  .context-block-empty { margin: 0; padding: 0.75rem; font-size: 0.78rem; color: #94a3b8; font-style: italic; }
 
   .modal-wide { max-width: 900px; }
 

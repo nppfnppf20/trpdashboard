@@ -4,6 +4,8 @@ import {
   processMeetingNote,
   getMeetingNotes,
   getMeetingTranscript,
+  updateMeetingSummary,
+  updateMeetingNote,
   deleteMeetingNote,
   getMeetingActions,
   createMeetingAction,
@@ -22,6 +24,8 @@ router.get('/projects/:projectId', getMeetingNotes);
 router.put('/actions/:actionId', updateMeetingAction);
 router.delete('/actions/:actionId', deleteMeetingAction);
 router.get('/:meetingId/transcript', getMeetingTranscript);
+router.patch('/:meetingId/summary', updateMeetingSummary);
+router.patch('/:meetingId', updateMeetingNote);
 router.delete('/:meetingId', deleteMeetingNote);
 
 export default router;

@@ -1,10 +1,7 @@
 import { authFetch } from './client.js';
 
-export async function processMeetingNote(projectId, { file, text, fileName, title, meetingDate, attendeesText, userNotes, agenda, summaryType }) {
+export async function processMeetingNote(projectId, { file, text, fileName, userNotes, agenda, summaryType }) {
   const formData = new FormData();
-  formData.append('title', title);
-  if (meetingDate) formData.append('meeting_date', meetingDate);
-  if (attendeesText) formData.append('attendees_text', attendeesText);
   if (userNotes) formData.append('user_notes', userNotes);
   if (agenda) formData.append('agenda', agenda);
   if (summaryType) formData.append('summary_type', summaryType);
@@ -39,6 +36,26 @@ export async function getMeetingTranscript(meetingId) {
   return res.json();
 }
 
+export async function updateMeetingSummary(meetingId, summaryHtml) {
+  const res = await authFetch(`/api/meeting-notes/${meetingId}/summary`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary_html: summaryHtml })
+  });
+  if (!res.ok) throw new Error('Failed to update summary');
+  return res.json();
+}
+
+export async function updateMeetingNote(meetingId, { title, meeting_date, attendees_text }) {
+  const res = await authFetch(`/api/meeting-notes/${meetingId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, meeting_date, attendees_text })
+  });
+  if (!res.ok) throw new Error('Failed to update meeting note');
+  return res.json();
+}
+
 export async function deleteMeetingNote(meetingId) {
   const res = await authFetch(`/api/meeting-notes/${meetingId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete meeting note');
@@ -54,11 +71,11 @@ export async function getMeetingActions(projectId, status = null) {
   return res.json();
 }
 
-export async function createMeetingAction(projectId, { action_text, owner, due_date, notes }) {
+export async function createMeetingAction(projectId, { action_text, owner, due_date, notes, transcript_id }) {
   const res = await authFetch(`/api/meeting-notes/projects/${projectId}/actions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_text, owner, due_date, notes })
+    body: JSON.stringify({ action_text, owner, due_date, notes, transcript_id })
   });
   if (!res.ok) throw new Error('Failed to create action');
   return res.json();

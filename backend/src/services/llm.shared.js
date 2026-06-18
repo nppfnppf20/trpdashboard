@@ -120,22 +120,47 @@ export async function callClaude(system, user, model = MODEL_SONNET, maxTokens =
   }
 }
 
+// Escape literal newlines/tabs inside JSON string values (LLMs sometimes emit them unescaped)
+function sanitizeJsonNewlines(str) {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (escaped) { result += ch; escaped = false; continue; }
+    if (ch === '\\' && inString) { result += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString) {
+      if (ch === '\n') { result += '\\n'; continue; }
+      if (ch === '\r') { result += '\\r'; continue; }
+      if (ch === '\t') { result += '\\t'; continue; }
+    }
+    result += ch;
+  }
+  return result;
+}
+
 export function parseJSON(text) {
-  // Strip code fences if present
-  const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const t = text.trim();
 
-  // Try direct parse first
-  try {
-    return JSON.parse(stripped);
-  } catch {}
+  // 1. Direct parse
+  try { return JSON.parse(t); } catch {}
 
-  // Fall back: find the outermost { ... } and parse that
-  const start = stripped.indexOf('{');
-  const end = stripped.lastIndexOf('}');
+  // 2. Extract content between code fences (handles ```json ... ``` anywhere in the response)
+  const fenceMatch = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) {
+    const extracted = fenceMatch[1].trim();
+    try { return JSON.parse(extracted); } catch {}
+    try { return JSON.parse(sanitizeJsonNewlines(extracted)); } catch {}
+  }
+
+  // 3. Find outermost { ... } block
+  const start = t.indexOf('{');
+  const end = t.lastIndexOf('}');
   if (start !== -1 && end > start) {
-    try {
-      return JSON.parse(stripped.slice(start, end + 1));
-    } catch {}
+    const slice = t.slice(start, end + 1);
+    try { return JSON.parse(slice); } catch {}
+    try { return JSON.parse(sanitizeJsonNewlines(slice)); } catch {}
   }
 
   throw new SyntaxError('Could not extract valid JSON from LLM response');

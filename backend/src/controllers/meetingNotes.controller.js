@@ -9,9 +9,7 @@ import { processMeetingTranscript } from '../services/meeting.service.js';
 export async function processMeetingNote(req, res) {
   try {
     const { projectId } = req.params;
-    const { title, meeting_date, attendees_text, user_notes, agenda, summary_type } = req.body;
-
-    if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+    const { user_notes, agenda, summary_type } = req.body;
 
     let text;
     let fileName;
@@ -25,9 +23,13 @@ export async function processMeetingNote(req, res) {
       return res.status(400).json({ error: 'No file or text provided' });
     }
 
-    const { summary_html, actions } = await processMeetingTranscript(
+    const { meeting_title, meeting_date, attendees, summary_html, actions } = await processMeetingTranscript(
       text, fileName, user_notes || null, agenda || null, summary_type || 'brief'
     );
+
+    const title = meeting_title
+      || (fileName ? fileName.replace(/\.[^.]+$/, '') : null)
+      || 'Meeting Notes';
 
     const client = await pool.connect();
     try {
@@ -37,7 +39,7 @@ export async function processMeetingNote(req, res) {
         `INSERT INTO planning_applications.meeting_transcripts
            (project_id, title, meeting_date, attendees_text, file_name, transcript_text, user_notes, agenda)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [projectId, title.trim(), meeting_date || null, attendees_text?.trim() || null, fileName, text, user_notes?.trim() || null, agenda?.trim() || null]
+        [projectId, title, meeting_date || null, attendees || null, fileName, text, user_notes?.trim() || null, agenda?.trim() || null]
       );
 
       const { rows: [summary] } = await client.query(
@@ -47,26 +49,8 @@ export async function processMeetingNote(req, res) {
         [transcript.id, projectId, summary_html]
       );
 
-      let savedActions = [];
-      if (actions.length > 0) {
-        const values = actions.map((a, i) =>
-          `($1, $2, $${i * 4 + 3}, $${i * 4 + 4}, $${i * 4 + 5}, $${i * 4 + 6})`
-        ).join(', ');
-        const params = [transcript.id, projectId];
-        for (const a of actions) {
-          params.push(a.action_text, a.owner, a.due_date, a.notes);
-        }
-        const { rows } = await client.query(
-          `INSERT INTO planning_applications.meeting_actions
-             (transcript_id, project_id, action_text, owner, due_date, notes)
-           VALUES ${values} RETURNING *`,
-          params
-        );
-        savedActions = rows;
-      }
-
       await client.query('COMMIT');
-      res.status(201).json({ transcript, summary, actions: savedActions });
+      res.status(201).json({ transcript, summary, suggestedActions: actions });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -129,6 +113,52 @@ export async function getMeetingTranscript(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Update meeting note summary HTML
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function updateMeetingSummary(req, res) {
+  const { meetingId } = req.params;
+  const { summary_html } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.meeting_summaries
+         SET summary_html = $2
+       WHERE transcript_id = $1 RETURNING *`,
+      [meetingId, summary_html]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('meetingNotes.updateMeetingSummary error:', err);
+    res.status(500).json({ error: 'Failed to update summary' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Update meeting note metadata (title, date, attendees)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function updateMeetingNote(req, res) {
+  const { meetingId } = req.params;
+  const { title, meeting_date, attendees_text } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.meeting_transcripts SET
+         title          = COALESCE($2, title),
+         meeting_date   = $3,
+         attendees_text = $4
+       WHERE id = $1 RETURNING *`,
+      [meetingId, title?.trim() || null, meeting_date || null, attendees_text?.trim() || null]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('meetingNotes.updateMeetingNote error:', err);
+    res.status(500).json({ error: 'Failed to update meeting note' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Delete a meeting note (cascades to summary + its actions)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -178,14 +208,14 @@ export async function getMeetingActions(req, res) {
 
 export async function createMeetingAction(req, res) {
   const { projectId } = req.params;
-  const { action_text, owner, due_date, notes } = req.body;
+  const { action_text, owner, due_date, notes, transcript_id } = req.body;
   if (!action_text?.trim()) return res.status(400).json({ error: 'action_text is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.meeting_actions
-         (project_id, action_text, owner, due_date, notes)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [projectId, action_text.trim(), owner?.trim() || null, due_date || null, notes?.trim() || null]
+         (project_id, transcript_id, action_text, owner, due_date, notes)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [projectId, transcript_id || null, action_text.trim(), owner?.trim() || null, due_date || null, notes?.trim() || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {

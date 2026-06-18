@@ -2,11 +2,14 @@
   import { onMount } from 'svelte';
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import {
     getMeetingNotes,
     getMeetingActions,
     getMeetingTranscript,
     deleteMeetingNote,
+    updateMeetingNote,
+    updateMeetingSummary,
     processMeetingNote,
     createMeetingAction,
     updateMeetingAction,
@@ -25,12 +28,17 @@
   // UI toggles
   let showAllMeetings = true;
   let showCompleted = false;
+  let showOutstandingActions = true;
   let showAddForm = false;
   let expandedTranscripts = new Set();
 
-  // Inline edit
+  // Inline edit — actions
   let editingActionId = null;
   let editForm = {};
+
+  // Inline edit — note metadata
+  let editingNoteId = null;
+  let noteEditForm = { title: '', meeting_date: '', attendees_text: '' };
 
   // Add action form
   let newAction = { action_text: '', owner: '', due_date: '', notes: '' };
@@ -40,8 +48,12 @@
   // Transcript view (lazy-loaded)
   let transcriptData = {};
 
-  // Modal — view a note's summary
-  let viewingNote = null;
+  // Note editor modal (view/edit summary + review actions)
+  let editorNote = null;     // the note object currently open
+  let editorIsNew = false;   // true = actions not yet saved (post-processing)
+  let editorInitialHtml = '';
+  let editorSaving = false;
+  let richTextEditor;        // bind:this on RichTextEditor
 
   // ── Upload panel ──────────────────────────────────────────────────────────
   let showUploadPanel = false;
@@ -49,9 +61,6 @@
   let uploadSummaryType = 'brief'; // 'brief' | 'detailed'
   let uploadFile = null;
   let uploadPasteText = '';
-  let uploadTitle = '';
-  let uploadDate = '';
-  let uploadAttendees = '';
   let uploadUserNotes = '';
   let uploadAgenda = '';
   let uploadProcessing = false;
@@ -175,7 +184,33 @@
       await deleteMeetingNote(id);
       notes = notes.filter(n => n.id !== id);
       actions = actions.filter(a => a.transcript_id !== id);
-      if (viewingNote?.id === id) viewingNote = null;
+      if (editorNote?.id === id) { editorNote = null; }
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  function startEditNote(note) {
+    editingNoteId = note.id;
+    noteEditForm = {
+      title: note.title ?? '',
+      meeting_date: note.meeting_date ? note.meeting_date.split('T')[0] : '',
+      attendees_text: note.attendees_text ?? ''
+    };
+  }
+
+  async function saveNoteEdit(noteId) {
+    try {
+      const updated = await updateMeetingNote(noteId, {
+        title: noteEditForm.title || null,
+        meeting_date: noteEditForm.meeting_date || null,
+        attendees_text: noteEditForm.attendees_text || null
+      });
+      notes = notes.map(n => n.id === noteId
+        ? { ...n, title: updated.title, meeting_date: updated.meeting_date, attendees_text: updated.attendees_text }
+        : n
+      );
+      editingNoteId = null;
     } catch (err) {
       alert(err.message);
     }
@@ -209,9 +244,6 @@
     showUploadPanel = true;
     uploadFile = null;
     uploadPasteText = '';
-    uploadTitle = '';
-    uploadDate = '';
-    uploadAttendees = '';
     uploadUserNotes = '';
     uploadAgenda = '';
     uploadError = null;
@@ -239,7 +271,6 @@
   }
 
   async function submitUpload() {
-    if (!uploadTitle.trim()) { uploadError = 'Title is required.'; return; }
     if (uploadInputTab === 'upload' && !uploadFile) { uploadError = 'Please select a file to upload.'; return; }
     if (uploadInputTab === 'paste' && !uploadPasteText.trim()) { uploadError = 'Please paste the transcript text.'; return; }
 
@@ -249,9 +280,6 @@
       const result = await processMeetingNote(projectId, {
         file: uploadInputTab === 'upload' ? uploadFile : null,
         text: uploadInputTab === 'paste' ? uploadPasteText : null,
-        title: uploadTitle.trim(),
-        meetingDate: uploadDate || null,
-        attendeesText: uploadAttendees.trim() || null,
         userNotes: uploadUserNotes.trim() || null,
         agenda: uploadAgenda.trim() || null,
         summaryType: uploadSummaryType
@@ -266,19 +294,13 @@
         created_at: result.transcript.created_at,
         summary_id: result.summary?.id,
         summary_html: result.summary?.summary_html,
-        pending_count: result.actions?.length ?? 0,
+        pending_count: 0,
         complete_count: 0
       };
-      const newActions = (result.actions || []).map(a => ({
-        ...a,
-        meeting_title: result.transcript.title,
-        meeting_date: result.transcript.meeting_date
-      }));
 
       notes = [newNote, ...notes];
-      actions = [...newActions, ...actions];
       showUploadPanel = false;
-      showAllMeetings = true;
+      openNoteEditor(newNote, result.suggestedActions || []);
     } catch (err) {
       uploadError = err.message;
     } finally {
@@ -286,7 +308,99 @@
     }
   }
 
-  // ── Download ──────────────────────────────────────────────────────────────
+  // ── Note editor ───────────────────────────────────────────────────────────
+
+  function escapeHtml(str) {
+    return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function buildActionsHtml(suggestedActions) {
+    if (!suggestedActions?.length) return '';
+    const td = 'style="padding:0.35rem 0.6rem;border:1px solid #e2e8f0;vertical-align:top;"';
+    const th = 'style="text-align:left;padding:0.35rem 0.6rem;background:#f1f5f9;border:1px solid #e2e8f0;font-size:0.72rem;font-weight:600;color:#64748b;text-transform:uppercase;"';
+    const rows = suggestedActions.map(a => {
+      const date = a.due_date ? a.due_date.split('T')[0] : '';
+      return `<tr><td ${td}>${escapeHtml(a.action_text)}</td><td ${td}>${escapeHtml(a.owner)}</td><td ${td}>${escapeHtml(date)}</td><td ${td}>${escapeHtml(a.notes)}</td></tr>`;
+    }).join('');
+    return `<h3>Actions</h3><table class="mn-actions-table" style="border-collapse:collapse;width:100%;font-size:0.875rem;margin-top:0.25rem;"><thead><tr><th ${th}>Action</th><th ${th}>Owner</th><th ${th}>Due date</th><th ${th}>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function parseActionsFromHtml(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const rows = doc.querySelectorAll('table.mn-actions-table tbody tr');
+    return Array.from(rows).map(row => {
+      const cells = row.querySelectorAll('td');
+      return {
+        action_text: cells[0]?.textContent.trim() || '',
+        owner: cells[1]?.textContent.trim() || null,
+        due_date: cells[2]?.textContent.trim() || null,
+        notes: cells[3]?.textContent.trim() || null,
+      };
+    }).filter(a => a.action_text);
+  }
+
+  function openNoteEditor(note, suggestedActions = null) {
+    editorNote = note;
+    editorIsNew = suggestedActions !== null;
+    const actionsHtml = suggestedActions?.length ? buildActionsHtml(suggestedActions) : '';
+    editorInitialHtml = (note.summary_html || '') + actionsHtml;
+  }
+
+  function closeNoteEditor() {
+    editorNote = null;
+    editorIsNew = false;
+    editorInitialHtml = '';
+    showAllMeetings = true;
+  }
+
+  async function saveNoteEditor() {
+    if (!editorNote) return;
+    editorSaving = true;
+    try {
+      const html = richTextEditor?.getHTML() ?? editorNote.summary_html;
+
+      const updated = await updateMeetingSummary(editorNote.id, html);
+      notes = notes.map(n => n.id === editorNote.id ? { ...n, summary_html: updated.summary_html } : n);
+
+      if (editorIsNew) {
+        const toSave = parseActionsFromHtml(html);
+        const saved = await Promise.all(
+          toSave.map(a => createMeetingAction(projectId, {
+            action_text: a.action_text,
+            owner: a.owner || null,
+            due_date: a.due_date || null,
+            notes: a.notes || null,
+            transcript_id: editorNote.id
+          }))
+        );
+        const enriched = saved.map(a => ({ ...a, meeting_title: editorNote.title, meeting_date: editorNote.meeting_date }));
+        actions = [...enriched, ...actions];
+        notes = notes.map(n => n.id === editorNote.id ? { ...n, pending_count: saved.length } : n);
+      }
+
+      showOutstandingActions = true;
+      closeNoteEditor();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      editorSaving = false;
+    }
+  }
+
+  async function downloadFromEditor() {
+    const note = editorNote;
+    const title = note.title || 'Meeting Notes';
+    const dateStr = note.meeting_date
+      ? new Date(note.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+      : '';
+    const metaLine = [dateStr, note.attendees_text].filter(Boolean).join(' · ');
+    const html = richTextEditor?.getHTML() ?? note.summary_html ?? '';
+    const exportHtml = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${html}`;
+    await exportHtmlToWord(exportHtml, `${title}${dateStr ? ` ${dateStr}` : ''}`, '/basicdocument.docx');
+  }
+
+  // ── Download (from note card, no editor) ─────────────────────────────────
 
   async function downloadNote(note) {
     const title = note.title || 'Meeting Notes';
@@ -294,11 +408,8 @@
       ? new Date(note.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
       : '';
     const metaLine = [dateStr, note.attendees_text].filter(Boolean).join(' · ');
-
     const html = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${note.summary_html || '<p>No summary available.</p>'}`;
-    const filename = `${title}${dateStr ? ` ${dateStr}` : ''}`;
-
-    await exportHtmlToWord(html, filename, '/basicdocument.docx');
+    await exportHtmlToWord(html, `${title}${dateStr ? ` ${dateStr}` : ''}`, '/basicdocument.docx');
   }
 </script>
 
@@ -320,22 +431,6 @@
         <button class="btn btn-icon btn-ghost" on:click={closeUploadPanel} disabled={uploadProcessing}>
           <i class="las la-times"></i>
         </button>
-      </div>
-
-      <!-- Title / Date / Attendees -->
-      <div class="form-row-3">
-        <div class="form-group form-group-wide">
-          <label>Title <span class="required">*</span></label>
-          <input type="text" class="form-input" bind:value={uploadTitle} placeholder="e.g. Design Team Meeting" />
-        </div>
-        <div class="form-group">
-          <label>Meeting Date</label>
-          <input type="date" class="form-input" bind:value={uploadDate} />
-        </div>
-        <div class="form-group">
-          <label>Attendees</label>
-          <input type="text" class="form-input" bind:value={uploadAttendees} placeholder="e.g. Josh, Sarah, Client" />
-        </div>
       </div>
 
       <!-- Summary length -->
@@ -443,14 +538,19 @@
     <!-- ── Outstanding Actions ─────────────────────────────────────────── -->
     <div class="mn-section">
       <div class="mn-section-head">
-        <h3>Outstanding Actions</h3>
+        <button class="mn-concertina-btn" on:click={() => showOutstandingActions = !showOutstandingActions}>
+          <i class="las la-{showOutstandingActions ? 'angle-up' : 'angle-down'}"></i>
+          Outstanding Actions
+        </button>
         {#if pendingActions.length > 0}
           <span class="mn-badge mn-badge-warn">{pendingActions.length}</span>
         {/if}
-        <button class="btn btn-primary btn-sm mn-ml-auto" on:click={() => { showAddForm = !showAddForm; addError = null; }}>
+        <button class="btn btn-primary btn-sm mn-ml-auto" on:click={() => { showOutstandingActions = true; showAddForm = !showAddForm; addError = null; }}>
           <i class="las la-plus"></i> Add Action
         </button>
       </div>
+
+      {#if showOutstandingActions}
 
       {#if showAddForm}
         <div class="mn-add-form">
@@ -548,6 +648,8 @@
           {/each}
         </div>
       {/if}
+
+      {/if}
     </div>
 
     <!-- ── Latest Meeting ─────────────────────────────────────────────── -->
@@ -555,30 +657,33 @@
       <div class="mn-section">
         <div class="mn-section-head">
           <h3>Latest Meeting</h3>
-          <span class="mn-cell-muted mn-meeting-meta">
-            {latestNote.title}
-            {#if latestNote.meeting_date} · {formatDate(latestNote.meeting_date)}{/if}
-            {#if latestNote.attendees_text} · {latestNote.attendees_text}{/if}
-          </span>
           <div class="mn-ml-auto mn-row-btns">
-            <button class="btn btn-secondary btn-sm" on:click={() => viewingNote = latestNote}>
+            <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(latestNote)}>
               <i class="las la-eye"></i> View Notes
             </button>
             <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(latestNote)}>
               <i class="las la-download"></i> Download
             </button>
+            <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(latestNote)} title="Edit details">
+              <i class="las la-pen"></i>
+            </button>
           </div>
         </div>
-        {#if latestNote.pending_count > 0 || latestNote.complete_count > 0}
-          <div class="mn-note-badges">
-            {#if Number(latestNote.pending_count) > 0}
-              <span class="mn-badge mn-badge-warn">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
-            {/if}
-            {#if Number(latestNote.complete_count) > 0}
-              <span class="mn-badge mn-badge-ok">{latestNote.complete_count} completed</span>
-            {/if}
-          </div>
-        {/if}
+        <div class="mn-latest-meta">
+          <span class="mn-note-title">{latestNote.title}</span>
+          {#if latestNote.meeting_date}
+            <span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>
+          {/if}
+          {#if latestNote.attendees_text}
+            <span class="mn-cell-dim">{latestNote.attendees_text}</span>
+          {/if}
+          {#if Number(latestNote.pending_count) > 0}
+            <span class="mn-badge mn-badge-warn">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
+          {/if}
+          {#if Number(latestNote.complete_count) > 0}
+            <span class="mn-badge mn-badge-ok">{latestNote.complete_count} completed</span>
+          {/if}
+        </div>
       </div>
     {/if}
 
@@ -634,40 +739,66 @@
           <div class="mn-notes-list mn-table-mt">
             {#each notes as note (note.id)}
               <div class="mn-note-card">
-                <div class="mn-note-info">
-                  <div class="mn-note-meta">
-                    <span class="mn-note-title">{note.title}</span>
-                    {#if note.meeting_date}
-                      <span class="mn-cell-muted">{formatDate(note.meeting_date)}</span>
-                    {/if}
-                    {#if note.attendees_text}
-                      <span class="mn-cell-dim">{note.attendees_text}</span>
-                    {/if}
+                {#if editingNoteId === note.id}
+                  <div class="mn-note-edit-form">
+                    <div class="form-row-3">
+                      <div class="form-group form-group-wide">
+                        <label>Title</label>
+                        <input type="text" class="form-input" bind:value={noteEditForm.title} placeholder="Meeting title" />
+                      </div>
+                      <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" class="form-input" bind:value={noteEditForm.meeting_date} />
+                      </div>
+                      <div class="form-group">
+                        <label>Attendees</label>
+                        <input type="text" class="form-input" bind:value={noteEditForm.attendees_text} placeholder="e.g. Josh, Sarah, Client" />
+                      </div>
+                    </div>
+                    <div class="mn-form-footer">
+                      <button class="btn btn-secondary btn-sm" on:click={() => editingNoteId = null}>Cancel</button>
+                      <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(note.id)}>Save</button>
+                    </div>
                   </div>
-                  <div class="mn-note-badges-row">
-                    {#if Number(note.pending_count) > 0}
-                      <span class="mn-badge mn-badge-warn">{note.pending_count} open</span>
-                    {/if}
-                    {#if Number(note.complete_count) > 0}
-                      <span class="mn-badge mn-badge-ok">{note.complete_count} done</span>
-                    {/if}
+                {:else}
+                  <div class="mn-note-info">
+                    <div class="mn-note-meta">
+                      <span class="mn-note-title">{note.title}</span>
+                      {#if note.meeting_date}
+                        <span class="mn-cell-muted">{formatDate(note.meeting_date)}</span>
+                      {/if}
+                      {#if note.attendees_text}
+                        <span class="mn-cell-dim">{note.attendees_text}</span>
+                      {/if}
+                    </div>
+                    <div class="mn-note-badges-row">
+                      {#if Number(note.pending_count) > 0}
+                        <span class="mn-badge mn-badge-warn">{note.pending_count} open</span>
+                      {/if}
+                      {#if Number(note.complete_count) > 0}
+                        <span class="mn-badge mn-badge-ok">{note.complete_count} done</span>
+                      {/if}
+                    </div>
                   </div>
-                </div>
-                <div class="mn-note-actions">
-                  <button class="btn btn-secondary btn-sm" on:click={() => viewingNote = note}>
-                    <i class="las la-eye"></i> View Notes
-                  </button>
-                  <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)}>
-                    <i class="las la-file-alt"></i>
-                    {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
-                  </button>
-                  <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
-                    <i class="las la-download"></i> Download
-                  </button>
-                  <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete meeting note">
-                    <i class="las la-trash"></i>
-                  </button>
-                </div>
+                  <div class="mn-note-actions">
+                    <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
+                      <i class="las la-eye"></i> View Notes
+                    </button>
+                    <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)}>
+                      <i class="las la-file-alt"></i>
+                      {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
+                    </button>
+                    <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
+                      <i class="las la-download"></i> Download
+                    </button>
+                    <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(note)} title="Edit details">
+                      <i class="las la-pen"></i>
+                    </button>
+                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete meeting note">
+                      <i class="las la-trash"></i>
+                    </button>
+                  </div>
+                {/if}
 
                 {#if expandedTranscripts.has(note.id)}
                   <div class="mn-transcript">
@@ -690,38 +821,60 @@
   {/if}
 </div>
 
-<!-- ── Meeting Note Modal ─────────────────────────────────────────────────── -->
-{#if viewingNote}
+<!-- ── Note Editor Modal ─────────────────────────────────────────────────── -->
+{#if editorNote}
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal-backdrop" on:click|self={() => viewingNote = null} on:keydown={(e) => e.key === 'Escape' && (viewingNote = null)} role="dialog" tabindex="-1">
-    <div class="mn-modal">
-      <div class="modal-header">
-        <div>
-          <h2 class="mn-modal-title">{viewingNote.title}</h2>
-          <p class="mn-modal-meta">
-            {formatDate(viewingNote.meeting_date)}
-            {#if viewingNote.attendees_text} &bull; {viewingNote.attendees_text}{/if}
-          </p>
-        </div>
-        <button class="btn btn-icon btn-ghost close-btn" on:click={() => viewingNote = null}>
-          <i class="las la-times"></i>
-        </button>
-      </div>
-      <div class="modal-body mn-modal-body">
-        {#if viewingNote.summary_html}
-          <div class="mn-summary-html">
-            {@html viewingNote.summary_html}
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && !editorSaving && closeNoteEditor()}>
+    <div class="mn-modal mn-editor-modal">
+
+      <!-- Header -->
+      <div class="modal-header mn-editor-header">
+        <div class="mn-result-header-text">
+          {#if editorIsNew}<div class="mn-result-tick"><i class="las la-check-circle"></i></div>{/if}
+          <div>
+            <h2 class="mn-modal-title">{editorNote.title}</h2>
+            <p class="mn-modal-meta">
+              {formatDate(editorNote.meeting_date)}
+              {#if editorNote.attendees_text} &bull; {editorNote.attendees_text}{/if}
+            </p>
           </div>
-        {:else}
-          <p class="mn-empty">No summary available for this meeting.</p>
-        {/if}
+        </div>
+        <div class="mn-editor-header-btns">
+          <button class="btn btn-secondary btn-sm" on:click={downloadFromEditor} disabled={editorSaving}>
+            <i class="las la-download"></i> Download
+          </button>
+          <button class="btn btn-icon btn-ghost close-btn" on:click={closeNoteEditor} disabled={editorSaving}>
+            <i class="las la-times"></i>
+          </button>
+        </div>
       </div>
+
+      <!-- Rich text editor — scrolls -->
+      <div class="mn-editor-body">
+        <RichTextEditor
+          bind:this={richTextEditor}
+          content={editorInitialHtml}
+          placeholder="Meeting summary…"
+          fullHeight={false}
+        />
+      </div>
+
+      <!-- Footer -->
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(viewingNote)}>
-          <i class="las la-download"></i> Download
+        <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
+          {editorIsNew ? 'Skip actions' : 'Close'}
         </button>
-        <button class="btn btn-secondary btn-sm" on:click={() => viewingNote = null}>Close</button>
+        <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving}>
+          {#if editorSaving}
+            <span class="mn-spinner"></span> Saving…
+          {:else if editorIsNew}
+            <i class="las la-check"></i> Save &amp; accept actions
+          {:else}
+            <i class="las la-save"></i> Save changes
+          {/if}
+        </button>
       </div>
+
     </div>
   </div>
 {/if}
@@ -1006,9 +1159,19 @@
     margin-top: 0.6rem;
   }
 
-  .mn-meeting-meta { font-size: 0.8rem; }
+  .mn-note-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
 
-  .mn-note-badges { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+  .mn-latest-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.6rem;
+    margin-top: 0.5rem;
+  }
 
   /* Transcript expand */
   .mn-transcript {
@@ -1081,6 +1244,47 @@
     animation: mn-spin 0.7s linear infinite;
   }
   @keyframes mn-spin { to { transform: rotate(360deg); } }
+
+  /* ── Note editor modal ───────────────────────────────────────────────────── */
+  .mn-editor-modal { max-width: 860px; height: 88vh; }
+
+  .mn-editor-header {
+    justify-content: space-between;
+  }
+  .mn-result-header-text {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .mn-result-tick {
+    font-size: 1.6rem;
+    color: #22c55e;
+    line-height: 1;
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+  }
+  .mn-editor-header-btns {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  /* Rich text editor — takes the scroll space */
+  .mn-editor-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .mn-editor-body :global(.rich-text-editor),
+  .mn-editor-body :global([contenteditable]) {
+    flex: 1;
+    min-height: 0;
+  }
+
 
   /* ── Modal ───────────────────────────────────────────────────────────────── */
   .modal-backdrop {
