@@ -6,6 +6,7 @@
 import { pool } from '../db.js';
 import { generateHlpvNarrative, formatHlpvDataAsText, buildDisciplinesFromSessionData } from '../services/llm.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
+import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 import { getFullSessionData } from '../services/analysisSession.service.js';
 
 /**
@@ -47,8 +48,11 @@ export async function generateNarrative(req, res) {
       }
     }
 
-    const guidingBrief = await getGuidingBrief('hlpv', developmentType);
-    const narrative = await generateHlpvNarrative(disciplines, briefingText, guidingBrief);
+    const [guidingBrief, styleTemplate] = await Promise.all([
+      getGuidingBrief('hlpv', developmentType),
+      getDocumentStyleTemplateByDocType('hlpv', developmentType),
+    ]);
+    const narrative = await generateHlpvNarrative(disciplines, briefingText, guidingBrief, styleTemplate);
     res.json({ narrative });
   } catch (err) {
     console.error('hlpvNarrative.generateNarrative error:', err);

@@ -1,6 +1,7 @@
 import { callClaude } from './llm.shared.js';
+import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
-const MEETING_SYSTEM_PROMPT = `You are a planning consultant assistant. Process a meeting transcript into a structured record.
+const PROMPT_PREFIX = `You are a planning consultant assistant. Process a meeting transcript into a structured record.
 
 Return your response using EXACTLY these delimiters — nothing before <MEETING_TITLE> and nothing after </ACTIONS_JSON>:
 
@@ -18,7 +19,7 @@ HTML summary here
 METADATA
 ════════════════════════════════════════
 
-- MEETING_TITLE: short descriptive title (e.g. "Design Review", "Pre-Application Meeting — High Street"). Leave blank if not determinable.
+- MEETING_TITLE: short descriptive title (e.g. "Design Review", "Pre-Application Meeting"). Leave blank if not determinable.
 - MEETING_DATE: date as YYYY-MM-DD. Leave blank if not determinable.
 - ATTENDEES: comma-separated names or roles. Leave blank if not determinable.
 
@@ -27,37 +28,29 @@ PRECEDENCE RULES
 ════════════════════════════════════════
 
 1. CONSULTANT NOTES (if provided) take absolute precedence. Every point must appear in the summary. Actions mentioned in the notes must appear in ACTIONS_JSON.
-2. AGENDA (if provided) defines the structure of the summary.
-3. TRANSCRIPT is the primary source for all other content.
+2. AGENDA (if provided) provides context for the content — do not use agenda items as headings; map them to the standard structure below.
+3. TRANSCRIPT is the primary source for all other content.`;
 
-════════════════════════════════════════
+const PROMPT_STRUCTURE_DEFAULT = `════════════════════════════════════════
 SUMMARY_HTML STRUCTURE
 ════════════════════════════════════════
 
-Use only <h3>, <p>, <ul>, <li>, <strong> tags.
+Always use the following structure, in exactly this order. Use only <h3>, <p>, <ul>, <ol>, <li>, <strong> tags.
 
-Always include in this order:
+1. OVERVIEW (no heading)
+Single <p>: purpose of the meeting, who attended, date, and headline outcome. 2-3 sentences maximum.
 
-1. OVERVIEW (always present — no heading)
-Single <p>: purpose of the meeting, who attended, date context, headline outcome.
+2. KEY DISCUSSION POINTS
+<h3>Key Discussion Points</h3>
+Numbered <ol>. Each item covers one distinct topic discussed. After each item, if a decision was reached, append on a new line: <strong>Decision:</strong> [what was decided]. If no decision was reached on that point, omit the Decision line.
 
-2. CONSULTANT NOTES (only if consultant notes were provided)
-<h3>Consultant Notes</h3>
-Reproduce faithfully as a <ul> list. Do not paraphrase.
+3. CONCLUSIONS
+<h3>Conclusions</h3>
+Short <p> or <ul> summarising the overall outcome of the meeting, agreed next steps, and any outstanding matters requiring follow-up.
 
-3. MAIN BODY
+Do NOT include an actions section in SUMMARY_HTML — actions go in ACTIONS_JSON only.`;
 
-  IF AGENDA PROVIDED: use each agenda item as an <h3> heading. Under each: <p>/<ul> summary, decisions labelled <strong>Decision:</strong>, risks labelled <strong>Note:</strong>. After all items add <h3>Any Other Business</h3> (omit if nothing).
-
-  IF NO AGENDA: use these headings (omit if not relevant):
-  <h3>Key Decisions</h3>
-  <h3>Discussion Points</h3>
-  <h3>Risks and Issues</h3>
-  <h3>Next Steps</h3>
-
-Do NOT include an actions section in SUMMARY_HTML — actions go in ACTIONS_JSON only.
-
-════════════════════════════════════════
+const PROMPT_ACTIONS = `════════════════════════════════════════
 ACTIONS_JSON
 ════════════════════════════════════════
 
@@ -68,6 +61,30 @@ JSON array. Each item: {"action_text":"verb-led description","owner":null,"due_d
 - notes: brief context or null
 - If no actions: []`;
 
+async function buildSystemPrompt() {
+  const brief = await getGuidingBrief('meeting_notes', null).catch(() => null);
+
+  const structureSection = brief?.guidance_content?.trim()
+    ? `════════════════════════════════════════
+SUMMARY_HTML STRUCTURE
+════════════════════════════════════════
+
+${brief.guidance_content.trim()}`
+    : PROMPT_STRUCTURE_DEFAULT;
+
+  const styleSection = brief?.style_example?.trim()
+    ? `\n\n════════════════════════════════════════
+STYLE EXAMPLE
+════════════════════════════════════════
+
+The following is an example of the required format and style. Match its structure and tone exactly:
+
+${brief.style_example.trim()}`
+    : '';
+
+  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS].join('\n\n');
+}
+
 function extractTag(text, tag) {
   const re = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
   const m = text.match(re);
@@ -75,6 +92,8 @@ function extractTag(text, tag) {
 }
 
 export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null) {
+  const systemPrompt = await buildSystemPrompt();
+
   const parts = [];
 
   let lengthInstruction;
@@ -97,7 +116,7 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
 
   parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
 
-  const raw = await callClaude(MEETING_SYSTEM_PROMPT, parts.join('\n\n'), undefined, 16000);
+  const raw = await callClaude(systemPrompt, parts.join('\n\n'), undefined, 16000);
 
   const summary_html = extractTag(raw, 'SUMMARY_HTML');
   if (!summary_html) {
