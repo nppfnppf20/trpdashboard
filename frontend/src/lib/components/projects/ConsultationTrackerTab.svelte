@@ -3,6 +3,11 @@
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
+  import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import PublicCommentsTab from '$lib/components/projects/PublicCommentsTab.svelte';
+
+  // ── Sub-tab ───────────────────────────────────────────────────────────────
+  let subTab = 'statutory';  // 'statutory' | 'public'
   import {
     getConsultationData,
     processConsultationDoc,
@@ -98,19 +103,54 @@
   let expandedIds = new Set();
 
   // ── Email compose panel ───────────────────────────────────────────────────
-  let emailRow = null;      // the response row being emailed
-  let emailForm = { to_email: '', to_name: '', subject: '', intro_note: '' };
+  let emailRow = null;
+  let emailForm = { to_email: '', to_name: '', subject: '' };
   let emailError = null;
+  let emailEditor;   // RichTextEditor instance
+
+  function buildEmailHtml(r, form) {
+    let lines = (r.comments || '').split(/\n+/).map(l => l.trim()).filter(Boolean);
+    if (lines.length <= 1 && r.comments) {
+      lines = r.comments.split(/(?<=[.!?])\s+(?=[A-Z])/).map(l => l.trim()).filter(Boolean);
+    }
+    if (!lines.length) lines = [r.comments || ''];
+
+    const th = t => `<th style="text-align:left;padding:8px 12px;background:#f8fafc;border:1px solid #cbd5e1;font-size:13px;font-weight:600;color:#475569;">${t}</th>`;
+    const td = (t, s = '') => `<td style="padding:8px 12px;border:1px solid #cbd5e1;vertical-align:top;font-size:13px;color:#1e293b;${s}">${t}</td>`;
+
+    const dataRows = lines.map(line =>
+      `<tr>${td(line)}${td('', 'min-width:180px;background:#fafff5;')}</tr>`
+    ).join('');
+    const blankRows = Array(3).fill(
+      `<tr>${td('')}${td('', 'min-width:180px;background:#fafff5;')}</tr>`
+    ).join('');
+
+    const greeting = form.to_name?.trim() ? `Hi ${form.to_name.trim()},` : 'Hi,';
+    const projectLine = [project?.project_id, project?.site_name || project?.project_name].filter(Boolean).join(' — ');
+
+    return `<p>${greeting}</p>
+<p>We have received a statutory consultation response from <strong>${r.consultee_name || 'the consultee'}</strong>${projectLine ? ` in relation to <strong>${projectLine}</strong>` : ''}. Please find this attached for your reference.</p>
+<p>We would be grateful if you could review the key issues raised below and provide your suggested response in the right-hand column. <strong>Please note this is not an exhaustive list</strong> — if you identify any additional issues not captured here, please add them as further rows.</p>
+<table style="border-collapse:collapse;width:100%;">
+  <thead><tr>${th('Issue Raised')}${th('Your Response (please complete)')}</tr></thead>
+  <tbody>${dataRows}${blankRows}</tbody>
+</table>
+<p>Could you please complete the response column at your earliest convenience? If you have any questions, do not hesitate to get in touch.</p>
+<p>Many thanks for your assistance.</p>`;
+  }
 
   function openEmailCompose(r) {
     emailRow = r;
     emailForm = {
-      to_email:   r.original_consultant_email || '',
-      to_name:    r.original_consultant || '',
-      subject:    `Consultation Response Review — ${r.consultee_name || 'Consultee'}${project?.project_reference ? ` (${project.project_reference})` : ''}`,
-      intro_note: '',
+      to_email: r.original_consultant_email || '',
+      to_name:  r.original_consultant || '',
+      subject:  `Consultation Response Review — ${r.consultee_name || 'Consultee'}${project?.project_id ? ` (${project.project_id})` : ''}`,
     };
     emailError = null;
+    // setHTML called after DOM renders via tick
+    import('svelte').then(({ tick }) => tick().then(() => {
+      emailEditor?.setHTML(buildEmailHtml(r, emailForm));
+    }));
   }
 
   function closeEmailCompose() {
@@ -118,47 +158,15 @@
     emailError = null;
   }
 
-  function buildEmailBody(r, form) {
-    const lines = (r.comments || '')
-      .split(/\n+/).map(l => l.trim()).filter(Boolean);
-    const issueLines = lines.length > 1
-      ? lines
-      : (r.comments || '').split(/(?<=[.!?])\s+(?=[A-Z])/).map(l => l.trim()).filter(Boolean);
-
-    const greeting = form.to_name?.trim() ? `Hi ${form.to_name.trim()},` : 'Hi,';
-    const projectLine = project?.project_reference || project?.site_name || '';
-
-    const issueBlock = issueLines.map((line, i) =>
-      `Issue ${i + 1}: ${line}\nYour response:\n`
-    ).join('\n');
-
-    const blankBlock = [1, 2, 3].map(i =>
-      `Additional issue ${i}:\nYour response:\n`
-    ).join('\n');
-
-    const intro = form.intro_note?.trim() ? `\n${form.intro_note.trim()}\n` : '';
-
-    return `${greeting}
-
-We have received a statutory consultation response from ${r.consultee_name || 'the consultee'}${projectLine ? ` in relation to ${projectLine}` : ''}. Please find this attached for your reference.
-${intro}
-We would be grateful if you could review the key issues raised below and provide your suggested responses. Please note this is not an exhaustive list — if you identify any additional issues, please add them at the bottom.
-
-────────────────────────────────────────
-
-${issueBlock}
-────────────────────────────────────────
-Additional points (please add any others not listed above):
-
-${blankBlock}
-────────────────────────────────────────
-
-Many thanks for your assistance.`;
+  function stripHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return (tmp.textContent || tmp.innerText || '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
   }
 
   function openInEmailClient() {
     if (!emailForm.to_email?.trim()) { emailError = 'An email address is required.'; return; }
-    const body = buildEmailBody(emailRow, emailForm);
+    const body = emailEditor ? stripHtml(emailEditor.getHTML()) : '';
     const mailto = `mailto:${encodeURIComponent(emailForm.to_email.trim())}?subject=${encodeURIComponent(emailForm.subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
   }
@@ -609,11 +617,7 @@ Many thanks for your assistance.`;
           <button class="btn btn-icon btn-ghost" on:click={closeEmailCompose}><i class="las la-times"></i></button>
         </div>
 
-        <p class="ct-review-hint">
-          Opens a draft in your email client with the issues pre-filled. You can edit it before sending.
-        </p>
-
-        <div class="ct-review-form">
+        <div class="ct-email-meta">
           <div class="ct-field-row">
             <div class="ct-field ct-field-grow">
               <label class="ct-label">To <span class="ct-required">*</span></label>
@@ -628,21 +632,11 @@ Many thanks for your assistance.`;
             <label class="ct-label">Subject</label>
             <input type="text" class="form-input" bind:value={emailForm.subject} />
           </div>
-          <div class="ct-field">
-            <label class="ct-label">Additional note <span class="ct-label-hint">— optional, inserted before the issues</span></label>
-            <textarea class="form-input" bind:value={emailForm.intro_note} rows="2"
-              placeholder="e.g. This is particularly urgent given the response deadline of 14 July."></textarea>
-          </div>
+        </div>
 
-          <div class="ct-email-preview-box">
-            <p class="ct-email-preview-label"><i class="las la-info-circle"></i> The draft will include:</p>
-            <ul class="ct-email-preview-list">
-              <li>A brief intro referencing <strong>{emailRow.consultee_name || 'the consultee'}</strong> and the project</li>
-              <li>Each issue from the consultation summary listed with a response field</li>
-              <li>Three blank rows for the consultant to add any additional points</li>
-              <li>A note that the list is not exhaustive</li>
-            </ul>
-          </div>
+        <div class="ct-email-body-section">
+          <label class="ct-label">Email content <span class="ct-label-hint">— edit before sending</span></label>
+          <RichTextEditor bind:this={emailEditor} placeholder="Email draft will appear here…" />
         </div>
 
         {#if emailError}<div class="ct-error">{emailError}</div>{/if}
@@ -658,7 +652,21 @@ Many thanks for your assistance.`;
   </div>
 {/if}
 
-<!-- ── Main tab content ───────────────────────────────────────────────────── -->
+<!-- ── Sub-tab navigation ────────────────────────────────────────────────── -->
+<div class="ct-subtabs">
+  <button class="ct-subtab" class:ct-subtab-active={subTab === 'statutory'} on:click={() => subTab = 'statutory'}>
+    Statutory Consultees
+  </button>
+  <button class="ct-subtab" class:ct-subtab-active={subTab === 'public'} on:click={() => subTab = 'public'}>
+    Public Comments
+  </button>
+</div>
+
+{#if subTab === 'public'}
+  <PublicCommentsTab {project} />
+{:else}
+
+<!-- ── Statutory consultees content ──────────────────────────────────────── -->
 <div class="ct-tab">
 
   <!-- Top bar -->
@@ -942,8 +950,36 @@ Many thanks for your assistance.`;
   {/if}
 
 </div>
+{/if}
 
 <style>
+  /* ── Sub-tab navigation ─────────────────────────────────────────────────── */
+  .ct-subtabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid #e2e8f0;
+    padding: 0 1rem;
+    background: #f8fafc;
+  }
+  .ct-subtab {
+    padding: 0.625rem 1.125rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .ct-subtab:hover { color: #1e293b; }
+  .ct-subtab-active {
+    color: #6366f1;
+    border-bottom-color: #6366f1;
+    font-weight: 600;
+  }
+
   /* ── Layout ─────────────────────────────────────────────────────────────── */
   .ct-tab {
     display: flex;
@@ -1367,17 +1403,19 @@ Many thanks for your assistance.`;
     background: #fff;
     border-radius: 12px;
     width: 100%;
-    max-width: 640px;
+    max-width: 860px;
+    max-height: 90vh;
     box-shadow: 0 20px 60px rgba(0,0,0,0.18);
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1.5rem;
+    gap: 0;
+    overflow: hidden;
   }
   .ct-panel-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 1.25rem 1.5rem 0;
   }
   .ct-panel-title {
     font-size: 1rem;
@@ -1467,32 +1505,26 @@ Many thanks for your assistance.`;
     justify-content: space-between;
     align-items: center;
     gap: 0.75rem;
+    padding: 1rem 1.25rem 1.25rem;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 0.75rem;
   }
 
   /* ── Email compose panel ─────────────────────────────────────────────────── */
-  .ct-email-preview-box {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 0.75rem 1rem;
-  }
-  .ct-email-preview-label {
-    margin: 0 0 6px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #475569;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .ct-email-preview-list {
-    margin: 0;
-    padding-left: 1.25rem;
+  .ct-email-meta {
+    padding: 1rem 1.25rem 0;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 0.5rem;
   }
-  .ct-email-preview-list li { font-size: 0.78rem; color: #64748b; }
+  .ct-email-body-section {
+    padding: 0.75rem 1.25rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    flex: 1;
+    min-height: 0;
+  }
 
   /* Envelope button tint when already emailed */
   .ct-btn-emailed { color: #9333ea !important; }

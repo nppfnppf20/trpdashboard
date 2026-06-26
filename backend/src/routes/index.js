@@ -40,6 +40,7 @@ import sectionChatRoutes from './sectionChat.routes.js';
 import documentStyleTemplatesRoutes from './documentStyleTemplates.routes.js';
 import draftCheckRoutes from './draftCheck.routes.js';
 import consultationRoutes from './consultation.routes.js';
+import publicCommentsRoutes from './public_comments.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -121,6 +122,7 @@ router.use('/api/guiding-briefs', guidingBriefsRoutes);
 router.use('/api/draft-check', draftCheckRoutes);
 router.use('/api/meeting-notes', meetingNotesRoutes);
 router.use('/api/consultation', consultationRoutes);
+router.use('/api/public-comments', publicCommentsRoutes);
 router.use('/api/admin-console/email', emailDigestRoutes);
 router.use('/api/scraper-filters', scraperFiltersRoutes);
 router.use('/api/stage1-review', stage1ReviewRoutes);
