@@ -11,6 +11,7 @@
   import PlanningHistoryTab from '$lib/components/projects/PlanningHistoryTab.svelte';
   import RelevantDocumentsSection from '$lib/components/projects/RelevantDocumentsSection.svelte';
   import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
+  import ConsultationTrackerTab from '$lib/components/projects/ConsultationTrackerTab.svelte';
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
@@ -527,6 +528,12 @@
           on:click={() => activeTab = 'meeting_notes'}
         >
           Meeting Notes
+        </button>
+        <button
+          class="tab-button {activeTab === 'consultation_tracker' ? 'active' : ''}"
+          on:click={() => activeTab = 'consultation_tracker'}
+        >
+          Consultation Tracker
         </button>
         <button
           class="tab-button {activeTab === 'completeness' ? 'active' : ''}"
@@ -1428,6 +1435,8 @@
             <ProjectDocsTab project={projectData} />
           {:else if activeTab === 'meeting_notes'}
             <MeetingNotesTab project={projectData} />
+          {:else if activeTab === 'consultation_tracker'}
+            <ConsultationTrackerTab project={projectData} />
           {:else if activeTab === 'completeness'}
             <ProjectCompletenessTab project={projectData} />
           {/if}

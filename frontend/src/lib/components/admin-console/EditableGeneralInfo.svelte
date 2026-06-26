@@ -18,7 +18,6 @@
     editMode = true;
     // Deep clone project data
     editedProject = {
-      client_or_spv_name: project.client_or_spv_name || '',
       detailed_description: project.detailed_description || '',
       proposed_use_duration: project.proposed_use_duration || '',
       distribution_network: project.distribution_network || '',
@@ -69,7 +68,7 @@
     try {
       // Convert empty strings to null for numeric fields and constrained fields
       const sanitizedData = {
-        ...editedProject,
+        detailed_description: editedProject.detailed_description.trim() || null,
         proposed_use_duration: editedProject.proposed_use_duration === '' ? null : editedProject.proposed_use_duration,
         solar_export_capacity: editedProject.solar_export_capacity === '' ? null : editedProject.solar_export_capacity,
         pv_max_panel_height: editedProject.pv_max_panel_height === '' ? null : editedProject.pv_max_panel_height,
@@ -174,14 +173,22 @@
 Basic Information
 Project Code: ${project.project_id || '-'}
 Project Name: ${project.project_name || '-'}
-Client/SPV Name: ${project.client_or_spv_name || '-'}
+Client: ${project.client || '-'}
+Client SPV Name: ${project.client_spv_name || '-'}
 Address: ${project.address || '-'}
 Area: ${project.area ? `${project.area} ha` : '-'}
 Proposed Use Duration: ${project.proposed_use_duration ? `${project.proposed_use_duration} years` : '-'}
 
+Team
+Project Lead: ${project.project_lead || '-'}
+Project Manager: ${project.project_manager || '-'}
+Project Director: ${project.project_director || '-'}
+
 Description
-Sector: ${project.sector || '-'}
-Sub-sector: ${project.sub_sector || '-'}
+Local Planning Authority: ${Array.isArray(project.local_planning_authority) ? project.local_planning_authority.join(', ') : (project.local_planning_authority || '-')}
+Sector: ${project.sector || (Array.isArray(project.sectors) ? project.sectors.join(', ') : '-')}
+Sub-sector: ${project.sub_sector || (Array.isArray(project.sub_sectors) ? project.sub_sectors.join(', ') : '-')}
+Description of Development: ${project.development_description || '-'}
 Detailed Description: ${project.detailed_description || '-'}`;
 
     if (isEnergy) {
@@ -293,18 +300,12 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
         <span class="value">{project.project_name || '-'}</span>
       </div>
       <div class="info-row">
-        <span class="label">Client/SPV Name:</span>
-        {#if editMode}
-          <input
-            type="text"
-            class="value-input"
-            bind:value={editedProject.client_or_spv_name}
-            on:input={handleFieldChange}
-            placeholder="Enter client/SPV name"
-          />
-        {:else}
-          <span class="value">{project.client_or_spv_name || '-'}</span>
-        {/if}
+        <span class="label">Client:</span>
+        <span class="value">{project.client || '-'}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Client SPV Name:</span>
+        <span class="value">{project.client_spv_name || '-'}</span>
       </div>
       <div class="info-row">
         <span class="label">Address:</span>
@@ -332,17 +333,44 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
     </div>
   </div>
 
+  <!-- Team -->
+  <div class="info-card">
+    <h3>Team</h3>
+    <div class="info-rows">
+      <div class="info-row">
+        <span class="label">Project Lead:</span>
+        <span class="value">{project.project_lead || '-'}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Project Manager:</span>
+        <span class="value">{project.project_manager || '-'}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Project Director:</span>
+        <span class="value">{project.project_director || '-'}</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Description -->
   <div class="info-card">
     <h3>Description</h3>
     <div class="info-rows">
       <div class="info-row">
+        <span class="label">Local Planning Authority:</span>
+        <span class="value">{Array.isArray(project.local_planning_authority) ? project.local_planning_authority.join(', ') : (project.local_planning_authority || '-')}</span>
+      </div>
+      <div class="info-row">
         <span class="label">Sector:</span>
-        <span class="value">{project.sector || '-'}</span>
+        <span class="value">{project.sector || (Array.isArray(project.sectors) ? project.sectors.join(', ') : '-')}</span>
       </div>
       <div class="info-row">
         <span class="label">Sub-sector:</span>
-        <span class="value">{project.sub_sector || '-'}</span>
+        <span class="value">{project.sub_sector || (Array.isArray(project.sub_sectors) ? project.sub_sectors.join(', ') : '-')}</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Description of Development:</span>
+        <span class="value">{project.development_description || '-'}</span>
       </div>
       <div class="info-row" class:editing={editMode}>
         <span class="label">Detailed Description:</span>

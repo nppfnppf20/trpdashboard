@@ -129,6 +129,7 @@
       </div>
 
       <!-- HLPV Assessment Tool Card -->
+      <div style="display:none">
       <div class="tool-card" on:click={navigateToHLPV} on:keydown={(e) => e.key === 'Enter' && navigateToHLPV()} role="button" tabindex="0">
         <div class="card-content">
           <div class="card-icon card-icon-blue">
@@ -169,6 +170,7 @@
             <i class="las la-arrow-right"></i>
           </button>
         </div>
+      </div>
       </div>
 
       <!-- Surveyor Management Card -->

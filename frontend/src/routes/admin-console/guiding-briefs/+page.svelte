@@ -20,6 +20,8 @@
   let isNew = $state(false);
   let activeId = $state(null);
   let activeTab = $state('guidance');
+  let guidanceEditMode = $state(false);
+  let showEditWarning = $state(false);
   let form = $state({ name: '', document_type: '', development_type: '', guidance_content: '', review_checklist: '', meeting_prompt: '', style_example: '' });
 
   let confirmDeleteId = $state(null);
@@ -60,6 +62,7 @@
     isNew = true; activeId = null;
     form = { name: '', document_type: documentTypes[0]?.value ?? '', development_type: '', guidance_content: '', review_checklist: '', meeting_prompt: '', style_example: '' };
     activeTab = 'guidance';
+    guidanceEditMode = true;
     modalError = null;
     modalOpen = true;
   }
@@ -76,6 +79,7 @@
       style_example:    b.style_example ?? '',
     };
     activeTab = 'guidance';
+    guidanceEditMode = false;
     modalError = null;
     modalOpen = true;
   }
@@ -272,10 +276,6 @@
           Guidance
           {#if form.guidance_content?.trim()}<span class="tab-dot tab-dot-ok"></span>{:else}<span class="tab-dot tab-dot-empty"></span>{/if}
         </button>
-        <button class="field-tab" class:active={activeTab === 'guidance-preview'} onclick={() => activeTab = 'guidance-preview'}>
-          <i class="las la-eye"></i>
-          Preview
-        </button>
         <button class="field-tab" class:active={activeTab === 'checklist'} onclick={() => activeTab = 'checklist'}>
           <i class="las la-clipboard-check"></i>
           Review Checklist
@@ -295,23 +295,28 @@
 
       <div class="editor-wrap">
         {#if activeTab === 'guidance'}
-          <div class="tab-help">
-            Instructions injected into the prompt when drafting this document. Supports markdown — use ## for headings, **bold**, - for bullet lists.
+          <div class="tab-help guidance-help">
+            <span>Instructions injected into the prompt when drafting this document. Supports markdown — use ## for headings, **bold**, - for bullet lists.</span>
+            <button class="toggle-edit-btn" onclick={() => guidanceEditMode ? (guidanceEditMode = false) : (showEditWarning = true)}>
+              <i class="las {guidanceEditMode ? 'la-eye' : 'la-edit'}"></i>
+              {guidanceEditMode ? 'Preview' : 'Edit'}
+            </button>
           </div>
-          <textarea
-            class="text-area"
-            bind:value={form.guidance_content}
-            placeholder="Describe how this document should be written. What sections are required? What should be emphasised?&#10;&#10;## Structure&#10;- Always open with a clear description of the proposed development&#10;- Address landscape and visual impact in a dedicated section&#10;&#10;## Key issues&#10;- For solar farms, always consider cumulative impact"
-          ></textarea>
-        {:else if activeTab === 'guidance-preview'}
-          <div class="tab-help">Formatted preview of the guidance content.</div>
-          <div class="preview-body md-body">
-            {#if form.guidance_content?.trim()}
-              {@html md(form.guidance_content)}
-            {:else}
-              <p class="preview-empty">Nothing written yet — switch to Guidance to add content.</p>
-            {/if}
-          </div>
+          {#if guidanceEditMode}
+            <textarea
+              class="text-area"
+              bind:value={form.guidance_content}
+              placeholder="Describe how this document should be written. What sections are required? What should be emphasised?&#10;&#10;## Structure&#10;- Always open with a clear description of the proposed development&#10;- Address landscape and visual impact in a dedicated section&#10;&#10;## Key issues&#10;- For solar farms, always consider cumulative impact"
+            ></textarea>
+          {:else}
+            <div class="preview-body md-body">
+              {#if form.guidance_content?.trim()}
+                {@html md(form.guidance_content)}
+              {:else}
+                <p class="preview-empty">Nothing written yet — click Edit to add content.</p>
+              {/if}
+            </div>
+          {/if}
         {:else if activeTab === 'checklist'}
           <div class="tab-help">
             Things to check after the document is drafted. Written as plain prose or a bullet list.
@@ -346,6 +351,23 @@
         <button class="btn-secondary" onclick={() => modalOpen = false} disabled={modalSaving}>Cancel</button>
         <button class="btn-primary" onclick={save} disabled={modalSaving}>
           {modalSaving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showEditWarning}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" onclick={(e) => { if (e.target === e.currentTarget) showEditWarning = false; }}>
+    <div class="warning-modal">
+      <div class="warning-icon"><i class="las la-exclamation-triangle"></i></div>
+      <h3>Edit guiding brief?</h3>
+      <p>Changes to this guiding brief will apply to <strong>all future documents of this type</strong>. They will not affect any documents that have already been generated.</p>
+      <div class="warning-footer">
+        <button class="btn-secondary" onclick={() => showEditWarning = false}>Cancel</button>
+        <button class="btn-warning" onclick={() => { guidanceEditMode = true; showEditWarning = false; }}>
+          <i class="las la-edit"></i> I understand, edit
         </button>
       </div>
     </div>
@@ -435,6 +457,17 @@
 
   .editor-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .tab-help { padding: 0.625rem 1.5rem; background: #f8fafc; border-bottom: 1px solid #f1f5f9; font-size: 0.8rem; color: #64748b; line-height: 1.5; flex-shrink: 0; }
+  .guidance-help { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .toggle-edit-btn { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.625rem; background: white; border: 1px solid #cbd5e1; border-radius: 5px; font-size: 0.75rem; font-weight: 500; color: #374151; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  .toggle-edit-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+
+  .warning-modal { background: white; border-radius: 10px; width: 420px; max-width: 95vw; padding: 2rem 1.75rem 1.5rem; box-shadow: 0 20px 50px rgba(0,0,0,0.25); text-align: center; }
+  .warning-icon { font-size: 2.25rem; color: #d97706; margin-bottom: 0.75rem; }
+  .warning-modal h3 { margin: 0 0 0.75rem; font-size: 1.1rem; color: #1e293b; }
+  .warning-modal p { margin: 0 0 1.5rem; font-size: 0.875rem; color: #475569; line-height: 1.6; }
+  .warning-footer { display: flex; justify-content: center; gap: 0.75rem; }
+  .btn-warning { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1.25rem; background: #d97706; color: white; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
+  .btn-warning:hover { background: #b45309; }
   .text-area { flex: 1; width: 100%; padding: 1rem 1.5rem; border: none; resize: none; font-size: 0.875rem; line-height: 1.7; color: #1e293b; font-family: inherit; background: white; box-sizing: border-box; }
   .text-area:focus { outline: none; }
   .text-area::placeholder { color: #94a3b8; }
