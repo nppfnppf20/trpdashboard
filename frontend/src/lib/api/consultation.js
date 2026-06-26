@@ -1,6 +1,7 @@
+// @ts-nocheck
 import { authFetch } from './client.js';
 
-export async function processConsultationDoc(projectId, { file, text, fileName }) {
+export async function processConsultationDoc(projectId, { file, text, fileName, userNotes }) {
   const formData = new FormData();
   if (file) {
     formData.append('file', file);
@@ -8,6 +9,7 @@ export async function processConsultationDoc(projectId, { file, text, fileName }
     formData.append('text', text);
     if (fileName) formData.append('file_name', fileName);
   }
+  if (userNotes) formData.append('user_notes', userNotes);
   const res = await authFetch(`/api/consultation/projects/${projectId}/process`, {
     method: 'POST',
     body: formData,

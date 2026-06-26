@@ -9,6 +9,7 @@ import { processConsultationResponse } from '../services/consultation.service.js
 export async function processConsultation(req, res) {
   try {
     const { projectId } = req.params;
+    const { user_notes } = req.body;
 
     // Fetch project to get development_type for guiding brief lookup
     const { rows: [project] } = await pool.query(
@@ -31,7 +32,8 @@ export async function processConsultation(req, res) {
     const suggestion = await processConsultationResponse(
       text,
       fileName,
-      project?.development_type || null
+      project?.development_type || null,
+      user_notes?.trim() || null
     );
 
     res.json({ suggestion, source_file_name: fileName });

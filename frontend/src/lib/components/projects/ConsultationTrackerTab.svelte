@@ -27,6 +27,8 @@
   let uploadInputTab = 'upload'; // 'upload' | 'paste'
   let uploadFile = null;
   let uploadPasteText = '';
+  let uploadUserNotes = '';
+  let showExtras = false;
   let uploadDragOver = false;
   let uploadError = null;
   let fileInput;
@@ -89,6 +91,8 @@
     uploadInputTab = 'upload';
     uploadFile = null;
     uploadPasteText = '';
+    uploadUserNotes = '';
+    showExtras = false;
     uploadError = null;
     uploadDragOver = false;
   }
@@ -120,6 +124,7 @@
       const result = await processConsultationDoc(projectId, {
         file: uploadInputTab === 'upload' ? uploadFile : null,
         text: uploadInputTab === 'paste' ? uploadPasteText : null,
+        userNotes: uploadUserNotes.trim() || null,
       });
       reviewSourceFile = result.source_file_name || null;
       reviewForm = {
@@ -309,6 +314,17 @@
           <textarea class="form-input ct-paste" bind:value={uploadPasteText} placeholder="Paste the consultation response text here…" rows="8"></textarea>
         {/if}
 
+        <button class="btn btn-ghost btn-sm ct-extras-toggle" on:click={() => showExtras = !showExtras}>
+          <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
+          {showExtras ? 'Hide' : 'Show'} optional extras
+        </button>
+        {#if showExtras}
+          <div class="ct-field">
+            <label class="ct-label">Your Notes <span class="ct-label-hint">— flag anything important; these take precedence over the document</span></label>
+            <textarea class="form-input" bind:value={uploadUserNotes} rows="4" placeholder="e.g. The ecology section is the critical issue here. Make sure the survey date concern is captured."></textarea>
+          </div>
+        {/if}
+
         {#if uploadError}<div class="ct-error">{uploadError}</div>{/if}
 
         <button class="btn btn-primary ct-process-btn" on:click={submitProcess}>
@@ -317,9 +333,9 @@
 
       {:else if panelStep === 'processing'}
         <div class="ct-processing">
-          <span class="ct-spinner"></span>
-          <p>Extracting consultation details…</p>
-          <p class="ct-processing-hint">Reading the response and capturing every issue.</p>
+          <span class="ct-spinner ct-spinner-lg"></span>
+          <p class="ct-processing-label">Extracting consultation details…</p>
+          <p class="ct-processing-hint">Reading the response and capturing all issues.</p>
         </div>
 
       {:else if panelStep === 'review'}
@@ -327,21 +343,21 @@
           <h3 class="ct-panel-title">Review Extracted Details</h3>
           <button class="btn btn-icon btn-ghost" on:click={closePanel}><i class="las la-times"></i></button>
         </div>
-        <p class="ct-review-hint">Check the extracted details below. Edit anything that needs correcting before adding to the tracker.</p>
+        <p class="ct-review-hint">Check the extracted details below and correct anything before adding to the tracker.</p>
 
         <div class="ct-review-form">
-          <div class="form-row">
-            <div class="form-group form-group-wide">
-              <label>Consultee <span class="required">*</span></label>
+          <div class="ct-field-row">
+            <div class="ct-field ct-field-grow">
+              <label class="ct-label">Consultee <span class="ct-required">*</span></label>
               <input type="text" class="form-input" bind:value={reviewForm.consultee_name} placeholder="e.g. Natural England" />
             </div>
-            <div class="form-group">
-              <label>Date Received</label>
+            <div class="ct-field ct-field-date">
+              <label class="ct-label">Date Received</label>
               <input type="date" class="form-input" bind:value={reviewForm.date_received} />
             </div>
           </div>
-          <div class="form-group">
-            <label>Position</label>
+          <div class="ct-field">
+            <label class="ct-label">Position</label>
             <select class="form-input" bind:value={reviewForm.position}>
               <option value="">— select —</option>
               <option>Objection</option>
@@ -350,9 +366,9 @@
               <option>No Comment</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>Comments <span class="ct-label-hint">(all issues — one bullet per issue)</span></label>
-            <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.comments} rows="12"></textarea>
+          <div class="ct-field">
+            <label class="ct-label">Comments</label>
+            <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.comments} rows="10"></textarea>
           </div>
         </div>
 
@@ -435,17 +451,17 @@
               <tr class="ct-edit-row">
                 <td colspan="8" class="ct-edit-cell">
                   <div class="ct-edit-form">
-                    <div class="form-row">
-                      <div class="form-group form-group-wide">
-                        <label>Consultee</label>
+                    <div class="ct-field-row">
+                      <div class="ct-field ct-field-grow">
+                        <label class="ct-label">Consultee</label>
                         <input type="text" class="form-input" bind:value={editForm.consultee_name} />
                       </div>
-                      <div class="form-group">
-                        <label>Date Received</label>
+                      <div class="ct-field ct-field-date">
+                        <label class="ct-label">Date Received</label>
                         <input type="date" class="form-input" bind:value={editForm.date_received} />
                       </div>
-                      <div class="form-group">
-                        <label>Position</label>
+                      <div class="ct-field ct-field-pos">
+                        <label class="ct-label">Position</label>
                         <select class="form-input" bind:value={editForm.position}>
                           <option value="">— select —</option>
                           <option>Objection</option>
@@ -455,29 +471,29 @@
                         </select>
                       </div>
                     </div>
-                    <div class="form-group">
-                      <label>Comments <span class="ct-label-hint">(one bullet per issue)</span></label>
-                      <textarea class="form-input ct-edit-comments" bind:value={editForm.comments} rows="8"></textarea>
+                    <div class="ct-field">
+                      <label class="ct-label">Comments</label>
+                      <textarea class="form-input ct-edit-comments" bind:value={editForm.comments} rows="6"></textarea>
                     </div>
-                    <div class="form-row">
-                      <div class="form-group form-group-wide">
-                        <label>Consultant Response</label>
+                    <div class="ct-field-row">
+                      <div class="ct-field ct-field-grow">
+                        <label class="ct-label">Consultant Response</label>
                         <textarea class="form-input" bind:value={editForm.consultant_response} rows="3" placeholder="Response to this consultee…"></textarea>
                       </div>
-                      <div class="form-group">
-                        <label>Follow Up</label>
+                      <div class="ct-field ct-field-grow">
+                        <label class="ct-label">Follow Up</label>
                         <textarea class="form-input" bind:value={editForm.follow_up} rows="3" placeholder="Any follow-up required…"></textarea>
                       </div>
                     </div>
-                    <div class="form-group ct-issued-check">
+                    <div class="ct-edit-footer">
                       <label class="ct-check-label">
                         <input type="checkbox" bind:checked={editForm.response_issued} />
                         Response Issued
                       </label>
-                    </div>
-                    <div class="ct-edit-footer">
-                      <button class="btn btn-secondary btn-sm" on:click={() => editingId = null}>Cancel</button>
-                      <button class="btn btn-primary btn-sm" on:click={() => saveEdit(r.id)}>Save</button>
+                      <div class="ct-edit-footer-btns">
+                        <button class="btn btn-secondary btn-sm" on:click={() => editingId = null}>Cancel</button>
+                        <button class="btn btn-primary btn-sm" on:click={() => saveEdit(r.id)}>Save</button>
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -500,17 +516,15 @@
                 </td>
                 <td class="ct-td ct-td-comments">
                   {#if r.comments}
-                    {@const lines = r.comments.split('\n').filter(l => l.trim())}
-                    {@const showAll = expandedIds.has(r.id)}
-                    {@const visible = showAll ? lines : lines.slice(0, 3)}
-                    <ul class="ct-bullet-list">
-                      {#each visible as line}
-                        <li>{line.replace(/^[•\-*]\s*/, '')}</li>
-                      {/each}
-                    </ul>
-                    {#if lines.length > 3}
-                      <button class="btn btn-ghost btn-sm ct-expand-btn" on:click={() => toggleExpand(r.id)}>
-                        {showAll ? 'Show less' : `+${lines.length - 3} more`}
+                    {@const expanded = expandedIds.has(r.id)}
+                    {@const truncLimit = 280}
+                    {@const needsTrunc = r.comments.length > truncLimit}
+                    <p class="ct-comments-text">
+                      {expanded || !needsTrunc ? r.comments : r.comments.slice(0, truncLimit) + '…'}
+                    </p>
+                    {#if needsTrunc}
+                      <button class="ct-expand-btn" on:click={() => toggleExpand(r.id)}>
+                        {expanded ? 'Show less' : 'Show more'}
                       </button>
                     {/if}
                   {:else}
@@ -712,20 +726,24 @@
   .ct-pos-other        { background: #ede9fe; color: #6d28d9; }
   .ct-pos-none         {}
 
-  /* ── Bullet list ─────────────────────────────────────────────────────────── */
-  .ct-bullet-list {
+  /* ── Comments text ───────────────────────────────────────────────────────── */
+  .ct-comments-text {
     margin: 0;
-    padding-left: 1.1em;
     font-size: 0.78rem;
     line-height: 1.55;
     color: #334155;
+    white-space: pre-wrap;
   }
-  .ct-bullet-list li { margin-bottom: 2px; }
   .ct-expand-btn {
+    display: inline-block;
+    margin-top: 4px;
     font-size: 0.72rem;
     color: #3b82f6;
+    background: none;
+    border: none;
     padding: 0;
-    margin-top: 4px;
+    cursor: pointer;
+    text-decoration: underline;
   }
 
   /* ── Response issued toggle ──────────────────────────────────────────────── */
@@ -757,10 +775,31 @@
     justify-content: flex-end;
   }
 
+  /* ── Shared field layout (edit form + review form) ──────────────────────── */
+  .ct-field-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  .ct-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ct-field-grow { flex: 1; min-width: 0; }
+  .ct-field-date { width: 150px; flex-shrink: 0; }
+  .ct-field-pos  { width: 180px; flex-shrink: 0; }
+  .ct-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .ct-required { color: #ef4444; }
+
   /* ── Inline edit row ────────────────────────────────────────────────────── */
   .ct-edit-cell { padding: 0; }
   .ct-edit-form {
-    padding: 1rem;
+    padding: 1rem 1.25rem;
     background: #f8fafc;
     border-top: 2px solid #3b82f6;
     display: flex;
@@ -770,16 +809,21 @@
   .ct-edit-comments { font-family: inherit; font-size: 0.8rem; }
   .ct-edit-footer {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
-    justify-content: flex-end;
   }
-  .ct-issued-check { margin-top: 0; }
+  .ct-edit-footer-btns {
+    display: flex;
+    gap: 0.5rem;
+  }
   .ct-check-label {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 500;
+    color: #475569;
     cursor: pointer;
   }
 
@@ -859,6 +903,15 @@
     font-size: 0.8rem;
   }
 
+  /* ── Optional extras ────────────────────────────────────────────────────── */
+  .ct-extras-toggle {
+    align-self: flex-start;
+    font-size: 0.78rem;
+    color: #64748b;
+    padding: 2px 0;
+  }
+  .ct-label-hint { font-size: 0.72rem; font-weight: 400; color: #94a3b8; }
+
   /* ── Process button ──────────────────────────────────────────────────────── */
   .ct-process-btn { align-self: flex-end; }
 
@@ -867,19 +920,24 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.75rem;
-    padding: 2.5rem 1rem;
-    color: #475569;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 3rem 1rem;
     text-align: center;
+    min-height: 180px;
   }
-  .ct-processing p { margin: 0; }
-  .ct-processing-hint { font-size: 0.78rem; color: #94a3b8; }
+  .ct-processing-label {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #334155;
+  }
+  .ct-processing-hint { margin: 0; font-size: 0.78rem; color: #94a3b8; }
 
   /* ── Review form ─────────────────────────────────────────────────────────── */
   .ct-review-hint { font-size: 0.8rem; color: #64748b; margin: 0; }
   .ct-review-form { display: flex; flex-direction: column; gap: 0.75rem; }
-  .ct-comments-textarea { font-size: 0.8rem; font-family: inherit; line-height: 1.6; }
-  .ct-label-hint { font-size: 0.72rem; font-weight: 400; color: #94a3b8; }
+  .ct-comments-textarea { font-size: 0.8rem; font-family: inherit; line-height: 1.6; resize: vertical; }
   .ct-review-footer {
     display: flex;
     justify-content: space-between;
@@ -896,10 +954,9 @@
     border-top-color: #3b82f6;
     border-radius: 50%;
     animation: ct-spin 0.7s linear infinite;
+    flex-shrink: 0;
   }
-  .ct-spinner-sm {
-    width: 14px;
-    height: 14px;
-  }
+  .ct-spinner-sm { width: 14px; height: 14px; }
+  .ct-spinner-lg { width: 36px; height: 36px; border-width: 3px; }
   @keyframes ct-spin { to { transform: rotate(360deg); } }
 </style>

@@ -9,54 +9,21 @@ Return your response using EXACTLY these XML delimiters — nothing before <CONS
 <DATE_RECEIVED>YYYY-MM-DD or leave blank</DATE_RECEIVED>
 <POSITION>Objection | Support | Conditional Support | No Comment | or short free text</POSITION>
 <COMMENTS>
-• Issue / concern / requirement — one concise headline sentence
-• Issue / concern / requirement — one concise headline sentence
+Summary of the consultee's response here
 </COMMENTS>
 
-════════════════════════════════════════
-FIELD GUIDANCE
-════════════════════════════════════════
+CONSULTEE_NAME: Full name of the statutory consultee (e.g. "Natural England", "Environment Agency"). Leave blank if not determinable.
 
-CONSULTEE_NAME
-- The full name of the statutory consultee (e.g. "Natural England", "Environment Agency", "Historic England").
-- If multiple consultees are in one document, use the primary respondent.
-- Leave blank if not determinable.
+DATE_RECEIVED: Date the response was issued, as YYYY-MM-DD. Leave blank if not determinable.
 
-DATE_RECEIVED
-- The date the response was issued or received, as YYYY-MM-DD.
-- Look for phrases like "dated", "issued", "response date", letter date at the top of the document.
-- Leave blank if not determinable.
-
-POSITION
-- Choose from: Objection | Support | Conditional Support | No Comment
-- "Objection" if the consultee raises concerns that must be resolved before consent.
-- "Conditional Support" if support is offered subject to conditions or further information.
-- "Support" if no objections are raised and the application is supported.
-- "No Comment" if the consultee has no observations.
+POSITION:
+- Objection — raises concerns that must be resolved before consent
+- Conditional Support — support subject to conditions or further information
+- Support — no objections raised
+- No Comment — no observations
 - Use short free text only if none of the above fit.
 
-════════════════════════════════════════
-COMMENTS — CRITICAL RULES
-════════════════════════════════════════
-
-The COMMENTS field is a bullet list. Each bullet must be a single concise headline sentence capturing ONE distinct issue, concern, requirement, or request from the consultee.
-
-MANDATORY:
-- Every single issue in the document MUST appear as its own bullet. Nothing may be omitted.
-- If the document raises 15 issues, there must be 15 bullets. Volume is expected and correct.
-- Do NOT merge separate issues into one bullet.
-- Do NOT summarise groups of issues into a single vague bullet.
-
-STYLE:
-- Each bullet: one sentence, plain language, no jargon.
-- Concise but complete — the headline must be specific enough that the planning consultant knows exactly what the issue is.
-- Do NOT quote verbatim paragraphs. Extract the essence.
-- Do NOT add commentary, assessment, or your own views.
-- Do NOT include preamble, introductory paragraphs, or closing remarks in the bullets.
-
-FORMAT:
-• [Issue headline sentence]
-• [Issue headline sentence]`;
+COMMENTS: Summarise the consultee's response, covering all of their issues and points. Do not miss anything out. Keep it concise — you do not need to reproduce the full text, but every issue they raise must be represented. Write in plain text only — no markdown, no bold, no headings, no bullet symbols.`;
 
 async function buildSystemPrompt(developmentType) {
   const brief = await getGuidingBrief('consultation_response', developmentType).catch(() => null);
@@ -66,7 +33,7 @@ async function buildSystemPrompt(developmentType) {
     : '';
 
   const styleSection = brief?.style_example?.trim()
-    ? `\n\n════════════════════════════════════════\nSTYLE EXAMPLE\n════════════════════════════════════════\n\nThe following is an example of the required bullet format. Match its level of detail exactly:\n\n${brief.style_example.trim()}`
+    ? `\n\n════════════════════════════════════════\nSTYLE EXAMPLE\n════════════════════════════════════════\n\nThe following is an example of the expected summary style and level of detail:\n\n${brief.style_example.trim()}`
     : '';
 
   return PROMPT_PREFIX + extraSection + styleSection;
@@ -78,10 +45,18 @@ function extractTag(text, tag) {
   return m ? m[1].trim() : null;
 }
 
-export async function processConsultationResponse(text, fileName, developmentType = null) {
+export async function processConsultationResponse(text, fileName, developmentType = null, userNotes = null) {
   const systemPrompt = await buildSystemPrompt(developmentType);
 
-  const content = `Consultation response document${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`;
+  const parts = [];
+
+  if (userNotes) {
+    parts.push(`CONSULTANT NOTES:\n${userNotes}\n\nThe above notes highlight issues the consultant considers important. Make sure these are captured in your summary. Do not treat them as a replacement for the document — still extract everything else the consultee raises.`);
+  }
+
+  parts.push(`Consultation response document${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
+
+  const content = parts.join('\n\n');
 
   const raw = await callClaude(systemPrompt, content, undefined, 8000);
 
