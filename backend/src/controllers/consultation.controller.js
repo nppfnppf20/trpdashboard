@@ -1,6 +1,7 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { processConsultationResponse } from '../services/consultation.service.js';
+import { sendEmail } from '../services/emailService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Process a consultation document: parse → LLM → return suggestion (no save)
@@ -243,5 +244,113 @@ export async function markIssuedToClient(req, res) {
   } catch (err) {
     console.error('consultation.markIssuedToClient error:', err);
     res.status(500).json({ error: 'Failed to update issue timestamp' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Email a consultation response to the original consultant for review
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildConsultantEmailHtml({ toName, consultee_name, projectName, projectRef, comments, introNote }) {
+  // Split comments into issue rows: newlines first, then sentences as fallback
+  let lines = (comments || '').split(/\n+/).map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1 && comments) {
+    lines = comments.split(/(?<=[.!?])\s+(?=[A-Z])/).map(l => l.trim()).filter(Boolean);
+  }
+  if (!lines.length) lines = [comments || ''];
+
+  const th = (t) => `<th style="text-align:left;padding:8px 12px;background:#f8fafc;border:1px solid #cbd5e1;font-size:13px;font-weight:600;color:#475569;">${t}</th>`;
+  const td = (t, style = '') => `<td style="padding:8px 12px;border:1px solid #cbd5e1;vertical-align:top;font-size:13px;color:#1e293b;${style}">${t}</td>`;
+
+  const dataRows = lines.map(line =>
+    `<tr>${td(line)}${td('')}${td('', 'min-width:200px;background:#fafff5;')}</tr>`
+  ).join('');
+
+  const blankRows = Array(3).fill(
+    `<tr>${td('')}${td('')}${td('', 'min-width:200px;background:#fafff5;')}</tr>`
+  ).join('');
+
+  const greeting = toName ? `Hi ${toName},` : 'Hi,';
+  const projectLine = [projectRef, projectName].filter(Boolean).join(' — ');
+  const introBlock = introNote ? `<p style="margin:0 0 16px;">${introNote}</p>` : '';
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1e293b;max-width:800px;margin:0 auto;padding:32px 24px;">
+
+  <p style="margin:0 0 16px;">${greeting}</p>
+
+  <p style="margin:0 0 16px;">We have received a statutory consultation response from <strong>${consultee_name || 'the consultee'}</strong>${projectLine ? ` in relation to <strong>${projectLine}</strong>` : ''}. Please find this attached for your reference.</p>
+
+  ${introBlock}
+
+  <p style="margin:0 0 16px;">We would be grateful if you could review the key issues raised below and provide your suggested response in the right-hand column. <strong>Please note this is not an exhaustive list</strong> — if you identify any additional issues not captured here, please add them as further rows.</p>
+
+  <table style="border-collapse:collapse;width:100%;margin:0 0 24px;">
+    <thead>
+      <tr>${th('Issue Raised')}${th('Response / Approach')}${th('Your Response (please complete)')}</tr>
+    </thead>
+    <tbody>
+      ${dataRows}
+      ${blankRows}
+    </tbody>
+  </table>
+
+  <p style="margin:0 0 16px;">Could you please complete the response column at your earliest convenience? If you have any questions, do not hesitate to get in touch.</p>
+
+  <p style="margin:0;">Many thanks for your assistance.</p>
+
+</body></html>`;
+}
+
+export async function emailConsultant(req, res) {
+  const { responseId } = req.params;
+  const { to_email, to_name, subject, intro_note } = req.body;
+
+  if (!to_email?.trim()) return res.status(400).json({ error: 'to_email is required' });
+
+  try {
+    // Fetch the response + project info
+    const { rows: [row] } = await pool.query(
+      `SELECT cr.*, p.project_name, p.project_id as project_ref, p.id as int_project_id
+       FROM planning_applications.consultation_responses cr
+       JOIN public.projects p ON p.id = cr.project_id
+       WHERE cr.id = $1`,
+      [responseId]
+    );
+    if (!row) return res.status(404).json({ error: 'Response not found' });
+
+    const html = buildConsultantEmailHtml({
+      toName:        to_name?.trim() || null,
+      consultee_name: row.consultee_name,
+      projectName:   row.project_name,
+      projectRef:    row.project_ref,
+      comments:      row.comments,
+      introNote:     intro_note?.trim() || null,
+    });
+
+    const emailSubject = subject?.trim()
+      || `Consultation Response Review — ${row.consultee_name || 'Consultee'}${row.project_ref ? ` (${row.project_ref})` : ''}`;
+
+    const result = await sendEmail({
+      to:        to_email.trim(),
+      subject:   emailSubject,
+      html,
+      type:      'consultation_consultant_review',
+      projectId: row.int_project_id,
+    });
+
+    // Stamp the timestamp on the response row
+    const { rows: [updated] } = await pool.query(
+      `UPDATE planning_applications.consultation_responses
+          SET last_emailed_consultant_at = NOW(), updated_at = NOW()
+        WHERE id = $1 RETURNING *`,
+      [responseId]
+    );
+
+    res.json({ result, response: updated });
+  } catch (err) {
+    console.error('consultation.emailConsultant error:', err);
+    res.status(500).json({ error: 'Failed to send email', details: err.message });
   }
 }

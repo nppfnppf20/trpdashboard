@@ -11,6 +11,7 @@
     deleteConsultationResponse,
     markConsultationExported,
     markConsultationIssuedToClient,
+    emailConsultantForResponse,
   } from '$lib/api/consultation.js';
 
   export let project;
@@ -95,6 +96,72 @@
 
   // ── Expand/collapse comments ──────────────────────────────────────────────
   let expandedIds = new Set();
+
+  // ── Email compose panel ───────────────────────────────────────────────────
+  let emailRow = null;      // the response row being emailed
+  let emailForm = { to_email: '', to_name: '', subject: '', intro_note: '' };
+  let emailError = null;
+
+  function openEmailCompose(r) {
+    emailRow = r;
+    emailForm = {
+      to_email:   r.original_consultant_email || '',
+      to_name:    r.original_consultant || '',
+      subject:    `Consultation Response Review — ${r.consultee_name || 'Consultee'}${project?.project_reference ? ` (${project.project_reference})` : ''}`,
+      intro_note: '',
+    };
+    emailError = null;
+  }
+
+  function closeEmailCompose() {
+    emailRow = null;
+    emailError = null;
+  }
+
+  function buildEmailBody(r, form) {
+    const lines = (r.comments || '')
+      .split(/\n+/).map(l => l.trim()).filter(Boolean);
+    const issueLines = lines.length > 1
+      ? lines
+      : (r.comments || '').split(/(?<=[.!?])\s+(?=[A-Z])/).map(l => l.trim()).filter(Boolean);
+
+    const greeting = form.to_name?.trim() ? `Hi ${form.to_name.trim()},` : 'Hi,';
+    const projectLine = project?.project_reference || project?.site_name || '';
+
+    const issueBlock = issueLines.map((line, i) =>
+      `Issue ${i + 1}: ${line}\nYour response:\n`
+    ).join('\n');
+
+    const blankBlock = [1, 2, 3].map(i =>
+      `Additional issue ${i}:\nYour response:\n`
+    ).join('\n');
+
+    const intro = form.intro_note?.trim() ? `\n${form.intro_note.trim()}\n` : '';
+
+    return `${greeting}
+
+We have received a statutory consultation response from ${r.consultee_name || 'the consultee'}${projectLine ? ` in relation to ${projectLine}` : ''}. Please find this attached for your reference.
+${intro}
+We would be grateful if you could review the key issues raised below and provide your suggested responses. Please note this is not an exhaustive list — if you identify any additional issues, please add them at the bottom.
+
+────────────────────────────────────────
+
+${issueBlock}
+────────────────────────────────────────
+Additional points (please add any others not listed above):
+
+${blankBlock}
+────────────────────────────────────────
+
+Many thanks for your assistance.`;
+  }
+
+  function openInEmailClient() {
+    if (!emailForm.to_email?.trim()) { emailError = 'An email address is required.'; return; }
+    const body = buildEmailBody(emailRow, emailForm);
+    const mailto = `mailto:${encodeURIComponent(emailForm.to_email.trim())}?subject=${encodeURIComponent(emailForm.subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+  }
 
   onMount(() => { if (projectId) load(); });
   $: if (projectId) load();
@@ -528,6 +595,69 @@
   </div>
 {/if}
 
+<!-- ── Email compose panel ────────────────────────────────────────────────── -->
+{#if emailRow}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="ct-overlay" on:click|self={closeEmailCompose}>
+    <div class="ct-panel">
+
+        <div class="ct-panel-header">
+          <h3 class="ct-panel-title">
+            <i class="las la-envelope"></i> Email Consultant for Review
+          </h3>
+          <button class="btn btn-icon btn-ghost" on:click={closeEmailCompose}><i class="las la-times"></i></button>
+        </div>
+
+        <p class="ct-review-hint">
+          Opens a draft in your email client with the issues pre-filled. You can edit it before sending.
+        </p>
+
+        <div class="ct-review-form">
+          <div class="ct-field-row">
+            <div class="ct-field ct-field-grow">
+              <label class="ct-label">To <span class="ct-required">*</span></label>
+              <input type="email" class="form-input" bind:value={emailForm.to_email} placeholder="consultant@example.com" />
+            </div>
+            <div class="ct-field ct-field-grow">
+              <label class="ct-label">Name (optional)</label>
+              <input type="text" class="form-input" bind:value={emailForm.to_name} placeholder="e.g. Jane Smith" />
+            </div>
+          </div>
+          <div class="ct-field">
+            <label class="ct-label">Subject</label>
+            <input type="text" class="form-input" bind:value={emailForm.subject} />
+          </div>
+          <div class="ct-field">
+            <label class="ct-label">Additional note <span class="ct-label-hint">— optional, inserted before the issues</span></label>
+            <textarea class="form-input" bind:value={emailForm.intro_note} rows="2"
+              placeholder="e.g. This is particularly urgent given the response deadline of 14 July."></textarea>
+          </div>
+
+          <div class="ct-email-preview-box">
+            <p class="ct-email-preview-label"><i class="las la-info-circle"></i> The draft will include:</p>
+            <ul class="ct-email-preview-list">
+              <li>A brief intro referencing <strong>{emailRow.consultee_name || 'the consultee'}</strong> and the project</li>
+              <li>Each issue from the consultation summary listed with a response field</li>
+              <li>Three blank rows for the consultant to add any additional points</li>
+              <li>A note that the list is not exhaustive</li>
+            </ul>
+          </div>
+        </div>
+
+        {#if emailError}<div class="ct-error">{emailError}</div>{/if}
+
+        <div class="ct-review-footer">
+          <button class="btn btn-secondary btn-sm" on:click={closeEmailCompose}>Cancel</button>
+          <button class="btn btn-primary" on:click={openInEmailClient}>
+            <i class="las la-external-link-alt"></i> Open in Email Client
+          </button>
+        </div>
+
+    </div>
+  </div>
+{/if}
+
 <!-- ── Main tab content ───────────────────────────────────────────────────── -->
 <div class="ct-tab">
 
@@ -793,6 +923,10 @@
                 {:else}
                   <div class="ct-row-btns">
                     <button class="btn btn-icon btn-ghost" on:click={() => startEdit(r)} title="Edit"><i class="las la-pen"></i></button>
+                    <button class="btn btn-icon btn-ghost" on:click={() => openEmailCompose(r)} title="Email consultant for review"
+                      class:ct-btn-emailed={r.last_emailed_consultant_at}>
+                      <i class="las la-envelope"></i>
+                    </button>
                     <button class="btn btn-icon btn-danger-ghost" on:click={() => removeResponse(r.id)} title="Delete"><i class="las la-trash"></i></button>
                   </div>
                 {/if}
@@ -1334,6 +1468,34 @@
     align-items: center;
     gap: 0.75rem;
   }
+
+  /* ── Email compose panel ─────────────────────────────────────────────────── */
+  .ct-email-preview-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+  }
+  .ct-email-preview-label {
+    margin: 0 0 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ct-email-preview-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .ct-email-preview-list li { font-size: 0.78rem; color: #64748b; }
+
+  /* Envelope button tint when already emailed */
+  .ct-btn-emailed { color: #9333ea !important; }
 
   /* ── Spinner ─────────────────────────────────────────────────────────────── */
   .ct-spinner {

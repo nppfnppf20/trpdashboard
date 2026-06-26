@@ -62,6 +62,19 @@ export async function markConsultationExported(projectId) {
   return res.json(); // { last_exported_at, last_issued_to_client_at }
 }
 
+export async function emailConsultantForResponse(responseId, { to_email, to_name, subject, intro_note }) {
+  const res = await authFetch(`/api/consultation/responses/${responseId}/email-consultant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to_email, to_name, subject, intro_note }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to send email');
+  }
+  return res.json();
+}
+
 export async function markConsultationIssuedToClient(projectId) {
   const res = await authFetch(`/api/consultation/projects/${projectId}/issue-to-client`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to record issue to client');

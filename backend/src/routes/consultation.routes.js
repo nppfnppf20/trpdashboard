@@ -8,6 +8,7 @@ import {
   deleteResponse,
   markExported,
   markIssuedToClient,
+  emailConsultant,
 } from '../controllers/consultation.controller.js';
 
 const router = express.Router();
@@ -20,5 +21,6 @@ router.post('/projects/:projectId/export', markExported);
 router.post('/projects/:projectId/issue-to-client', markIssuedToClient);
 router.put('/responses/:responseId', updateResponse);
 router.delete('/responses/:responseId', deleteResponse);
+router.post('/responses/:responseId/email-consultant', emailConsultant);
 
 export default router;
