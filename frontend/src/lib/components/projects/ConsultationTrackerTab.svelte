@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import {
     getConsultationData,
     processConsultationDoc,
@@ -18,8 +19,58 @@
   // ── Data ──────────────────────────────────────────────────────────────────
   let responses = [];
   let meta = { last_exported_at: null, last_issued_to_client_at: null };
+  let availableConsultants = [];
   let loading = true;
   let error = null;
+
+  // ── Discipline list ───────────────────────────────────────────────────────
+  const DISCIPLINE_OPTIONS = [
+    'Agricultural Land and Soil',
+    'Arboriculture',
+    'Contaminated Land',
+    'Ecology',
+    'Fire Safety',
+    'Flood and Drainage',
+    'Glint & Glare',
+    'Heritage',
+    'Landscape and Visual',
+    'PR/Comms',
+    'Renewable Drawing Packs',
+    'Topographical',
+    'Transport',
+    'Other',
+  ].map(d => ({ id: d, label: d }));
+
+  // Parse comma-separated discipline string → array; join back on save
+  function parseDisciplines(str) {
+    if (!str) return [];
+    return str.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  function joinDisciplines(arr) {
+    return (arr || []).join(', ');
+  }
+
+  // ── Consultant picker ─────────────────────────────────────────────────────
+  let pickerOpen = null;  // 'edit' | 'review' | null
+  let pickerSearch = '';
+
+  $: consultantsByDiscipline = (() => {
+    const grouped = {};
+    for (const c of availableConsultants) {
+      const d = c.discipline || 'Other';
+      if (!grouped[d]) grouped[d] = [];
+      grouped[d].push(c);
+    }
+    return grouped;
+  })();
+
+  $: filteredConsultants = pickerSearch.trim()
+    ? availableConsultants.filter(c =>
+        c.organisation.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+        (c.discipline || '').toLowerCase().includes(pickerSearch.toLowerCase()) ||
+        (c.contact_name || '').toLowerCase().includes(pickerSearch.toLowerCase())
+      )
+    : null; // null = show grouped view
 
   // ── Upload panel state ────────────────────────────────────────────────────
   let showPanel = false;
@@ -34,7 +85,7 @@
   let fileInput;
 
   // ── Review form (post-LLM, pre-save) ─────────────────────────────────────
-  let reviewForm = { consultee_name: '', date_received: '', position: '', comments: '' };
+  let reviewForm = { consultee_name: '', date_received: '', position: '', comments: '', discipline: [], original_consultant: '', original_consultant_email: '' };
   let reviewSaving = false;
   let reviewSourceFile = null;
 
@@ -54,6 +105,7 @@
       const data = await getConsultationData(projectId);
       responses = data.responses;
       meta = data.meta;
+      availableConsultants = data.availableConsultants || [];
     } catch (err) {
       error = err.message;
     } finally {
@@ -128,10 +180,13 @@
       });
       reviewSourceFile = result.source_file_name || null;
       reviewForm = {
-        consultee_name: result.suggestion.consultee_name || '',
-        date_received:  result.suggestion.date_received  || '',
-        position:       result.suggestion.position       || '',
-        comments:       result.suggestion.comments       || '',
+        consultee_name:              result.suggestion.consultee_name || '',
+        date_received:               result.suggestion.date_received  || '',
+        position:                    result.suggestion.position       || '',
+        comments:                    result.suggestion.comments       || '',
+        discipline:                  [],
+        original_consultant:         '',
+        original_consultant_email:   '',
       };
       panelStep = 'review';
     } catch (err) {
@@ -146,11 +201,14 @@
     uploadError = null;
     try {
       const created = await createConsultationResponse(projectId, {
-        consultee_name:   reviewForm.consultee_name.trim(),
-        date_received:    reviewForm.date_received   || null,
-        position:         reviewForm.position?.trim()  || null,
-        comments:         reviewForm.comments?.trim()  || null,
-        source_file_name: reviewSourceFile,
+        consultee_name:            reviewForm.consultee_name.trim(),
+        date_received:             reviewForm.date_received   || null,
+        position:                  reviewForm.position?.trim()  || null,
+        comments:                  reviewForm.comments?.trim()  || null,
+        discipline:                joinDisciplines(reviewForm.discipline) || null,
+        original_consultant:       reviewForm.original_consultant?.trim() || null,
+        original_consultant_email: reviewForm.original_consultant_email?.trim() || null,
+        source_file_name:          reviewSourceFile,
       });
       responses = [...responses, created];
       showPanel = false;
@@ -165,27 +223,51 @@
 
   function startEdit(r) {
     editingId = r.id;
+    pickerOpen = null;
+    pickerSearch = '';
     editForm = {
-      consultee_name:      r.consultee_name ?? '',
-      date_received:       r.date_received ? r.date_received.split('T')[0] : '',
-      position:            r.position ?? '',
-      comments:            r.comments ?? '',
-      consultant_response: r.consultant_response ?? '',
-      response_issued:     r.response_issued ?? false,
-      follow_up:           r.follow_up ?? '',
+      consultee_name:            r.consultee_name ?? '',
+      date_received:             r.date_received ? r.date_received.split('T')[0] : '',
+      position:                  r.position ?? '',
+      comments:                  r.comments ?? '',
+      consultant_response:       r.consultant_response ?? '',
+      response_issued:           r.response_issued ?? false,
+      follow_up:                 r.follow_up ?? '',
+      discipline:                parseDisciplines(r.discipline),
+      original_consultant:       r.original_consultant ?? '',
+      original_consultant_email: r.original_consultant_email ?? '',
     };
+  }
+
+  function pickConsultant(c, target) {
+    const form = target === 'review' ? reviewForm : editForm;
+    form.discipline                  = c.discipline || '';
+    form.original_consultant         = c.organisation;
+    form.original_consultant_email   = c.contact_email || '';
+    if (target === 'review') reviewForm = { ...reviewForm };
+    else editForm = { ...editForm };
+    pickerOpen = null;
+    pickerSearch = '';
+  }
+
+  function openPicker(target) {
+    pickerOpen = target;
+    pickerSearch = '';
   }
 
   async function saveEdit(id) {
     try {
       const updated = await updateConsultationResponse(id, {
-        consultee_name:      editForm.consultee_name || null,
-        date_received:       editForm.date_received  || null,
-        position:            editForm.position       || null,
-        comments:            editForm.comments       || null,
-        consultant_response: editForm.consultant_response || null,
-        response_issued:     editForm.response_issued,
-        follow_up:           editForm.follow_up      || null,
+        consultee_name:            editForm.consultee_name || null,
+        date_received:             editForm.date_received  || null,
+        position:                  editForm.position       || null,
+        comments:                  editForm.comments       || null,
+        consultant_response:       editForm.consultant_response || null,
+        response_issued:           editForm.response_issued,
+        follow_up:                 editForm.follow_up      || null,
+        discipline:                joinDisciplines(editForm.discipline) || null,
+        original_consultant:       editForm.original_consultant  || null,
+        original_consultant_email: editForm.original_consultant_email  || null,
       });
       responses = responses.map(r => r.id === id ? updated : r);
       editingId = null;
@@ -248,7 +330,7 @@
     return `<h2>Consultation Tracker</h2>
 <p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
 <table style="border-collapse:collapse;width:100%;">
-  <thead><tr>${th('Consultee')}${th('Date Received')}${th('Position')}${th('Comments')}${th('Consultant Response')}${th('Response Issued')}${th('Follow Up')}</tr></thead>
+  <thead><tr>${th('Consultee')}${th('Date Received')}${th('Position')}${th('Comments')}${th('Our Response')}${th('Response Issued')}${th('Follow Up')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
   }
@@ -368,8 +450,66 @@
           </div>
           <div class="ct-field">
             <label class="ct-label">Comments</label>
-            <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.comments} rows="10"></textarea>
+            <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.comments} rows="8"></textarea>
           </div>
+          <div class="ct-field-row">
+            <div class="ct-field ct-field-grow">
+              <label class="ct-label">Discipline</label>
+              <MultiSelectDropdown
+                options={DISCIPLINE_OPTIONS}
+                bind:selected={reviewForm.discipline}
+                placeholder="Select disciplines…"
+              />
+            </div>
+            <div class="ct-field ct-field-grow">
+              <label class="ct-label">Original Consultant</label>
+              <div class="ct-consultant-row">
+                <input type="text" class="form-input" bind:value={reviewForm.original_consultant} placeholder="Name / organisation" />
+                {#if availableConsultants.length}
+                  <button class="btn btn-secondary btn-sm ct-pick-btn" type="button" on:click={() => openPicker('review')} title="Pick from project consultants">
+                    <i class="las la-address-book"></i>
+                  </button>
+                {/if}
+              </div>
+              {#if !availableConsultants.length}
+                <p class="ct-no-consultants">No consultants assigned to this project yet. Add them in Survey Management.</p>
+              {/if}
+            </div>
+            <div class="ct-field ct-field-grow">
+              <label class="ct-label">Email</label>
+              <input type="email" class="form-input" bind:value={reviewForm.original_consultant_email} placeholder="consultant@email.com" />
+            </div>
+          </div>
+
+          {#if pickerOpen === 'review'}
+            <div class="ct-picker">
+              <input class="form-input ct-picker-search" bind:value={pickerSearch} placeholder="Search by name or discipline…" autofocus />
+              <div class="ct-picker-list">
+                {#if filteredConsultants}
+                  {#each filteredConsultants as c (c.id)}
+                    <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'review')}>
+                      <span class="ct-picker-org">{c.organisation}</span>
+                      <span class="ct-picker-disc">{c.discipline || ''}</span>
+                      {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
+                    </button>
+                  {:else}
+                    <p class="ct-picker-empty">No matches</p>
+                  {/each}
+                {:else}
+                  {#each Object.entries(consultantsByDiscipline) as [disc, group]}
+                    <p class="ct-picker-group">{disc}</p>
+                    {#each group as c (c.id)}
+                      <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'review')}>
+                        <span class="ct-picker-org">{c.organisation}</span>
+                        {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
+                      </button>
+                    {/each}
+                  {/each}
+                {/if}
+              </div>
+              <button class="btn btn-ghost btn-sm ct-picker-close" type="button" on:click={() => pickerOpen = null}>Close</button>
+            </div>
+          {/if}
         </div>
 
         {#if uploadError}<div class="ct-error">{uploadError}</div>{/if}
@@ -439,88 +579,69 @@
             <th class="ct-th ct-th-date">Date</th>
             <th class="ct-th ct-th-pos">Position</th>
             <th class="ct-th ct-th-comments">Comments</th>
-            <th class="ct-th ct-th-response">Consultant Response</th>
+            <th class="ct-th ct-th-response">Our Response</th>
             <th class="ct-th ct-th-issued">Issued</th>
             <th class="ct-th ct-th-followup">Follow Up</th>
+            <th class="ct-th ct-th-discipline">Discipline</th>
+            <th class="ct-th ct-th-consultant">Original Consultant</th>
             <th class="ct-th ct-th-actions"></th>
           </tr>
         </thead>
         <tbody>
           {#each responses as r (r.id)}
-            {#if editingId === r.id}
-              <tr class="ct-edit-row">
-                <td colspan="8" class="ct-edit-cell">
-                  <div class="ct-edit-form">
-                    <div class="ct-field-row">
-                      <div class="ct-field ct-field-grow">
-                        <label class="ct-label">Consultee</label>
-                        <input type="text" class="form-input" bind:value={editForm.consultee_name} />
-                      </div>
-                      <div class="ct-field ct-field-date">
-                        <label class="ct-label">Date Received</label>
-                        <input type="date" class="form-input" bind:value={editForm.date_received} />
-                      </div>
-                      <div class="ct-field ct-field-pos">
-                        <label class="ct-label">Position</label>
-                        <select class="form-input" bind:value={editForm.position}>
-                          <option value="">— select —</option>
-                          <option>Objection</option>
-                          <option>Conditional Support</option>
-                          <option>Support</option>
-                          <option>No Comment</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div class="ct-field">
-                      <label class="ct-label">Comments</label>
-                      <textarea class="form-input ct-edit-comments" bind:value={editForm.comments} rows="6"></textarea>
-                    </div>
-                    <div class="ct-field-row">
-                      <div class="ct-field ct-field-grow">
-                        <label class="ct-label">Consultant Response</label>
-                        <textarea class="form-input" bind:value={editForm.consultant_response} rows="3" placeholder="Response to this consultee…"></textarea>
-                      </div>
-                      <div class="ct-field ct-field-grow">
-                        <label class="ct-label">Follow Up</label>
-                        <textarea class="form-input" bind:value={editForm.follow_up} rows="3" placeholder="Any follow-up required…"></textarea>
-                      </div>
-                    </div>
-                    <div class="ct-edit-footer">
-                      <label class="ct-check-label">
-                        <input type="checkbox" bind:checked={editForm.response_issued} />
-                        Response Issued
-                      </label>
-                      <div class="ct-edit-footer-btns">
-                        <button class="btn btn-secondary btn-sm" on:click={() => editingId = null}>Cancel</button>
-                        <button class="btn btn-primary btn-sm" on:click={() => saveEdit(r.id)}>Save</button>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            {:else}
-              <tr class="ct-row">
-                <td class="ct-td ct-td-consultee">
+            {@const editing = editingId === r.id}
+            <tr class="ct-row" class:ct-row-editing={editing}>
+
+              <!-- Consultee -->
+              <td class="ct-td ct-td-consultee">
+                {#if editing}
+                  <input type="text" class="form-input ct-cell-input" bind:value={editForm.consultee_name} />
+                {:else}
                   <span class="ct-consultee-name">{r.consultee_name}</span>
                   {#if r.source_file_name}
                     <span class="ct-source-file" title={r.source_file_name}><i class="las la-file-alt"></i></span>
                   {/if}
-                </td>
-                <td class="ct-td ct-td-date">{r.date_received ? formatDate(r.date_received) : '—'}</td>
-                <td class="ct-td ct-td-pos">
+                {/if}
+              </td>
+
+              <!-- Date -->
+              <td class="ct-td ct-td-date">
+                {#if editing}
+                  <input type="date" class="form-input ct-cell-input" bind:value={editForm.date_received} />
+                {:else}
+                  {r.date_received ? formatDate(r.date_received) : '—'}
+                {/if}
+              </td>
+
+              <!-- Position -->
+              <td class="ct-td ct-td-pos">
+                {#if editing}
+                  <select class="form-input ct-cell-input" bind:value={editForm.position}>
+                    <option value="">— select —</option>
+                    <option>Objection</option>
+                    <option>Conditional Support</option>
+                    <option>Support</option>
+                    <option>No Comment</option>
+                  </select>
+                {:else}
                   {#if r.position}
                     <span class="ct-pos-badge {positionClass(r.position)}">{r.position}</span>
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
-                </td>
-                <td class="ct-td ct-td-comments">
+                {/if}
+              </td>
+
+              <!-- Comments -->
+              <td class="ct-td ct-td-comments">
+                {#if editing}
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.comments} rows="4"></textarea>
+                {:else}
                   {#if r.comments}
                     {@const expanded = expandedIds.has(r.id)}
-                    {@const truncLimit = 280}
-                    {@const needsTrunc = r.comments.length > truncLimit}
+                    {@const needsTrunc = r.comments.length > 280}
                     <p class="ct-comments-text">
-                      {expanded || !needsTrunc ? r.comments : r.comments.slice(0, truncLimit) + '…'}
+                      {expanded || !needsTrunc ? r.comments : r.comments.slice(0, 280) + '…'}
                     </p>
                     {#if needsTrunc}
                       <button class="ct-expand-btn" on:click={() => toggleExpand(r.id)}>
@@ -530,15 +651,29 @@
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
-                </td>
-                <td class="ct-td ct-td-response">
+                {/if}
+              </td>
+
+              <!-- Our Response -->
+              <td class="ct-td ct-td-response">
+                {#if editing}
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.consultant_response} rows="3" placeholder="Response…"></textarea>
+                {:else}
                   {#if r.consultant_response}
                     <span class="ct-response-text">{r.consultant_response}</span>
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
-                </td>
-                <td class="ct-td ct-td-issued">
+                {/if}
+              </td>
+
+              <!-- Issued -->
+              <td class="ct-td ct-td-issued">
+                {#if editing}
+                  <label class="ct-check-label ct-check-center">
+                    <input type="checkbox" bind:checked={editForm.response_issued} />
+                  </label>
+                {:else}
                   <button
                     class="ct-issued-toggle"
                     class:ct-issued-yes={r.response_issued}
@@ -551,26 +686,119 @@
                       <i class="las la-circle"></i> No
                     {/if}
                   </button>
-                </td>
-                <td class="ct-td ct-td-followup">
+                {/if}
+              </td>
+
+              <!-- Follow Up -->
+              <td class="ct-td ct-td-followup">
+                {#if editing}
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.follow_up} rows="3" placeholder="Follow up…"></textarea>
+                {:else}
                   {#if r.follow_up}
                     <span class="ct-followup-text">{r.follow_up}</span>
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
-                </td>
-                <td class="ct-td ct-td-actions">
-                  <div class="ct-row-btns">
-                    <button class="btn btn-icon btn-ghost" on:click={() => startEdit(r)} title="Edit">
-                      <i class="las la-pen"></i>
-                    </button>
-                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeResponse(r.id)} title="Delete">
-                      <i class="las la-trash"></i>
-                    </button>
+                {/if}
+              </td>
+
+              <!-- Discipline -->
+              <td class="ct-td ct-td-discipline">
+                {#if editing}
+                  <div class="ct-disc-cell">
+                    <MultiSelectDropdown
+                      options={DISCIPLINE_OPTIONS}
+                      bind:selected={editForm.discipline}
+                      placeholder="Select…"
+                    />
                   </div>
-                </td>
-              </tr>
-            {/if}
+                {:else}
+                  {#if r.discipline}
+                    <div class="ct-disc-badges">
+                      {#each parseDisciplines(r.discipline) as d}
+                        <span class="ct-discipline-badge">{d}</span>
+                      {/each}
+                    </div>
+                  {:else}
+                    <span class="ct-cell-muted">—</span>
+                  {/if}
+                {/if}
+              </td>
+
+              <!-- Original Consultant -->
+              <td class="ct-td ct-td-consultant" class:ct-td-has-picker={editing && pickerOpen === 'edit'}>
+                {#if editing}
+                  <div class="ct-cell-consultant-edit">
+                    <div class="ct-consultant-row">
+                      <input type="text" class="form-input ct-cell-input" bind:value={editForm.original_consultant} placeholder="Name / org" />
+                      {#if availableConsultants.length}
+                        <button class="btn btn-secondary btn-sm ct-pick-btn" type="button" on:click={() => openPicker('edit')} title="Pick from project consultants">
+                          <i class="las la-address-book"></i>
+                        </button>
+                      {/if}
+                    </div>
+                    {#if !availableConsultants.length}
+                      <p class="ct-no-consultants">No consultants assigned to this project yet. Add them in Survey Management.</p>
+                    {/if}
+                    <input type="email" class="form-input ct-cell-input" bind:value={editForm.original_consultant_email} placeholder="email" style="margin-top:4px" />
+                    {#if pickerOpen === 'edit'}
+                      <div class="ct-picker ct-picker-cell">
+                        <input class="form-input ct-picker-search" bind:value={pickerSearch} placeholder="Search…" autofocus />
+                        <div class="ct-picker-list">
+                          {#if filteredConsultants}
+                            {#each filteredConsultants as c (c.id)}
+                              <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'edit')}>
+                                <span class="ct-picker-org">{c.organisation}</span>
+                                <span class="ct-picker-disc">{c.discipline || ''}</span>
+                                {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
+                              </button>
+                            {:else}
+                              <p class="ct-picker-empty">No matches</p>
+                            {/each}
+                          {:else}
+                            {#each Object.entries(consultantsByDiscipline) as [disc, group]}
+                              <p class="ct-picker-group">{disc}</p>
+                              {#each group as c (c.id)}
+                                <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'edit')}>
+                                  <span class="ct-picker-org">{c.organisation}</span>
+                                  {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
+                                </button>
+                              {/each}
+                            {/each}
+                          {/if}
+                        </div>
+                        <button class="btn btn-ghost btn-sm ct-picker-close" type="button" on:click={() => pickerOpen = null}>Close</button>
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
+                  {#if r.original_consultant}
+                    <span class="ct-orig-consultant-name">{r.original_consultant}</span>
+                    {#if r.original_consultant_email}
+                      <a class="ct-consultant-email" href="mailto:{r.original_consultant_email}">{r.original_consultant_email}</a>
+                    {/if}
+                  {:else}
+                    <span class="ct-cell-muted">—</span>
+                  {/if}
+                {/if}
+              </td>
+
+              <!-- Actions -->
+              <td class="ct-td ct-td-actions">
+                {#if editing}
+                  <div class="ct-row-btns">
+                    <button class="btn btn-icon btn-primary" on:click={() => saveEdit(r.id)} title="Save"><i class="las la-check"></i></button>
+                    <button class="btn btn-icon btn-ghost" on:click={() => { editingId = null; pickerOpen = null; }} title="Cancel"><i class="las la-times"></i></button>
+                  </div>
+                {:else}
+                  <div class="ct-row-btns">
+                    <button class="btn btn-icon btn-ghost" on:click={() => startEdit(r)} title="Edit"><i class="las la-pen"></i></button>
+                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeResponse(r.id)} title="Delete"><i class="las la-trash"></i></button>
+                  </div>
+                {/if}
+              </td>
+
+            </tr>
           {/each}
         </tbody>
       </table>
@@ -685,10 +913,12 @@
   .ct-th-consultee  { min-width: 140px; }
   .ct-th-date       { min-width: 100px; }
   .ct-th-pos        { min-width: 120px; }
-  .ct-th-comments   { min-width: 220px; max-width: 340px; }
-  .ct-th-response   { min-width: 160px; }
+  .ct-th-comments   { min-width: 220px; max-width: 320px; }
+  .ct-th-discipline { min-width: 100px; }
+  .ct-th-consultant { min-width: 140px; }
+  .ct-th-response   { min-width: 150px; }
   .ct-th-issued     { min-width: 80px; text-align: center; }
-  .ct-th-followup   { min-width: 140px; }
+  .ct-th-followup   { min-width: 130px; }
   .ct-th-actions    { width: 72px; }
 
   .ct-row:hover { background: #f8fafc; }
@@ -709,6 +939,156 @@
   }
   .ct-cell-muted { color: #94a3b8; font-size: 0.78rem; }
   .ct-response-text, .ct-followup-text { font-size: 0.78rem; white-space: pre-wrap; }
+
+  /* ── Discipline multi-select in table cell (compact overrides) ──────────── */
+  .ct-disc-cell :global(.msd-trigger) {
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    min-height: 0;
+  }
+  .ct-disc-cell :global(.msd-panel) {
+    font-size: 0.78rem;
+    min-width: 200px;
+  }
+  .ct-disc-cell :global(.msd-option) {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+  }
+  .ct-disc-cell :global(.msd-footer) {
+    padding: 4px 10px;
+  }
+  .ct-disc-cell :global(.msd-clear),
+  .ct-disc-cell :global(.msd-count) {
+    font-size: 0.72rem;
+  }
+  .ct-disc-cell :global(.msd-options) {
+    max-height: 180px;
+  }
+
+  /* ── Discipline badges (display mode) ───────────────────────────────────── */
+  .ct-disc-badges { display: flex; flex-wrap: wrap; gap: 3px; }
+  .ct-discipline-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 100px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    background: #e0f2fe;
+    color: #0369a1;
+    white-space: nowrap;
+  }
+
+  /* ── Consultant cell ─────────────────────────────────────────────────────── */
+  .ct-orig-consultant-name {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #1e293b;
+  }
+  .ct-consultant-email {
+    display: block;
+    font-size: 0.72rem;
+    color: #3b82f6;
+    text-decoration: none;
+    word-break: break-all;
+  }
+  .ct-consultant-email:hover { text-decoration: underline; }
+
+  /* ── Consultant picker row (input + book button) ─────────────────────────── */
+  .ct-consultant-row {
+    display: flex;
+    gap: 4px;
+    align-items: stretch;
+  }
+  .ct-consultant-row .form-input { flex: 1; }
+  .ct-pick-btn { flex-shrink: 0; }
+  .ct-no-consultants {
+    margin: 4px 0 0;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  /* ── Consultant picker dropdown ──────────────────────────────────────────── */
+  .ct-picker {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .ct-picker-cell {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 280px;
+    z-index: 200;
+  }
+  .ct-picker-search {
+    padding: 0.5rem;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    border-radius: 0;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .ct-picker-search:focus {
+    outline: none;
+    border-bottom-color: #9333ea;
+  }
+  .ct-picker-list {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .ct-picker-group {
+    margin: 0;
+    padding: 6px 14px 2px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .ct-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    width: 100%;
+    padding: 0.5rem 0.875rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background 0.1s;
+  }
+  .ct-picker-item:hover { background: #f8fafc; }
+  .ct-picker-org   { font-size: 0.875rem; font-weight: 500; color: #1e293b; }
+  .ct-picker-disc  { font-size: 0.75rem; color: #9333ea; }
+  .ct-picker-email { font-size: 0.75rem; color: #94a3b8; }
+  .ct-picker-empty { padding: 0.75rem 0.875rem; font-size: 0.875rem; color: #94a3b8; margin: 0; text-align: center; }
+  .ct-picker-close {
+    border-top: 1px solid #f1f5f9;
+    border-radius: 0;
+    font-size: 0.75rem;
+    color: #9333ea;
+    padding: 0.5rem;
+    background: #fafafa;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+  .ct-picker-close:hover { text-decoration: underline; }
 
   /* ── Position badges ────────────────────────────────────────────────────── */
   .ct-pos-badge {
@@ -796,27 +1176,36 @@
   }
   .ct-required { color: #ef4444; }
 
-  /* ── Inline edit row ────────────────────────────────────────────────────── */
-  .ct-edit-cell { padding: 0; }
-  .ct-edit-form {
-    padding: 1rem 1.25rem;
-    background: #f8fafc;
-    border-top: 2px solid #3b82f6;
+  /* ── Inline cell editing ─────────────────────────────────────────────────── */
+  .ct-row-editing { background: #f0f7ff; }
+  .ct-row-editing td { vertical-align: top; }
+
+  .ct-cell-input {
+    font-size: 0.78rem;
+    padding: 4px 6px;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  textarea.ct-cell-input { font-family: inherit; resize: vertical; }
+
+  /* Consultant cell in edit mode */
+  .ct-cell-consultant-edit {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    position: relative;
   }
-  .ct-edit-comments { font-family: inherit; font-size: 0.8rem; }
-  .ct-edit-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
+
+  /* Picker anchored below the consultant cell */
+  .ct-picker-cell {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 280px;
+    z-index: 200;
+    margin-top: 2px;
   }
-  .ct-edit-footer-btns {
-    display: flex;
-    gap: 0.5rem;
-  }
+
   .ct-check-label {
     display: flex;
     align-items: center;
@@ -826,6 +1215,7 @@
     color: #475569;
     cursor: pointer;
   }
+  .ct-check-center { justify-content: center; }
 
   /* ── Panel overlay ───────────────────────────────────────────────────────── */
   .ct-overlay {

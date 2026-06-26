@@ -54,6 +54,7 @@ export async function getConsultationData(req, res) {
       pool.query(
         `SELECT id, consultee_name, date_received, position, comments,
                 consultant_response, response_issued, follow_up,
+                discipline, original_consultant, original_consultant_email,
                 source_file_name, sort_order, created_at, updated_at
          FROM planning_applications.consultation_responses
          WHERE project_id = $1
@@ -67,9 +68,35 @@ export async function getConsultationData(req, res) {
         [projectId]
       ),
     ]);
+
+    // Consultants on this project (via quotes) — fail-safe: empty array if query errors
+    let availableConsultants = [];
+    try {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT ON (so.id)
+                so.id, so.organisation, so.discipline,
+                c.name  AS contact_name,
+                c.email AS contact_email
+         FROM admin_console.quotes q
+         JOIN public.projects p ON p.unique_id = q.project_id
+         JOIN admin_console.surveyor_organisations so ON so.id = q.surveyor_organisation_id
+         LEFT JOIN admin_console.contacts c
+           ON c.organisation_id = so.id
+          AND c.organisation_type = 'surveyor'
+          AND c.is_primary = true
+         WHERE p.id = $1
+         ORDER BY so.id, so.discipline, so.organisation`,
+        [projectId]
+      );
+      availableConsultants = rows;
+    } catch (consultantErr) {
+      console.error('consultation.getConsultationData: availableConsultants query failed (non-fatal):', consultantErr.message);
+    }
+
     res.json({
       responses,
       meta: meta[0] || { last_exported_at: null, last_issued_to_client_at: null },
+      availableConsultants,
     });
   } catch (err) {
     console.error('consultation.getConsultationData error:', err);
@@ -83,14 +110,15 @@ export async function getConsultationData(req, res) {
 
 export async function createResponse(req, res) {
   const { projectId } = req.params;
-  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, source_file_name } = req.body;
+  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
   if (!consultee_name?.trim()) return res.status(400).json({ error: 'consultee_name is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.consultation_responses
          (project_id, consultee_name, date_received, position, comments,
-          consultant_response, response_issued, follow_up, source_file_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          consultant_response, response_issued, follow_up, source_file_name,
+          discipline, original_consultant, original_consultant_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         projectId,
@@ -102,6 +130,9 @@ export async function createResponse(req, res) {
         response_issued === true || response_issued === 'true',
         follow_up?.trim() || null,
         source_file_name?.trim() || null,
+        discipline?.trim() || null,
+        original_consultant?.trim() || null,
+        original_consultant_email?.trim() || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -117,18 +148,21 @@ export async function createResponse(req, res) {
 
 export async function updateResponse(req, res) {
   const { responseId } = req.params;
-  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up } = req.body;
+  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, discipline, original_consultant, original_consultant_email } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.consultation_responses SET
-         consultee_name      = COALESCE($2, consultee_name),
-         date_received       = $3,
-         position            = $4,
-         comments            = $5,
-         consultant_response = $6,
-         response_issued     = COALESCE($7, response_issued),
-         follow_up           = $8,
-         updated_at          = NOW()
+         consultee_name               = COALESCE($2, consultee_name),
+         date_received                = $3,
+         position                     = $4,
+         comments                     = $5,
+         consultant_response          = $6,
+         response_issued              = COALESCE($7, response_issued),
+         follow_up                    = $8,
+         discipline                   = $9,
+         original_consultant          = $10,
+         original_consultant_email    = $11,
+         updated_at                   = NOW()
        WHERE id = $1 RETURNING *`,
       [
         responseId,
@@ -139,6 +173,9 @@ export async function updateResponse(req, res) {
         consultant_response?.trim() || null,
         response_issued != null ? (response_issued === true || response_issued === 'true') : null,
         follow_up?.trim() || null,
+        discipline?.trim() || null,
+        original_consultant?.trim() || null,
+        original_consultant_email?.trim() || null,
       ]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
