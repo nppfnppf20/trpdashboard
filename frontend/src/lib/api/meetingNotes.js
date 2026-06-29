@@ -97,3 +97,52 @@ export async function deleteMeetingAction(actionId) {
   if (!res.ok) throw new Error('Failed to delete action');
   return res.json();
 }
+
+export async function processInternalNote(meetingType, { file, text, fileName, userNotes, agenda, summaryType, customPrompt }) {
+  const formData = new FormData();
+  formData.append('meeting_type', meetingType);
+  if (userNotes) formData.append('user_notes', userNotes);
+  if (agenda) formData.append('agenda', agenda);
+  if (summaryType) formData.append('summary_type', summaryType);
+  if (customPrompt) formData.append('custom_prompt', customPrompt);
+
+  if (file) {
+    formData.append('file', file);
+  } else {
+    formData.append('text', text);
+    if (fileName) formData.append('file_name', fileName);
+  }
+
+  const res = await authFetch('/api/meeting-notes/internal/process', {
+    method: 'POST',
+    body: formData
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to process meeting note');
+  }
+  return res.json();
+}
+
+export async function getAllMeetingNotes(type = null) {
+  const url = type ? `/api/meeting-notes?type=${type}` : '/api/meeting-notes';
+  const res = await authFetch(url);
+  if (!res.ok) throw new Error('Failed to fetch meeting notes');
+  return res.json();
+}
+
+export async function getMeetingNoteActions(meetingId) {
+  const res = await authFetch(`/api/meeting-notes/${meetingId}/actions`);
+  if (!res.ok) throw new Error('Failed to fetch actions');
+  return res.json();
+}
+
+export async function createStandaloneAction(transcriptId, { action_text, owner, due_date, notes }) {
+  const res = await authFetch('/api/meeting-notes/actions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transcript_id: transcriptId, action_text, owner, due_date, notes })
+  });
+  if (!res.ok) throw new Error('Failed to create action');
+  return res.json();
+}

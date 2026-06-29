@@ -2,13 +2,17 @@ import express from 'express';
 import multer from 'multer';
 import {
   processMeetingNote,
+  processInternalMeetingNote,
   getMeetingNotes,
+  getAllMeetingNotes,
   getMeetingTranscript,
+  getMeetingNoteActions,
   updateMeetingSummary,
   updateMeetingNote,
   deleteMeetingNote,
   getMeetingActions,
   createMeetingAction,
+  createStandaloneAction,
   updateMeetingAction,
   deleteMeetingAction
 } from '../controllers/meetingNotes.controller.js';
@@ -16,7 +20,10 @@ import {
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-// More-specific routes first to avoid param shadowing
+// Literal-segment routes first to avoid param shadowing
+router.get('/', getAllMeetingNotes);
+router.post('/internal/process', upload.single('file'), processInternalMeetingNote);
+router.post('/actions', createStandaloneAction);
 router.post('/projects/:projectId/process', upload.single('file'), processMeetingNote);
 router.get('/projects/:projectId/actions', getMeetingActions);
 router.post('/projects/:projectId/actions', createMeetingAction);
@@ -24,6 +31,7 @@ router.get('/projects/:projectId', getMeetingNotes);
 router.put('/actions/:actionId', updateMeetingAction);
 router.delete('/actions/:actionId', deleteMeetingAction);
 router.get('/:meetingId/transcript', getMeetingTranscript);
+router.get('/:meetingId/actions', getMeetingNoteActions);
 router.patch('/:meetingId/summary', updateMeetingSummary);
 router.patch('/:meetingId', updateMeetingNote);
 router.delete('/:meetingId', deleteMeetingNote);

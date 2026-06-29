@@ -391,7 +391,7 @@
             on:click={handleProceed}
           >
             <i class="las la-check"></i>
-            Proceed — {totalEmails} email{totalEmails !== 1 ? 's' : ''}
+            Proceed ({totalEmails} email{totalEmails !== 1 ? 's' : ''})
           </button>
         </div>
       {/if}

@@ -91,8 +91,13 @@ function extractTag(text, tag) {
   return m ? m[1].trim() : null;
 }
 
-export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null) {
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project') {
   const systemPrompt = await buildSystemPrompt();
+
+  // CPD records always use detailed length unless the caller explicitly chose custom
+  if (meetingType === 'cpd' && summaryType === 'brief') {
+    summaryType = 'detailed';
+  }
 
   const parts = [];
 

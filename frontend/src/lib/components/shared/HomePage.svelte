@@ -42,6 +42,10 @@
     goto('/planning-application');
   }
 
+  function navigateToMeetingNotes() {
+    goto('/meeting-notes');
+  }
+
   function openAddProjectModal() {
     showAddProjectModal = true;
   }
@@ -250,6 +254,47 @@
 
           <button class="tool-button tool-button-blue" on:click|stopPropagation={navigateToPlanning}>
             Open Planning Application Tool
+            <i class="las la-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Meeting Notes Card -->
+      <div class="tool-card" on:click={navigateToMeetingNotes} on:keydown={(e) => e.key === 'Enter' && navigateToMeetingNotes()} role="button" tabindex="0">
+        <div class="card-content">
+          <div class="card-icon card-icon-purple">
+            <i class="las la-file-signature"></i>
+          </div>
+
+          <h2 class="card-title">
+            Meeting Notes
+          </h2>
+
+          <p class="card-description">
+            Process meeting transcripts and CPD records with AI-generated summaries and action tracking. Manage project meetings, internal team meetings, and CPD records in one place.
+          </p>
+
+          <div class="features-list">
+            <div class="feature-item">
+              <i class="las la-magic feature-icon-violet"></i>
+              <span>AI Summary &amp; Action Extraction</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-users-cog feature-icon-violet"></i>
+              <span>Internal &amp; Project Meetings</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-graduation-cap feature-icon-violet"></i>
+              <span>CPD Records</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-tasks feature-icon-violet"></i>
+              <span>Action Tracker</span>
+            </div>
+          </div>
+
+          <button class="tool-button tool-button-purple" on:click|stopPropagation={navigateToMeetingNotes}>
+            Open Meeting Notes
             <i class="las la-arrow-right"></i>
           </button>
         </div>
