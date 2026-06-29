@@ -171,7 +171,7 @@ export let selectedProject;
     const draft = pendingDrafts[index];
     selectedTemplate = draft.template;
     editorPreselectedSurveyors = draft.surveyors.flatMap(sv => {
-      const primaryContact = sv.contacts?.find(c => c.is_primary) ?? sv.contacts?.[0] ?? null;
+      const primaryContact = (sv._selectedContactId ? sv.contacts?.find(c => c.id === sv._selectedContactId) : null) ?? sv.contacts?.find(c => c.is_primary) ?? sv.contacts?.[0] ?? null;
       if (!primaryContact) return [];
       return [{
         surveyorId: sv.id,

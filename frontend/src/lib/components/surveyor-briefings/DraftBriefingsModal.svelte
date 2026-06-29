@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { analyseDisciplines, getTemplates, getSurveyorsForDiscipline } from '$lib/api/quoteRequests.js';
+  import SelectSurveyorModal from './SelectSurveyorModal.svelte';
 
   export let show = false;
   export let projectId;
@@ -16,7 +17,13 @@
 
   // Per-discipline: accepted/skipped + selected surveyor IDs
   let accepted = new Set();
-  let selectedSurveyors = {}; // { [discipline]: Set<id> }
+  let selectedSurveyors = {}; // { [discipline]: Set<surveyorId> }
+  let selectedContacts = {};  // { [discipline]: { [surveyorId]: contactId } }
+  let expandedOrgs = {};      // { [discipline]: Set<surveyorId> }
+
+  // Full surveyor list modal
+  let showFullSurveyorModal = false;
+  let surveyorModalForDiscipline = null;
 
   // Add-discipline UI
   let addDisciplineValue = '';
@@ -48,6 +55,8 @@
       for (const s of suggestions) {
         accepted = new Set([...accepted, s.discipline]);
         selectedSurveyors[s.discipline] = new Set();
+        selectedContacts[s.discipline] = {};
+        expandedOrgs[s.discipline] = new Set();
       }
     } catch (err) {
       error = err.message || 'Failed to analyse disciplines';
@@ -66,6 +75,8 @@
       suggestions = [...suggestions, newEntry];
       accepted = new Set([...accepted, addDisciplineValue]);
       selectedSurveyors[addDisciplineValue] = new Set();
+      selectedContacts[addDisciplineValue] = {};
+      expandedOrgs[addDisciplineValue] = new Set();
       addDisciplineValue = '';
     } catch (err) {
       console.error('Failed to add discipline:', err);
@@ -85,9 +96,53 @@
 
   function selectSurveyor(discipline, surveyorId) {
     const cur = new Set(selectedSurveyors[discipline] ?? []);
-    if (cur.has(surveyorId)) cur.delete(surveyorId);
-    else cur.add(surveyorId);
+    const exp = new Set(expandedOrgs[discipline] ?? []);
+    if (cur.has(surveyorId)) {
+      cur.delete(surveyorId);
+      exp.delete(surveyorId);
+    } else {
+      cur.add(surveyorId);
+      exp.add(surveyorId);
+      // Default to primary contact
+      const sv = suggestions.find(s => s.discipline === discipline)?.surveyors.find(sv => sv.id === surveyorId);
+      const primary = sv?.contacts?.find(c => c.is_primary) ?? sv?.contacts?.[0];
+      if (primary) {
+        selectedContacts = { ...selectedContacts, [discipline]: { ...(selectedContacts[discipline] ?? {}), [surveyorId]: primary.id } };
+      }
+    }
     selectedSurveyors = { ...selectedSurveyors, [discipline]: cur };
+    expandedOrgs = { ...expandedOrgs, [discipline]: exp };
+  }
+
+  function toggleExpandOrg(discipline, surveyorId) {
+    const exp = new Set(expandedOrgs[discipline] ?? []);
+    if (exp.has(surveyorId)) exp.delete(surveyorId); else exp.add(surveyorId);
+    expandedOrgs = { ...expandedOrgs, [discipline]: exp };
+  }
+
+  function setContact(discipline, surveyorId, contactId) {
+    selectedContacts = { ...selectedContacts, [discipline]: { ...(selectedContacts[discipline] ?? {}), [surveyorId]: contactId } };
+  }
+
+  function openFullSurveyorModal(discipline) {
+    surveyorModalForDiscipline = discipline;
+    showFullSurveyorModal = true;
+  }
+
+  function handleFullSurveyorSelect(event) {
+    const { surveyorId, surveyorOrganisation, discipline: svDiscipline, contactId, contactName, contactEmail } = event.detail;
+    const disc = surveyorModalForDiscipline;
+    // Add surveyor to discipline list if not already there
+    suggestions = suggestions.map(s => {
+      if (s.discipline !== disc || s.surveyors.some(sv => sv.id === surveyorId)) return s;
+      return { ...s, surveyors: [...s.surveyors, { id: surveyorId, organisation: surveyorOrganisation, discipline: svDiscipline, contacts: [{ id: contactId, name: contactName, email: contactEmail, is_primary: true }], avg_overall: null, location: null }] };
+    });
+    // Select it with the chosen contact
+    const cur = new Set(selectedSurveyors[disc] ?? []);
+    cur.add(surveyorId);
+    selectedSurveyors = { ...selectedSurveyors, [disc]: cur };
+    selectedContacts = { ...selectedContacts, [disc]: { ...(selectedContacts[disc] ?? {}), [surveyorId]: contactId } };
+    showFullSurveyorModal = false;
   }
 
   $: totalEmails = suggestions.reduce((sum, s) =>
@@ -99,7 +154,8 @@
     for (const s of acceptedWithSurveyors) {
       const selected = s.surveyors.filter(sv => selectedSurveyors[s.discipline]?.has(sv.id));
       for (const sv of selected) {
-        output.push({ discipline: s.discipline, template: s.template, surveyors: [sv] });
+        const contactId = selectedContacts[s.discipline]?.[sv.id];
+        output.push({ discipline: s.discipline, template: s.template, surveyors: [{ ...sv, _selectedContactId: contactId }] });
       }
     }
     dispatch('proceed', { drafts: output });
@@ -232,25 +288,61 @@
                     <div class="surveyors-list">
                       {#each suggestion.surveyors as surveyor}
                         {@const isSelected = selectedSurveyors[suggestion.discipline]?.has(surveyor.id) ?? false}
-                        <label class="surveyor-row" class:row-selected={isSelected}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            on:change={() => selectSurveyor(suggestion.discipline, surveyor.id)}
-                          />
-                          <div class="surveyor-details">
-                            <span class="surveyor-name">{surveyor.organisation}</span>
-                            {#if surveyor.location}
-                              <span class="surveyor-location">{surveyor.location}</span>
-                            {/if}
+                        {@const isExpanded = expandedOrgs[suggestion.discipline]?.has(surveyor.id) ?? false}
+                        {@const chosenContactId = selectedContacts[suggestion.discipline]?.[surveyor.id]}
+                        {@const chosenContact = surveyor.contacts?.find(c => c.id === chosenContactId)}
+                        <div class="surveyor-block" class:block-selected={isSelected}>
+                          <div class="surveyor-row">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              on:change={() => selectSurveyor(suggestion.discipline, surveyor.id)}
+                            />
+                            <div class="surveyor-details">
+                              <span class="surveyor-name">{surveyor.organisation}</span>
+                              <div class="surveyor-sub">
+                                {#if surveyor.location}<span class="surveyor-location">{surveyor.location}</span>{/if}
+                                {#if isSelected && chosenContact}
+                                  <span class="chosen-contact">{chosenContact.name}{chosenContact.email ? ` · ${chosenContact.email}` : ''}</span>
+                                {/if}
+                              </div>
+                            </div>
+                            <div class="surveyor-row-right">
+                              {#if surveyor.avg_overall != null}
+                                <span class="surveyor-rating">{starRating(surveyor.avg_overall)}</span>
+                              {/if}
+                              {#if surveyor.contacts?.length}
+                                <button class="btn-expand-contacts" on:click|stopPropagation={() => toggleExpandOrg(suggestion.discipline, surveyor.id)} title="{isExpanded ? 'Hide' : 'Show'} contacts">
+                                  <i class="las la-angle-{isExpanded ? 'up' : 'down'}"></i>
+                                </button>
+                              {/if}
+                            </div>
                           </div>
-                          <span class="surveyor-rating" title="Overall rating: {surveyor.avg_overall != null ? parseFloat(surveyor.avg_overall).toFixed(1) : '—'}">
-                            {starRating(surveyor.avg_overall)}
-                          </span>
-                        </label>
+                          {#if isExpanded && surveyor.contacts?.length}
+                            <div class="contacts-expand">
+                              {#each surveyor.contacts as contact}
+                                {@const isCurrent = chosenContactId === contact.id}
+                                <label class="contact-option" class:contact-current={isCurrent}>
+                                  <input type="radio"
+                                    name="contact-{suggestion.discipline}-{surveyor.id}"
+                                    checked={isCurrent}
+                                    on:change={() => setContact(suggestion.discipline, surveyor.id, contact.id)}
+                                  />
+                                  <div class="contact-option-info">
+                                    <span class="contact-option-name">{contact.name}{#if contact.is_primary} <span class="primary-tag">Primary</span>{/if}</span>
+                                    {#if contact.email}<span class="contact-option-email">{contact.email}</span>{/if}
+                                  </div>
+                                </label>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
                       {/each}
                     </div>
                   {/if}
+                  <button class="btn-open-full-list" on:click={() => openFullSurveyorModal(suggestion.discipline)}>
+                    <i class="las la-users"></i> Open full surveyor list
+                  </button>
                 </div>
               {/if}
             </div>
@@ -305,6 +397,13 @@
       {/if}
 
       <!-- Detail popup — sits inside modal-content so it clips to the modal boundary -->
+      <SelectSurveyorModal
+        show={showFullSurveyorModal}
+        selectedSurveyors={[]}
+        on:select={handleFullSurveyorSelect}
+        on:close={() => showFullSurveyorModal = false}
+      />
+
       {#if detailSuggestion}
         {@const ds = detailSuggestion}
         {@const dsAccepted = accepted.has(ds.discipline)}
@@ -632,26 +731,29 @@
     gap: 0.375rem;
   }
 
+  .surveyor-block {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    background: white;
+    transition: border-color 0.15s;
+  }
+
+  .surveyor-block.block-selected {
+    border-color: #6ee7b7;
+    background: #ecfdf5;
+  }
+
   .surveyor-row {
     display: flex;
     align-items: center;
     gap: 0.625rem;
     padding: 0.5rem 0.75rem;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.15s;
   }
 
-  .surveyor-row:hover {
-    border-color: #a7f3d0;
+  .surveyor-block:not(.block-selected) .surveyor-row:hover {
     background: #f0fdf4;
-  }
-
-  .surveyor-row.row-selected {
-    border-color: #6ee7b7;
-    background: #ecfdf5;
   }
 
   .surveyor-row input[type="checkbox"] {
@@ -676,17 +778,125 @@
     color: #1e293b;
   }
 
+  .surveyor-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1rem 0.5rem;
+    align-items: center;
+  }
+
   .surveyor-location {
     font-size: 0.7rem;
     color: #64748b;
+  }
+
+  .chosen-contact {
+    font-size: 0.7rem;
+    color: #059669;
+    font-weight: 500;
+  }
+
+  .surveyor-row-right {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
   }
 
   .surveyor-rating {
     font-size: 0.7rem;
     color: #f59e0b;
     letter-spacing: 0.05em;
+  }
+
+  .btn-expand-contacts {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    transition: color 0.1s;
+  }
+  .btn-expand-contacts:hover { color: #475569; }
+
+  .contacts-expand {
+    border-top: 1px solid #d1fae5;
+    padding: 0.4rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: rgba(255,255,255,0.7);
+  }
+
+  .contact-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: background 0.1s;
+  }
+  .contact-option:hover { background: #f0fdf4; }
+  .contact-option.contact-current { background: #dcfce7; }
+
+  .contact-option input[type="radio"] {
+    accent-color: #10b981;
     flex-shrink: 0;
   }
+
+  .contact-option-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
+    min-width: 0;
+  }
+
+  .contact-option-name {
+    font-weight: 500;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .primary-tag {
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: #dbeafe;
+    color: #1e40af;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+
+  .contact-option-email {
+    font-size: 0.7rem;
+    color: #64748b;
+  }
+
+  .btn-open-full-list {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.4rem;
+    padding: 0.35rem 0.6rem;
+    background: none;
+    border: 1px dashed #cbd5e1;
+    border-radius: 5px;
+    font-size: 0.775rem;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    align-self: flex-start;
+  }
+  .btn-open-full-list:hover { border-color: #7c3aed; color: #7c3aed; background: #faf5ff; }
 
   /* ── Footer ──────────────────────────────────────────────────────────────── */
   .modal-footer {
