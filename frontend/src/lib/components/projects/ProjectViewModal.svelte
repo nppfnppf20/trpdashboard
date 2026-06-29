@@ -1436,7 +1436,9 @@
           {:else if activeTab === 'meeting_notes'}
             <MeetingNotesTab project={projectData} />
           {:else if activeTab === 'consultation_tracker'}
-            <ConsultationTrackerTab project={projectData} />
+            <div class="ct-scroll-wrap">
+              <ConsultationTrackerTab project={projectData} />
+            </div>
           {:else if activeTab === 'completeness'}
             <ProjectCompletenessTab project={projectData} />
           {/if}
@@ -1617,6 +1619,12 @@
     flex-direction: column;
     overflow: hidden;
     width: 100%;
+  }
+
+  .ct-scroll-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .details-scroll {

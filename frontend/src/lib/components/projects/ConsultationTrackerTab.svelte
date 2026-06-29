@@ -5,6 +5,13 @@
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PublicCommentsTab from '$lib/components/projects/PublicCommentsTab.svelte';
+  import BatchImportModal from '$lib/components/projects/BatchImportModal.svelte';
+
+  let showBatchImport = false;
+
+  function handleBatchDone(e) {
+    responses = [...responses, ...e.detail.rows];
+  }
 
   // ── Sub-tab ───────────────────────────────────────────────────────────────
   let subTab = 'statutory';  // 'statutory' | 'public'
@@ -673,7 +680,10 @@
   <div class="ct-topbar">
     <div class="ct-topbar-left">
       <button class="btn btn-primary" on:click={openPanel}>
-        <i class="las la-plus"></i> Process Consultation Response
+        <i class="las la-plus"></i> Add Response
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showBatchImport = true}>
+        <i class="las la-layer-group"></i> Batch Import
       </button>
     </div>
     <div class="ct-topbar-right">
@@ -950,6 +960,15 @@
   {/if}
 
 </div>
+
+<BatchImportModal
+  bind:show={showBatchImport}
+  {projectId}
+  mode="statutory"
+  on:done={handleBatchDone}
+  on:close={() => showBatchImport = false}
+/>
+
 {/if}
 
 <style>

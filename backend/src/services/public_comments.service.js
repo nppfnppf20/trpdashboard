@@ -53,25 +53,26 @@ ${list}
 
 Provide two things:
 
-1. BULLET_SUMMARY — a bullet-point overview of the overall public response. Cover: overall sentiment balance, the most common concerns, any notable themes of support, key issues raised. 500 word maximum total. Keep each bullet to one short sentence. If there is more to say than fits, touch on every point briefly rather than dropping any — it is better to mention something in five words than to omit it.
+1. BULLET_SUMMARY — a bullet-point overview of the overall public response. Structure the bullets in two sections:
+   First, overall sentiment and broad observations (3-5 bullets).
+   Then, specific key issues raised, each with how many times it was mentioned — e.g. "Junction capacity at the site entrance — raised by 4 commenters." Include every distinct issue mentioned by at least 2 commenters (or all issues if fewer than 5 comments total).
+   500 word maximum total. Keep each bullet to one short sentence.
 
-2. THEMES — recurring themes mentioned by multiple commenters. For each theme provide a name, how many comments mention it, the overall sentiment of comments on that theme, and a one-sentence description.
+2. THEMES — broad recurring themes (e.g. "Traffic and Transport", "Ecology"). For each: name, count, sentiment, one-sentence description. Order by count descending. Only include themes mentioned by 2+ commenters (or all if fewer than 5 comments total).
 
 Return EXACTLY these XML delimiters:
 
 <BULLET_SUMMARY>
 - bullet one
 - bullet two
+- Key issue: Junction capacity at the site entrance — raised by 4 commenters.
 </BULLET_SUMMARY>
 
 <THEMES>
 [
-  { "theme": "Traffic and Transport", "count": 4, "sentiment": "negative", "summary": "Concerns about increased traffic on local roads and junction capacity." },
-  { "theme": "...", "count": N, "sentiment": "positive|negative|mixed|neutral", "summary": "..." }
+  { "theme": "Traffic and Transport", "count": 4, "sentiment": "negative", "summary": "Concerns about increased traffic on local roads and junction capacity." }
 ]
-</THEMES>
-
-Order themes by count descending. Only include themes mentioned by 2 or more commenters (or all themes if fewer than 5 comments total).`;
+</THEMES>`;
 
   const raw = await callClaude(prompt, 'Please analyse the comments above and return the XML response.', undefined, 2000);
 
@@ -82,13 +83,7 @@ Order themes by count descending. Only include themes mentioned by 2 or more com
     .filter(Boolean);
 
   let themes = [];
-  const themesRaw = parseXmlField(raw, 'THEMES') || '[]';
-  try {
-    themes = JSON.parse(themesRaw.trim());
-  } catch {
-    // best-effort parse
-    themes = [];
-  }
+  try { themes = JSON.parse(parseXmlField(raw, 'THEMES') || '[]'); } catch { themes = []; }
 
   return { bulletSummary, themes };
 }

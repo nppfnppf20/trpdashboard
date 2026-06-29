@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import '$lib/styles/buttons.css';
+  import BatchImportModal from '$lib/components/projects/BatchImportModal.svelte';
   import {
     getPublicCommentsData,
     processPublicCommentDoc,
@@ -178,6 +179,13 @@
     }
   }
 
+  // ── Batch import ─────────────────────────────────────────────────────────
+  let showBatchImport = false;
+
+  function handleBatchDone(e) {
+    comments = [...comments, ...e.detail.rows];
+  }
+
   // ── Analysis ──────────────────────────────────────────────────────────────
   let analysisRunning = false;
   let analysisError   = null;
@@ -294,7 +302,10 @@
   <div class="ct-topbar">
     <div class="ct-topbar-left">
       <button class="btn btn-primary" on:click={openPanel}>
-        <i class="las la-plus"></i> Add Public Comment
+        <i class="las la-plus"></i> Add Comment
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showBatchImport = true}>
+        <i class="las la-layer-group"></i> Batch Import
       </button>
     </div>
     <div class="ct-topbar-right">
@@ -493,6 +504,7 @@
             </div>
           {/if}
 
+
         </div>
       </div>
     {/if}
@@ -500,6 +512,14 @@
   {/if}
 
 </div>
+
+<BatchImportModal
+  bind:show={showBatchImport}
+  {projectId}
+  mode="public"
+  on:done={handleBatchDone}
+  on:close={() => showBatchImport = false}
+/>
 
 <style>
   /* ── Reuse ct- variables from parent scope via inheritance ────────────────
@@ -710,7 +730,6 @@
   .pct-analysis {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    overflow: hidden;
   }
   .pct-analysis-hd {
     display: flex;
@@ -789,6 +808,7 @@
   }
   .pct-theme-sentiment { font-size: 0.7rem; font-weight: 600; text-transform: capitalize; }
   .pct-theme-summary   { margin: 0; font-size: 0.76rem; color: #475569; line-height: 1.4; }
+
 
   /* ── Spinner ─────────────────────────────────────────────────────────────── */
   .ct-spinner {
