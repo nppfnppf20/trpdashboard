@@ -5,7 +5,6 @@
   import { getLookupOptions } from '$lib/api/lookups.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
-  import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
 
   export let isOpen = false;
   export let onClose = () => {};
@@ -48,6 +47,7 @@
     designations_on_site: '',
     relevant_nearby_designations: '',
     development_description: '',
+    about_applicant: '',
     status: '',
     case_officer_name: '',
     case_officer_email: '',
@@ -196,7 +196,8 @@
         expiry_of_1st_stat_period_date: formatDateForInput(project.expiry_of_1st_stat_period_date),
         eot_date: formatDateForInput(project.eot_date),
         six_months_appeal_window_date: formatDateForInput(project.six_months_appeal_window_date),
-        comments: project.comments || ''
+        comments: project.comments || '',
+        about_applicant: project.about_applicant || ''
       };
       projectIntId = project.id;
     } catch (error) {
@@ -335,7 +336,7 @@
       project_lead: '', project_manager: '', project_director: '',
       address: '', polygon_geojson: null, area: '', client: '',
       client_spv_name: '', sectors: [], sub_sectors: [],
-      designations_on_site: '', relevant_nearby_designations: '', development_description: '', status: '',
+      designations_on_site: '', relevant_nearby_designations: '', development_description: '', status: '', about_applicant: '',
       case_officer_name: '', case_officer_email: '', case_officer_phone_number: '',
       lpa_reference: '', submission_date: '', validation_date: '',
       lpa_consultation_end_date: '', committee_date: '', target_determination_date: '',
@@ -383,12 +384,6 @@
             on:click={() => activeTab = 'details'}
           >
             Project Details
-          </button>
-          <button
-            class="tab-button {activeTab === 'stages' ? 'active' : ''}"
-            on:click={() => activeTab = 'stages'}
-          >
-            Project Stages
           </button>
         </div>
 
@@ -475,6 +470,12 @@
                     <label for="address">Address</label>
                     <textarea id="address" bind:value={formData.address} rows="2"></textarea>
                   </div>
+
+                  <div class="form-group form-group--full">
+                    <label for="development_description">Description of Development</label>
+                    <textarea id="development_description" bind:value={formData.development_description} rows="3"
+                      placeholder="Enter the formal description of development as it will appear in the planning application..."></textarea>
+                  </div>
                 </div>
 
                 <!-- Team -->
@@ -548,11 +549,6 @@
                     <textarea id="relevant_nearby_designations" bind:value={formData.relevant_nearby_designations} rows="2"></textarea>
                   </div>
 
-                  <div class="form-group form-group--full">
-                    <label for="development_description">Description of Development</label>
-                    <textarea id="development_description" bind:value={formData.development_description} rows="3"
-                      placeholder="Enter the formal description of development as it will appear in the planning application..."></textarea>
-                  </div>
                 </div>
 
                 <!-- Case Officer -->
@@ -627,16 +623,17 @@
                 <h3 class="form-section-header">Additional</h3>
                 <div class="form-grid">
                   <div class="form-group form-group--full">
+                    <label for="about_applicant">About the Applicant</label>
+                    <textarea id="about_applicant" bind:value={formData.about_applicant} rows="4"
+                      placeholder="Background on the applicant, their organisation, track record, etc."></textarea>
+                  </div>
+                  <div class="form-group form-group--full">
                     <label for="comments">Comments</label>
                     <textarea id="comments" bind:value={formData.comments} rows="3"></textarea>
                   </div>
                 </div>
 
               </div>
-            </div>
-          {:else if activeTab === 'stages'}
-            <div style="padding: 1.5rem;">
-              <ProjectStagesBoard project={{ id: projectIntId, project_name: formData.project_name, project_type: formData.project_type }} />
             </div>
           {/if}
         </div>

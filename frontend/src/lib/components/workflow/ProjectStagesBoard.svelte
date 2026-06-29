@@ -3,6 +3,7 @@
   import ProjectStageCompletionModal from './ProjectStageCompletionModal.svelte';
   import ProjectStageAddIssueModal from './ProjectStageAddIssueModal.svelte';
   import ProjectStageEntryModal from './ProjectStageEntryModal.svelte';
+  import PopulateFromBriefingModal from '$lib/components/briefing-populate/PopulateFromBriefingModal.svelte';
   import {
     getStageBoard,
     initializeStageBoard,
@@ -33,6 +34,7 @@
   let showCompletionModal = false;
   let completionStage = null;
   let showAddIssueModal = false;
+  let showPopulateModal = false;
   let showEntryModal = false;
   let entryModalStage = null;
   let entryModalTrack = null;
@@ -429,6 +431,9 @@
     <button class="btn btn-secondary btn-sm" on:click={() => (showAddIssueModal = true)}>
       <i class="las la-plus"></i> Add issue row
     </button>
+    <button class="btn btn-secondary btn-sm" on:click={() => (showPopulateModal = true)}>
+      <i class="las la-magic"></i> Populate from Briefing
+    </button>
     {#if showStageColumns}
       <button class="btn btn-secondary btn-sm" on:click={() => { showAddStageForm = !showAddStageForm; newStageName = ''; }}>
         <i class="las la-plus"></i> Add stage
@@ -691,6 +696,13 @@
 {#if showAddIssueModal}
   <ProjectStageAddIssueModal on:add={handleAddIssue} on:close={() => (showAddIssueModal = false)} />
 {/if}
+
+<PopulateFromBriefingModal
+  show={showPopulateModal}
+  projectId={project?.id}
+  onClose={() => (showPopulateModal = false)}
+  onComplete={() => { showPopulateModal = false; loadBoard(); }}
+/>
 
 {#if showEntryModal && entryModalStage && entryModalTrack}
   <ProjectStageEntryModal

@@ -99,7 +99,7 @@ async function getAllProjects(req, res) {
               lpa_consultation_end_date, committee_date, target_determination_date,
               determined_date, expiry_of_1st_stat_period_date, eot_date,
               six_months_appeal_window_date, comments, development_type,
-              created_at, updated_at
+              about_applicant, created_at, updated_at
        FROM projects
        ORDER BY created_at DESC`
     );
@@ -194,7 +194,8 @@ async function updateProject(req, res) {
     expiry_of_1st_stat_period_date,
     eot_date,
     six_months_appeal_window_date,
-    comments
+    comments,
+    about_applicant
   } = req.body;
 
   try {
@@ -232,8 +233,9 @@ async function updateProject(req, res) {
            expiry_of_1st_stat_period_date = $28,
            eot_date = $29,
            six_months_appeal_window_date = $30,
-           comments = $31
-       WHERE id = $32
+           comments = $31,
+           about_applicant = $32
+       WHERE id = $33
        RETURNING *`,
       [
         project_id, project_name, lpaJson, project_lead, project_manager,
@@ -258,6 +260,7 @@ async function updateProject(req, res) {
         eot_date || null,
         six_months_appeal_window_date || null,
         comments || null,
+        about_applicant || null,
         id
       ]
     );

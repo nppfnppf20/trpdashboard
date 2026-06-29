@@ -1,5 +1,5 @@
 <script>
-  import { populateFromBriefing, saveSuggestion } from '$lib/api/briefingPopulate.js';
+  import { populateFromBriefing, getBriefingTranscripts, saveSuggestion } from '$lib/api/briefingPopulate.js';
   import BriefingSuggestionGroup from './BriefingSuggestionGroup.svelte';
 
   export let show = false;
@@ -7,28 +7,55 @@
   export let onClose;
   export let onComplete;
 
-  let loading = false;
+  // step: 'select' | 'loading' | 'results' | 'error'
+  let step = 'select';
+  let briefings = [];
+  let briefingsLoading = false;
+  let selectedBriefingId = null;
   let applying = false;
   let error = null;
-  let suggestions = []; // each item gets a _state: 'pending' | 'accepted' | 'skipped'
+  let suggestions = [];
 
   $: docSuggestions   = suggestions.filter(s => s.type === 'document_summary');
   $: issueSuggestions = suggestions.filter(s => s.type === 'issue_summary');
   $: acceptedCount    = suggestions.filter(s => s._state === 'accepted').length;
 
-  $: if (show) load();
+  $: if (show) init();
 
-  async function load() {
-    loading = true;
+  async function init() {
+    step = 'select';
+    error = null;
+    suggestions = [];
+    selectedBriefingId = null;
+    briefingsLoading = true;
+    try {
+      briefings = await getBriefingTranscripts(projectId);
+      if (briefings.length === 1) {
+        selectedBriefingId = briefings[0].id;
+        await loadSuggestions();
+      } else if (briefings.length === 0) {
+        error = 'No briefing transcripts found for this project.';
+        step = 'error';
+      }
+    } catch (e) {
+      error = e.message;
+      step = 'error';
+    } finally {
+      briefingsLoading = false;
+    }
+  }
+
+  async function loadSuggestions() {
+    step = 'loading';
     error = null;
     suggestions = [];
     try {
-      const { suggestions: raw } = await populateFromBriefing(projectId);
+      const { suggestions: raw } = await populateFromBriefing(projectId, selectedBriefingId);
       suggestions = raw.map(s => ({ ...s, _state: 'pending' }));
+      step = 'results';
     } catch (e) {
       error = e.message;
-    } finally {
-      loading = false;
+      step = 'error';
     }
   }
 
@@ -76,26 +103,45 @@
       </div>
 
       <div class="modal-body">
-        {#if loading}
+        {#if briefingsLoading || step === 'loading'}
           <div class="state-center">
             <div class="spinner"></div>
-            <p>Analysing briefing note…</p>
+            <p>{briefingsLoading ? 'Loading briefings…' : 'Analysing briefing note…'}</p>
           </div>
 
-        {:else if error}
+        {:else if step === 'error'}
           <div class="state-center error">
             <i class="las la-exclamation-triangle"></i>
             <p>{error}</p>
-            <button class="btn btn-secondary" on:click={load}>Try again</button>
+            <button class="btn btn-secondary" on:click={init}>Try again</button>
           </div>
 
-        {:else if suggestions.length === 0}
+        {:else if step === 'select' && briefings.length > 1}
+          <div class="briefing-select-step">
+            <p class="intro">This project has multiple briefing transcripts. Select which one to use.</p>
+            <div class="briefing-list">
+              {#each briefings as b}
+                <button
+                  class="briefing-option"
+                  class:briefing-option--active={selectedBriefingId === b.id}
+                  on:click={() => selectedBriefingId = b.id}
+                >
+                  <span class="briefing-option-title">{b.title || b.file_name || 'Untitled'}</span>
+                  <span class="briefing-option-date">
+                    {new Date(b.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                </button>
+              {/each}
+            </div>
+          </div>
+
+        {:else if step === 'results' && suggestions.length === 0}
           <div class="state-center">
             <i class="las la-search"></i>
             <p>No suggestions could be extracted from the briefing note.</p>
           </div>
 
-        {:else}
+        {:else if step === 'results'}
           <p class="intro">
             Review the suggested content below. Accept what looks right — skipped items will be ignored.
           </p>
@@ -117,7 +163,14 @@
         {/if}
       </div>
 
-      {#if !loading && suggestions.length > 0}
+      {#if step === 'select' && briefings.length > 1}
+        <div class="modal-footer">
+          <button class="btn btn-secondary" on:click={onClose}>Cancel</button>
+          <button class="btn btn-primary" disabled={!selectedBriefingId} on:click={loadSuggestions}>
+            <i class="las la-magic"></i> Analyse
+          </button>
+        </div>
+      {:else if step === 'results' && suggestions.length > 0}
         <div class="modal-footer">
           {#if error}
             <p class="footer-error">{error}</p>
@@ -293,4 +346,48 @@
 
   .btn-secondary { background: white; color: #64748b; border: 1px solid #cbd5e1; }
   .btn-secondary:hover:not(:disabled) { background: #f8fafc; }
+
+  .briefing-select-step { display: flex; flex-direction: column; gap: 1rem; }
+
+  .briefing-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .briefing-option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    width: 100%;
+    text-align: left;
+    padding: 0.625rem 0.875rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.85rem;
+    color: #374151;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s;
+  }
+
+  .briefing-option:last-child { border-bottom: none; }
+  .briefing-option:hover { background: #f8fafc; }
+
+  .briefing-option--active {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .briefing-option-title { font-weight: 500; }
+
+  .briefing-option-date {
+    font-size: 0.72rem;
+    color: #94a3b8;
+  }
+
+  .briefing-option--active .briefing-option-date { color: #93c5fd; }
 </style>

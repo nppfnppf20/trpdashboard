@@ -30,6 +30,18 @@
     { value: 'other',                label: 'Other' }
   ];
 
+  const KEY_DOC_TYPES = [
+    { value: 'briefing_transcript',  label: 'Briefing Transcript' },
+    { value: 'about_applicant',      label: 'About the Applicant' },
+    { value: 'proposed_development', label: 'Proposed Development' },
+    { value: 'site_surroundings',    label: 'Site and Surroundings' },
+    { value: 'pre_app',              label: 'Pre-app Response' },
+    { value: 'eia_response',         label: 'EIA Response' },
+    { value: 'sci',                  label: 'SCI' },
+  ];
+
+  $: missingDocTypes = KEY_DOC_TYPES.filter(t => !summaries.some(s => s.doc_type === t.value));
+
   const TYPE_COLOURS = {
     about_applicant:     '#0ea5e9',
     proposed_development: '#6366f1',
@@ -150,6 +162,11 @@
     } finally {
       listLoading = false;
     }
+  }
+
+  function uploadMissingType(typeValue) {
+    docType = typeValue;
+    mode = 'upload';
   }
 
   function setMode(m) {
@@ -394,6 +411,16 @@
       </button>
     </div>
   </div>
+
+  <!-- Missing docs indicator -->
+  {#if !listLoading && missingDocTypes.length > 0}
+    <div class="missing-docs">
+      <span class="missing-label"><i class="las la-exclamation-circle"></i> Missing:</span>
+      {#each missingDocTypes as t}
+        <button class="missing-pill" on:click={() => uploadMissingType(t.value)}>{t.label}</button>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Upload & Summarise Panel -->
   {#if mode === 'upload'}
@@ -782,6 +809,47 @@
   .btn-action.tertiary { background: #f3f0ff; color: #7c3aed; border: 1px solid #ddd6fe; }
   .btn-action.tertiary:hover { background: #ede9fe; }
   .btn-action.active { outline: 2px solid #9333ea; outline-offset: 2px; }
+
+  .missing-docs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    padding: 0.6rem 0.875rem;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    font-size: 0.8rem;
+  }
+
+  .missing-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: #92400e;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .missing-label i { color: #f59e0b; }
+
+  .missing-pill {
+    padding: 0.2rem 0.55rem;
+    background: white;
+    border: 1px solid #fcd34d;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #92400e;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s, border-color 0.1s;
+  }
+
+  .missing-pill:hover {
+    background: #fef3c7;
+    border-color: #f59e0b;
+  }
 
   .panel {
     background: #faf5ff;

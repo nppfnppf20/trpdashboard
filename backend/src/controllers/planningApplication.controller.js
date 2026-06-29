@@ -2156,7 +2156,7 @@ export async function getProjectCompleteness(req, res) {
       items: [{ key: 'planning_history', label: 'Planning history recorded', status: hasHistory ? 'complete' : 'missing', can_draft_from_briefing: false }]
     };
 
-    const sections = [fieldSection, docSection, issueSection, policySection, docLogSection, historySection];
+    const sections = [fieldSection, docSection, issueSection, policySection, historySection];
 
     const allItems = sections.flatMap(s => s.items);
     const completeCount = allItems.filter(i => i.status === 'complete').length;
@@ -2185,14 +2185,21 @@ function sectionStatus(items) {
 
 export async function populateFromBriefing(req, res) {
   const projectId = parseInt(req.params.projectId);
+  const briefingId = req.body?.briefing_id ? parseInt(req.body.briefing_id) : null;
   try {
     const [briefingResult, tracksResult] = await Promise.all([
-      pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-         ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      ),
+      briefingId
+        ? pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
+            [briefingId, projectId]
+          )
+        : pool.query(
+            `SELECT summary_html FROM planning_applications.document_summaries
+             WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+             ORDER BY created_at DESC LIMIT 1`,
+            [projectId]
+          ),
       pool.query(
         `SELECT id, label, discipline, summary FROM admin_console.project_issue_tracks
          WHERE project_id = $1 AND is_active = TRUE ORDER BY sort_order, id`,

@@ -13,6 +13,7 @@
   import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import ConsultationTrackerTab from '$lib/components/projects/ConsultationTrackerTab.svelte';
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
+  import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
 
@@ -57,6 +58,8 @@
   let loadingSavedCheck = false;
   let savedCheckInfo = null;
   let selectedConflict = null;
+
+  let showMeetingGuide = false;
 
   // Surveyor management state
   let stats = null;
@@ -623,6 +626,11 @@
           {:else if activeTab === 'details'}
             <!-- Project Details Tab -->
             <div class="details-section">
+              <div class="details-tab-header">
+                <button class="details-guide-btn" on:click={() => showMeetingGuide = true}>
+                  <i class="las la-clipboard-list"></i> Meeting Guide
+                </button>
+              </div>
               <div class="details-scroll">
 
                 <!-- Project Overview -->
@@ -655,6 +663,10 @@
                   <div class="detail-group">
                     <label>Area</label>
                     <div class="detail-value">{projectData.area || '-'}</div>
+                  </div>
+                  <div class="detail-group detail-group--full">
+                    <label>Description of Development</label>
+                    <div class="detail-value">{projectData.development_description || '-'}</div>
                   </div>
                 </div>
 
@@ -765,6 +777,10 @@
                 <!-- Additional -->
                 <h3 class="detail-section-header">Additional</h3>
                 <div class="detail-grid">
+                  <div class="detail-group detail-group--full">
+                    <label>About the Applicant</label>
+                    <div class="detail-value">{projectData.about_applicant || '-'}</div>
+                  </div>
                   <div class="detail-group detail-group--full">
                     <label>Comments</label>
                     <div class="detail-value">{projectData.comments || '-'}</div>
@@ -1453,9 +1469,16 @@
 {/if}
 
 <!-- Conflict Detail Popup -->
-<ConflictDetailPopup 
-  conflict={selectedConflict} 
+<ConflictDetailPopup
+  conflict={selectedConflict}
   onClose={closeConflictDetails}
+/>
+
+<MeetingGuideModal
+  show={showMeetingGuide}
+  project={projectData}
+  issueTracks={[]}
+  onClose={() => showMeetingGuide = false}
 />
 
 <style>
@@ -1619,6 +1642,34 @@
     flex-direction: column;
     overflow: hidden;
     width: 100%;
+  }
+
+  .details-tab-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.75rem 1.25rem 0;
+    flex-shrink: 0;
+  }
+
+  .details-guide-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.875rem;
+    background: white;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #475569;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .details-guide-btn:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
   }
 
   .ct-scroll-wrap {

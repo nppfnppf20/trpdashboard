@@ -6,9 +6,18 @@ export async function getProjectCompleteness(projectId) {
   return res.json();
 }
 
-export async function populateFromBriefing(projectId) {
+export async function getBriefingTranscripts(projectId) {
+  const res = await authFetch(`/api/planning-application/projects/${projectId}/document-summaries`);
+  if (!res.ok) throw new Error('Failed to fetch document summaries');
+  const all = await res.json();
+  return all.filter(s => s.doc_type === 'briefing_transcript');
+}
+
+export async function populateFromBriefing(projectId, briefingId = null) {
   const res = await authFetch(`/api/planning-application/projects/${projectId}/populate-from-briefing`, {
-    method: 'POST'
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(briefingId ? { briefing_id: briefingId } : {})
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
