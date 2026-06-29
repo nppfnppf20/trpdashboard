@@ -50,6 +50,43 @@ function extractTag(text, tag) {
   return m ? m[1].trim() : null;
 }
 
+export async function summariseConsultation(responses) {
+  const outstanding = responses.filter(r => {
+    const p = (r.position || '').toLowerCase();
+    return p !== 'support' && p !== 'no comment';
+  });
+  const noIssue = responses.filter(r => {
+    const p = (r.position || '').toLowerCase();
+    return p === 'support' || p === 'no comment';
+  });
+
+  const outstandingList = outstanding.map(r =>
+    `- ${r.consultee_name || 'Unknown'} [${r.position || 'Unknown position'}]${r.status ? ` (Status: ${r.status})` : ''}: ${r.comments || 'No detail recorded'}`
+  ).join('\n');
+
+  const noIssueList = noIssue.map(r =>
+    `- ${r.consultee_name || 'Unknown'} (${r.position || 'No Comment'})`
+  ).join('\n');
+
+  const prompt = `You are a planning consultant assistant. Summarise the current state of statutory consultation responses for a planning application.
+
+RESPONSES WITH OUTSTANDING ISSUES (objections, conditional support, or unresolved positions):
+${outstandingList || 'None'}
+
+RESPONSES WITH NO OUTSTANDING ISSUES (support or no comment):
+${noIssueList || 'None'}
+
+Produce a concise bullet-point summary for the planning team covering:
+1. The key outstanding issues that need to be addressed, grouped by theme where there are multiple (e.g. several consultees raising highway concerns). For each bullet, name the consultee(s) and state the issue clearly but briefly.
+2. Note where any outstanding items are already closed out or in progress if that status is recorded.
+3. At the end, a short final bullet listing respondees who raised no objection (support or no comment) — just their names.
+
+Keep the whole summary under 400 words. Plain bullet points only — no headers, no bold, no markdown.`;
+
+  const raw = await callClaude(prompt, 'Please summarise the consultation responses as instructed.', undefined, 1500);
+  return raw.trim();
+}
+
 export async function processConsultationResponse(text, fileName, developmentType = null, userNotes = null) {
   const systemPrompt = await buildSystemPrompt(developmentType);
 

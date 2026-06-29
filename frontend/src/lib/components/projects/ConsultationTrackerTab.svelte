@@ -9,12 +9,60 @@
 
   let showBatchImport = false;
 
+  function positionPriority(pos) {
+    const p = (pos || '').toLowerCase();
+    if (p === 'objection')           return 1;
+    if (p === 'conditional support') return 2;
+    if (p === 'support')             return 4;
+    if (p === 'no comment')          return 5;
+    return 3;
+  }
+
+  function sortResponses(arr) {
+    return [...arr].sort((a, b) => {
+      const pd = positionPriority(a.position) - positionPriority(b.position);
+      if (pd !== 0) return pd;
+      const da = a.date_received || '9999';
+      const db_ = b.date_received || '9999';
+      if (da !== db_) return da < db_ ? -1 : 1;
+      return a.id - b.id;
+    });
+  }
+
   function handleBatchDone(e) {
-    responses = [...responses, ...e.detail.rows];
+    responses = sortResponses([...responses, ...e.detail.rows]);
   }
 
   // ── Sub-tab ───────────────────────────────────────────────────────────────
   let subTab = 'statutory';  // 'statutory' | 'public'
+
+  // ── Top scrollbar mirror ──────────────────────────────────────────────────
+  let scrollTopEl, tableWrapperEl, tableEl;
+  let _mirrorCleanup = null;
+
+  $: if (scrollTopEl && tableWrapperEl && tableEl) {
+    if (_mirrorCleanup) { _mirrorCleanup(); _mirrorCleanup = null; }
+
+    const inner = scrollTopEl.querySelector('.ct-scroll-top-inner');
+    const updateWidth = () => { inner.style.width = tableEl.scrollWidth + 'px'; };
+    updateWidth();
+
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(tableEl);
+
+    let _syncing = false;
+    const syncFromTop     = () => { if (_syncing) return; _syncing = true; tableWrapperEl.scrollLeft = scrollTopEl.scrollLeft;  _syncing = false; };
+    const syncFromWrapper = () => { if (_syncing) return; _syncing = true; scrollTopEl.scrollLeft    = tableWrapperEl.scrollLeft; _syncing = false; };
+
+    scrollTopEl.addEventListener('scroll', syncFromTop);
+    tableWrapperEl.addEventListener('scroll', syncFromWrapper);
+
+    _mirrorCleanup = () => {
+      ro.disconnect();
+      scrollTopEl.removeEventListener('scroll', syncFromTop);
+      tableWrapperEl.removeEventListener('scroll', syncFromWrapper);
+    };
+  }
   import {
     getConsultationData,
     processConsultationDoc,
@@ -24,6 +72,7 @@
     markConsultationExported,
     markConsultationIssuedToClient,
     emailConsultantForResponse,
+    summariseConsultationResponses,
   } from '$lib/api/consultation.js';
 
   export let project;
@@ -292,7 +341,7 @@
         original_consultant_email: reviewForm.original_consultant_email?.trim() || null,
         source_file_name:          reviewSourceFile,
       });
-      responses = [...responses, created];
+      responses = sortResponses([...responses, created]);
       showPanel = false;
     } catch (err) {
       uploadError = err.message;
@@ -315,6 +364,7 @@
       consultant_response:       r.consultant_response ?? '',
       response_issued:           r.response_issued ?? false,
       follow_up:                 r.follow_up ?? '',
+      status:                    r.status ?? 'In Progress',
       discipline:                parseDisciplines(r.discipline),
       original_consultant:       r.original_consultant ?? '',
       original_consultant_email: r.original_consultant_email ?? '',
@@ -347,14 +397,44 @@
         consultant_response:       editForm.consultant_response || null,
         response_issued:           editForm.response_issued,
         follow_up:                 editForm.follow_up      || null,
+        status:                    editForm.status         || 'Open',
         discipline:                joinDisciplines(editForm.discipline) || null,
         original_consultant:       editForm.original_consultant  || null,
         original_consultant_email: editForm.original_consultant_email  || null,
       });
-      responses = responses.map(r => r.id === id ? updated : r);
+      responses = sortResponses(responses.map(r => r.id === id ? updated : r));
       editingId = null;
     } catch (err) {
       alert(err.message);
+    }
+  }
+
+  // ── Status inline update ──────────────────────────────────────────────────
+  const STATUS_OPTIONS = ['In Progress', 'Closed Out'];
+
+  async function updateStatus(r, newStatus) {
+    try {
+      const updated = await updateConsultationResponse(r.id, { status: newStatus });
+      responses = responses.map(x => x.id === r.id ? updated : x);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  // ── Summarise ─────────────────────────────────────────────────────────────
+  let summaryText      = null;
+  let summaryRunning   = false;
+  let summaryError     = null;
+
+  async function doSummarise() {
+    summaryRunning = true; summaryError = null;
+    try {
+      const data = await summariseConsultationResponses(projectId);
+      summaryText = data.summary;
+    } catch (err) {
+      summaryError = err.message;
+    } finally {
+      summaryRunning = false;
     }
   }
 
@@ -695,6 +775,13 @@
           <span class="ct-meta-badge ct-meta-badge-issued"><i class="las la-paper-plane"></i> Issued {formatDateTime(meta.last_issued_to_client_at)}</span>
         {/if}
       </div>
+      <button class="btn btn-secondary btn-sm" on:click={doSummarise} disabled={summaryRunning || !responses.length}>
+        {#if summaryRunning}
+          <span class="ct-spinner ct-spinner-sm"></span> Summarising…
+        {:else}
+          <i class="las la-magic"></i> {summaryText ? 'Re-run Summary' : 'Summarise'}
+        {/if}
+      </button>
       <button class="btn btn-secondary btn-sm" on:click={handleExport} disabled={!responses.length}>
         <i class="las la-file-word"></i> Export
       </button>
@@ -719,8 +806,9 @@
   {:else}
 
     <!-- Table -->
-    <div class="ct-table-wrapper">
-      <table class="ct-table">
+    <div class="ct-scroll-top" bind:this={scrollTopEl}><div class="ct-scroll-top-inner"></div></div>
+    <div class="ct-table-wrapper" bind:this={tableWrapperEl}>
+      <table class="ct-table" bind:this={tableEl}>
         <thead>
           <tr>
             <th class="ct-th ct-th-consultee">Consultee</th>
@@ -730,6 +818,7 @@
             <th class="ct-th ct-th-response">Our Response</th>
             <th class="ct-th ct-th-issued">Issued</th>
             <th class="ct-th ct-th-followup">Follow Up</th>
+            <th class="ct-th ct-th-status">Status</th>
             <th class="ct-th ct-th-discipline">Discipline</th>
             <th class="ct-th ct-th-consultant">Original Consultant</th>
             <th class="ct-th ct-th-actions"></th>
@@ -738,7 +827,7 @@
         <tbody>
           {#each responses as r (r.id)}
             {@const editing = editingId === r.id}
-            <tr class="ct-row" class:ct-row-editing={editing}>
+            <tr class="ct-row" class:ct-row-editing={editing} class:ct-row-closed={r.status === 'Closed Out'}>
 
               <!-- Consultee -->
               <td class="ct-td ct-td-consultee">
@@ -850,6 +939,21 @@
                 {/if}
               </td>
 
+              <!-- Status -->
+              <td class="ct-td ct-td-status">
+                <select
+                  class="form-input ct-status-select"
+                  class:ct-status-inprogress={!r.status || r.status === 'In Progress'}
+                  class:ct-status-closed={r.status === 'Closed Out'}
+                  value={editing ? editForm.status : (r.status || 'In Progress')}
+                  on:change={e => editing
+                    ? (editForm.status = e.target.value)
+                    : updateStatus(r, e.target.value)}
+                >
+                  {#each STATUS_OPTIONS as s}<option value={s}>{s}</option>{/each}
+                </select>
+              </td>
+
               <!-- Discipline -->
               <td class="ct-td ct-td-discipline">
                 {#if editing}
@@ -957,6 +1061,26 @@
     </div>
 
     <p class="ct-count">{responses.length} consultee response{responses.length !== 1 ? 's' : ''}</p>
+  {/if}
+
+  <!-- ── Summary panel ───────────────────────────────────────────────────── -->
+  {#if summaryError}
+    <div class="ct-upload-error">{summaryError}</div>
+  {/if}
+
+  {#if summaryText}
+    <div class="ct-summary-panel">
+      <div class="ct-summary-hd">
+        <span class="ct-summary-label"><i class="las la-magic"></i> Outstanding Issues Summary</span>
+      </div>
+      <div class="ct-summary-body">
+        <ul class="ct-summary-bullets">
+          {#each summaryText.split('\n').map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean) as bullet}
+            <li>{bullet}</li>
+          {/each}
+        </ul>
+      </div>
+    </div>
   {/if}
 
 </div>
@@ -1077,6 +1201,13 @@
   }
 
   /* ── Table ───────────────────────────────────────────────────────────────── */
+  .ct-scroll-top {
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 12px;
+  }
+  .ct-scroll-top-inner { height: 1px; }
+
   .ct-table-wrapper {
     overflow-x: auto;
     border: 1px solid #e2e8f0;
@@ -1084,6 +1215,7 @@
   }
   .ct-table {
     width: 100%;
+    min-width: 1400px;
     border-collapse: collapse;
     font-size: 0.8rem;
   }
@@ -1108,10 +1240,61 @@
   .ct-th-response   { min-width: 150px; }
   .ct-th-issued     { min-width: 80px; text-align: center; }
   .ct-th-followup   { min-width: 130px; }
+  .ct-th-status     { min-width: 120px; }
   .ct-th-actions    { width: 72px; }
 
   .ct-row:hover { background: #f8fafc; }
+  .ct-row-closed td { background: #f0fdf4 !important; }
+  .ct-row-closed:hover td { background: #dcfce7 !important; }
   .ct-row:not(:last-child) td { border-bottom: 1px solid #f1f5f9; }
+
+  /* Status dropdown */
+  .ct-td-status { vertical-align: middle; }
+  .ct-status-select {
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    width: 100%;
+  }
+  .ct-status-inprogress { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
+  .ct-status-closed     { background: #dcfce7; color: #16a34a; border-color: #86efac; }
+
+  /* Summary panel */
+  .ct-summary-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ct-summary-hd {
+    display: flex;
+    align-items: center;
+    padding: 0.625rem 1rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .ct-summary-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+  .ct-summary-body { padding: 0.875rem 1rem; }
+  .ct-summary-bullets {
+    margin: 0;
+    padding-left: 1.125rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .ct-summary-bullets li { font-size: 0.8rem; color: #334155; line-height: 1.55; }
 
   .ct-td {
     padding: 0.65rem 0.75rem;

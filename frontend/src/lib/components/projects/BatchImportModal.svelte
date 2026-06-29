@@ -13,8 +13,9 @@
   // ── Mode config ───────────────────────────────────────────────────────────
   $: cfg = mode === 'statutory' ? {
     title:           'Batch Import — Statutory Consultees',
-    addLabel:        'Process Consultation Response',
-    processDoc:      (file) => processConsultationDoc(projectId, { file }),
+    processItem:     (item) => item.type === 'text'
+                       ? processConsultationDoc(projectId, { text: item.text, fileName: item.label })
+                       : processConsultationDoc(projectId, { file: item.file }),
     saveRow:         (fields) => createConsultationResponse(projectId, fields),
     positionOptions: ['Objection', 'Conditional Support', 'Support', 'No Comment'],
     nameKey:         'consultee_name',
@@ -24,8 +25,9 @@
     extraFields:     [],
   } : {
     title:           'Batch Import — Public Comments',
-    addLabel:        'Add Public Comment',
-    processDoc:      (file) => processPublicCommentDoc(projectId, { file }),
+    processItem:     (item) => item.type === 'text'
+                       ? processPublicCommentDoc(projectId, { text: item.text, fileName: item.label })
+                       : processPublicCommentDoc(projectId, { file: item.file }),
     saveRow:         (fields) => createPublicComment(projectId, fields),
     positionOptions: ['Support', 'Object', 'Neutral', 'Mixed'],
     nameKey:         'commenter_name',
@@ -36,24 +38,32 @@
   };
 
   // ── State ─────────────────────────────────────────────────────────────────
-  let phase = 'upload';   // 'upload' | 'processing' | 'review'
-  let queue = [];          // { id, file, status, fields, error, accepted }
-  let dragOver = false;
-  let saving = false;
+  let phase      = 'upload';  // 'upload' | 'processing' | 'review'
+  let uploadTab  = 'files';   // 'files' | 'paste'
+  let queue      = [];        // { id, type, file?, text?, label, status, fields, error, accepted }
+  let dragOver   = false;
+  let saving     = false;
   let expandedIds = new Set();
+
+  // Paste form
+  let pasteText  = '';
+  let pasteLabel = '';
+  let pasteCount = 0;
 
   $: totalCount    = queue.length;
   $: doneCount     = queue.filter(q => q.status === 'done').length;
   $: errorCount    = queue.filter(q => q.status === 'error').length;
   $: pendingCount  = queue.filter(q => q.status === 'pending').length;
   $: acceptedCount = queue.filter(q => q.status === 'done' && q.accepted).length;
-  $: allDone       = totalCount > 0 && pendingCount === 0 && queue.every(q => q.status !== 'processing');
 
-  // ── Upload ────────────────────────────────────────────────────────────────
+  // ── Upload: files ─────────────────────────────────────────────────────────
   function addFiles(files) {
     const items = Array.from(files).map((file, i) => ({
       id:       Date.now() + i,
+      type:     'file',
       file,
+      text:     null,
+      label:    file.name,
       status:   'pending',
       fields:   {},
       error:    null,
@@ -69,7 +79,27 @@
   function handleDragOver(e) { e.preventDefault(); dragOver = true; }
   function handleDragLeave()  { dragOver = false; }
   function handleFileInput(e) { if (e.target.files.length) addFiles(e.target.files); }
-  function removeItem(id)     { queue = queue.filter(q => q.id !== id); }
+
+  // ── Upload: paste text ────────────────────────────────────────────────────
+  function addTextItem() {
+    if (!pasteText.trim()) return;
+    pasteCount += 1;
+    queue = [...queue, {
+      id:       Date.now(),
+      type:     'text',
+      file:     null,
+      text:     pasteText.trim(),
+      label:    pasteLabel.trim() || `Pasted text ${pasteCount}`,
+      status:   'pending',
+      fields:   {},
+      error:    null,
+      accepted: true,
+    }];
+    pasteText  = '';
+    pasteLabel = '';
+  }
+
+  function removeItem(id) { queue = queue.filter(q => q.id !== id); }
 
   // ── Processing ────────────────────────────────────────────────────────────
   async function processAll() {
@@ -77,7 +107,7 @@
     for (const item of queue) {
       setStatus(item.id, 'processing');
       try {
-        const { suggestion } = await cfg.processDoc(item.file);
+        const { suggestion } = await cfg.processItem(item);
         setFields(item.id, suggestion);
       } catch (err) {
         setError(item.id, err.message || 'Failed to process');
@@ -97,12 +127,10 @@
   }
 
   function retryItem(item) {
-    setStatus(item.id, 'pending');
-    // Re-process just this one
     (async () => {
       setStatus(item.id, 'processing');
       try {
-        const { suggestion } = await cfg.processDoc(item.file);
+        const { suggestion } = await cfg.processItem(item);
         setFields(item.id, suggestion);
       } catch (err) {
         setError(item.id, err.message || 'Failed to process');
@@ -125,17 +153,17 @@
     queue = queue.map(q => q.id === id ? { ...q, fields: { ...q.fields, [key]: value } } : q);
   }
 
-  function acceptAll()  { queue = queue.map(q => q.status === 'done' ? { ...q, accepted: true }  : q); }
-  function skipAll()    { queue = queue.map(q => q.status === 'done' ? { ...q, accepted: false } : q); }
+  function acceptAll() { queue = queue.map(q => q.status === 'done' ? { ...q, accepted: true }  : q); }
+  function skipAll()   { queue = queue.map(q => q.status === 'done' ? { ...q, accepted: false } : q); }
 
   async function saveAccepted() {
     saving = true;
     const toSave = queue.filter(q => q.status === 'done' && q.accepted);
-    const saved = [];
+    const saved  = [];
 
     for (const item of toSave) {
       try {
-        const row = await cfg.saveRow({ ...item.fields, source_file_name: item.file.name });
+        const row = await cfg.saveRow({ ...item.fields, source_file_name: item.label });
         saved.push(row);
         setStatus(item.id, 'saved');
       } catch (err) {
@@ -152,11 +180,15 @@
 
   // ── Close ─────────────────────────────────────────────────────────────────
   function handleClose() {
-    show = false;
-    phase = 'upload';
-    queue = [];
-    dragOver = false;
-    saving = false;
+    show       = false;
+    phase      = 'upload';
+    uploadTab  = 'files';
+    queue      = [];
+    dragOver   = false;
+    saving     = false;
+    pasteText  = '';
+    pasteLabel = '';
+    pasteCount = 0;
     expandedIds = new Set();
     dispatch('close');
   }
@@ -164,13 +196,13 @@
   function positionClass(pos) {
     if (!pos) return 'bi-pos-neutral';
     const p = pos.toLowerCase();
-    if (p === 'support') return 'bi-pos-support';
-    if (p === 'objection') return 'bi-pos-objection';
-    if (p === 'object') return 'bi-pos-objection';
+    if (p === 'support')            return 'bi-pos-support';
+    if (p === 'objection')          return 'bi-pos-objection';
+    if (p === 'object')             return 'bi-pos-objection';
     if (p === 'conditional support') return 'bi-pos-conditional';
-    if (p === 'mixed') return 'bi-pos-conditional';
-    if (p === 'neutral') return 'bi-pos-neutral';
-    if (p === 'no comment') return 'bi-pos-neutral';
+    if (p === 'mixed')              return 'bi-pos-conditional';
+    if (p === 'neutral')            return 'bi-pos-neutral';
+    if (p === 'no comment')         return 'bi-pos-neutral';
     return 'bi-pos-neutral';
   }
 </script>
@@ -193,7 +225,7 @@
     <!-- Phase indicator -->
     <div class="bi-phases">
       <div class="bi-phase" class:bi-phase-active={phase === 'upload'} class:bi-phase-done={phase !== 'upload'}>
-        <span class="bi-phase-num">{phase !== 'upload' ? '✓' : '1'}</span> Upload files
+        <span class="bi-phase-num">{phase !== 'upload' ? '✓' : '1'}</span> Add items
       </div>
       <div class="bi-phase-sep"></div>
       <div class="bi-phase" class:bi-phase-active={phase === 'processing'} class:bi-phase-done={phase === 'review'}>
@@ -210,31 +242,83 @@
       <!-- ── Phase: Upload ──────────────────────────────────────────────── -->
       {#if phase === 'upload'}
 
-        <!-- Dropzone -->
-        <div
-          class="bi-dropzone" class:bi-dragover={dragOver}
-          on:dragover={handleDragOver} on:dragleave={handleDragLeave} on:drop={handleDrop}
-          on:click={() => document.getElementById('bi-file-input').click()}
-        >
-          <i class="las la-cloud-upload-alt bi-drop-icon"></i>
-          <span class="bi-drop-label">Drag and drop files here, or click to select</span>
-          <span class="bi-drop-hint">PDF, DOCX, TXT — select multiple at once</span>
+        <!-- Tab switcher -->
+        <div class="bi-upload-tabs">
+          <button class="bi-upload-tab" class:bi-upload-tab-active={uploadTab === 'files'}
+            on:click={() => uploadTab = 'files'}>
+            <i class="las la-file-upload"></i> Upload Files
+          </button>
+          <button class="bi-upload-tab" class:bi-upload-tab-active={uploadTab === 'paste'}
+            on:click={() => uploadTab = 'paste'}>
+            <i class="las la-clipboard"></i> Paste Text
+          </button>
         </div>
-        <input
-          id="bi-file-input" type="file" multiple
-          accept=".pdf,.docx,.txt,.doc"
-          style="display:none"
-          on:change={handleFileInput}
-        />
 
-        <!-- Queue list -->
+        {#if uploadTab === 'files'}
+
+          <!-- Dropzone -->
+          <div
+            class="bi-dropzone" class:bi-dragover={dragOver}
+            on:dragover={handleDragOver} on:dragleave={handleDragLeave} on:drop={handleDrop}
+            on:click={() => document.getElementById('bi-file-input').click()}
+          >
+            <i class="las la-cloud-upload-alt bi-drop-icon"></i>
+            <span class="bi-drop-label">Drag and drop files here, or click to select</span>
+            <span class="bi-drop-hint">PDF, DOCX, TXT — select multiple at once</span>
+          </div>
+          <input
+            id="bi-file-input" type="file" multiple
+            accept=".pdf,.docx,.txt,.doc"
+            style="display:none"
+            on:change={handleFileInput}
+          />
+
+        {:else}
+
+          <!-- Paste form -->
+          <div class="bi-paste-form">
+            <div class="bi-field">
+              <label class="bi-label">Label <span class="bi-label-hint">(optional — e.g. "Resident, 12 Oak St")</span></label>
+              <input
+                type="text"
+                class="form-input"
+                placeholder="Leave blank to auto-name"
+                bind:value={pasteLabel}
+              />
+            </div>
+            <div class="bi-field">
+              <label class="bi-label">Paste response text</label>
+              <textarea
+                class="form-input bi-paste-ta"
+                rows="8"
+                placeholder="Paste the full text of the response here…"
+                bind:value={pasteText}
+              ></textarea>
+            </div>
+            <button
+              class="btn btn-primary"
+              disabled={!pasteText.trim()}
+              on:click={addTextItem}
+            >
+              <i class="las la-plus"></i> Add to queue
+            </button>
+          </div>
+
+        {/if}
+
+        <!-- Queue list (shared — shown below both tabs) -->
         {#if queue.length}
           <div class="bi-queue">
             {#each queue as item (item.id)}
               <div class="bi-queue-row">
-                <i class="las la-file-alt bi-queue-icon"></i>
-                <span class="bi-queue-name">{item.file.name}</span>
-                <span class="bi-queue-size">{(item.file.size / 1024).toFixed(0)} KB</span>
+                <i class="las {item.type === 'text' ? 'la-align-left' : 'la-file-alt'} bi-queue-icon"
+                   title={item.type === 'text' ? 'Pasted text' : 'File'}></i>
+                <span class="bi-queue-name">{item.label}</span>
+                {#if item.type === 'file'}
+                  <span class="bi-queue-size">{(item.file.size / 1024).toFixed(0)} KB</span>
+                {:else}
+                  <span class="bi-queue-size">{item.text.length} chars</span>
+                {/if}
                 <button class="btn btn-icon btn-ghost bi-queue-remove" on:click={() => removeItem(item.id)} title="Remove">
                   <i class="las la-times"></i>
                 </button>
@@ -242,7 +326,7 @@
             {/each}
           </div>
         {:else}
-          <p class="bi-no-files">No files added yet.</p>
+          <p class="bi-no-files">No items in queue yet.</p>
         {/if}
 
       <!-- ── Phase: Processing ──────────────────────────────────────────── -->
@@ -267,7 +351,8 @@
               {:else}
                 <i class="las la-clock bi-status-pending"></i>
               {/if}
-              <span class="bi-queue-name">{item.file.name}</span>
+              <i class="las {item.type === 'text' ? 'la-align-left' : 'la-file-alt'} bi-queue-icon-sm"></i>
+              <span class="bi-queue-name">{item.label}</span>
               {#if item.status === 'error'}
                 <span class="bi-queue-error">{item.error}</span>
               {:else if item.status === 'done'}
@@ -307,13 +392,12 @@
                 <div class="bi-card-hd-left">
                   {#if item.status === 'error'}
                     <i class="las la-exclamation-triangle bi-status-error"></i>
-                    <span class="bi-card-filename">{item.file.name}</span>
+                    <span class="bi-card-filename">{item.label}</span>
                   {:else if item.status === 'saved'}
                     <i class="las la-check-circle bi-status-done"></i>
-                    <span class="bi-card-filename">{item.file.name}</span>
+                    <span class="bi-card-filename">{item.label}</span>
                     <span class="bi-saved-badge">Saved</span>
                   {:else}
-                    <!-- Accept toggle -->
                     <button
                       class="bi-accept-toggle"
                       class:bi-accept-on={item.accepted}
@@ -322,7 +406,8 @@
                     >
                       <i class="las {item.accepted ? 'la-check-circle' : 'la-circle'}"></i>
                     </button>
-                    <span class="bi-card-filename">{item.file.name}</span>
+                    <i class="las {item.type === 'text' ? 'la-align-left' : 'la-file-alt'} bi-card-type-icon"></i>
+                    <span class="bi-card-filename">{item.label}</span>
                     {#if item.fields.position}
                       <span class="bi-pos-badge {positionClass(item.fields.position)}">{item.fields.position}</span>
                     {/if}
@@ -346,12 +431,10 @@
                 </div>
               </div>
 
-              <!-- Error message -->
               {#if item.status === 'error'}
                 <p class="bi-card-error-msg">{item.error}</p>
               {/if}
 
-              <!-- Extracted preview (collapsed) -->
               {#if item.status === 'done' && !expanded}
                 <div class="bi-card-preview">
                   {#if item.fields[cfg.commentKey]}
@@ -360,7 +443,6 @@
                 </div>
               {/if}
 
-              <!-- Edit form (expanded) -->
               {#if item.status === 'done' && expanded}
                 <div class="bi-card-form">
                   <div class="bi-form-row">
@@ -413,7 +495,7 @@
 
       {#if phase === 'upload'}
         <button class="btn btn-primary" disabled={queue.length === 0} on:click={processAll}>
-          <i class="las la-magic"></i> Process {queue.length} file{queue.length !== 1 ? 's' : ''}
+          <i class="las la-magic"></i> Process {queue.length} item{queue.length !== 1 ? 's' : ''}
         </button>
 
       {:else if phase === 'processing'}
@@ -508,9 +590,7 @@
   }
   .bi-phase-active .bi-phase-num { background: #6366f1; color: #fff; }
   .bi-phase-done   .bi-phase-num { background: #16a34a; color: #fff; }
-  .bi-phase-sep {
-    flex: 1; height: 1px; background: #e2e8f0; max-width: 40px;
-  }
+  .bi-phase-sep { flex: 1; height: 1px; background: #e2e8f0; max-width: 40px; }
 
   /* Body */
   .bi-body {
@@ -523,6 +603,33 @@
     min-height: 0;
   }
 
+  /* Upload tab switcher */
+  .bi-upload-tabs {
+    display: flex;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .bi-upload-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #64748b;
+    background: #f8fafc;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .bi-upload-tab:not(:last-child) { border-right: 1px solid #e2e8f0; }
+  .bi-upload-tab:hover { color: #1e293b; background: #f1f5f9; }
+  .bi-upload-tab-active { color: #6366f1; background: #fff; font-weight: 600; }
+
   /* Dropzone */
   .bi-dropzone {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -534,9 +641,26 @@
   .bi-drop-label { font-size: 0.875rem; color: #475569; font-weight: 500; }
   .bi-drop-hint  { font-size: 0.75rem; color: #94a3b8; }
 
+  /* Paste form */
+  .bi-paste-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem;
+    background: #f8fafc;
+  }
+  .bi-paste-ta {
+    font-family: inherit;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    resize: vertical;
+  }
+
   /* Queue list */
   .bi-queue {
-    display: flex; flex-direction: column; gap: 0.375rem;
+    display: flex; flex-direction: column; gap: 0;
     border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
   }
   .bi-queue-row {
@@ -546,13 +670,14 @@
     border-bottom: 1px solid #f1f5f9;
   }
   .bi-queue-row:last-child { border-bottom: none; }
-  .bi-queue-icon  { color: #94a3b8; flex-shrink: 0; }
-  .bi-queue-name  { flex: 1; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bi-queue-size  { color: #94a3b8; font-size: 0.72rem; flex-shrink: 0; }
-  .bi-queue-remove { flex-shrink: 0; opacity: 0.5; }
+  .bi-queue-icon    { color: #94a3b8; flex-shrink: 0; }
+  .bi-queue-icon-sm { color: #94a3b8; flex-shrink: 0; font-size: 0.75rem; }
+  .bi-queue-name    { flex: 1; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bi-queue-size    { color: #94a3b8; font-size: 0.72rem; flex-shrink: 0; }
+  .bi-queue-remove  { flex-shrink: 0; opacity: 0.5; }
   .bi-queue-remove:hover { opacity: 1; }
-  .bi-queue-error { color: #dc2626; font-size: 0.72rem; flex-shrink: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bi-queue-ok    { color: #16a34a; font-size: 0.72rem; flex-shrink: 0; font-weight: 600; }
+  .bi-queue-error   { color: #dc2626; font-size: 0.72rem; flex-shrink: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bi-queue-ok      { color: #16a34a; font-size: 0.72rem; flex-shrink: 0; font-weight: 600; }
 
   .bi-no-files { color: #94a3b8; font-size: 0.82rem; text-align: center; margin: 0; padding: 1rem; }
 
@@ -562,36 +687,24 @@
   .bi-status-pending { color: #cbd5e1; }
 
   /* Progress bar */
-  .bi-progress-header { display: flex; flex-direction: column; gap: 0.5rem; }
-  .bi-progress-label  { font-size: 0.82rem; color: #64748b; font-weight: 500; }
-  .bi-progress-bar-wrap {
-    height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden;
-  }
-  .bi-progress-bar {
-    height: 100%; background: #6366f1; border-radius: 999px; transition: width 0.3s ease;
-  }
+  .bi-progress-header  { display: flex; flex-direction: column; gap: 0.5rem; }
+  .bi-progress-label   { font-size: 0.82rem; color: #64748b; font-weight: 500; }
+  .bi-progress-bar-wrap { height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+  .bi-progress-bar     { height: 100%; background: #6366f1; border-radius: 999px; transition: width 0.3s ease; }
 
   /* Review toolbar */
-  .bi-review-toolbar {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 0.75rem; flex-wrap: wrap;
-  }
+  .bi-review-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
   .bi-review-summary { font-size: 0.82rem; color: #475569; }
   .bi-review-toolbar-right { display: flex; gap: 0.375rem; }
   .bi-err-count { color: #dc2626; }
 
   /* Cards */
   .bi-cards { display: flex; flex-direction: column; gap: 0.625rem; }
-  .bi-card {
-    border: 1.5px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-    transition: border-color 0.15s;
-  }
-  .bi-card-accepted  { border-color: #bbf7d0; background: #f0fdf4; }
-  .bi-card-skipped   { opacity: 0.55; background: #f8fafc; }
-  .bi-card-error     { border-color: #fca5a5; background: #fff7f7; }
-  .bi-card-saved     { border-color: #bbf7d0; background: #f0fdf4; opacity: 0.7; }
+  .bi-card { border: 1.5px solid #e2e8f0; border-radius: 8px; overflow: hidden; transition: border-color 0.15s; }
+  .bi-card-accepted { border-color: #bbf7d0; background: #f0fdf4; }
+  .bi-card-skipped  { opacity: 0.55; background: #f8fafc; }
+  .bi-card-error    { border-color: #fca5a5; background: #fff7f7; }
+  .bi-card-saved    { border-color: #bbf7d0; background: #f0fdf4; opacity: 0.7; }
 
   .bi-card-hd {
     display: flex; align-items: center; justify-content: space-between;
@@ -608,38 +721,21 @@
   .bi-accept-toggle:hover { color: #16a34a; }
   .bi-accept-on { color: #16a34a; }
 
-  .bi-card-filename {
-    font-size: 0.78rem; color: #64748b;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    max-width: 200px; flex-shrink: 0;
-  }
-  .bi-card-name {
-    font-size: 0.82rem; font-weight: 600; color: #1e293b;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
+  .bi-card-type-icon { color: #94a3b8; font-size: 0.85rem; flex-shrink: 0; }
+  .bi-card-filename  { font-size: 0.78rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; flex-shrink: 0; }
+  .bi-card-name      { font-size: 0.82rem; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .bi-pos-badge {
-    display: inline-block; font-size: 0.68rem; font-weight: 600;
-    padding: 0.1rem 0.45rem; border-radius: 999px; flex-shrink: 0;
-  }
+  .bi-pos-badge { display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 999px; flex-shrink: 0; }
   .bi-pos-support     { background: #dcfce7; color: #16a34a; }
   .bi-pos-objection   { background: #fee2e2; color: #dc2626; }
   .bi-pos-conditional { background: #fef3c7; color: #d97706; }
   .bi-pos-neutral     { background: #f1f5f9; color: #64748b; }
 
-  .bi-saved-badge {
-    font-size: 0.68rem; font-weight: 700; color: #16a34a;
-    background: #dcfce7; padding: 0.1rem 0.45rem; border-radius: 999px;
-  }
+  .bi-saved-badge { font-size: 0.68rem; font-weight: 700; color: #16a34a; background: #dcfce7; padding: 0.1rem 0.45rem; border-radius: 999px; }
 
-  .bi-card-error-msg {
-    margin: 0 0 0.5rem; padding: 0 0.875rem;
-    font-size: 0.75rem; color: #dc2626;
-  }
-  .bi-card-preview { padding: 0 0.875rem 0.625rem; }
-  .bi-card-comment-preview {
-    margin: 0; font-size: 0.78rem; color: #475569; line-height: 1.5;
-  }
+  .bi-card-error-msg { margin: 0 0 0.5rem; padding: 0 0.875rem; font-size: 0.75rem; color: #dc2626; }
+  .bi-card-preview   { padding: 0 0.875rem 0.625rem; }
+  .bi-card-comment-preview { margin: 0; font-size: 0.78rem; color: #475569; line-height: 1.5; }
   .bi-edit-btn { font-size: 0.75rem; }
 
   /* Edit form */
@@ -649,12 +745,11 @@
     display: flex; flex-direction: column; gap: 0.625rem;
     background: rgba(255,255,255,0.7);
   }
-  .bi-form-row {
-    display: grid; grid-template-columns: 1fr 140px 140px; gap: 0.5rem;
-  }
-  .bi-field { display: flex; flex-direction: column; gap: 0.25rem; }
-  .bi-label { font-size: 0.72rem; font-weight: 600; color: #475569; }
-  .bi-ta    { font-size: 0.8rem; font-family: inherit; line-height: 1.55; resize: vertical; }
+  .bi-form-row { display: grid; grid-template-columns: 1fr 140px 140px; gap: 0.5rem; }
+  .bi-field    { display: flex; flex-direction: column; gap: 0.25rem; }
+  .bi-label    { font-size: 0.72rem; font-weight: 600; color: #475569; }
+  .bi-label-hint { font-weight: 400; color: #94a3b8; }
+  .bi-ta       { font-size: 0.8rem; font-family: inherit; line-height: 1.55; resize: vertical; }
 
   /* Footer */
   .bi-footer {

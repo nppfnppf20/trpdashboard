@@ -1,6 +1,6 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processConsultationResponse } from '../services/consultation.service.js';
+import { processConsultationResponse, summariseConsultation } from '../services/consultation.service.js';
 import { sendEmail } from '../services/emailService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,6 +23,11 @@ export async function processConsultation(req, res) {
     if (req.file) {
       ({ text } = await parseFile(req.file.buffer, req.file.originalname));
       fileName = req.file.originalname;
+      if (!text || text.trim().length < 30) {
+        return res.status(422).json({
+          error: 'Could not extract readable text from this PDF. It may be a scanned or image-based document — try pasting the text directly instead.',
+        });
+      }
     } else if (req.body.text) {
       text = req.body.text;
       fileName = req.body.file_name || null;
@@ -54,12 +59,21 @@ export async function getConsultationData(req, res) {
     const [{ rows: responses }, { rows: meta }] = await Promise.all([
       pool.query(
         `SELECT id, consultee_name, date_received, position, comments,
-                consultant_response, response_issued, follow_up,
+                consultant_response, response_issued, follow_up, status,
                 discipline, original_consultant, original_consultant_email,
                 source_file_name, sort_order, created_at, updated_at
          FROM planning_applications.consultation_responses
          WHERE project_id = $1
-         ORDER BY sort_order ASC, date_received ASC NULLS LAST, created_at ASC`,
+         ORDER BY
+           CASE lower(position)
+             WHEN 'objection'           THEN 1
+             WHEN 'conditional support' THEN 2
+             WHEN 'support'             THEN 4
+             WHEN 'no comment'          THEN 5
+             ELSE                            3
+           END ASC,
+           date_received ASC NULLS LAST,
+           created_at ASC`,
         [projectId]
       ),
       pool.query(
@@ -111,15 +125,15 @@ export async function getConsultationData(req, res) {
 
 export async function createResponse(req, res) {
   const { projectId } = req.params;
-  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
+  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, status, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
   if (!consultee_name?.trim()) return res.status(400).json({ error: 'consultee_name is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.consultation_responses
          (project_id, consultee_name, date_received, position, comments,
-          consultant_response, response_issued, follow_up, source_file_name,
+          consultant_response, response_issued, follow_up, status, source_file_name,
           discipline, original_consultant, original_consultant_email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         projectId,
@@ -130,6 +144,7 @@ export async function createResponse(req, res) {
         consultant_response?.trim() || null,
         response_issued === true || response_issued === 'true',
         follow_up?.trim() || null,
+        status?.trim() || 'In Progress',
         source_file_name?.trim() || null,
         discipline?.trim() || null,
         original_consultant?.trim() || null,
@@ -149,34 +164,36 @@ export async function createResponse(req, res) {
 
 export async function updateResponse(req, res) {
   const { responseId } = req.params;
-  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, discipline, original_consultant, original_consultant_email } = req.body;
+  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, status, discipline, original_consultant, original_consultant_email } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.consultation_responses SET
          consultee_name               = COALESCE($2, consultee_name),
-         date_received                = $3,
-         position                     = $4,
-         comments                     = $5,
-         consultant_response          = $6,
+         date_received                = COALESCE($3, date_received),
+         position                     = COALESCE($4, position),
+         comments                     = COALESCE($5, comments),
+         consultant_response          = COALESCE($6, consultant_response),
          response_issued              = COALESCE($7, response_issued),
-         follow_up                    = $8,
-         discipline                   = $9,
-         original_consultant          = $10,
-         original_consultant_email    = $11,
+         follow_up                    = COALESCE($8, follow_up),
+         status                       = COALESCE($9, status),
+         discipline                   = COALESCE($10, discipline),
+         original_consultant          = COALESCE($11, original_consultant),
+         original_consultant_email    = COALESCE($12, original_consultant_email),
          updated_at                   = NOW()
        WHERE id = $1 RETURNING *`,
       [
         responseId,
-        consultee_name?.trim() || null,
-        date_received || null,
-        position?.trim() || null,
-        comments?.trim() || null,
-        consultant_response?.trim() || null,
+        consultee_name != null ? consultee_name.trim() || null : null,
+        'date_received' in req.body ? (date_received || null) : null,
+        'position' in req.body ? (position?.trim() || null) : null,
+        'comments' in req.body ? (comments?.trim() || null) : null,
+        'consultant_response' in req.body ? (consultant_response?.trim() || null) : null,
         response_issued != null ? (response_issued === true || response_issued === 'true') : null,
-        follow_up?.trim() || null,
-        discipline?.trim() || null,
-        original_consultant?.trim() || null,
-        original_consultant_email?.trim() || null,
+        'follow_up' in req.body ? (follow_up?.trim() || null) : null,
+        status?.trim() || null,
+        'discipline' in req.body ? (discipline?.trim() || null) : null,
+        'original_consultant' in req.body ? (original_consultant?.trim() || null) : null,
+        'original_consultant_email' in req.body ? (original_consultant_email?.trim() || null) : null,
       ]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
@@ -352,5 +369,35 @@ export async function emailConsultant(req, res) {
   } catch (err) {
     console.error('consultation.emailConsultant error:', err);
     res.status(500).json({ error: 'Failed to send email', details: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Summarise outstanding consultation issues for a project
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function summarise(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT consultee_name, position, comments, status
+       FROM planning_applications.consultation_responses
+       WHERE project_id = $1
+       ORDER BY
+         CASE lower(position)
+           WHEN 'objection'           THEN 1
+           WHEN 'conditional support' THEN 2
+           WHEN 'support'             THEN 4
+           WHEN 'no comment'          THEN 5
+           ELSE                            3
+         END ASC`,
+      [projectId]
+    );
+    if (!rows.length) return res.status(400).json({ error: 'No consultation responses to summarise' });
+    const summary = await summariseConsultation(rows);
+    res.json({ summary });
+  } catch (err) {
+    console.error('consultation.summarise error:', err);
+    res.status(500).json({ error: 'Failed to summarise consultation responses', details: err.message });
   }
 }

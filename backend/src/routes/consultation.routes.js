@@ -9,6 +9,7 @@ import {
   markExported,
   markIssuedToClient,
   emailConsultant,
+  summarise,
 } from '../controllers/consultation.controller.js';
 
 const router = express.Router();
@@ -22,5 +23,6 @@ router.post('/projects/:projectId/issue-to-client', markIssuedToClient);
 router.put('/responses/:responseId', updateResponse);
 router.delete('/responses/:responseId', deleteResponse);
 router.post('/responses/:responseId/email-consultant', emailConsultant);
+router.post('/projects/:projectId/summarise', summarise);
 
 export default router;

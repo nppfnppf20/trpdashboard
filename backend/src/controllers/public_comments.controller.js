@@ -10,6 +10,11 @@ export async function processComment(req, res) {
     if (req.file) {
       ({ text } = await parseFile(req.file.buffer, req.file.originalname));
       fileName = req.file.originalname;
+      if (!text || text.trim().length < 30) {
+        return res.status(422).json({
+          error: 'Could not extract readable text from this PDF. It may be a scanned or image-based document — try pasting the text directly instead.',
+        });
+      }
     } else if (req.body.text) {
       text = req.body.text;
       fileName = req.body.file_name || null;

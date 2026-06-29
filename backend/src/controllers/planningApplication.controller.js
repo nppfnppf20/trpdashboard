@@ -2060,7 +2060,6 @@ export async function getProjectCompleteness(req, res) {
       issueNotesResult,
       trackSummaryResult,
       policiesResult,
-      docLogResult,
       historyResult
     ] = await Promise.all([
       pool.query(`SELECT development_description, development_type, client, address,
@@ -2077,8 +2076,7 @@ export async function getProjectCompleteness(req, res) {
       pool.query(`SELECT id, summary FROM admin_console.project_issue_tracks
                   WHERE project_id = $1 AND is_active = TRUE`, [projectId]),
       pool.query(`SELECT COUNT(*) AS count FROM public.project_policies WHERE project_id = $1`, [projectId]),
-      pool.query(`SELECT COUNT(*) AS count FROM planning_applications.document_log WHERE project_id = $1`, [projectId]),
-      pool.query(`SELECT COUNT(*) AS count FROM planning_applications.planning_history WHERE project_id = $1`, [projectId])
+      pool.query(`SELECT COUNT(*) AS count FROM public.project_planning_history WHERE project_id = $1`, [projectId])
     ]);
 
     const project = projectResult.rows[0] ?? {};
@@ -2087,7 +2085,6 @@ export async function getProjectCompleteness(req, res) {
     const notesByTrack = Object.fromEntries(issueNotesResult.rows.map(r => [r.track_id, r]));
     const summaryByTrack = Object.fromEntries(trackSummaryResult.rows.map(r => [r.id, r.summary]));
     const hasPolicies = parseInt(policiesResult.rows[0]?.count ?? 0) > 0;
-    const hasDocLog  = parseInt(docLogResult.rows[0]?.count ?? 0) > 0;
     const hasHistory = parseInt(historyResult.rows[0]?.count ?? 0) > 0;
     const hasBriefing = presentDocTypes.has('briefing_transcript');
 
@@ -2149,14 +2146,6 @@ export async function getProjectCompleteness(req, res) {
       label: 'Policies',
       status: hasPolicies ? 'complete' : 'missing',
       items: [{ key: 'policies', label: 'Local plan policies linked', status: hasPolicies ? 'complete' : 'missing', can_draft_from_briefing: false }]
-    };
-
-    // ── Section: document log ─────────────────────────────────────────────────
-    const docLogSection = {
-      key: 'document_log',
-      label: 'Document Log',
-      status: hasDocLog ? 'complete' : 'missing',
-      items: [{ key: 'document_log', label: 'Documents logged', status: hasDocLog ? 'complete' : 'missing', can_draft_from_briefing: false }]
     };
 
     // ── Section: planning history ─────────────────────────────────────────────

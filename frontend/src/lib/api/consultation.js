@@ -75,6 +75,15 @@ export async function emailConsultantForResponse(responseId, { to_email, to_name
   return res.json();
 }
 
+export async function summariseConsultationResponses(projectId) {
+  const res = await authFetch(`/api/consultation/projects/${projectId}/summarise`, { method: 'POST' });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to summarise consultation responses');
+  }
+  return res.json(); // { summary: string }
+}
+
 export async function markConsultationIssuedToClient(projectId) {
   const res = await authFetch(`/api/consultation/projects/${projectId}/issue-to-client`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to record issue to client');
