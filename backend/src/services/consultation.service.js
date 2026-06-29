@@ -23,7 +23,12 @@ POSITION:
 - No Comment — no observations
 - Use short free text only if none of the above fit.
 
-COMMENTS: Summarise the consultee's response, covering all of their issues and points. Do not miss anything out. Keep it concise — you do not need to reproduce the full text, but every issue they raise must be represented. Write in plain text only — no markdown, no bold, no headings, no bullet symbols.`;
+COMMENTS: Summarise the consultee's response, covering all of their issues and points. Do not miss anything out. Write in plain text only — no markdown, no bold, no headings, no bullet symbols.
+
+Word limit: 500 words maximum.
+- If the response is short, write it naturally in prose.
+- If covering all points would exceed 500 words, switch to a brief bullet-point-style list (one short sentence per issue, no elaboration) so every point is still represented.
+- If detail has been condensed in this way, add the sentence "Further detail is contained in the full response." at the very end.`;
 
 async function buildSystemPrompt(developmentType) {
   const brief = await getGuidingBrief('consultation_response', developmentType).catch(() => null);

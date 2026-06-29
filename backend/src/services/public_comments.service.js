@@ -7,8 +7,8 @@ Return EXACTLY these XML delimiters and nothing else before or after:
 <COMMENTER_NAME>name of the commenter, or "Anonymous" if not given</COMMENTER_NAME>
 <DATE_RECEIVED>YYYY-MM-DD or leave blank</DATE_RECEIVED>
 <POSITION>Support | Object | Neutral | Mixed | or leave blank</POSITION>
-<COMMENT>concise 2-3 sentence summary of their main point</COMMENT>
-<FURTHER_INFO>any additional details, secondary concerns, or specific requests they make — leave blank if none</FURTHER_INFO>
+<COMMENT>summary of their main point — 500 word maximum. If short, write naturally. If many points, use one short sentence per point so nothing is missed, and end with "Further detail is contained in the full response." if condensed.</COMMENT>
+<FURTHER_INFO>any additional details, secondary concerns, or specific requests — 500 word maximum, same rule applies. Leave blank if none.</FURTHER_INFO>
 
 Position guidance:
 - Support: commenter clearly supports the application
@@ -22,12 +22,12 @@ function parseXmlField(text, tag) {
 }
 
 export async function processPublicComment(text, fileName, userNotes) {
-  const parts = [EXTRACT_PROMPT, ''];
-  if (fileName) parts.push(`Document: ${fileName}`);
-  if (userNotes) parts.push(`User notes: ${userNotes}`);
-  parts.push('', 'Comment text:', text);
+  const userParts = [];
+  if (fileName) userParts.push(`Document: ${fileName}`);
+  if (userNotes) userParts.push(`User notes: ${userNotes}`);
+  userParts.push('', 'Comment text:', text);
 
-  const raw = await callClaude(parts.join('\n'));
+  const raw = await callClaude(EXTRACT_PROMPT, userParts.join('\n'));
 
   return {
     commenter_name:  parseXmlField(raw, 'COMMENTER_NAME') || null,
@@ -53,7 +53,7 @@ ${list}
 
 Provide two things:
 
-1. BULLET_SUMMARY — a concise bullet-point overview of the overall public response (6-10 bullets). Cover: overall sentiment balance, the most common concerns, any notable themes of support, key issues raised.
+1. BULLET_SUMMARY — a bullet-point overview of the overall public response. Cover: overall sentiment balance, the most common concerns, any notable themes of support, key issues raised. 500 word maximum total. Keep each bullet to one short sentence. If there is more to say than fits, touch on every point briefly rather than dropping any — it is better to mention something in five words than to omit it.
 
 2. THEMES — recurring themes mentioned by multiple commenters. For each theme provide a name, how many comments mention it, the overall sentiment of comments on that theme, and a one-sentence description.
 
@@ -73,7 +73,7 @@ Return EXACTLY these XML delimiters:
 
 Order themes by count descending. Only include themes mentioned by 2 or more commenters (or all themes if fewer than 5 comments total).`;
 
-  const raw = await callClaude(prompt, { maxTokens: 2000 });
+  const raw = await callClaude(prompt, 'Please analyse the comments above and return the XML response.', undefined, 2000);
 
   const summaryRaw = parseXmlField(raw, 'BULLET_SUMMARY') || '';
   const bulletSummary = summaryRaw
