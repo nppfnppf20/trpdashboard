@@ -147,8 +147,9 @@
     currentDraftIndex = 0;
     showDraftModal = false;
     draftCheckResults = {};
-    // Fire all scope checks in background — no await
-    runBackgroundChecks(pendingDrafts, selectedProject.unique_id, selectedBriefingNoteId);
+    // Fire all scope checks in background — deduplicate by discipline to avoid duplicate API calls
+    const uniqueDrafts = pendingDrafts.filter((d, i) => pendingDrafts.findIndex(x => x.discipline === d.discipline) === i);
+    runBackgroundChecks(uniqueDrafts, selectedProject.unique_id, selectedBriefingNoteId);
     openNextDraft();
   }
 
@@ -235,7 +236,7 @@
       <select class="dev-type-select" bind:value={draftDevelopmentType}>
         <option value="">Development type...</option>
         <option value="Renewables">Renewables</option>
-        <option value="Residential">Residential</option>
+        <option value="Urban Site">Urban Site</option>
       </select>
       <div class="briefing-btn-group" use:clickOutside={() => briefingDropdownOpen = false}>
         <button class="btn-draft-main" on:click={() => showDraftModal = true} disabled={!selectedProject?.unique_id}>

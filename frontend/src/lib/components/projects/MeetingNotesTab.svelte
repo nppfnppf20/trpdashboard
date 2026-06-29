@@ -3,6 +3,13 @@
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
+  import {
+    getDocumentSummaries,
+    generateDocumentSummary,
+    saveDocumentSummary,
+    deleteDocumentSummary
+  } from '$lib/api/projectDocs.js';
   import {
     getMeetingNotes,
     getMeetingActions,
@@ -18,6 +25,125 @@
 
   export let project;
   $: projectId = project?.id;
+
+  // Sub-tab
+  let activeSubTab = 'meetings'; // 'meetings' | 'briefing'
+
+  // Briefing sub-tab state
+  let showMeetingGuide = false;
+  let briefings = [];
+  let briefingsLoaded = false;
+  let briefingsLoading = false;
+  let briefingsError = null;
+  let bInputTab = 'upload'; // 'upload' | 'paste'
+  let bFile = null;
+  let bPasteText = '';
+  let bDragOver = false;
+  let bProcessing = false;
+  let bError = null;
+  let bFileInput;
+  let bResult = null; // { summary_html, file_name }
+  let bTitle = '';
+  let bSaving = false;
+  let bSaveError = null;
+
+  async function loadBriefings() {
+    briefingsLoading = true;
+    briefingsError = null;
+    try {
+      const all = await getDocumentSummaries(projectId);
+      briefings = all.filter(s => s.doc_type === 'briefing_transcript');
+      briefingsLoaded = true;
+    } catch (err) {
+      briefingsError = err.message;
+    } finally {
+      briefingsLoading = false;
+    }
+  }
+
+  function openBriefingTab() {
+    activeSubTab = 'briefing';
+    if (!briefingsLoaded) loadBriefings();
+  }
+
+  function handleBriefingDrop(e) {
+    e.preventDefault();
+    bDragOver = false;
+    const file = e.dataTransfer.files[0];
+    if (file) { bFile = file; bInputTab = 'upload'; }
+  }
+
+  function handleBriefingFileChange(e) {
+    bFile = e.target.files[0] || null;
+  }
+
+  function saveBriefingDirectly() {
+    if (!bPasteText.trim()) { bError = 'Please paste some text first.'; return; }
+    bError = null;
+    const escaped = bPasteText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    bResult = {
+      summary_html: `<pre style="white-space:pre-wrap;font-family:inherit;font-size:0.875rem;line-height:1.6;">${escaped}</pre>`,
+      file_name: null
+    };
+    bTitle = 'Briefing Transcript';
+  }
+
+  async function submitBriefingUpload() {
+    bError = null;
+    if (bInputTab === 'upload' && !bFile) { bError = 'Please select a file.'; return; }
+    if (bInputTab === 'paste' && !bPasteText.trim()) { bError = 'Please paste the briefing text.'; return; }
+    bProcessing = true;
+    bResult = null;
+    try {
+      const payload = { docType: 'briefing_transcript' };
+      if (bInputTab === 'upload') {
+        payload.file = bFile;
+      } else {
+        payload.text = bPasteText;
+        payload.fileName = 'Pasted text';
+      }
+      const result = await generateDocumentSummary(projectId, payload);
+      bResult = result;
+      bTitle = result.file_name || (bFile ? bFile.name : 'Briefing Transcript');
+    } catch (err) {
+      bError = err.message;
+    } finally {
+      bProcessing = false;
+    }
+  }
+
+  async function saveBriefing() {
+    if (!bTitle.trim()) { bSaveError = 'Please enter a title.'; return; }
+    bSaving = true;
+    bSaveError = null;
+    try {
+      const entry = await saveDocumentSummary(projectId, {
+        title: bTitle,
+        file_name: bResult.file_name || null,
+        doc_type: 'briefing_transcript',
+        summary_html: bResult.summary_html
+      });
+      briefings = [entry, ...briefings];
+      bResult = null;
+      bTitle = '';
+      bFile = null;
+      bPasteText = '';
+    } catch (err) {
+      bSaveError = err.message;
+    } finally {
+      bSaving = false;
+    }
+  }
+
+  async function deleteBriefing(id) {
+    if (!confirm('Delete this briefing transcript?')) return;
+    try {
+      await deleteDocumentSummary(id);
+      briefings = briefings.filter(b => b.id !== id);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
 
   // Data
   let notes = [];
@@ -475,7 +601,158 @@
   }
 </script>
 
+<MeetingGuideModal
+  show={showMeetingGuide}
+  project={project}
+  issueTracks={[]}
+  onClose={() => showMeetingGuide = false}
+/>
+
 <div class="mn-tab">
+
+  <!-- Sub-tab toggle -->
+  <div class="mn-subtabs">
+    <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'meetings'} on:click={() => activeSubTab = 'meetings'}>
+      <i class="las la-users"></i> Project Meetings
+    </button>
+    <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'briefing'} on:click={openBriefingTab}>
+      <i class="las la-file-alt"></i> Briefing Note
+    </button>
+  </div>
+
+  {#if activeSubTab === 'briefing'}
+
+    <!-- ── Briefing Note sub-tab ─────────────────────────────────────────── -->
+    <div class="mn-briefing-tab">
+
+      <!-- Meeting Guide card -->
+      <div class="mn-guide-card">
+        <div class="mn-guide-card-left">
+          <div class="mn-guide-icon"><i class="las la-clipboard-list"></i></div>
+          <div>
+            <div class="mn-guide-title">Meeting Guide</div>
+            <div class="mn-guide-desc">Structured agenda and talking points for your pre-application briefing meeting.</div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" on:click={() => showMeetingGuide = true}>
+          <i class="las la-clipboard-list"></i> Open Meeting Guide
+        </button>
+      </div>
+
+      <!-- Upload briefing transcript -->
+      <div class="mn-upload-card">
+        <h3 class="mn-card-title">Upload Briefing Transcript</h3>
+        <p class="mn-briefing-hint">Once uploaded, the transcript powers "Populate from Briefing" in the Key Issues board.</p>
+
+        <div class="mn-input-tabs">
+          <button class="btn btn-sm" class:btn-secondary={bInputTab === 'upload'} class:btn-ghost={bInputTab !== 'upload'} on:click={() => bInputTab = 'upload'}>
+            <i class="las la-upload"></i> Upload File
+          </button>
+          <button class="btn btn-sm" class:btn-secondary={bInputTab === 'paste'} class:btn-ghost={bInputTab !== 'paste'} on:click={() => bInputTab = 'paste'}>
+            <i class="las la-clipboard"></i> Paste Text
+          </button>
+        </div>
+
+        {#if bInputTab === 'upload'}
+          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+          <div class="mn-drop-zone" class:drag-over={bDragOver} role="button" tabindex="0"
+            on:dragover|preventDefault={() => bDragOver = true}
+            on:dragleave={() => bDragOver = false}
+            on:drop={handleBriefingDrop}
+            on:click={() => bFileInput.click()}
+            on:keydown={(e) => e.key === 'Enter' && bFileInput.click()}
+          >
+            {#if bFile}
+              <i class="las la-file-alt mn-drop-icon"></i>
+              <span class="mn-drop-filename">{bFile.name}</span>
+              <span class="mn-drop-hint">Click to change file</span>
+            {:else}
+              <i class="las la-cloud-upload-alt mn-drop-icon"></i>
+              <span>Drop a file here or click to browse</span>
+              <span class="mn-drop-hint">PDF, DOCX or TXT</span>
+            {/if}
+          </div>
+          <input bind:this={bFileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleBriefingFileChange} />
+        {:else}
+          <textarea class="form-input mn-paste" bind:value={bPasteText} placeholder="Paste the briefing transcript here…" rows="4"></textarea>
+        {/if}
+
+        {#if bError}<div class="mn-error">{bError}</div>{/if}
+
+        {#if bInputTab === 'paste' && !bResult}
+          <div class="mn-briefing-paste-actions">
+            <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
+              {#if bProcessing}
+                <span class="mn-spinner"></span> Processing…
+              {:else}
+                <i class="las la-magic"></i> Summarise with AI
+              {/if}
+            </button>
+            <button class="btn btn-secondary mn-process-btn" on:click={saveBriefingDirectly} disabled={bProcessing}>
+              <i class="las la-save"></i> Save as-is
+            </button>
+          </div>
+        {/if}
+
+        {#if bResult}
+          <div class="mn-briefing-result">
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" class="form-input" bind:value={bTitle} placeholder="e.g. Briefing Note — Feb 2025" />
+            </div>
+            <div class="mn-briefing-preview">{@html bResult.summary_html}</div>
+            {#if bSaveError}<div class="mn-error-sm">{bSaveError}</div>{/if}
+            <div class="mn-form-footer">
+              <button class="btn btn-secondary btn-sm" on:click={() => { bResult = null; bTitle = ''; }}>Discard</button>
+              <button class="btn btn-primary btn-sm" on:click={saveBriefing} disabled={bSaving}>
+                {bSaving ? 'Saving…' : 'Save Briefing'}
+              </button>
+            </div>
+          </div>
+        {:else if bInputTab === 'upload'}
+          <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
+            {#if bProcessing}
+              <span class="mn-spinner"></span> Processing…
+            {:else}
+              <i class="las la-magic"></i> Process Briefing
+            {/if}
+          </button>
+        {/if}
+      </div>
+
+      <!-- Existing briefing transcripts -->
+      <div class="mn-section mn-section-muted">
+        <h3 class="mn-briefings-heading">Saved Briefing Transcripts</h3>
+        {#if briefingsLoading}
+          <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading…</div>
+        {:else if briefingsError}
+          <div class="mn-error">{briefingsError}</div>
+        {:else if briefings.length === 0}
+          <p class="mn-empty">No briefing transcripts saved yet.</p>
+        {:else}
+          <div class="mn-notes-list mn-table-mt">
+            {#each briefings as b (b.id)}
+              <div class="mn-note-card">
+                <div class="mn-note-info">
+                  <div class="mn-note-meta">
+                    <span class="mn-note-title">{b.title}</span>
+                    {#if b.created_at}<span class="mn-cell-muted">{formatDate(b.created_at)}</span>{/if}
+                  </div>
+                  <div class="mn-note-actions">
+                    <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(b.id)} title="Delete">
+                      <i class="las la-trash"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+    </div>
+
+  {:else}
 
   {#if loading}
     <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading meeting notes…</div>
@@ -862,6 +1139,9 @@
     </div>
 
   {/if}
+
+  {/if} <!-- end activeSubTab === 'briefing' / else -->
+
 </div>
 
 <!-- ── Note Editor Modal ─────────────────────────────────────────────────── -->
@@ -925,6 +1205,79 @@
 <style>
   /* ── Layout ────────────────────────────────────────────────────────────── */
   .mn-tab { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem 0; overflow-y: auto; flex: 1; min-height: 0; }
+
+  /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
+  .mn-subtabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 0.25rem;
+  }
+  .mn-subtab {
+    background: none;
+    border: none;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+    font-family: inherit;
+  }
+  .mn-subtab:hover { color: #1e293b; }
+  .mn-subtab--active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
+
+  /* ── Briefing sub-tab ───────────────────────────────────────────────────── */
+  .mn-briefing-tab { display: flex; flex-direction: column; gap: 1rem; }
+
+  .mn-guide-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .mn-guide-card-left { display: flex; align-items: center; gap: 0.875rem; }
+  .mn-guide-icon {
+    width: 2.5rem; height: 2.5rem;
+    background: #eff6ff;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    color: #3b82f6;
+    flex-shrink: 0;
+  }
+  .mn-guide-title { font-size: 0.9rem; font-weight: 600; color: #1e293b; }
+  .mn-guide-desc { font-size: 0.8rem; color: #64748b; margin-top: 0.1rem; }
+
+  .mn-briefing-hint { font-size: 0.8rem; color: #64748b; margin: 0; }
+
+  .mn-briefing-result {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.875rem;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .mn-briefing-preview {
+    font-size: 0.8rem;
+    color: #475569;
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+  .mn-briefings-heading { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0 0 0.5rem; }
+  .mn-briefing-paste-actions { display: flex; flex-direction: column; gap: 0.4rem; }
 
   /* ── Top row ────────────────────────────────────────────────────────────── */
   .mn-top-row {

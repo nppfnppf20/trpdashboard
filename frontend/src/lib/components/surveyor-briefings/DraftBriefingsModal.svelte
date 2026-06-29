@@ -84,17 +84,24 @@
   }
 
   function selectSurveyor(discipline, surveyorId) {
-    const cur = selectedSurveyors[discipline] ?? new Set();
-    const next = cur.has(surveyorId) ? new Set() : new Set([surveyorId]);
-    selectedSurveyors = { ...selectedSurveyors, [discipline]: next };
+    const cur = new Set(selectedSurveyors[discipline] ?? []);
+    if (cur.has(surveyorId)) cur.delete(surveyorId);
+    else cur.add(surveyorId);
+    selectedSurveyors = { ...selectedSurveyors, [discipline]: cur };
   }
 
+  $: totalEmails = suggestions.reduce((sum, s) =>
+    accepted.has(s.discipline) ? sum + (selectedSurveyors[s.discipline]?.size ?? 0) : sum, 0
+  );
+
   function handleProceed() {
-    const output = acceptedWithSurveyors.map(s => ({
-      discipline: s.discipline,
-      template: s.template,
-      surveyors: s.surveyors.filter(sv => selectedSurveyors[s.discipline]?.has(sv.id))
-    }));
+    const output = [];
+    for (const s of acceptedWithSurveyors) {
+      const selected = s.surveyors.filter(sv => selectedSurveyors[s.discipline]?.has(sv.id));
+      for (const sv of selected) {
+        output.push({ discipline: s.discipline, template: s.template, surveyors: [sv] });
+      }
+    }
     dispatch('proceed', { drafts: output });
     dispatch('close');
   }
@@ -227,8 +234,7 @@
                         {@const isSelected = selectedSurveyors[suggestion.discipline]?.has(surveyor.id) ?? false}
                         <label class="surveyor-row" class:row-selected={isSelected}>
                           <input
-                            type="radio"
-                            name="surveyor-{suggestion.discipline}"
+                            type="checkbox"
                             checked={isSelected}
                             on:change={() => selectSurveyor(suggestion.discipline, surveyor.id)}
                           />
@@ -289,11 +295,11 @@
           <button class="btn btn-secondary" on:click={handleClose}>Cancel</button>
           <button
             class="btn btn-primary"
-            disabled={acceptedWithSurveyors.length === 0}
+            disabled={totalEmails === 0}
             on:click={handleProceed}
           >
             <i class="las la-check"></i>
-            Proceed with {acceptedWithSurveyors.length} discipline{acceptedWithSurveyors.length !== 1 ? 's' : ''}
+            Proceed — {totalEmails} email{totalEmails !== 1 ? 's' : ''}
           </button>
         </div>
       {/if}
@@ -334,8 +340,7 @@
                     {@const isSel = selectedSurveyors[ds.discipline]?.has(surveyor.id) ?? false}
                     <label class="detail-surveyor-row" class:row-selected={isSel}>
                       <input
-                        type="radio"
-                        name="surveyor-{ds.discipline}"
+                        type="checkbox"
                         checked={isSel}
                         on:change={() => selectSurveyor(ds.discipline, surveyor.id)}
                       />
@@ -649,7 +654,7 @@
     background: #ecfdf5;
   }
 
-  .surveyor-row input[type="radio"] {
+  .surveyor-row input[type="checkbox"] {
     width: 15px;
     height: 15px;
     cursor: pointer;
@@ -894,7 +899,7 @@
     background: #ecfdf5;
   }
 
-  .detail-surveyor-row input[type="radio"] {
+  .detail-surveyor-row input[type="checkbox"] {
     width: 15px;
     height: 15px;
     cursor: pointer;
