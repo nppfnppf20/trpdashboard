@@ -8,13 +8,7 @@
   import EditMasterWarningModal from '$lib/components/shared/EditMasterWarningModal.svelte';
   import DraftBriefingsModal from './DraftBriefingsModal.svelte';
 
-  function clickOutside(node, handler) {
-    function onClick(e) { if (!node.contains(e.target)) handler(); }
-    document.addEventListener('click', onClick, true);
-    return { destroy() { document.removeEventListener('click', onClick, true); } };
-  }
-
-  export let selectedProject;
+export let selectedProject;
 
   let templates = [];
   let sentRequests = [];
@@ -28,15 +22,17 @@
 
   // Draft from briefing note (Flow 2)
   let showDraftModal = false;
-  let draftDevelopmentType = '';
+  let showDraftSetupModal = false;
+  let draftDevelopmentType = null;
   let fromDraftFlow = false;
 
   // Briefing note picker
   let briefingNotes = [];
   let selectedBriefingNoteId = null;
-  let briefingDropdownOpen = false;
 
-  $: selectedBriefingNote = selectedBriefingNoteId ? briefingNotes.find(n => n.id === selectedBriefingNoteId) : null;
+  // Setup modal state
+  let setupBriefingNoteId = null;
+  let setupDevType = null;
 
   async function loadBriefingNotes(projectUniqueId) {
     try {
@@ -44,7 +40,19 @@
     } catch {
       briefingNotes = [];
     }
-    selectedBriefingNoteId = null;
+  }
+
+  function openDraftSetup() {
+    setupBriefingNoteId = null;
+    setupDevType = null;
+    showDraftSetupModal = true;
+  }
+
+  function confirmDraftSetup() {
+    selectedBriefingNoteId = setupBriefingNoteId;
+    draftDevelopmentType = setupDevType;
+    showDraftSetupModal = false;
+    showDraftModal = true;
   }
   let pendingDrafts = []; // [{ discipline, template, surveyors }] — queued after modal
   let currentDraftIndex = 0; // which pending draft is open in BriefingEditor
@@ -147,21 +155,21 @@
     currentDraftIndex = 0;
     showDraftModal = false;
     draftCheckResults = {};
-    // Fire all scope checks in background — deduplicate by discipline to avoid duplicate API calls
     const uniqueDrafts = pendingDrafts.filter((d, i) => pendingDrafts.findIndex(x => x.discipline === d.discipline) === i);
     runBackgroundChecks(uniqueDrafts, selectedProject.unique_id, selectedBriefingNoteId);
-    openNextDraft();
+    openDraft(0);
   }
 
-  function openNextDraft() {
-    if (currentDraftIndex >= pendingDrafts.length) {
+  function openDraft(index) {
+    if (index < 0 || index >= pendingDrafts.length) {
       pendingDrafts = [];
       currentDraftIndex = 0;
+      showEditor = false;
       return;
     }
-    const draft = pendingDrafts[currentDraftIndex];
+    currentDraftIndex = index;
+    const draft = pendingDrafts[index];
     selectedTemplate = draft.template;
-    // Map surveyors to the shape BriefingEditor expects for preSelectedSurveyors
     editorPreselectedSurveyors = draft.surveyors.flatMap(sv => {
       const primaryContact = sv.contacts?.find(c => c.is_primary) ?? sv.contacts?.[0] ?? null;
       if (!primaryContact) return [];
@@ -199,9 +207,7 @@
     editorPreselectedSurveyors = [];
     fromDraftFlow = false;
     await loadSentRequests();
-    // Advance to next queued draft if any
-    currentDraftIndex += 1;
-    openNextDraft();
+    openDraft(currentDraftIndex + 1);
   }
 
   function handleClose() {
@@ -209,12 +215,12 @@
     selectedTemplate = null;
     editorPreselectedSurveyors = [];
     fromDraftFlow = false;
-    // User closed without saving — skip this draft and open next
-    if (pendingDrafts.length > 0) {
-      currentDraftIndex += 1;
-      openNextDraft();
-    }
+    pendingDrafts = [];
+    currentDraftIndex = 0;
   }
+
+  function handlePrev() { openDraft(currentDraftIndex - 1); }
+  function handleNext() { openDraft(currentDraftIndex + 1); }
 
   async function handleTemplateEditorClose() {
     showTemplateEditor = false;
@@ -233,34 +239,10 @@
   <div class="panel-header">
     <h2>Surveyor Quote Requests</h2>
     <div class="header-actions">
-      <select class="dev-type-select" bind:value={draftDevelopmentType}>
-        <option value="">Development type...</option>
-        <option value="Renewables">Renewables</option>
-        <option value="Urban Site">Urban Site</option>
-      </select>
-      <div class="briefing-btn-group" use:clickOutside={() => briefingDropdownOpen = false}>
-        <button class="btn-draft-main" on:click={() => showDraftModal = true} disabled={!selectedProject?.unique_id}>
-          <i class="las la-magic"></i>
-          Draft from Briefing Note
-          {#if selectedBriefingNote}<span class="briefing-note-pill">{selectedBriefingNote.title || selectedBriefingNote.file_name}</span>{/if}
-        </button>
-        <button class="btn-briefing-chevron" disabled={!selectedProject?.unique_id} on:click={() => briefingDropdownOpen = !briefingDropdownOpen} title="Select briefing note">
-          <i class="las la-angle-down"></i>
-        </button>
-        {#if briefingDropdownOpen}
-          <div class="briefing-dropdown">
-            <button class="briefing-dropdown-item" class:active={!selectedBriefingNoteId} on:click={() => { selectedBriefingNoteId = null; briefingDropdownOpen = false; }}>
-              <span>Latest briefing note</span>
-            </button>
-            {#each briefingNotes as note}
-              <button class="briefing-dropdown-item" class:active={selectedBriefingNoteId === note.id} on:click={() => { selectedBriefingNoteId = note.id; briefingDropdownOpen = false; }}>
-                <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
-                <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
+      <button class="btn-draft-main" on:click={openDraftSetup} disabled={!selectedProject?.unique_id}>
+        <i class="las la-magic"></i>
+        Draft from Briefing Note
+      </button>
       <button class="btn btn-primary" on:click={openNewRequest}>
         <i class="las la-plus"></i>
         New Quote Request
@@ -322,9 +304,53 @@
     preSelectedSurveyors={editorPreselectedSurveyors}
     briefingNoteId={selectedBriefingNoteId}
     precomputedCheck={draftCheckResults[pendingDrafts[currentDraftIndex]?.discipline]}
+    stepCurrent={currentDraftIndex + 1}
+    stepTotal={pendingDrafts.length}
     on:saved={handleSaved}
     on:close={handleClose}
+    on:prev={handlePrev}
+    on:next={handleNext}
   />
+{/if}
+
+<!-- Draft Setup Modal -->
+{#if showDraftSetupModal}
+  <div class="setup-overlay" on:click|self={() => showDraftSetupModal = false}>
+    <div class="setup-modal">
+      <div class="setup-header">
+        <div class="setup-header-left">
+          <i class="las la-magic"></i>
+          <h3>Draft from Briefing Note</h3>
+        </div>
+        <button class="setup-close" on:click={() => showDraftSetupModal = false}><i class="las la-times"></i></button>
+      </div>
+      <div class="setup-body">
+        <div class="setup-field">
+          <label>Briefing note</label>
+          <select bind:value={setupBriefingNoteId}>
+            <option value={null}>Latest briefing note</option>
+            {#each briefingNotes as note}
+              <option value={note.id}>{note.title || note.file_name} — {new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="setup-field">
+          <label>Development type</label>
+          <select bind:value={setupDevType}>
+            <option value={null}>Other (no guiding brief)</option>
+            <option value="Renewables">Renewables</option>
+            <option value="Urban Site">Urban Site</option>
+          </select>
+        </div>
+      </div>
+      <div class="setup-footer">
+        <button class="btn btn-secondary" on:click={() => showDraftSetupModal = false}>Cancel</button>
+        <button class="btn btn-draft-go" on:click={confirmDraftSetup}>
+          <i class="las la-magic"></i> Draft
+        </button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 <!-- Draft from Briefing Note Modal -->
@@ -386,27 +412,6 @@
     gap: 0.5rem;
   }
 
-  .dev-type-select {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    color: #475569;
-    background: white;
-    cursor: pointer;
-  }
-
-  .dev-type-select:focus {
-    outline: none;
-    border-color: #7c3aed;
-  }
-
-  .briefing-btn-group {
-    position: relative;
-    display: flex;
-    align-items: stretch;
-  }
-
   .btn-draft-main {
     display: flex;
     align-items: center;
@@ -414,8 +419,7 @@
     padding: 0.5rem 0.875rem;
     background: #faf5ff;
     border: 1px solid #d8b4fe;
-    border-right: none;
-    border-radius: 6px 0 0 6px;
+    border-radius: 6px;
     color: #7c3aed;
     font-size: 0.875rem;
     font-weight: 500;
@@ -425,73 +429,121 @@
   .btn-draft-main:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
   .btn-draft-main:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .btn-briefing-chevron {
+  /* Setup modal */
+  .setup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
     display: flex;
     align-items: center;
-    padding: 0.5rem 0.5rem;
-    background: #faf5ff;
-    border: 1px solid #d8b4fe;
-    border-radius: 0 6px 6px 0;
-    color: #7c3aed;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-briefing-chevron:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
-  .btn-briefing-chevron:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .briefing-note-pill {
-    background: #ede9fe;
-    color: #6d28d9;
-    font-size: 0.75rem;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    justify-content: center;
+    z-index: 1100;
+    padding: 1rem;
   }
 
-  .briefing-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
+  .setup-modal {
     background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-    min-width: 240px;
-    z-index: 100;
-    overflow: hidden;
+    border-radius: 10px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
   }
 
-  .briefing-dropdown-item {
+  .setup-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 1.125rem 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+    color: #7c3aed;
+  }
+
+  .setup-header-left {
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
-    width: 100%;
-    padding: 0.6rem 0.875rem;
-    background: transparent;
+  }
+
+  .setup-header-left i { font-size: 1.1rem; }
+
+  .setup-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .setup-close {
+    background: none;
     border: none;
-    border-bottom: 1px solid #f1f5f9;
-    text-align: left;
-    font-size: 0.8125rem;
-    color: #374151;
+    font-size: 1.1rem;
+    color: #94a3b8;
     cursor: pointer;
-    transition: background 0.1s;
+    padding: 0.25rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+  }
+  .setup-close:hover { color: #1e293b; }
+
+  .setup-body {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .setup-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .setup-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  .setup-field select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #1e293b;
+    background: white;
+    cursor: pointer;
     font-family: inherit;
   }
-  .briefing-dropdown-item:last-child { border-bottom: none; }
-  .briefing-dropdown-item:hover { background: #f8fafc; }
-  .briefing-dropdown-item.active { background: #faf5ff; color: #7c3aed; }
+  .setup-field select:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
 
-  .briefing-dropdown-title {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .setup-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.625rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid #e2e8f0;
   }
+
+  .btn-draft-go {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1.25rem;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-draft-go:hover { background: #6d28d9; }
+
 
   .briefing-dropdown-date {
     font-size: 0.75rem;

@@ -10,6 +10,8 @@
   export let preSelectedSurveyors = []; // [{ surveyorId, surveyorOrganisation, discipline, contactId, contactName, contactEmail }]
   export let briefingNoteId = null;
   export let precomputedCheck = null; // { status: 'loading'|'ready'|'error', apiResult, error? }
+  export let stepCurrent = 0;
+  export let stepTotal = 0;
 
   const dispatch = createEventDispatcher();
 
@@ -253,6 +255,9 @@
   function handleClose() {
     if (confirm('Close without saving?')) dispatch('close');
   }
+
+  function handlePrev() { dispatch('prev'); }
+  function handleNext() { dispatch('next'); }
 </script>
 
 {#if show}
@@ -264,6 +269,23 @@
           <i class="las la-times"></i>
         </button>
       </div>
+
+      {#if stepTotal > 1}
+        <div class="step-bar">
+          <button class="step-nav-btn" on:click={handlePrev} disabled={stepCurrent === 1} title="Previous email">
+            <i class="las la-angle-left"></i>
+          </button>
+          <div class="step-bar-center">
+            <span class="step-count">Email {stepCurrent} of {stepTotal}</span>
+            {#if preSelectedSurveyors[0]}
+              <span class="step-label">{preSelectedSurveyors[0].discipline} · {preSelectedSurveyors[0].surveyorOrganisation}</span>
+            {/if}
+          </div>
+          <button class="step-nav-btn" on:click={handleNext} disabled={stepCurrent === stepTotal} title="Next email">
+            <i class="las la-angle-right"></i>
+          </button>
+        </div>
+      {/if}
 
       <div class="modal-body">
         {#if error}
@@ -449,6 +471,61 @@
     transition: all 0.2s;
   }
   .close-btn:hover { background: #f1f5f9; color: #1e293b; }
+
+  .step-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    background: #faf5ff;
+    border-bottom: 2px solid #d8b4fe;
+  }
+
+  .step-bar-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .step-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #7c3aed;
+    white-space: nowrap;
+  }
+
+  .step-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1e293b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  .step-nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    background: white;
+    border: 1.5px solid #d8b4fe;
+    border-radius: 6px;
+    color: #7c3aed;
+    font-size: 1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .step-nav-btn:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
+  .step-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
   .modal-body {
     flex: 1;
