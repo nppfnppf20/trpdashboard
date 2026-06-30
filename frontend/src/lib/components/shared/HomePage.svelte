@@ -50,6 +50,10 @@
     goto('/marketing');
   }
 
+  function navigateToPolicy() {
+    goto('/policy');
+  }
+
   function openAddProjectModal() {
     showAddProjectModal = true;
   }
@@ -340,6 +344,47 @@
 
           <button class="tool-button tool-button-teal" on:click|stopPropagation={navigateToMarketing}>
             Open Marketing
+            <i class="las la-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Policy & Industry Updates Card -->
+      <div class="tool-card" on:click={navigateToPolicy} on:keydown={(e) => e.key === 'Enter' && navigateToPolicy()} role="button" tabindex="0">
+        <div class="card-content">
+          <div class="card-icon card-icon-blue">
+            <i class="las la-newspaper"></i>
+          </div>
+
+          <h2 class="card-title">
+            Policy &amp; Industry Updates
+          </h2>
+
+          <p class="card-description">
+            Upload and summarise policy documents, guidance notes, and industry updates. Policy updates from internal meetings and CPDs feed in automatically.
+          </p>
+
+          <div class="features-list">
+            <div class="feature-item">
+              <i class="las la-file-upload feature-icon-check"></i>
+              <span>Upload Policy Documents</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-magic feature-icon-check"></i>
+              <span>AI Summary &amp; Key Points</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-users-cog feature-icon-check"></i>
+              <span>Auto-fed from Meeting Notes</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-pen feature-icon-check"></i>
+              <span>Our Take Commentary</span>
+            </div>
+          </div>
+
+          <button class="tool-button tool-button-blue" on:click|stopPropagation={navigateToPolicy}>
+            Open Policy Updates
             <i class="las la-arrow-right"></i>
           </button>
         </div>

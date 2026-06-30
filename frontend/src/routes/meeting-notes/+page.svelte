@@ -486,31 +486,33 @@
     </div>
   </div>
 
-  <!-- Type selector + Project selector -->
-  <div class="selector-container">
-    <div class="type-pills">
+  <!-- Workspace (tabbed) -->
+  <div class="workspace-container">
+    <div class="workspace-tabs">
       <button
-        class="type-pill"
-        class:type-pill--active={meetingType === 'internal'}
+        class="workspace-tab"
+        class:workspace-tab--active={meetingType === 'internal'}
         on:click={() => switchType('internal')}
       >
         <i class="las la-users-cog"></i> Internal Meeting
       </button>
       <button
-        class="type-pill"
-        class:type-pill--active={meetingType === 'cpd'}
+        class="workspace-tab"
+        class:workspace-tab--active={meetingType === 'cpd'}
         on:click={() => switchType('cpd')}
       >
         <i class="las la-graduation-cap"></i> CPD
       </button>
       <button
-        class="type-pill"
-        class:type-pill--active={meetingType === 'project'}
+        class="workspace-tab"
+        class:workspace-tab--active={meetingType === 'project'}
         on:click={() => switchType('project')}
       >
         <i class="las la-folder-open"></i> Project
       </button>
     </div>
+
+    <div class="workspace-body">
 
     {#if meetingType === 'project'}
       <div class="project-selector-wrap">
@@ -523,13 +525,6 @@
           on:createNewProject={() => showCreateProjectModal = true}
         />
       </div>
-    {/if}
-  </div>
-
-  <!-- Workspace -->
-  <div class="workspace-container" class:workspace-project={meetingType === 'project' && selectedProject}>
-
-    {#if meetingType === 'project'}
       {#if selectedProject}
         {#key selectedProject.id}
           <MeetingNotesTab project={selectedProject} />
@@ -778,7 +773,8 @@
       {/if}
 
     {/if}
-  </div>
+    </div><!-- end workspace-body -->
+  </div><!-- end workspace-container -->
 
   <!-- Stream -->
   <div class="stream-container">
@@ -849,6 +845,9 @@
               </button>
               <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
                 <i class="las la-download"></i>
+              </button>
+              <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete note">
+                <i class="las la-trash"></i>
               </button>
             </div>
             </div><!-- end stream-card-main -->
@@ -1043,56 +1042,47 @@
 
   .page-description { font-size: 1.125rem; color: #64748b; margin: 0; }
 
-  /* ── Type selector ─────────────────────────────────────────────────────────── */
-  .selector-container {
-    max-width: 1400px;
-    margin: 0 auto 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .type-pills {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .type-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 1.25rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 2rem;
-    background: white;
-    color: #64748b;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .type-pill:hover { border-color: #7c3aed; color: #7c3aed; }
-  .type-pill--active { border-color: #7c3aed; background: #7c3aed; color: white; }
-
-  .project-selector-wrap { max-width: 700px; }
-
-  /* ── Workspace ─────────────────────────────────────────────────────────────── */
+  /* ── Workspace (tabbed card) ───────────────────────────────────────────────── */
   .workspace-container {
     max-width: 1400px;
     margin: 0 auto 2rem;
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    padding: 1.5rem;
+    overflow: hidden;
   }
 
-  .workspace-project {
-    min-height: 600px;
+  .workspace-tabs {
     display: flex;
-    flex-direction: column;
+    border-bottom: 2px solid #e2e8f0;
+    padding: 0 0.25rem;
+    background: #f8fafc;
+    border-radius: 12px 12px 0 0;
   }
+
+  .workspace-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.85rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s;
+    white-space: nowrap;
+  }
+  .workspace-tab:hover { color: #1e293b; }
+  .workspace-tab--active { color: #7c3aed; border-bottom-color: #7c3aed; font-weight: 600; }
+
+  .workspace-body { padding: 1.5rem; }
+
+  .project-selector-wrap { max-width: 700px; margin-bottom: 1.5rem; }
 
   .empty-state {
     text-align: center;

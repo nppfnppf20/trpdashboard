@@ -42,6 +42,7 @@ import draftCheckRoutes from './draftCheck.routes.js';
 import consultationRoutes from './consultation.routes.js';
 import publicCommentsRoutes from './public_comments.routes.js';
 import marketingRoutes from './marketing.routes.js';
+import policyUpdatesRoutes from './policyUpdates.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -133,6 +134,9 @@ router.use('/api/lpa', policyDocumentsRoutes);
 
 // Marketing tool
 router.use('/api/marketing', marketingRoutes);
+
+// Policy & Industry Updates
+router.use('/api/policy-updates', policyUpdatesRoutes);
 
 export default router;
 
