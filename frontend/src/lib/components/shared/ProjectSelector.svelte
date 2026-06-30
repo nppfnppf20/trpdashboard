@@ -12,6 +12,7 @@
   export let selectedProjectId = ''; // Bindable from parent
   export let selectionMode = 'project'; // Bindable from parent - 'project' or 'oneoff'
   export let hideOneOffOption = false; // New prop to hide one-off option
+  export let hideModeRow = false; // Hide the entire mode-selection row
 
   let projects = [];
   let loading = false;
@@ -96,7 +97,7 @@
   </div>
 
   <!-- Selection Mode Options (all in one row) -->
-  {#if !disabled}
+  {#if !disabled && !hideModeRow}
     <div class="mode-selection">
       <label class="mode-option {selectionMode === 'project' ? 'selected' : ''}">
         <input

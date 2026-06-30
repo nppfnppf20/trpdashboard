@@ -521,6 +521,8 @@
           bind:selectedProjectId={selectedProjectIdBinding}
           label="Select Project"
           hideOneOffOption={true}
+          hideModeRow={true}
+          showDivider={false}
           on:projectSelected={handleProjectSelected}
           on:createNewProject={() => showCreateProjectModal = true}
         />
@@ -529,12 +531,6 @@
         {#key selectedProject.id}
           <MeetingNotesTab project={selectedProject} />
         {/key}
-      {:else}
-        <div class="empty-state">
-          <i class="las la-folder-open"></i>
-          <h2>No Project Selected</h2>
-          <p>Select a project above to view its meeting notes.</p>
-        </div>
       {/if}
 
     {:else}

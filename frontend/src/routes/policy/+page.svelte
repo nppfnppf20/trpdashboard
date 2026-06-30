@@ -166,10 +166,8 @@
     </p>
   </div>
 
-  <!-- Top row: upload + latest -->
-  <div class="top-row">
-
-    <!-- Upload card -->
+  <!-- Upload panel -->
+  <div class="upload-panel">
     <div class="upload-card">
       <h3 class="card-title">Add Policy / Update</h3>
 
@@ -230,30 +228,6 @@
         {/if}
       </button>
     </div>
-
-    <!-- Latest item quick view -->
-    <div class="latest-card">
-      {#if loading}
-        <div class="latest-loading"><span class="spinner-blue"></span></div>
-      {:else if items[0]}
-        {@const latest = items[0]}
-        <div class="latest-inner">
-          <span class="card-meta-label">Latest Update</span>
-          <span class="source-badge {sourceBadgeClass(latest)}">{sourceLabel(latest)}</span>
-          <div class="latest-title">{latest.title}</div>
-          <div class="latest-date">{formatDate(latest.created_at)}</div>
-          {#if latest.summary_html}
-            <div class="latest-summary">{@html latest.summary_html}</div>
-          {/if}
-        </div>
-      {:else}
-        <div class="latest-empty">
-          <i class="las la-newspaper"></i>
-          <p>No updates yet.<br>Upload a document above to get started.</p>
-        </div>
-      {/if}
-    </div>
-
   </div>
 
   <!-- All items list -->
@@ -401,17 +375,14 @@
   .page-title i { color: #0369a1; }
   .page-description { font-size: 0.9375rem; color: #64748b; margin: 0; }
 
-  /* ── Top row ── */
-  .top-row {
+  /* ── Upload panel ── */
+  .upload-panel {
     max-width: 1400px;
-    margin: 0 auto 1.5rem;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    align-items: stretch;
+    margin: 0 auto 1.75rem;
   }
 
-  .upload-card, .latest-card {
+  .upload-card {
+    max-width: 640px;
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
@@ -457,18 +428,6 @@
   }
 
   .process-btn { width: 100%; }
-
-  /* Latest card */
-  .latest-inner { display: flex; flex-direction: column; gap: 0.35rem; }
-  .card-meta-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
-  .latest-title { font-size: 0.9375rem; font-weight: 600; color: #1e293b; line-height: 1.3; }
-  .latest-date { font-size: 0.78rem; color: #94a3b8; }
-  .latest-summary { font-size: 0.8rem; color: #475569; line-height: 1.5; max-height: 120px; overflow: hidden; }
-  .latest-summary :global(p) { margin: 0 0 0.4rem; }
-  .latest-loading { display: flex; align-items: center; justify-content: center; flex: 1; min-height: 80px; }
-  .latest-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; flex: 1; min-height: 80px; color: #94a3b8; text-align: center; }
-  .latest-empty i { font-size: 1.5rem; }
-  .latest-empty p { font-size: 0.8rem; margin: 0; line-height: 1.4; }
 
   /* ── Items section ── */
   .items-section {
