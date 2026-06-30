@@ -67,7 +67,7 @@ Use <p> for body text. Keep it concise but substantive — this is a working doc
 
 export async function generateAppealArgument({ projectName, refusalReasons, keyIssues, initialNotes, customPrompt = null }) {
   const reasonsText = refusalReasons.length
-    ? refusalReasons.map((r, i) => `${i + 1}. ${r.title}${r.summary ? ` — ${r.summary}` : ''}${r.risk_level ? ` [${r.risk_level}]` : ''}`).join('\n')
+    ? refusalReasons.map((r, i) => `${i + 1}. ${r.title}${r.summary ? `: ${r.summary}` : ''}${r.risk_level ? ` [${r.risk_level}]` : ''}`).join('\n')
     : 'None recorded';
 
   const issuesText = keyIssues.length

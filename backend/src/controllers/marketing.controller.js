@@ -9,17 +9,6 @@ import { callClaude, MODEL_SONNET } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 
 const DEFAULT_PROMPTS = {
-  now_linkedin: `You are a marketing copywriter for a planning and development consultancy.
-Write a short "what's happening right now" LinkedIn post.
-
-Rules:
-- 50–100 words maximum
-- Lead with the most newsworthy fact — what is happening now
-- Professional but energetic tone
-- No hashtags unless genuinely informative
-- Never open with "Excited to announce", "Thrilled to share", "Delighted to" or similar hollow phrases
-- Output clean HTML using <p> tags only — no headings`,
-
   short_linkedin: `You are a marketing copywriter for a planning and development consultancy.
 Write a professional LinkedIn post.
 
@@ -88,6 +77,54 @@ export async function saveDraft(req, res) {
   }
 }
 
+function stripHtml(html) {
+  return (html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function buildTopicContext(selectedTopicKeys = []) {
+  if (!selectedTopicKeys.length) return null;
+
+  const docIds    = selectedTopicKeys.filter(k => k.startsWith('document:')).map(k => parseInt(k.split(':')[1]));
+  const insightIds = selectedTopicKeys.filter(k => k.startsWith('insight:')).map(k => parseInt(k.split(':')[1]));
+
+  const topicRows = [];
+
+  if (docIds.length) {
+    const { rows } = await pool.query(
+      `SELECT title, summary_html, key_points, implications, 'document' AS source_type
+       FROM admin_console.policy_documents WHERE id = ANY($1)`,
+      [docIds]
+    );
+    topicRows.push(...rows);
+  }
+
+  if (insightIds.length) {
+    const { rows } = await pool.query(
+      `SELECT topic AS title, detail, raised_by, meeting_type, 'insight' AS source_type
+       FROM admin_console.extracted_insights WHERE id = ANY($1)`,
+      [insightIds]
+    );
+    topicRows.push(...rows);
+  }
+
+  if (!topicRows.length) return null;
+
+  return topicRows.map(t => {
+    const lines = [`### ${t.title}`];
+    if (t.source_type === 'document') {
+      if (t.summary_html) lines.push(`Summary: ${stripHtml(t.summary_html)}`);
+      if (t.key_points)   lines.push(`Key points: ${t.key_points}`);
+      if (t.implications) lines.push(`Implications: ${stripHtml(t.implications)}`);
+    } else {
+      const src = t.meeting_type === 'cpd' ? 'CPD' : 'Internal Meeting';
+      lines.push(`Source: ${src}`);
+      if (t.detail)    lines.push(`Detail: ${t.detail}`);
+      if (t.raised_by) lines.push(`Raised by: ${t.raised_by}`);
+    }
+    return lines.join('\n');
+  }).join('\n\n');
+}
+
 export async function generateDraft(req, res) {
   const { typeId } = req.params;
   try {
@@ -98,6 +135,8 @@ export async function generateDraft(req, res) {
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
 
     const type = typeRows[0];
+    const { selected_topic_keys: selectedTopicKeys = [], user_angle: userAngle } = req.body ?? {};
+
     const guidingBrief = await getGuidingBrief(type.slug, null).catch(() => null);
 
     let systemPrompt = DEFAULT_PROMPTS[type.slug] ?? DEFAULT_PROMPTS.short_linkedin;
@@ -108,11 +147,21 @@ export async function generateDraft(req, res) {
       systemPrompt += `\n\n## Style / Tone Reference\nMatch the style and tone of the following example. Use it for register and structure only — do not copy its content, facts, or details:\n<style_example>\n${guidingBrief.style_example}\n</style_example>`;
     }
 
-    const userMessage = req.body?.user_notes
-      ? `Write a ${type.name}.\n\nContext / notes:\n${req.body.user_notes}`
-      : `Write a ${type.name}.`;
+    const topicContext = await buildTopicContext(selectedTopicKeys);
 
-    const contentHtml = await callClaude(systemPrompt, userMessage, MODEL_SONNET, 2048);
+    let userMessage = `Write a ${type.name}.`;
+    if (topicContext) {
+      userMessage += `\n\n## Relevant Policy Context\nThe following policy updates and topics are relevant — use them as factual context and substance for the content:\n\n${topicContext}`;
+    }
+    if (userAngle?.trim()) {
+      userMessage += `\n\n## My Angle\nThe specific angle, message, or focus for this piece:\n${userAngle.trim()}`;
+    }
+
+    systemPrompt += '\n\n## Formatting rules\n- Never use em dashes (—) under any circumstances. Use a comma, colon, or restructure the sentence instead.';
+
+    const raw = await callClaude(systemPrompt, userMessage, MODEL_SONNET, 2048);
+    const firstTag = raw.indexOf('<');
+    const contentHtml = firstTag > 0 ? raw.slice(firstTag) : raw;
 
     const { rows } = await pool.query(
       `INSERT INTO marketing.drafts (draft_type_id, content_html, generated_at, updated_at)

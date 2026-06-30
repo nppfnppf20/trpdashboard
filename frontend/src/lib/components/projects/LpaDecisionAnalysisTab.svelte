@@ -185,12 +185,12 @@
             <div class="upload-progress">
               <div class="spinner"></div>
               <p>{uploadProgress || 'Analysing document…'}</p>
-              <p class="sub">This may take a minute — the AI is reading the document against your project context and policies.</p>
+              <p class="sub">This may take a minute, the AI is reading the document against your project context and policies.</p>
             </div>
           {:else}
             <i class="las la-cloud-upload-alt"></i>
             <p>Drop documents here or <label class="browse-link">browse<input type="file" accept=".pdf,.docx,.txt,.md" multiple on:change={handleFileSelect} /></label></p>
-            <p class="sub">PDF, Word, .txt or .md — decision notices, officer reports, appeal decisions, supporting documents</p>
+            <p class="sub">PDF, Word, .txt or .md: decision notices, officer reports, appeal decisions, supporting documents</p>
           {/if}
         </div>
 
@@ -280,7 +280,7 @@
         <div class="report-header">
           <div>
             <p class="report-meta">
-              Based on {analysis.documents_processed} document{analysis.documents_processed !== 1 ? 's' : ''} —
+              Based on {analysis.documents_processed} document{analysis.documents_processed !== 1 ? 's' : ''},
               last updated {new Date(analysis.last_synthesised_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>

@@ -698,7 +698,7 @@
                 No project selected
               {/if}
             </span>
-            <span class="project-hint">— Click refresh to change selection</span>
+            <span class="project-hint">Click refresh to change selection</span>
           </div>
           <button class="refresh-btn-inline" on:click={() => window.location.reload()} title="Refresh page to change selection">
             <i class="las la-sync"></i>

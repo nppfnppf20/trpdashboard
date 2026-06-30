@@ -61,11 +61,11 @@ const ACTION_PROMPT_CONTEXT_TEMPLATES = {
 
 Briefing note:
 <briefing>
-{{BRIEFING_TRANSCRIPT — full text of the selected briefing note}}
+{{BRIEFING_TRANSCRIPT: full text of the selected briefing note}}
 </briefing>
 
 Key issues:
-{{ISSUE_LIST — one line per active issue, e.g.:
+{{ISSUE_LIST: one line per active issue, e.g.:
   - id:42 | Heritage (archaeology)
     Existing note: Our position is that the proposals are acceptable...}}`,
 
@@ -74,10 +74,10 @@ Key issues:
 ━━━ Dynamic context injected as user message (not editable) ━━━
 
 Briefing summary:
-{{BRIEFING_TRANSCRIPT — full text of the selected briefing note, stripped of HTML, up to 6000 chars}}
+{{BRIEFING_TRANSCRIPT: full text of the selected briefing note, stripped of HTML, up to 6000 chars}}
 
 Issues:
-{{ISSUE_LIST — one line per active issue, e.g.:
+{{ISSUE_LIST: one line per active issue, e.g.:
   - id:42 | Heritage (archaeology)
     Existing notes: The proposals are considered to be...}}`,
 
@@ -85,12 +85,12 @@ Issues:
 ↑ YOUR INSTRUCTIONS (editable above)
 ━━━ Dynamic context injected as user message (not editable) ━━━
 
-{{GUIDING_BRIEF — if a guiding brief is set for this document type}}
-Key issues: {{ISSUE_LABELS — comma-separated list of active issue labels}}
+{{GUIDING_BRIEF: if a guiding brief is set for this document type}}
+Key issues: {{ISSUE_LABELS: comma-separated list of active issue labels}}
 Document being incorporated: {{FILENAME}}
 
 Draft paragraphs (id: preview):
-{{PARAGRAPH_LIST — id + first 120 chars of each paragraph, e.g.:
+{{PARAGRAPH_LIST: id + first 120 chars of each paragraph, e.g.:
   p0: <h2>Planning Assessment</h2>
   p1: The application site is located at...
   p2: Policy LP1 requires that...}}
@@ -102,46 +102,46 @@ Document content:
 ━━━ Dynamic context injected before your instructions (not editable) ━━━
 
 Project: {{PROJECT_NAME}}
-{{GUIDING_BRIEF — guidance content if set for this document type}}
-{{PROJECT_BRIEF — briefing note summary if uploaded}}
-{{EXAMPLE_TEXT — planning assessment style example if set on the section}}
+{{GUIDING_BRIEF: guidance content if set for this document type}}
+{{PROJECT_BRIEF: briefing note summary if uploaded}}
+{{EXAMPLE_TEXT: planning assessment style example if set on the section}}
 
 ↑ YOUR INSTRUCTIONS (editable above)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## Key Issues and Policy Context
-{{ISSUE_CONTEXT — per issue: policies linked to that issue (national, local, supplementary), policy assessment notes, evidence from accepted argument points}}
+{{ISSUE_CONTEXT: per issue: policies linked to that issue (national, local, supplementary), policy assessment notes, evidence from accepted argument points}}
 
-## Document Being Incorporated: "{{FILENAME}}" (or "no title provided — derive appropriate title")
+## Document Being Incorporated: "{{FILENAME}}" (or "no title provided, derive appropriate title")
 {{FULL_DOCUMENT_TEXT}}
 
 ## In-Scope Paragraphs
-{{USER_NOTES — if provided, shown as high-priority guidance}}
-{{PARAGRAPHS — the selected paragraph HTML blocks, each prefixed with its id}}`,
+{{USER_NOTES: if provided, shown as high-priority guidance}}
+{{PARAGRAPHS: the selected paragraph HTML blocks, each prefixed with its id}}`,
 
   incorporate_appeal: `\
 ━━━ Dynamic context injected before your instructions (not editable) ━━━
 
 Document type: {{DRAFT_TYPE_NAME}}
 Project: {{PROJECT_NAME}}
-{{GUIDING_BRIEF — guidance content if set for this document type}}
-{{PROJECT_BRIEF — briefing note summary if uploaded}}
-{{EXAMPLE_DOC — example document text if uploaded for this draft type}}
+{{GUIDING_BRIEF: guidance content if set for this document type}}
+{{PROJECT_BRIEF: briefing note summary if uploaded}}
+{{EXAMPLE_DOC: example document text if uploaded for this draft type}}
 
 ## Key Issues
-{{ISSUE_CONTEXT — per issue: argument_for and argument_against notes}}
+{{ISSUE_CONTEXT: per issue: argument_for and argument_against notes}}
 
 ## Document Being Incorporated: {{FILENAME}}
 {{FULL_DOCUMENT_TEXT}}
 
 ## In-Scope Paragraphs
-{{USER_NOTES — if provided, shown as high-priority guidance}}
+{{USER_NOTES: if provided, shown as high-priority guidance}}
 ↑ YOUR INSTRUCTIONS (editable above)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{{PARAGRAPHS — the selected paragraph HTML blocks, each prefixed with its id}}`,
+{{PARAGRAPHS: the selected paragraph HTML blocks, each prefixed with its id}}`,
 
   stage1_review: `\
-↑ YOUR INSTRUCTIONS (used as system prompt — editable above)
+↑ YOUR INSTRUCTIONS (used as system prompt - editable above)
 + tone example appended if stage1reviewexample.md is loaded on the server
 ━━━ User message injected (not editable) ━━━
 
@@ -149,31 +149,31 @@ Project: {{PROJECT_NAME}}
 Address: {{ADDRESS}}
 LPA: {{LPA}}
 Proposal: {{SUB_SECTORS}}
-{{GUIDING_BRIEF — practice guidance section if a guiding brief is set}}
+{{GUIDING_BRIEF: practice guidance section if a guiding brief is set}}
 
 ## Full Briefing Note
-{{BRIEFING_TEXT — full plain text of the selected briefing note, no character limit}}
+{{BRIEFING_TEXT: full plain text of the selected briefing note, no character limit}}
 
 ## Task
 You are completing a Stage 1 Planning Appraisal table. For each row below, extract and synthesise ALL relevant information from the briefing note above...
 
 Rows to complete:
-{{ROW_LABELS — JSON array of the appraisal table row labels}}`,
+{{ROW_LABELS: JSON array of the appraisal table row labels}}`,
 
   generate_appeal_argument: `\
-↑ YOUR INSTRUCTIONS (used as system prompt — editable above)
+↑ YOUR INSTRUCTIONS (used as system prompt - editable above)
 ━━━ User message injected (not editable) ━━━
 
 Project: {{PROJECT_NAME}}
 
 Reasons for refusal:
-{{REFUSAL_REASONS — numbered list, e.g.:
-  1. Character and appearance of the area — Significant risk
-  2. Heritage impact — Medium risk}}
+{{REFUSAL_REASONS: numbered list, e.g.:
+  1. Character and appearance of the area, Significant risk
+  2. Heritage impact, Medium risk}}
 
 Key issues to address:
-{{ISSUE_LIST — bullet list of active key issues}}
-{{INITIAL_NOTES — strategic notes entered by the user, if any}}`,
+{{ISSUE_LIST: bullet list of active key issues}}
+{{INITIAL_NOTES: strategic notes entered by the user, if any}}`,
 };
 
 const SCHEMA = 'planning_applications';
@@ -1016,7 +1016,7 @@ async function resolvePlanningStatementVariables(projectId) {
           parts.push(`Date: ${d.toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}`);
         }
         if (h.notes) parts.push(h.notes);
-        return parts.join(' — ');
+        return parts.join(', ');
       }).join('\n\n')
     : '';
 
@@ -1042,7 +1042,7 @@ ${history.map(h => {
   const formatPolicyListHtml = (pols) => {
     if (!pols.length) return '';
     const items = pols.map(p => {
-      const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+      const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
       const keyBadge = p.is_key_policy ? ' <strong>[Key Policy]</strong>' : '';
       const verbatim = p.is_key_policy && p.policy_text?.trim()
         ? `<blockquote><p>${p.policy_text.trim()}</p></blockquote>`
@@ -1054,7 +1054,7 @@ ${history.map(h => {
 
   // Slim text for LLM analysis context — refs, names, and supporting notes only (no verbatim text)
   const formatPolicyContext = (pols) => pols.map(p => {
-    const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+    const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
     const key = p.is_key_policy ? ' [Key Policy]' : '';
     const context = p.relevant_supporting_text?.trim()
       ? `\n  Context: ${p.relevant_supporting_text.trim().slice(0, 400)}`
@@ -1066,7 +1066,7 @@ ${history.map(h => {
   const formatPolicyNamesHtml = (pols) => {
     if (!pols.length) return '';
     const items = pols.map(p => {
-      const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+      const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
       return `<li>${ref}${p.policy_name}</li>`;
     }).join('\n');
     return `<ul>\n${items}\n</ul>`;

@@ -35,7 +35,7 @@ export async function sendWeeklyDigest(req, res) {
 
     const total = renewables.rows.length + dataCentres.rows.length + contracts.rows.length;
     if (total === 0) {
-      return res.json({ message: 'No new entries in the last 7 days — digest not sent.', sent: 0 });
+      return res.json({ message: 'No new entries in the last 7 days, digest not sent.', sent: 0 });
     }
 
     const html = buildDigestHtml({
@@ -64,7 +64,7 @@ export async function sendWeeklyDigest(req, res) {
     if (!adminEmails.length) return res.json({ message: 'No admin email addresses found.', sent: 0 });
 
     const weekStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    const subject = `TRP Weekly Planning Digest — w/e ${weekStr}`;
+    const subject = `TRP Weekly Planning Digest, w/e ${weekStr}`;
 
     const emails = adminEmails.map(email => ({
       to: email,
@@ -136,7 +136,7 @@ function buildDigestHtml({ renewables, dataCentres, contracts }) {
   return `
     <div style="font-family:sans-serif;max-width:800px;margin:0 auto;padding:24px">
       <h1 style="color:#1e293b;font-size:20px;margin-bottom:4px">TRP Weekly Planning Digest</h1>
-      <p style="color:#64748b;font-size:13px;margin-top:0">New entries in the last 7 days — week ending ${weekStr}</p>
+      <p style="color:#64748b;font-size:13px;margin-top:0">New entries in the last 7 days, week ending ${weekStr}</p>
       <hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0">
       ${renewablesHtml}
       ${dataCentresHtml}

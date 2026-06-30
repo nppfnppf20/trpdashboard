@@ -188,7 +188,7 @@
         <div class="form-row key-toggle-row">
           <label class="toggle-label">
             <input type="checkbox" bind:checked={form.is_key_policy} />
-            <span class="toggle-text">Key Policy — flag this as a primary determining policy for the project</span>
+            <span class="toggle-text">Key Policy: flag this as a primary determining policy for the project</span>
           </label>
         </div>
 

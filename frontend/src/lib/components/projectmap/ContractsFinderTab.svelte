@@ -47,7 +47,7 @@
       const { results } = await applyScraperFilter('contracts_finder');
       filterResults = new Map(results.map(r => [r.id, r]));
     } catch (err) {
-      filterError = 'Filter failed — ' + err.message;
+      filterError = 'Filter failed: ' + err.message;
     } finally {
       filterLoading = false;
     }

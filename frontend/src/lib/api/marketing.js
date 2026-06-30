@@ -24,11 +24,11 @@ export async function saveMarketingDraft(typeId, contentHtml) {
   return res.json();
 }
 
-export async function generateMarketingDraft(typeId, userNotes = null) {
+export async function generateMarketingDraft(typeId, { selectedTopicKeys = [], userAngle = null } = {}) {
   const res = await authFetch(`${BASE}/drafts/${typeId}/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_notes: userNotes })
+    body: JSON.stringify({ selected_topic_keys: selectedTopicKeys, user_angle: userAngle })
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

@@ -277,7 +277,7 @@
 <div class="modal-overlay" on:click|self={() => dispatch('close')} role="dialog" aria-modal="true">
   <div class="modal modal-starting-docs">
     <div class="modal-header">
-      <span class="modal-title">Starting Documents — {typeName}</span>
+      <span class="modal-title">Starting Documents: {typeName}</span>
       <button class="modal-close" on:click={() => dispatch('close')}><i class="las la-times"></i></button>
     </div>
 
@@ -336,7 +336,7 @@
           {/if}
 
           {#if briefingNotes.length === 0 && !pasteOpen}
-            <p class="sd-briefing-empty">No briefing notes yet — paste or upload one using the buttons above.</p>
+            <p class="sd-briefing-empty">No briefing notes yet, paste or upload one using the buttons above.</p>
           {:else}
             <p class="sd-briefing-desc">Select meeting notes to inject as project-specific context. Multiple notes can be selected.</p>
             <div class="sd-briefing-list">
@@ -378,7 +378,7 @@
                       <option value="">Select a saved HLPV analysis...</option>
                       {#each hlpvSessions as s (s.id)}
                         <option value={s.id}>
-                          {s.site_name || 'Unnamed site'} — {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {s.site_name || 'Unnamed site'}, {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </option>
                       {/each}
                     </select>
@@ -420,7 +420,7 @@
                       <option value="">Select a saved analysis...</option>
                       {#each socioSessions as s (s.id)}
                         <option value={s.id}>
-                          {s.session_name || 'Analysis'} — {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {s.session_name || 'Analysis'}, {new Date(s.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </option>
                       {/each}
                     </select>

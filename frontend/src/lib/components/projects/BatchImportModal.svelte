@@ -12,7 +12,7 @@
 
   // ── Mode config ───────────────────────────────────────────────────────────
   $: cfg = mode === 'statutory' ? {
-    title:           'Batch Import — Statutory Consultees',
+    title:           'Batch Import: Statutory Consultees',
     processItem:     (item) => item.type === 'text'
                        ? processConsultationDoc(projectId, { text: item.text, fileName: item.label })
                        : processConsultationDoc(projectId, { file: item.file }),
@@ -24,7 +24,7 @@
     commentLabel:    'Comments',
     extraFields:     [],
   } : {
-    title:           'Batch Import — Public Comments',
+    title:           'Batch Import: Public Comments',
     processItem:     (item) => item.type === 'text'
                        ? processPublicCommentDoc(projectId, { text: item.text, fileName: item.label })
                        : processPublicCommentDoc(projectId, { file: item.file }),
@@ -264,7 +264,7 @@
           >
             <i class="las la-cloud-upload-alt bi-drop-icon"></i>
             <span class="bi-drop-label">Drag and drop files here, or click to select</span>
-            <span class="bi-drop-hint">PDF, DOCX, TXT — select multiple at once</span>
+            <span class="bi-drop-hint">PDF, DOCX, TXT, select multiple at once</span>
           </div>
           <input
             id="bi-file-input" type="file" multiple
@@ -278,7 +278,7 @@
           <!-- Paste form -->
           <div class="bi-paste-form">
             <div class="bi-field">
-              <label class="bi-label">Label <span class="bi-label-hint">(optional — e.g. "Resident, 12 Oak St")</span></label>
+              <label class="bi-label">Label <span class="bi-label-hint">(optional, e.g. "Resident, 12 Oak St")</span></label>
               <input
                 type="text"
                 class="form-input"
@@ -460,7 +460,7 @@
                       <label class="bi-label">Position</label>
                       <select class="form-input" value={item.fields.position || ''}
                         on:change={e => updateField(item.id, 'position', e.target.value)}>
-                        <option value="">— select —</option>
+                        <option value="">Select position</option>
                         {#each cfg.positionOptions as p}<option value={p}>{p}</option>{/each}
                       </select>
                     </div>

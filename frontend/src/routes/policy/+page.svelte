@@ -114,6 +114,31 @@
     }
   }
 
+  // ── Superseded ───────────────────────────────────────────────────────────
+  async function toggleSuperseded(item) {
+    const next = !item.superseded;
+    items = items.map(it =>
+      it.source_type === item.source_type && it.id === item.id
+        ? { ...it, superseded: next }
+        : it
+    );
+    try {
+      if (item.source_type === 'document') {
+        await updatePolicyDocument(item.id, { superseded: next });
+      } else {
+        await updatePolicyInsight(item.id, { superseded: next });
+      }
+    } catch (err) {
+      // Revert on failure
+      items = items.map(it =>
+        it.source_type === item.source_type && it.id === item.id
+          ? { ...it, superseded: item.superseded }
+          : it
+      );
+      alert('Failed to update: ' + err.message);
+    }
+  }
+
   // ── Delete ────────────────────────────────────────────────────────────────
   async function doDelete() {
     if (!confirmDelete) return;
@@ -209,12 +234,12 @@
       {/if}
 
       <div class="form-group">
-        <label class="form-label">Context notes <span class="optional">— why is this relevant?</span></label>
+        <label class="form-label">Context notes <span class="optional">(why is this relevant?)</span></label>
         <textarea
           class="form-input"
           bind:value={uploadUserNotes}
           rows="3"
-          placeholder="e.g. Critical for solar farm cumulative impact assessments — replaces previous NPPF guidance on energy. Flag implications for ongoing Wiltshire projects."
+          placeholder="e.g. Critical for solar farm cumulative impact assessments, replaces previous NPPF guidance on energy. Flag implications for ongoing Wiltshire projects."
         ></textarea>
       </div>
 
@@ -246,16 +271,25 @@
     {:else}
       <div class="items-list">
         {#each items as item (item.source_type + '-' + item.id)}
-          <div class="policy-card">
+          <div class="policy-card" class:policy-card--superseded={item.superseded}>
 
             <!-- Card header -->
             <div class="policy-card-header">
               <div class="policy-card-header-left">
                 <span class="source-badge {sourceBadgeClass(item)}">{sourceLabel(item)}</span>
+                {#if item.superseded}<span class="superseded-badge">Superseded</span>{/if}
                 <h3 class="policy-title">{item.title}</h3>
                 <span class="policy-date">{formatDate(item.created_at)}</span>
               </div>
               <div class="policy-card-header-right">
+                <label class="superseded-toggle" title="Mark as superseded">
+                  <input
+                    type="checkbox"
+                    checked={item.superseded}
+                    on:change={() => toggleSuperseded(item)}
+                  />
+                  <span>Superseded</span>
+                </label>
                 {#if confirmDelete?.sourceType === item.source_type && confirmDelete?.id === item.id}
                   <span class="confirm-del">
                     Delete?
@@ -478,9 +512,43 @@
   .policy-card-header-right {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.5rem;
     flex-shrink: 0;
   }
+
+  /* Superseded */
+  .policy-card--superseded {
+    opacity: 0.55;
+  }
+  .policy-card--superseded .policy-title {
+    text-decoration: line-through;
+    color: #94a3b8;
+  }
+
+  .superseded-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .superseded-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .superseded-toggle input { accent-color: #dc2626; cursor: pointer; }
+  .superseded-toggle:hover { color: #64748b; }
 
   /* Source badges */
   .source-badge {

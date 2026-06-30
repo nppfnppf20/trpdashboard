@@ -224,7 +224,7 @@
   async function handleSendEmail() {
     if (!richTextEditor || !projectId) return;
     if (selectedSurveyors.length === 0) { alert('Please select at least one surveyor'); return; }
-    if (!currentSubject) { alert('No subject line — select a template first'); return; }
+    if (!currentSubject) { alert('No subject line, select a template first'); return; }
     const surveyor = selectedSurveyors[0];
     if (!surveyor.contactEmail) { alert(`No email address on record for ${surveyor.contactName || surveyor.surveyorOrganisation}`); return; }
     if (!confirm(`Send email to ${surveyor.contactEmail}?`)) return;

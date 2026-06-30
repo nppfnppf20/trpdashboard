@@ -16,7 +16,7 @@ import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.cont
 
 const DRAFT_TEXT_CAP = 40000;
 
-const SYSTEM_PROMPT = 'You are a senior planning consultant quality-checking a colleague\'s working draft before it goes to the client. Be precise and specific. Return only valid JSON.';
+const SYSTEM_PROMPT = 'You are a senior planning consultant quality-checking a colleague\'s working draft before it goes to the client. Be precise and specific. Return only valid JSON. Never use em dashes (—) in any output; use a comma, colon, or rewrite the sentence instead.';
 
 export const DEFAULT_BRIEF_CHECK_TEMPLATE = `You are reviewing a working draft of a planning document against the practice's guiding brief for this document type.
 
@@ -166,8 +166,8 @@ export async function checkBriefCoverage(req, res) {
     if (!guidance && !checklist) return res.json({ items: [], no_content: true });
 
     const items = await runCheck('draft_check_brief', {
-      GUIDING_BRIEF: guidance || '(no guiding brief content set — rely on the review checklist below)',
-      REVIEW_CHECKLIST: checklist || '(no separate review checklist set — derive the topics to check from the guiding brief above)',
+      GUIDING_BRIEF: guidance || '(no guiding brief content set, rely on the review checklist below)',
+      REVIEW_CHECKLIST: checklist || '(no separate review checklist set, derive the topics to check from the guiding brief above)',
       DRAFT_TEXT: fields.draftText,
     });
     res.json({ items });
@@ -266,7 +266,7 @@ export async function checkConsistency(req, res) {
 
     const historyLines = historyRows.rows.map(h => {
       const parts = [h.planning_ref, h.description, h.decision, formatDate(h.decision_date)].filter(Boolean);
-      return `Planning history (${h.section === 'on_site' ? 'on-site' : 'nearby'}): ${parts.join(' — ')}`;
+      return `Planning history (${h.section === 'on_site' ? 'on-site' : 'nearby'}): ${parts.join(', ')}`;
     });
 
     const projectInfo = [...infoLines, ...techLines, ...historyLines].join('\n');
@@ -293,7 +293,7 @@ export async function checkGrammar(req, res) {
   try {
     const styleTemplate = await getDocumentStyleTemplateByDocType(fields.documentType, development_type || null);
     const items = await runCheck('draft_check_grammar', {
-      STYLE_GUIDE: styleTemplate?.style_text?.trim() || '(no house style guide set for this document type — apply standard professional UK planning document conventions)',
+      STYLE_GUIDE: styleTemplate?.style_text?.trim() || '(no house style guide set for this document type, apply standard professional UK planning document conventions)',
       DRAFT_TEXT: fields.draftText,
     });
     res.json({ items });

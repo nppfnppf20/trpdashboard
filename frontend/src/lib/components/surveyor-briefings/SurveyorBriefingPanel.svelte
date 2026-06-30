@@ -330,7 +330,7 @@ export let selectedProject;
           <select bind:value={setupBriefingNoteId}>
             <option value={null}>Latest briefing note</option>
             {#each briefingNotes as note}
-              <option value={note.id}>{note.title || note.file_name} — {new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</option>
+              <option value={note.id}>{note.title || note.file_name}, {new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</option>
             {/each}
           </select>
         </div>

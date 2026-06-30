@@ -162,7 +162,7 @@
         <div class="form-group form-group-half">
           <label for="risk-level">Risk Level <span class="optional">optional</span></label>
           <select id="risk-level" bind:value={riskLevel}>
-            <option value="">— None —</option>
+            <option value="">None</option>
             {#each RISK_LEVELS as r}<option value={r.value}>{r.label}</option>{/each}
           </select>
         </div>

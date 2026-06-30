@@ -108,7 +108,7 @@
   async function approveSuggestion(suggestion) {
     try {
       await replaceDocumentSummary(projectId, {
-        title: `${suggestion.label} — from Briefing Transcript`,
+        title: `${suggestion.label}: from Briefing Transcript`,
         document_ref: null,
         file_name: null,
         doc_type: suggestion.field,
@@ -457,7 +457,7 @@
             <input type="text" bind:value={meetingAttendeesText} placeholder="e.g. Josh Rogers, Sarah Jones, Client team" />
           </div>
           <div class="field meeting-field-full">
-            <label>Agenda <span class="notes-hint">(optional — if provided, summary will be structured under each item)</span></label>
+            <label>Agenda <span class="notes-hint">(optional, if provided summary will be structured under each item)</span></label>
             <textarea
               class="meeting-notes-area"
               bind:value={meetingAgenda}
@@ -466,7 +466,7 @@
             ></textarea>
           </div>
           <div class="field meeting-field-full">
-            <label>Your Notes <span class="notes-hint">(key points, actions or headlines — always featured prominently)</span></label>
+            <label>Your Notes <span class="notes-hint">(key points, actions or headlines, always featured prominently)</span></label>
             <textarea
               class="meeting-notes-area"
               bind:value={meetingUserNotes}
@@ -726,7 +726,7 @@
   <div class="modal-backdrop" on:click|self={() => promptModalOpen = false}>
     <div class="prompt-modal">
       <div class="prompt-modal-header">
-        <h3>Edit Prompt — {getTypeLabel(promptDocType)}</h3>
+        <h3>Edit Prompt: {getTypeLabel(promptDocType)}</h3>
         <button class="close-btn" on:click={() => promptModalOpen = false}>&times;</button>
       </div>
       <div class="prompt-modal-body">

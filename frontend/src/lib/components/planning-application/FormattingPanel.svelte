@@ -50,9 +50,9 @@
 
   async function exportToWord() {
     const raw = editor?.getHTML()?.trim();
-    if (!raw) { error = 'Nothing to export — paste some text first.'; return; }
+    if (!raw) { error = 'Nothing to export, paste some text first.'; return; }
     const html = normaliseHtml(raw);
-    if (!html) { error = 'Nothing to export — paste some text first.'; return; }
+    if (!html) { error = 'Nothing to export, paste some text first.'; return; }
     exporting = true;
     error = null;
     try {

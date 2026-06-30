@@ -137,7 +137,7 @@
 
     {#if inputTab === 'select'}
       {#if localNotes.length === 0}
-        <p class="amend-empty">No briefing notes for this project yet — use Paste or Upload to add one.</p>
+        <p class="amend-empty">No briefing notes for this project yet, use Paste or Upload to add one.</p>
       {:else}
         <div class="amend-note-list">
           {#each localNotes as note (note.id)}

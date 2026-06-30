@@ -136,7 +136,7 @@
 
         <!-- Document summary -->
         <div class="review-section">
-          <div class="section-title">Document Summary <span class="section-hint">— edit if needed</span></div>
+          <div class="section-title">Document Summary <span class="section-hint">(edit if needed)</span></div>
           <textarea
             class="summary-textarea"
             bind:value={docSummary.summary}
@@ -149,7 +149,7 @@
         <div class="review-section">
           <div class="section-title">Topic Analysis</div>
           <div class="section-hint-block">
-            Cards where the LLM found no mention are collapsed by default — expand to review or override.
+            Cards where the LLM found no mention are collapsed by default, expand to review or override.
           </div>
 
           <div class="topic-cards">
@@ -258,7 +258,7 @@
 
         <!-- Unmatched content -->
         <div class="review-section">
-          <div class="section-title">Content not captured by existing topics <span class="section-hint">— edit if needed</span></div>
+          <div class="section-title">Content not captured by existing topics <span class="section-hint">(edit if needed)</span></div>
           <textarea
             class="summary-textarea"
             bind:value={docSummary.unmatched_content}
@@ -280,7 +280,7 @@
               <i class="las la-check-circle"></i> Confirm Stage
             {/if}
           </button>
-          <button class="btn-cancel" on:click={onCancel}>Cancel — keep as draft</button>
+          <button class="btn-cancel" on:click={onCancel}>Cancel, keep as draft</button>
         </div>
       </div>
     {/if}

@@ -139,19 +139,19 @@ function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = [], issu
   if (issueType) {
     const stripHtml = s => s?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
     if (issueType.nppf_text?.trim()) {
-      lines.push(`### NPPF — ${issue.label}`);
+      lines.push(`### NPPF: ${issue.label}`);
       lines.push(stripHtml(issueType.nppf_text));
     }
     if (issueType.nppg_text?.trim()) {
-      lines.push(`### NPPG — ${issue.label}`);
+      lines.push(`### NPPG: ${issue.label}`);
       lines.push(stripHtml(issueType.nppg_text));
     }
     if (issueType.other_national_text?.trim()) {
-      lines.push(`### Other National Policy — ${issue.label}`);
+      lines.push(`### Other National Policy: ${issue.label}`);
       lines.push(stripHtml(issueType.other_national_text));
     }
     if (issueType.other_guidance_text?.trim()) {
-      lines.push(`### Other Guidance — ${issue.label}`);
+      lines.push(`### Other Guidance: ${issue.label}`);
       lines.push(stripHtml(issueType.other_guidance_text));
     }
   }
@@ -161,8 +161,8 @@ function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = [], issu
     if (!tierPolicies.length) continue;
     lines.push(`### ${PLANNING_TIER_LABELS[tier]}`);
     for (const p of tierPolicies) {
-      const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
-      const keyTag = p.is_key_policy ? ' [KEY POLICY — quote verbatim in draft]' : '';
+      const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+      const keyTag = p.is_key_policy ? ' [KEY POLICY: quote verbatim in draft]' : '';
       lines.push(`**${ref}${p.policy_name}**${keyTag}`);
       if (p.policy_text?.trim()) {
         lines.push(`Policy wording: "${p.policy_text.trim()}"`);
@@ -707,7 +707,7 @@ export function buildPlanningArgumentSuggestionPrompt({
     const policies = policiesByTrack?.[issue.id] ?? [];
     const policyBlock = policies.length
       ? '\n\n**Relevant policies:**\n' + policies.map(p => {
-          const ref = p.policy_reference ? `${p.policy_reference} — ` : '';
+          const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
           const tier = p.policy_type ? ` (${p.policy_type.replace(/_/g, ' ')})` : '';
           const support = p.relevant_supporting_text?.trim()
             ? `\n  Context: ${p.relevant_supporting_text.trim().slice(0, 300)}`

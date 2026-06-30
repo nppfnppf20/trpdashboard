@@ -21,6 +21,7 @@ export async function listPolicyItems(req, res) {
         key_points,
         implications,
         our_take,
+        superseded,
         created_at
       FROM admin_console.policy_documents
 
@@ -38,6 +39,7 @@ export async function listPolicyItems(req, res) {
         NULL              AS key_points,
         NULL              AS implications,
         i.our_take,
+        i.superseded,
         i.created_at
       FROM admin_console.extracted_insights i
       LEFT JOIN planning_applications.meeting_transcripts t ON t.id = i.transcript_id
@@ -98,15 +100,16 @@ export async function uploadPolicyDocument(req, res) {
 
 export async function updatePolicyDocument(req, res) {
   const { id } = req.params;
-  const { our_take, title } = req.body;
+  const { our_take, title, superseded } = req.body;
   try {
     const { rows: [doc] } = await pool.query(
       `UPDATE admin_console.policy_documents
          SET our_take   = COALESCE($2, our_take),
              title      = COALESCE($3, title),
+             superseded = COALESCE($4, superseded),
              updated_at = NOW()
        WHERE id = $1 RETURNING *`,
-      [id, our_take ?? null, title?.trim() || null]
+      [id, our_take ?? null, title?.trim() || null, superseded ?? null]
     );
     if (!doc) return res.status(404).json({ error: 'Not found' });
     res.json(doc);
@@ -137,11 +140,14 @@ export async function deletePolicyDocument(req, res) {
 
 export async function updatePolicyInsight(req, res) {
   const { id } = req.params;
-  const { our_take } = req.body;
+  const { our_take, superseded } = req.body;
   try {
     const { rows: [insight] } = await pool.query(
-      `UPDATE admin_console.extracted_insights SET our_take = $2 WHERE id = $1 RETURNING *`,
-      [id, our_take ?? null]
+      `UPDATE admin_console.extracted_insights
+         SET our_take   = COALESCE($2, our_take),
+             superseded = COALESCE($3, superseded)
+       WHERE id = $1 RETURNING *`,
+      [id, our_take ?? null, superseded ?? null]
     );
     if (!insight) return res.status(404).json({ error: 'Not found' });
     res.json(insight);

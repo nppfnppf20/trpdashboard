@@ -262,7 +262,7 @@
   {#if disciplinesWithRules.length === 0}
     <div class="empty-state">
       <i class="las la-search"></i>
-      <p>No risk rules were triggered for this site — no narrative to generate.</p>
+      <p>No risk rules were triggered for this site, no narrative to generate.</p>
     </div>
   {:else}
     <!-- Toolbar -->
@@ -273,7 +273,7 @@
         {:else}
           <span class="no-project">Select a project above to include briefing note context</span>
         {/if}
-        <select class="devtype-select" bind:value={devType} title="Development type — used to select the right guiding brief">
+        <select class="devtype-select" bind:value={devType} title="Development type, used to select the right guiding brief">
           <option value="">Dev type...</option>
           {#each HLPV_DEV_TYPES as dt}
             <option value={dt}>{dt}</option>

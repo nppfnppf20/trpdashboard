@@ -246,7 +246,7 @@
                         {suggestion.template.template_name}
                       </span>
                     {:else}
-                      <span class="no-template-pill">No template — email will need to be written manually</span>
+                      <span class="no-template-pill">No template, email will need to be written manually</span>
                     {/if}
                   </div>
                 </div>
@@ -280,7 +280,7 @@
                     <i class="las la-users"></i>
                     Suggested surveyors (4★+)
                     {#if suggestion.surveyors.length === 0}
-                      <span class="no-surveyors-note">— none on record for this discipline</span>
+                      <span class="no-surveyors-note">none on record for this discipline</span>
                     {/if}
                   </div>
 
@@ -360,7 +360,7 @@
                 class="add-discipline-select"
                 disabled={addDisciplineLoading || availableToAdd.length === 0}
               >
-                <option value="">— select discipline —</option>
+                <option value="">Select discipline</option>
                 {#each availableToAdd as d}
                   <option value={d}>{d}</option>
                 {/each}
@@ -430,7 +430,7 @@
               <div class="detail-section-label">
                 Suggested surveyors (4★+)
                 {#if ds.surveyors.length === 0}
-                  <span class="no-surveyors-note">— none on record</span>
+                  <span class="no-surveyors-note">none on record</span>
                 {/if}
               </div>
               {#if ds.surveyors.length > 0}

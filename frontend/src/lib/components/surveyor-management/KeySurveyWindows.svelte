@@ -107,7 +107,7 @@
       <span class="badge">{surveyWindows.length}</span>
     </button>
     {#if isExpanded}
-      <span class="hint">Windows are hardcoded — live data coming soon</span>
+      <span class="hint">Windows are hardcoded, live data coming soon</span>
     {/if}
   </div>
 
@@ -137,7 +137,7 @@
             {#if bar}
               <div
                 class="window-bar"
-                title="{win.name} — {win.start} to {win.end}"
+                title="{win.name}: {win.start} to {win.end}"
                 style="
                   top:    {rowIdx * ROW_HEIGHT + 7}px;
                   left:   {bar.left}px;

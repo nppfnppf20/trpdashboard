@@ -612,7 +612,7 @@
               </div>
               <div class="form-group">
                 <label>Notes</label>
-                <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes — included verbatim in the summary…"></textarea>
+                <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
               </div>
             </div>
             {#if uploadSummaryType === 'custom'}
@@ -921,7 +921,7 @@
 
       <div class="modal-footer">
         <button class="btn btn-secondary btn-sm" on:click={() => insightsPreview = null} disabled={insightsSaving}>
-          Skip — don't save
+          Skip, don't save
         </button>
         <button class="btn btn-primary" on:click={confirmInsights} disabled={insightsSaving || insightsPreview.selected.size === 0}>
           {#if insightsSaving}
@@ -969,7 +969,7 @@
           bind:this={richTextEditor}
           content={editorInitialHtml}
           placeholder="Meeting summary…"
-          fullHeight={false}
+          fullHeight={true}
         />
       </div>
 
@@ -1357,9 +1357,9 @@
   .mn-modal-meta { font-size: 0.8rem; color: #64748b; margin: 0; }
   .close-btn { flex-shrink: 0; }
 
-  .mn-editor-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
-  .mn-editor-body :global(.rich-text-editor),
-  .mn-editor-body :global([contenteditable]) { flex: 1; min-height: 0; }
+  .mn-editor-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .mn-editor-body :global(.rich-text-editor) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .mn-editor-body :global(.editor-content) { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 
   .modal-footer {
     display: flex; justify-content: flex-end; gap: 0.6rem;

@@ -30,7 +30,7 @@
   let previewHtml = '';
 
   function openPreview(t, field) {
-    previewTitle = `${t.label}${t.development_type ? ` (${t.development_type})` : ''} — ${field.label}`;
+    previewTitle = `${t.label}${t.development_type ? ` (${t.development_type})` : ''}: ${field.label}`;
     previewHtml = t[field.key] ?? '';
     previewOpen = true;
   }

@@ -94,7 +94,7 @@
         </div>
       </div>
       <div class="form-group">
-        <label>Keywords <span class="hint">(comma separated — helps the LLM identify mentions)</span></label>
+        <label>Keywords <span class="hint">(comma separated, helps the LLM identify mentions)</span></label>
         <input bind:value={newKeywords} placeholder="noise, decibels, acoustic, sound levels" class="form-input" />
       </div>
       <div class="form-actions">

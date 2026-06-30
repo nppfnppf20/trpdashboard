@@ -278,7 +278,7 @@
               </div>
               <textarea
                 class="summary-field"
-                placeholder="Add notes on this issue — position, key evidence, approach..."
+                placeholder="Add notes on this issue: position, key evidence, approach..."
                 value={issue.summary ?? ''}
                 use:autoresize={issue.summary}
                 on:blur={(e) => updateKeyIssueSummary(issue.id, e.target.value)}
@@ -421,7 +421,7 @@
                     {/if}
                     <textarea
                       class="notes-field for-field"
-                      placeholder="Our response — evidence, policy hooks, expert position, how we address the objection..."
+                      placeholder="Our response: evidence, policy hooks, expert position, how we address the objection..."
                       value={$issueNotes[issue.id]?.argument_for ?? ''}
                       use:autoresize={$issueNotes[issue.id]?.argument_for}
                       on:input={(e) => handleNoteInput(issue.id, 'argument_for', e.target.value)}
@@ -517,7 +517,7 @@
             <textarea
               class="chat-input"
               bind:value={$refinementInput}
-              placeholder="Ask for changes — e.g. 'make the first paragraph more specific to heritage impact'..."
+              placeholder="Ask for changes, e.g. 'make the first paragraph more specific to heritage impact'..."
               rows="2"
               on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefinement(); } }}
             ></textarea>
@@ -711,7 +711,7 @@
           <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => handleGenerate($activeDraftTypeId)}>
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
-          <button class="draft-context-btn" class:active={contextPanelOpen} on:click={toggleContextPanel} title="View prompt context — guiding brief, project brief, example doc">
+          <button class="draft-context-btn" class:active={contextPanelOpen} on:click={toggleContextPanel} title="View prompt context: guiding brief, project brief, example doc">
             <i class="las la-layer-group"></i> Context
           </button>
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
@@ -854,7 +854,7 @@
                   class="draft-setting-btn"
                   disabled={exampleUploading[type.id]}
                   on:click={() => exampleFileInputs[type.id]?.click()}
-                  title="Upload an example document — used as tone and structure reference in all prompts"
+                  title="Upload an example document, used as tone and structure reference in all prompts"
                 >
                   {#if exampleUploading[type.id]}
                     <div class="mini-spinner"></div> Uploading...
@@ -894,7 +894,7 @@
           <div class="log-form-row">
             <div class="log-form-field">
               <label class="section-field-label">Document title <span style="color:#ef4444">*</span></label>
-              <input class="add-section-input" type="text" bind:value={$logTitle} placeholder="e.g. Officer Report — Land at Station Road" />
+              <input class="add-section-input" type="text" bind:value={$logTitle} placeholder="e.g. Officer Report, Land at Station Road" />
             </div>
             <div class="log-form-field log-form-field-sm">
               <label class="section-field-label">Reference / code</label>
@@ -958,7 +958,7 @@
           <div class="log-form-row">
             <div class="log-form-field">
               <label class="section-field-label">Document title <span style="color:#ef4444">*</span></label>
-              <input class="add-section-input" type="text" bind:value={$editTitle} placeholder="e.g. Officer Report — Land at Station Road" />
+              <input class="add-section-input" type="text" bind:value={$editTitle} placeholder="e.g. Officer Report, Land at Station Road" />
             </div>
             <div class="log-form-field log-form-field-sm">
               <label class="section-field-label">Reference / code</label>
@@ -1010,7 +1010,7 @@
   <div class="modal-overlay" on:click|self={() => $sectionsModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-sections">
       <div class="modal-header">
-        <span class="modal-title">Sections — {$sectionsTypeName}</span>
+        <span class="modal-title">Sections: {$sectionsTypeName}</span>
         <button class="modal-close" on:click={() => $sectionsModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body sections-body">
@@ -1086,7 +1086,7 @@
   <div class="modal-overlay" on:click|self={() => $sectionExampleModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-wide">
       <div class="modal-header">
-        <span class="modal-title">Style Example — {exSection?.name}</span>
+        <span class="modal-title">Style Example: {exSection?.name}</span>
         <button class="modal-close" on:click={() => $sectionExampleModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body">
@@ -1172,7 +1172,7 @@
         </div>
         <div class="form-row" style="margin-bottom:0.75rem">
           <label class="section-field-label">Title <span class="form-label-hint">(optional)</span></label>
-          <input class="add-section-input" type="text" bind:value={$briefingUploadTitle} placeholder="e.g. Pre-app meeting notes — Jan 2025" />
+          <input class="add-section-input" type="text" bind:value={$briefingUploadTitle} placeholder="e.g. Pre-app meeting notes, Jan 2025" />
         </div>
         {#if $briefingUploadTab === 'upload'}
           <div
@@ -1393,7 +1393,7 @@
 <!-- Action prompt modals -->
 <PromptEditModal
   open={$draftArgsState.open}
-  title="Edit Prompt — Draft Arguments from Briefing"
+  title="Edit Prompt: Draft Arguments from Briefing"
   promptText={$draftArgsState.text}
   contextTemplate={$draftArgsState.contextTemplate}
   loading={$draftArgsState.loading}
@@ -1407,7 +1407,7 @@
 
 <PromptEditModal
   open={$draftKeyState.open}
-  title="Edit Prompt — Draft Issue Notes from Briefing"
+  title="Edit Prompt: Draft Issue Notes from Briefing"
   promptText={$draftKeyState.text}
   contextTemplate={$draftKeyState.contextTemplate}
   loading={$draftKeyState.loading}

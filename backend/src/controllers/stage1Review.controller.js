@@ -129,7 +129,7 @@ export async function generateStage1Review(req, res) {
         if (h.decision) parts.push(`Decision: ${h.decision}`);
         const d = formatDate(h.decision_date);
         if (d) parts.push(`Date: ${d}`);
-        return parts.join(' — ');
+        return parts.join(', ');
       }).join('\n');
     };
 

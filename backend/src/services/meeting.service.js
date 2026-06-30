@@ -28,14 +28,16 @@ PRECEDENCE RULES
 ════════════════════════════════════════
 
 1. CONSULTANT NOTES (if provided) take absolute precedence. Every point must appear in the summary. Actions mentioned in the notes must appear in ACTIONS_JSON.
-2. AGENDA (if provided) provides context for the content — do not use agenda items as headings; map them to the standard structure below.
-3. TRANSCRIPT is the primary source for all other content.`;
+2. AGENDA (if provided) DRIVES THE STRUCTURE of the summary. Use each agenda item as an <h3> section heading in the order given. Cover the discussion under each item. If topics arose outside the agenda, add a final <h3>Other Business</h3> section.
+3. If NO agenda is provided, use the default structure defined below.
+4. TRANSCRIPT is the primary source for all other content.
+5. Never use em dashes (—) in any output. Use a comma, colon, or rewrite the sentence instead.`;
 
 const PROMPT_STRUCTURE_DEFAULT = `════════════════════════════════════════
-SUMMARY_HTML STRUCTURE
+SUMMARY_HTML STRUCTURE (when no agenda is provided)
 ════════════════════════════════════════
 
-Always use the following structure, in exactly this order. Use only <h3>, <p>, <ul>, <ol>, <li>, <strong> tags.
+Use the following structure when no agenda has been supplied. Use only <h3>, <p>, <ul>, <ol>, <li>, <strong> tags.
 
 1. OVERVIEW (no heading)
 Single <p>: purpose of the meeting, who attended, date, and headline outcome. 2-3 sentences maximum.
@@ -92,14 +94,16 @@ function extractTag(text, tag) {
 }
 
 const EXTRACT_PROMPTS = {
-  internal: `You are analysing an internal planning team meeting transcript. Your sole task is to identify and extract POLICY UPDATES discussed in the meeting.
+  internal: `You are analysing an internal planning team meeting transcript. Your sole task is to identify and extract every piece of information discussed about POLICY UPDATES.
 
 Policy updates include: changes to national planning policy (NPPF, NPPGs, PPGs), changes to local plans or SPDs, emerging policies, new appeal decisions that set precedent, changes to regulations or legislation affecting planning.
 
-For each distinct policy update mentioned, extract:
+For each distinct policy topic mentioned, extract EVERYTHING that was said about it. Do NOT summarise or condense — capture the full substance of the discussion: what the policy change is, the specific wording or paragraph references if mentioned, who said what, every concern or implication raised, any examples given, any disagreement or uncertainty expressed, any practical consequences for live projects or future work. If someone made an offhand remark about a policy, include it. Nothing should be left out.
+
+For each topic extract:
 - topic: concise name/title (e.g. "NPPF Chapter 14 revision", "Local Plan partial review")
-- detail: a thorough account of what was said — what the policy change is, why it matters, any concerns or opportunities raised. Be detailed.
-- raised_by: who mentioned it (first name or role if identifiable, otherwise null)
+- detail: the complete record of everything said — treat this as a verbatim account in prose, not a summary. Include all specific details, references, names, figures, and opinions expressed.
+- raised_by: who first raised it — use a real name or role if identifiable (e.g. "Sarah", "planning officer"). If the transcript only labels the speaker by number (e.g. "Speaker 4", "Speaker 7"), set this to null — speaker numbers carry no useful meaning.
 
 Return ONLY a valid JSON array — no explanation, no markdown code fences, nothing else. If there are no policy updates discussed, return [].
 

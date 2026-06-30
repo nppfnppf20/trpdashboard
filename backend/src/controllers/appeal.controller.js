@@ -914,7 +914,7 @@ export async function generateDraftFromPaNotes(req, res) {
         );
         const formatPolicies = rows => rows.length
           ? rows.map(p => {
-              const header = `${p.policy_reference}${p.policy_name ? ` — ${p.policy_name}` : ''}`;
+              const header = `${p.policy_reference}${p.policy_name ? `: ${p.policy_name}` : ''}`;
               const text = p.policy_text?.trim() ? `\n${p.policy_text.trim()}` : '';
               return header + text;
             }).join('\n\n')
@@ -939,7 +939,7 @@ export async function generateDraftFromPaNotes(req, res) {
               if (h.decision)     parts.push(`Decision: ${h.decision}`);
               const d = fmtDate(h.decision_date);
               if (d) parts.push(`Date: ${d}`);
-              return parts.join(' — ');
+              return parts.join(', ');
             }).join('\n')
           : 'None recorded.';
         const onSite = historyRows.filter(r => r.section === 'on_site');

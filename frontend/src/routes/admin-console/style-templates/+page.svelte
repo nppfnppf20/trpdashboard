@@ -229,7 +229,7 @@
           <h2>{isNew ? 'New Style Template' : form.name}</h2>
           <p class="modal-sub">
             {#if selectedBrief}
-              {DOCUMENT_TYPE_LABELS[selectedBrief.document_type] ?? selectedBrief.document_type}{selectedBrief.development_type ? ` — ${selectedBrief.development_type}` : ''}
+              {DOCUMENT_TYPE_LABELS[selectedBrief.document_type] ?? selectedBrief.document_type}{selectedBrief.development_type ? ` - ${selectedBrief.development_type}` : ''}
             {:else}
               Paste an example document to guide the LLM's writing style.
             {/if}
@@ -243,7 +243,7 @@
       <div class="modal-meta">
         <div class="meta-field meta-field-grow">
           <label for="st-name">Name</label>
-          <input id="st-name" type="text" bind:value={form.name} placeholder="e.g. Planning Statement — Solar Farm" />
+          <input id="st-name" type="text" bind:value={form.name} placeholder="e.g. Planning Statement - Solar Farm" />
         </div>
         <div class="meta-field">
           <label for="st-brief">Guiding Brief</label>
@@ -251,7 +251,7 @@
             <option value="">None</option>
             {#each guidingBriefs as b}
               <option value={b.id}>
-                {DOCUMENT_TYPE_LABELS[b.document_type] ?? b.document_type}{b.development_type ? ` / ${b.development_type}` : ''} — {b.name}
+                {DOCUMENT_TYPE_LABELS[b.document_type] ?? b.document_type}{b.development_type ? ` / ${b.development_type}` : ''}: {b.name}
               </option>
             {/each}
           </select>
@@ -283,11 +283,11 @@
             placeholder="Paste the example document here as plain text (headings, paragraphs, etc.)."
           ></textarea>
         {:else}
-          <div class="tab-help">Internal notes about this template — source, version, or usage context.</div>
+          <div class="tab-help">Internal notes about this template: source, version, or usage context.</div>
           <textarea
             class="text-area"
             bind:value={form.notes}
-            placeholder="Optional notes — e.g. source of this example, date prepared, any caveats."
+            placeholder="Optional notes, e.g. source of this example, date prepared, any caveats."
           ></textarea>
         {/if}
       </div>

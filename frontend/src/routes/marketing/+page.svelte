@@ -7,7 +7,7 @@
     <a href="/" class="home-btn" title="Back to Home">
       <i class="las la-home"></i>
     </a>
-    <span class="topbar-title">Marketing</span>
+    <span class="topbar-title">Marketing <span class="beta-tag">Beta</span></span>
   </header>
 
   <div class="main">
@@ -56,6 +56,21 @@
     font-size: 0.875rem;
     font-weight: 600;
     color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .beta-tag {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
   }
 
   .main {

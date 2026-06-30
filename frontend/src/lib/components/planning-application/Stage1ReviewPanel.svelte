@@ -66,7 +66,7 @@
         throw new Error('Stage 1 Review template not found. Please run the database migration to seed it.');
       }
 
-      const result = await createDeliverable(project.id, template.id, `Stage 1 Planning Appraisal — ${project.project_name}`);
+      const result = await createDeliverable(project.id, template.id, `Stage 1 Planning Appraisal: ${project.project_name}`);
       const deliverable = result.deliverable;
 
       // Inject the generated HTML into the deliverable
@@ -210,7 +210,7 @@
 
 <PromptEditModal
   open={$stage1PromptState.open}
-  title="Edit Prompt — Generate Stage 1 Review"
+  title="Edit Prompt: Generate Stage 1 Review"
   promptText={$stage1PromptState.text}
   contextTemplate={$stage1PromptState.contextTemplate}
   loading={$stage1PromptState.loading}

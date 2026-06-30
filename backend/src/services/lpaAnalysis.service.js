@@ -17,7 +17,8 @@ supporting documents — and extract structured intelligence about how a Local P
 (LPA) has approached and decided similar planning applications. \
 You will be given context about a live project (site, description, use type) and a list of \
 relevant planning policies the team is tracking. \
-Your analysis will be used to inform the project team's strategy and advice to their client.`;
+Your analysis will be used to inform the project team's strategy and advice to their client. \
+Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
 
 const LPA_DOC_ANALYSIS_PROMPT = `You are analysing a planning document to extract intelligence relevant to a live project.
 
@@ -59,7 +60,8 @@ const LPA_SYNTHESIS_SYSTEM = `You are a senior planning consultant producing a s
 You have reviewed a set of planning documents from similar schemes and must now produce a structured \
 intelligence report to inform your client's project strategy. \
 Write in clear, professional planning language. Be specific, evidence-based, and directly useful \
-to a planning team preparing a case.`;
+to a planning team preparing a case. \
+Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
 
 const LPA_SYNTHESIS_PROMPT = `You are producing a strategic LPA decision analysis report for the following project.
 
@@ -94,7 +96,7 @@ A narrative assessment of the LPA's decision-making pattern across these cases:
 
 ## How Our Relevant Policies Have Been Treated
 For each policy in our tracking list that appears across the documents, write a dedicated section:
-- **[Policy Reference] — [Policy Name]**
+- **[Policy Reference]: [Policy Name]**
   - How has this policy been applied across the cases?
   - Has it been used to support refusal, justify approval, or treated as a neutral factor?
   - Are there any notable interpretations or weightings by the LPA or Inspector?
@@ -120,7 +122,7 @@ export async function analyseLpaDocument(rawText, projectContext, policies) {
 
   const policiesList = policies.length
     ? policies.map(p =>
-        `- ${p.policy_reference ? p.policy_reference + ' — ' : ''}${p.policy_name} (${p.policy_type})${p.is_key_policy ? ' [KEY POLICY]' : ''}`
+        `- ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name} (${p.policy_type})${p.is_key_policy ? ' [KEY POLICY]' : ''}`
       ).join('\n')
     : 'No specific policies have been entered yet.';
 
@@ -157,7 +159,7 @@ export async function synthesiseLpaAnalysis(projectContext, policies, documents)
 
   const policiesList = policies.length
     ? policies.map(p =>
-        `- ${p.policy_reference ? p.policy_reference + ' — ' : ''}${p.policy_name} (${p.policy_type})${p.is_key_policy ? ' [KEY POLICY]' : ''}`
+        `- ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name} (${p.policy_type})${p.is_key_policy ? ' [KEY POLICY]' : ''}`
       ).join('\n')
     : 'No specific policies have been entered yet.';
 

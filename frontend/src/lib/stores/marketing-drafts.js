@@ -59,10 +59,10 @@ export async function handleSaveDraft() {
   }
 }
 
-export async function handleGenerate(typeId) {
+export async function handleGenerate(typeId, opts = {}) {
   draftGenerating.set(typeId);
   try {
-    const result = await generateMarketingDraft(typeId);
+    const result = await generateMarketingDraft(typeId, opts);
     drafts.update(d => ({ ...d, [typeId]: result }));
     if (get(activeDraftTypeId) === typeId) {
       draftEditorHtml.set(result.content_html ?? '');

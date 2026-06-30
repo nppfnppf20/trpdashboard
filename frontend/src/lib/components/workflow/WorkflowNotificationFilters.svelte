@@ -31,7 +31,7 @@
     {#each sourceTypes as s}<option value={s.value}>{s.label}</option>{/each}
   </select>
   <input type="date" bind:value={dateFrom} on:change={emit} title="From" />
-  <span>—</span>
+  <span>-</span>
   <input type="date" bind:value={dateTo} on:change={emit} title="To" />
   {#if hasActive}
     <button class="btn btn-secondary btn-sm" on:click={clear}><i class="las la-times"></i> Clear</button>

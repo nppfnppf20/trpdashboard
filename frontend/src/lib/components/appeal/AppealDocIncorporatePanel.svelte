@@ -164,7 +164,7 @@
     const targeted = paragraphsOverride ?? allParagraphs.filter(p => scopedIds.has(p.id));
 
     if (!targeted.length) {
-      incorporateError = 'No paragraphs selected — tick at least one paragraph to update.';
+      incorporateError = 'No paragraphs selected, tick at least one paragraph to update.';
       panelState = 'scoped';
       return;
     }
@@ -437,7 +437,7 @@
       <div class="notes-area">
         <label class="notes-label">
           <i class="las la-pen"></i> Your notes
-          <span class="notes-hint">Tell Claude what to focus on — given high priority in the prompt</span>
+          <span class="notes-hint">Tell Claude what to focus on, given high priority in the prompt</span>
         </label>
         <textarea
           class="notes-textarea"
@@ -493,7 +493,7 @@
         <div class="notes-area notes-area--inline">
           <label class="notes-label">
             <i class="las la-pen"></i> Your notes
-            <span class="notes-hint">Tell Claude what to focus on — given high priority</span>
+            <span class="notes-hint">Tell Claude what to focus on, given high priority</span>
           </label>
           <textarea
             class="notes-textarea"
@@ -538,7 +538,7 @@
           <p class="scoped-summary">{scopeSummary}</p>
         {/if}
         {#if scopeError}
-          <p class="scoped-error"><i class="las la-exclamation-circle"></i> Scoping failed — select paragraphs manually below.</p>
+          <p class="scoped-error"><i class="las la-exclamation-circle"></i> Scoping failed, select paragraphs manually below.</p>
         {/if}
       </div>
 
@@ -719,7 +719,7 @@
 <!-- Prompt edit modals -->
 <PromptEditModal
   open={$scopeState.open}
-  title="Edit Prompt — Scope Incorporation"
+  title="Edit Prompt: Scope Incorporation"
   promptText={$scopeState.text}
   contextTemplate={$scopeState.contextTemplate}
   loading={$scopeState.loading}
@@ -733,7 +733,7 @@
 
 <PromptEditModal
   open={$incorporateState.open}
-  title="Edit Prompt — Incorporate into Appeal"
+  title="Edit Prompt: Incorporate into Appeal"
   promptText={$incorporateState.text}
   contextTemplate={$incorporateState.contextTemplate}
   loading={$incorporateState.loading}

@@ -25,7 +25,7 @@ export async function processConsultation(req, res) {
       fileName = req.file.originalname;
       if (!text || text.trim().length < 30) {
         return res.status(422).json({
-          error: 'Could not extract readable text from this PDF. It may be a scanned or image-based document — try pasting the text directly instead.',
+          error: 'Could not extract readable text from this PDF. It may be a scanned or image-based document, try pasting the text directly instead.',
         });
       }
     } else if (req.body.text) {
@@ -288,7 +288,7 @@ function buildConsultantEmailHtml({ toName, consultee_name, projectName, project
   ).join('');
 
   const greeting = toName ? `Hi ${toName},` : 'Hi,';
-  const projectLine = [projectRef, projectName].filter(Boolean).join(' — ');
+  const projectLine = [projectRef, projectName].filter(Boolean).join(': ');
   const introBlock = introNote ? `<p style="margin:0 0 16px;">${introNote}</p>` : '';
 
   return `<!DOCTYPE html>
@@ -301,7 +301,7 @@ function buildConsultantEmailHtml({ toName, consultee_name, projectName, project
 
   ${introBlock}
 
-  <p style="margin:0 0 16px;">We would be grateful if you could review the key issues raised below and provide your suggested response in the right-hand column. <strong>Please note this is not an exhaustive list</strong> — if you identify any additional issues not captured here, please add them as further rows.</p>
+  <p style="margin:0 0 16px;">We would be grateful if you could review the key issues raised below and provide your suggested response in the right-hand column. <strong>Please note this is not an exhaustive list</strong>, if you identify any additional issues not captured here, please add them as further rows.</p>
 
   <table style="border-collapse:collapse;width:100%;margin:0 0 24px;">
     <thead>
@@ -347,7 +347,7 @@ export async function emailConsultant(req, res) {
     });
 
     const emailSubject = subject?.trim()
-      || `Consultation Response Review — ${row.consultee_name || 'Consultee'}${row.project_ref ? ` (${row.project_ref})` : ''}`;
+      || `Consultation Response Review: ${row.consultee_name || 'Consultee'}${row.project_ref ? ` (${row.project_ref})` : ''}`;
 
     const result = await sendEmail({
       to:        to_email.trim(),

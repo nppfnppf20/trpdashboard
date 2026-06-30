@@ -143,7 +143,7 @@
 
         {:else if step === 'results'}
           <p class="intro">
-            Review the suggested content below. Accept what looks right — skipped items will be ignored.
+            Review the suggested content below. Accept what looks right, skipped items will be ignored.
           </p>
 
           <div class="groups">

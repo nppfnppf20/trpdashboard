@@ -182,11 +182,11 @@
     ).join('');
 
     const greeting = form.to_name?.trim() ? `Hi ${form.to_name.trim()},` : 'Hi,';
-    const projectLine = [project?.project_id, project?.site_name || project?.project_name].filter(Boolean).join(' — ');
+    const projectLine = [project?.project_id, project?.site_name || project?.project_name].filter(Boolean).join(', ');
 
     return `<p>${greeting}</p>
 <p>We have received a statutory consultation response from <strong>${r.consultee_name || 'the consultee'}</strong>${projectLine ? ` in relation to <strong>${projectLine}</strong>` : ''}. Please find this attached for your reference.</p>
-<p>We would be grateful if you could review the key issues raised below and provide your suggested response in the right-hand column. <strong>Please note this is not an exhaustive list</strong> — if you identify any additional issues not captured here, please add them as further rows.</p>
+<p>We would be grateful if you could review the key issues raised below and provide your suggested response in the right-hand column. <strong>Please note this is not an exhaustive list</strong>: if you identify any additional issues not captured here, please add them as further rows.</p>
 <table style="border-collapse:collapse;width:100%;">
   <thead><tr>${th('Issue Raised')}${th('Your Response (please complete)')}</tr></thead>
   <tbody>${dataRows}${blankRows}</tbody>
@@ -200,7 +200,7 @@
     emailForm = {
       to_email: r.original_consultant_email || '',
       to_name:  r.original_consultant || '',
-      subject:  `Consultation Response Review — ${r.consultee_name || 'Consultee'}${project?.project_id ? ` (${project.project_id})` : ''}`,
+      subject:  `Consultation Response Review: ${r.consultee_name || 'Consultee'}${project?.project_id ? ` (${project.project_id})` : ''}`,
     };
     emailError = null;
     // setHTML called after DOM renders via tick
@@ -564,7 +564,7 @@
         </button>
         {#if showExtras}
           <div class="ct-field">
-            <label class="ct-label">Your Notes <span class="ct-label-hint">— flag anything important; these take precedence over the document</span></label>
+            <label class="ct-label">Your Notes <span class="ct-label-hint">flag anything important; these take precedence over the document</span></label>
             <textarea class="form-input" bind:value={uploadUserNotes} rows="4" placeholder="e.g. The ecology section is the critical issue here. Make sure the survey date concern is captured."></textarea>
           </div>
         {/if}
@@ -603,7 +603,7 @@
           <div class="ct-field">
             <label class="ct-label">Position</label>
             <select class="form-input" bind:value={reviewForm.position}>
-              <option value="">— select —</option>
+              <option value="">Select position</option>
               <option>Objection</option>
               <option>Conditional Support</option>
               <option>Support</option>
@@ -722,7 +722,7 @@
         </div>
 
         <div class="ct-email-body-section">
-          <label class="ct-label">Email content <span class="ct-label-hint">— edit before sending</span></label>
+          <label class="ct-label">Email content <span class="ct-label-hint">edit before sending</span></label>
           <RichTextEditor bind:this={emailEditor} placeholder="Email draft will appear here…" />
         </div>
 
@@ -854,7 +854,7 @@
               <td class="ct-td ct-td-pos">
                 {#if editing}
                   <select class="form-input ct-cell-input" bind:value={editForm.position}>
-                    <option value="">— select —</option>
+                    <option value="">Select position</option>
                     <option>Objection</option>
                     <option>Conditional Support</option>
                     <option>Support</option>

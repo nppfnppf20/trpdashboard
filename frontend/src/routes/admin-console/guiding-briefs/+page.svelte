@@ -318,7 +318,7 @@
       <div class="modal-meta">
         <div class="meta-field meta-field-grow">
           <label for="gb-name">Name</label>
-          <input id="gb-name" type="text" bind:value={form.name} placeholder="e.g. HLPV — Solar Farm" />
+          <input id="gb-name" type="text" bind:value={form.name} placeholder="e.g. HLPV - Solar Farm" />
         </div>
         <div class="meta-field">
           <label for="gb-doctype">Document Type</label>
@@ -369,7 +369,7 @@
       <div class="editor-wrap">
         {#if activeTab === 'guidance'}
           <div class="tab-help guidance-help">
-            <span>Instructions injected into the prompt when drafting this document. Supports markdown — use ## for headings, **bold**, - for bullet lists.</span>
+            <span>Instructions injected into the prompt when drafting this document. Supports markdown: use ## for headings, **bold**, - for bullet lists.</span>
             <button class="toggle-edit-btn" onclick={() => guidanceEditMode ? (guidanceEditMode = false) : (showEditWarning = true)}>
               <i class="las {guidanceEditMode ? 'la-eye' : 'la-edit'}"></i>
               {guidanceEditMode ? 'Preview' : 'Edit'}
@@ -386,7 +386,7 @@
               {#if form.guidance_content?.trim()}
                 {@html md(form.guidance_content)}
               {:else}
-                <p class="preview-empty">Nothing written yet — click Edit to add content.</p>
+                <p class="preview-empty">Nothing written yet, click Edit to add content.</p>
               {/if}
             </div>
           {/if}
@@ -397,7 +397,7 @@
           <textarea
             class="text-area"
             bind:value={form.review_checklist}
-            placeholder="List topics or elements to verify in the draft. Example:&#10;&#10;- Ecology: check for SSSI, habitats, biodiversity net gain — flag if not mentioned&#10;- Landscape and visual impact: must be addressed with reference to the relevant LVIA&#10;- Cumulative impact: check if other schemes are referenced"
+            placeholder="List topics or elements to verify in the draft. Example:&#10;&#10;- Ecology: check for SSSI, habitats, biodiversity net gain, flag if not mentioned&#10;- Landscape and visual impact: must be addressed with reference to the relevant LVIA&#10;- Cumulative impact: check if other schemes are referenced"
           ></textarea>
         {:else if activeTab === 'meeting'}
           <div class="tab-help">
@@ -410,12 +410,12 @@
           ></textarea>
         {:else if activeTab === 'style'}
           <div class="tab-help">
-            Paste a real example of this document type. Used by the LLM to calibrate tone, register, sentence structure, and level of detail — not as content to copy. The guiding brief always takes precedence.
+            Paste a real example of this document type. Used by the LLM to calibrate tone, register, sentence structure, and level of detail, not as content to copy. The guiding brief always takes precedence.
           </div>
           <textarea
             class="text-area"
             bind:value={form.style_example}
-            placeholder="Paste a real example document here. Plain text is fine — HTML will be stripped automatically before the LLM sees it."
+            placeholder="Paste a real example document here. Plain text is fine, HTML will be stripped automatically before the LLM sees it."
           ></textarea>
         {/if}
       </div>

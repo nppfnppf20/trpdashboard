@@ -10,7 +10,7 @@
   const dispatch = createEventDispatcher();
 
   const RISK_OPTIONS = [
-    { value: '', label: '— No change —' },
+    { value: '', label: 'No change' },
     { value: 'showstopper', label: 'Showstopper' },
     { value: 'extremely_high_risk', label: 'Extremely High Risk' },
     { value: 'high_risk', label: 'High Risk' },

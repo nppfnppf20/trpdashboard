@@ -181,14 +181,14 @@ export function checkDocumentSize(rawText) {
       status: 'rejected',
       totalChunks: total,
       analysedChunks: 0,
-      warningMessage: `This document is too large to analyse in full (approx. ${Math.round(total * 6000 / 5)} words across ${total} sections). Please paste the specific section you want analysed — e.g. the relevant chapter or appendix.`
+      warningMessage: `This document is too large to analyse in full (approx. ${Math.round(total * 6000 / 5)} words across ${total} sections). Please paste the specific section you want analysed, e.g. the relevant chapter or appendix.`
     };
   }
   return {
     status: 'truncated',
     totalChunks: total,
     analysedChunks: ANALYSE_CHUNKS,
-    warningMessage: `Document is large — only the first ~${Math.round(ANALYSE_CHUNKS * 6000 / 5).toLocaleString()} words (${ANALYSE_CHUNKS} of ${total} sections) were analysed. For better coverage, paste the most relevant section directly.`
+    warningMessage: `Document is large, only the first ~${Math.round(ANALYSE_CHUNKS * 6000 / 5).toLocaleString()} words (${ANALYSE_CHUNKS} of ${total} sections) were analysed. For better coverage, paste the most relevant section directly.`
   };
 }
 
@@ -261,7 +261,7 @@ export function buildExtractPointsPrompt({ text, documentBlock, allIssues, targe
       tierOrder
         .flatMap(tier => linkedPolicies.filter(p => p.policy_type === tier))
         .map(p => {
-          const header = `### ${tierLabels[p.policy_type] ?? p.policy_type} — ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name}${p.is_key_policy ? ' [KEY POLICY]' : ''}`;
+          const header = `### ${tierLabels[p.policy_type] ?? p.policy_type}: ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name}${p.is_key_policy ? ' [KEY POLICY]' : ''}`;
           const policyText = p.policy_text?.trim() ? `Policy wording:\n${p.policy_text.trim()}` : '(No policy wording recorded)';
           const support = p.relevant_supporting_text?.trim() ? `\nRelevant context/guidance:\n${p.relevant_supporting_text.trim()}` : '';
           return `${header}\n${policyText}${support}`;

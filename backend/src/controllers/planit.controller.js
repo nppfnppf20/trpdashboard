@@ -135,7 +135,7 @@ function buildFindingsSummary(findings) {
     const lines = items.slice(0, 6).map(f => {
       const loc = f.on_site ? 'on site' : f.distance_m ? `${Math.round(f.distance_m)}m away` : 'nearby';
       const grade = f.grade ? ` (${f.grade})` : '';
-      return `  - ${f.feature_type.replace(/_/g, ' ')}${grade}: ${f.feature_name || 'unnamed'} — ${loc}`;
+      return `  - ${f.feature_type.replace(/_/g, ' ')}${grade}: ${f.feature_name || 'unnamed'}, ${loc}`;
     });
     return `${discipline.toUpperCase()}:\n${lines.join('\n')}`;
   }).join('\n\n');
@@ -252,7 +252,7 @@ export async function searchPlanit(req, res) {
     });
 
     if (response.status === 429) {
-      return res.status(429).json({ error: 'PlanIt rate limit reached — please wait a moment and try again' });
+      return res.status(429).json({ error: 'PlanIt rate limit reached, please wait a moment and try again' });
     }
     if (!response.ok) {
       const text = await response.text();

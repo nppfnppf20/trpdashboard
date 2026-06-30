@@ -51,7 +51,7 @@
 <div class="upload-panel">
   <div class="panel-header">
     <h3>Upload Document</h3>
-    <p class="panel-subtext">PDF, Word (.docx), .txt, or .md — max 20MB</p>
+    <p class="panel-subtext">PDF, Word (.docx), .txt, or .md, max 20MB</p>
   </div>
 
   {#if !hasTopics}
@@ -102,9 +102,9 @@
   <!-- Stage options -->
   <div class="stage-row">
     <div class="form-group">
-      <label>Project Stage <span class="hint">(optional — links document to a stage on the board)</span></label>
+      <label>Project Stage <span class="hint">(optional, links document to a stage on the board)</span></label>
       <select bind:value={stageInstanceId} class="form-select">
-        <option value="">— Standard upload (no stage) —</option>
+        <option value="">Standard upload (no stage)</option>
         {#each stages as stage}
           <option value={stage.instance_id}>{stage.stage_name}</option>
         {/each}
@@ -113,7 +113,7 @@
 
     {#if !stageInstanceId}
       <div class="form-group">
-        <label>Stage Label <span class="hint">(free text — shown on timeline)</span></label>
+        <label>Stage Label <span class="hint">(free text, shown on timeline)</span></label>
         <input bind:value={stageLabel} placeholder="e.g. Initial Consultation" class="form-input" />
       </div>
     {/if}
@@ -125,7 +125,7 @@
       <div>
         <strong>{selectedStage.stage_name}</strong>
         <p>{selectedStage.user_guidance}</p>
-        <p class="review-note">This stage has a custom prompt — you'll be asked to review the LLM output before it's saved.</p>
+        <p class="review-note">This stage has a custom prompt: you'll be asked to review the LLM output before it's saved.</p>
       </div>
     </div>
   {/if}

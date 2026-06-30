@@ -316,11 +316,11 @@
           </div>
 
           <h2 class="card-title">
-            Marketing
+            Marketing <span class="beta-tag">Beta</span>
           </h2>
 
           <p class="card-description">
-            Generate project-specific marketing content — LinkedIn posts and newsletters — from project data, with AI-powered drafting and a live rich-text editor.
+            Generate project-specific marketing content (LinkedIn posts and newsletters) from project data, with AI-powered drafting and a live rich-text editor.
           </p>
 
           <div class="features-list">
@@ -753,6 +753,22 @@
 
   .card-icon i {
     font-size: 1.5rem;
+  }
+
+  .beta-tag {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
+    vertical-align: middle;
+    margin-left: 0.3rem;
+    position: relative;
+    top: -1px;
   }
 
   .card-title {

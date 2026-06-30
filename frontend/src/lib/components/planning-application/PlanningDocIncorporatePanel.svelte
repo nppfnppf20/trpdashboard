@@ -209,7 +209,7 @@
       scopedIds = new Set();
       scopeSummary = '';
       if (!allParagraphs.length) {
-        scopeError = 'No content found in the draft — open the draft and make sure it has been generated.';
+        scopeError = 'No content found in the draft, open the draft and make sure it has been generated.';
       }
       panelState = 'scoped';
       return;
@@ -523,7 +523,7 @@
           {/if}
           <div class="proj-preview-actions">
             {#if projDocState === 'saved'}
-              <span class="proj-saved-badge"><i class="las la-check-circle"></i> Saved — planning statement will use this on next generate</span>
+              <span class="proj-saved-badge"><i class="las la-check-circle"></i> Saved, planning statement will use this on next generate</span>
             {:else}
               <button class="incorporate-btn" disabled={projDocState === 'saving'} on:click={saveProjectDoc}>
                 {#if projDocState === 'saving'}<div class="mini-spinner"></div> Saving...{:else}<i class="las la-save"></i> {existingSummary ? 'Replace summary' : 'Save summary'}{/if}
@@ -584,7 +584,7 @@
       <input
         class="paste-title-input"
         type="text"
-        placeholder="Document title (e.g. Heritage Statement) — leave blank and Claude will derive one"
+        placeholder="Document title (e.g. Heritage Statement), leave blank and Claude will derive one"
         bind:value={uploadTitle}
         style="margin: 0 1rem 0; width: calc(100% - 2rem); box-sizing: border-box;"
       />
@@ -592,7 +592,7 @@
       <div class="notes-area">
         <label class="notes-label">
           <i class="las la-pen"></i> Your notes
-          <span class="notes-hint">Tell Claude what to focus on â€" high priority in the prompt</span>
+          <span class="notes-hint">Tell Claude what to focus on, high priority in the prompt</span>
         </label>
         <textarea class="notes-textarea" placeholder="e.g. Focus on the transport conclusions in section 4..." bind:value={userNotes}></textarea>
       </div>
@@ -797,7 +797,7 @@
 <!-- Prompt edit modals -->
 <PromptEditModal
   open={$scopeState.open}
-  title="Edit Prompt — Scope Incorporation"
+  title="Edit Prompt: Scope Incorporation"
   promptText={$scopeState.text}
   contextTemplate={$scopeState.contextTemplate}
   loading={$scopeState.loading}
@@ -811,7 +811,7 @@
 
 <PromptEditModal
   open={$incorporateState.open}
-  title="Edit Prompt — Incorporate into Assessment"
+  title="Edit Prompt: Incorporate into Assessment"
   promptText={$incorporateState.text}
   contextTemplate={$incorporateState.contextTemplate}
   loading={$incorporateState.loading}

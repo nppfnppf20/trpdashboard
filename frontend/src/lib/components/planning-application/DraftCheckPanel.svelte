@@ -130,7 +130,7 @@
 
   <div class="check-panel-body">
     {#if noDraft}
-      <div class="check-empty-note"><i class="las la-info-circle"></i> The draft is empty — generate or write some content first.</div>
+      <div class="check-empty-note"><i class="las la-info-circle"></i> The draft is empty, generate or write some content first.</div>
     {/if}
 
     {#each SECTION_DEFS as def}
@@ -224,7 +224,7 @@
                     {/if}
                     {#if item.note}<span class="check-item-detail">{item.note}</span>{/if}
                     {#if notFoundKey === `${def.key}:${idx}`}
-                      <span class="check-item-notfound">Couldn't find this text in the draft — it may have been edited since the check ran.</span>
+                      <span class="check-item-notfound">Couldn't find this text in the draft, it may have been edited since the check ran.</span>
                     {/if}
                   </div>
                   {#if locatable}<i class="las la-search check-item-locate-icon"></i>{/if}
@@ -246,7 +246,7 @@
                     <span class="check-item-topic">{item.issue}</span>
                     {#if item.suggestion}<span class="check-item-detail">{item.suggestion}</span>{/if}
                     {#if notFoundKey === `${def.key}:${idx}`}
-                      <span class="check-item-notfound">Couldn't find this text in the draft — it may have been edited since the check ran.</span>
+                      <span class="check-item-notfound">Couldn't find this text in the draft, it may have been edited since the check ran.</span>
                     {/if}
                   </div>
                   {#if locatable}<i class="las la-search check-item-locate-icon"></i>{/if}
@@ -269,7 +269,7 @@
       </div>
       {#if expanded.policy}
         <div class="check-section-body">
-          <p class="check-section-empty">Will test the draft's policy arguments against the verbatim wording of the project's policies — flagging weak interpretations, unused arguments, and relevant policies not yet cited.</p>
+          <p class="check-section-empty">Will test the draft's policy arguments against the verbatim wording of the project's policies, flagging weak interpretations, unused arguments, and relevant policies not yet cited.</p>
         </div>
       {/if}
     </div>
@@ -285,7 +285,7 @@
       </div>
       {#if expanded.policyUpdates}
         <div class="check-section-body">
-          <p class="check-section-empty">Will check the draft against a maintained table of new and emerging policy — flagging outdated references, contradictions, and new policy that could strengthen the case.</p>
+          <p class="check-section-empty">Will check the draft against a maintained table of new and emerging policy, flagging outdated references, contradictions, and new policy that could strengthen the case.</p>
         </div>
       {/if}
     </div>
@@ -294,7 +294,7 @@
 
 <PromptEditModal
   open={promptModalKey !== null}
-  title="Edit Prompt — {promptModalTitle}"
+  title="Edit Prompt: {promptModalTitle}"
   promptText={promptState.text}
   loading={promptState.loading}
   saving={promptState.saving}

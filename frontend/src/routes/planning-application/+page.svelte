@@ -52,7 +52,7 @@
         <span class="picker-loading">Loading…</span>
       {:else}
         <select class="picker-select" bind:value={selectedProjectId} on:change={handleProjectChange}>
-          <option value="">— Select project —</option>
+          <option value="">Select project</option>
           {#each projects as p}
             <option value={p.id}>{p.project_name}{p.project_id ? ` (${p.project_id})` : ''}</option>
           {/each}

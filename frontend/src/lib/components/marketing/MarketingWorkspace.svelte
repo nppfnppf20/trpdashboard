@@ -7,30 +7,81 @@
     setMarketingEditor, loadDraftTypes,
     openDraft, closeDraft, handleSaveDraft, handleGenerate,
   } from '$lib/stores/marketing-drafts.js';
+  import { listPolicyItems } from '$lib/api/policy.js';
 
   let editor;
   let autoSaveTimer = null;
-  let regenPending = null;
   let loading = true;
   let loadError = null;
 
-  // Topics modal state
-  let topicsModalTypeId = null; // typeId whose modal is open, or null
-  // selectedTopics: { [typeId]: Set<topicId> } — populated once topics exist
-  let selectedTopics = {};
+  // Generate modal state
+  let genModalTypeId = null;
+  let genModalSelected = new Set(); // Set<"source_type:id">
+  let genAngle = '';
+  let genTopics = [];
+  let genTopicsLoading = false;
+  let genTopicsError = null;
+  let genTopicsFetched = false;
 
-  $: topicsModalType = $draftTypes.find(t => t.id === topicsModalTypeId) ?? null;
+  $: genModalType = $draftTypes.find(t => t.id === genModalTypeId) ?? null;
+  $: genModalDraft = genModalTypeId !== null ? ($drafts[genModalTypeId] ?? null) : null;
 
-  function openTopicsModal(typeId) {
-    topicsModalTypeId = typeId;
+  async function openGenerateModal(typeId) {
+    genModalTypeId = typeId;
+    genAngle = '';
+    genModalSelected = new Set();
+    if (!genTopicsFetched) {
+      genTopicsLoading = true;
+      genTopicsError = null;
+      try {
+        genTopics = await listPolicyItems();
+        genTopicsFetched = true;
+      } catch (err) {
+        genTopicsError = err.message;
+      } finally {
+        genTopicsLoading = false;
+      }
+    }
   }
 
-  function closeTopicsModal() {
-    topicsModalTypeId = null;
+  function closeGenerateModal() {
+    genModalTypeId = null;
   }
 
-  function selectedCount(typeId) {
-    return selectedTopics[typeId]?.size ?? 0;
+  function topicKey(item) {
+    return `${item.source_type}:${item.id}`;
+  }
+
+  function toggleGenTopic(item) {
+    const key = topicKey(item);
+    const next = new Set(genModalSelected);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    genModalSelected = next;
+  }
+
+  function topicSourceLabel(item) {
+    if (item.source_type === 'document') return 'Uploaded';
+    if (item.meeting_type === 'cpd') return 'CPD';
+    return 'Internal Meeting';
+  }
+
+  function topicBadgeClass(item) {
+    if (item.source_type === 'document') return 'topic-badge-upload';
+    if (item.meeting_type === 'cpd') return 'topic-badge-cpd';
+    return 'topic-badge-internal';
+  }
+
+  // Topic preview
+  let previewTopic = null;
+
+  async function submitGenerate() {
+    const typeId = genModalTypeId;
+    closeGenerateModal();
+    await handleGenerate(typeId, {
+      selectedTopicKeys: [...genModalSelected],
+      userAngle: genAngle.trim() || null,
+    });
   }
 
   onMount(async () => {
@@ -60,19 +111,6 @@
     closeDraft();
   }
 
-  function requestGenerate(typeId, hasDraft) {
-    if (hasDraft) {
-      regenPending = typeId;
-    } else {
-      handleGenerate(typeId);
-    }
-  }
-
-  function confirmRegen() {
-    if (!regenPending) return;
-    handleGenerate(regenPending);
-    regenPending = null;
-  }
 </script>
 
 <div class="workspace">
@@ -122,7 +160,6 @@
       <div class="draft-types-list">
         {#each $draftTypes as type (type.id)}
           {@const draft = $drafts[type.id]}
-          {@const count = selectedCount(type.id)}
           <div class="draft-type-card">
             <div class="draft-type-main">
               <div class="draft-type-info">
@@ -136,16 +173,11 @@
                 {#if draft}
                   <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                 {/if}
-                <button class="draft-setting-btn" on:click={() => openTopicsModal(type.id)} title="Select topics for this content">
-                  <i class="las la-tags"></i>
-                  Select Topics
-                  {#if count > 0}<span class="topic-count-badge">{count}</span>{/if}
-                </button>
-                <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, !!draft)}>
+                <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => openGenerateModal(type.id)}>
                   {#if $draftGenerating === type.id}
                     <div class="mini-spinner"></div> Generating...
                   {:else}
-                    <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
+                    <i class="las la-magic"></i> Generate
                   {/if}
                 </button>
               </div>
@@ -158,48 +190,127 @@
 
 </div>
 
-<!-- Topics selection modal -->
-{#if topicsModalTypeId !== null}
-  <div class="modal-overlay" on:click|self={closeTopicsModal} role="dialog" aria-modal="true">
-    <div class="modal modal-topics">
+<!-- Generate modal -->
+{#if genModalTypeId !== null}
+  <div class="modal-overlay" on:click|self={closeGenerateModal} role="dialog" aria-modal="true">
+    <div class="modal modal-generate">
       <div class="modal-header">
-        <span class="modal-title">Select Topics — {topicsModalType?.name ?? ''}</span>
-        <button class="modal-close" on:click={closeTopicsModal}><i class="las la-times"></i></button>
+        <span class="modal-title">Generate: {genModalType?.name ?? ''}</span>
+        <button class="modal-close" on:click={closeGenerateModal}><i class="las la-times"></i></button>
       </div>
-      <div class="modal-body topics-body">
-        <div class="topics-empty">
-          <i class="las la-tags"></i>
-          <p>No topics yet.</p>
-          <p class="topics-empty-sub">Topics will appear here once they have been added.</p>
+
+      <div class="modal-body gen-body">
+
+        <!-- Policy context -->
+        <div class="gen-section">
+          <div class="gen-section-label">Policy context <span class="gen-optional">optional</span></div>
+          {#if genTopicsLoading}
+            <div class="topics-empty"><div class="spinner"></div><p>Loading…</p></div>
+          {:else if genTopicsError}
+            <div class="topics-empty"><i class="las la-exclamation-circle"></i><p>{genTopicsError}</p></div>
+          {:else if genTopics.length === 0}
+            <p class="gen-none">No policy updates yet, add some on the Policy &amp; Industry Updates page.</p>
+          {:else}
+            <div class="topics-list">
+              {#each genTopics as item (topicKey(item))}
+                {@const selected = genModalSelected.has(topicKey(item))}
+                <div class="topic-row" class:topic-row--selected={selected}>
+                  <input type="checkbox" class="topic-checkbox" checked={selected} on:change={() => toggleGenTopic(item)} />
+                  <span class="topic-info">
+                    <span class="topic-title">{item.title}</span>
+                    <span class="topic-meta">
+                      <span class="topic-source {topicBadgeClass(item)}">{topicSourceLabel(item)}</span>
+                      {#if item.created_at}<span class="topic-date">{new Date(item.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>{/if}
+                    </span>
+                  </span>
+                  <button class="topic-preview-btn" title="View summary" on:click|stopPropagation={() => previewTopic = item}>
+                    <i class="las la-eye"></i>
+                  </button>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
+
+        <!-- Angle / guidance -->
+        <div class="gen-section">
+          <div class="gen-section-label">My angle <span class="gen-optional">optional</span></div>
+          <textarea
+            class="gen-angle-input"
+            bind:value={genAngle}
+            rows="3"
+            placeholder="e.g. Focus on the cumulative impact angle, we've seen 3 refusals on this recently and want to position ourselves as the go-to experts."
+          ></textarea>
+        </div>
+
+        {#if genModalDraft}
+          <p class="gen-overwrite-note"><i class="las la-exclamation-triangle"></i> This will overwrite the existing draft. Click Open to review what is there before generating.</p>
+        {/if}
+
       </div>
+
       <div class="modal-footer">
         <div class="modal-footer-left"></div>
         <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={closeTopicsModal}>Close</button>
-          <button class="modal-run" on:click={closeTopicsModal}>Done</button>
+          <button class="modal-cancel" on:click={closeGenerateModal}>Cancel</button>
+          <button class="modal-run" on:click={submitGenerate}>
+            <i class="las la-magic"></i> Generate
+          </button>
         </div>
       </div>
     </div>
   </div>
 {/if}
 
-<!-- Regenerate confirmation modal -->
-{#if regenPending !== null}
-  <div class="modal-overlay" on:click|self={() => regenPending = null} role="dialog" aria-modal="true">
-    <div class="modal modal-confirm">
+<!-- Topic preview modal -->
+{#if previewTopic !== null}
+  {@const prev = previewTopic}
+  {@const prevSelected = genModalSelected.has(topicKey(prev))}
+  <div class="modal-overlay" on:click|self={() => previewTopic = null} role="dialog" aria-modal="true">
+    <div class="modal modal-preview">
       <div class="modal-header">
-        <span class="modal-title">Regenerate content?</span>
-        <button class="modal-close" on:click={() => regenPending = null}><i class="las la-times"></i></button>
+        <span class="modal-title">{prev.title}</span>
+        <button class="modal-close" on:click={() => previewTopic = null}><i class="las la-times"></i></button>
       </div>
-      <div class="modal-body">
-        <p>This will overwrite the existing content with a freshly generated version.</p>
+      <div class="modal-body preview-body">
+        <span class="topic-source {topicBadgeClass(prev)}">{topicSourceLabel(prev)}</span>
+
+        {#if prev.summary_html}
+          <div class="preview-section">
+            <div class="preview-label">Summary</div>
+            <div class="preview-html">{@html prev.summary_html}</div>
+          </div>
+        {/if}
+
+        {#if prev.key_points}
+          <div class="preview-section">
+            <div class="preview-label">Key Points</div>
+            <div class="preview-html">{@html prev.key_points}</div>
+          </div>
+        {/if}
+
+        {#if prev.implications}
+          <div class="preview-section">
+            <div class="preview-label">Implications</div>
+            <div class="preview-html">{@html prev.implications}</div>
+          </div>
+        {/if}
+
+        {#if prev.raised_by}
+          <p class="preview-raised">Raised by {prev.raised_by}</p>
+        {/if}
       </div>
       <div class="modal-footer">
         <div class="modal-footer-left"></div>
         <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => regenPending = null}>Cancel</button>
-          <button class="modal-run" on:click={confirmRegen}>Regenerate</button>
+          <button class="modal-cancel" on:click={() => previewTopic = null}>Close</button>
+          <button
+            class="modal-run"
+            class:modal-run--deselect={prevSelected}
+            on:click={() => { toggleGenTopic(prev); previewTopic = null; }}
+          >
+            {prevSelected ? 'Deselect' : 'Select this topic'}
+          </button>
         </div>
       </div>
     </div>
@@ -301,39 +412,6 @@
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
-  }
-
-  /* Matches planning application's .draft-setting-btn exactly */
-  .draft-setting-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.3rem 0.625rem;
-    background: transparent;
-    border: 1px solid #e2e8f0;
-    border-radius: 5px;
-    font-size: 0.75rem;
-    color: #64748b;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
-  .draft-setting-btn:hover { background: #f1f5f9; color: #374151; }
-
-  .topic-count-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    background: #0369a1;
-    color: white;
-    border-radius: 8px;
-    font-size: 0.68rem;
-    font-weight: 700;
-    line-height: 1;
   }
 
   .draft-open-btn {
@@ -502,9 +580,6 @@
     overflow: hidden;
   }
 
-  .modal-confirm { width: 380px; }
-
-  .modal-topics { width: 520px; }
 
   .modal-header {
     display: flex;
@@ -541,10 +616,76 @@
     line-height: 1.5;
   }
 
-  /* Topics modal body */
+  /* Generate modal */
+  .modal-generate { width: 540px; }
+
+  .gen-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+  }
+
+  .gen-section { display: flex; flex-direction: column; gap: 0.4rem; }
+
+  .gen-section-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .gen-optional {
+    font-weight: 400;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 0.25rem;
+  }
+
+  .gen-none {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin: 0;
+    font-style: italic;
+  }
+
+  .gen-angle-input {
+    width: 100%;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    color: #1e293b;
+    resize: vertical;
+    box-sizing: border-box;
+    line-height: 1.5;
+  }
+  .gen-angle-input:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
+  .gen-angle-input::placeholder { color: #94a3b8; }
+
+  .gen-overwrite-note {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 0.4rem 0.625rem;
+    margin: 0;
+  }
+
+  /* Topics list (shared between gen modal) */
   .topics-body {
     min-height: 200px;
-    max-height: 480px;
+    max-height: 300px;
     overflow-y: auto;
   }
 
@@ -575,6 +716,83 @@
     color: #94a3b8 !important;
     font-weight: 400 !important;
   }
+
+  .topics-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .topic-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 6px;
+    transition: background 0.1s;
+  }
+  .topic-row:hover { background: #f8fafc; }
+  .topic-row--selected { background: #eff6ff; }
+  .topic-row--selected:hover { background: #dbeafe; }
+
+  .topic-preview-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0.1rem 0.25rem;
+    font-size: 0.95rem;
+    line-height: 1;
+    border-radius: 4px;
+    transition: color 0.1s;
+  }
+  .topic-preview-btn:hover { color: #0369a1; }
+
+  .topic-checkbox {
+    margin-top: 2px;
+    flex-shrink: 0;
+    accent-color: #0369a1;
+  }
+
+  .topic-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .topic-title {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #1e293b;
+    line-height: 1.3;
+  }
+
+  .topic-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .topic-date {
+    font-size: 0.7rem;
+    color: #94a3b8;
+  }
+
+  .topic-source {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    width: fit-content;
+  }
+  .topic-badge-upload  { background: #dcfce7; color: #166534; }
+  .topic-badge-internal { background: #dbeafe; color: #1e40af; }
+  .topic-badge-cpd     { background: #f3e8ff; color: #6b21a8; }
 
   .modal-footer {
     display: flex;
@@ -620,4 +838,44 @@
     transition: background 0.15s;
   }
   .modal-run:hover { background: #0284c7; }
+  .modal-run--deselect { background: #64748b; }
+  .modal-run--deselect:hover { background: #475569; }
+
+  /* Topic preview modal */
+  .modal-preview { width: 560px; }
+
+  .preview-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    max-height: 480px;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+  }
+
+  .preview-section { display: flex; flex-direction: column; gap: 0.25rem; }
+
+  .preview-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+  }
+
+  .preview-html {
+    font-size: 0.8125rem;
+    color: #374151;
+    line-height: 1.6;
+  }
+  .preview-html :global(p) { margin: 0 0 0.5rem; }
+  .preview-html :global(ul), .preview-html :global(ol) { margin: 0 0 0.5rem; padding-left: 1.25rem; }
+  .preview-html :global(li) { margin-bottom: 0.2rem; }
+
+  .preview-raised {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin: 0;
+    font-style: italic;
+  }
 </style>

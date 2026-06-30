@@ -12,7 +12,7 @@ export async function processComment(req, res) {
       fileName = req.file.originalname;
       if (!text || text.trim().length < 30) {
         return res.status(422).json({
-          error: 'Could not extract readable text from this PDF. It may be a scanned or image-based document — try pasting the text directly instead.',
+          error: 'Could not extract readable text from this PDF. It may be a scanned or image-based document, try pasting the text directly instead.',
         });
       }
     } else if (req.body.text) {

@@ -69,28 +69,28 @@
     LPA_NAME:                { label: 'LPA name',                   source: 'projects.local_planning_authority',                    programmatic: true },
     SITE_ADDRESS:            { label: 'Site address',               source: 'projects.address',                                     programmatic: true },
     DEVELOPMENT_DESCRIPTION: { label: 'Description of development', source: 'projects.development_description',                    programmatic: true },
-    ABOUT_APPLICANT:         { label: 'About the applicant',        source: 'document_summaries — doc_type: about_applicant',       programmatic: true },
-    PROPOSED_DEVELOPMENT:    { label: 'Proposed development',       source: 'document_summaries — doc_type: proposed_development',  programmatic: false },
-    DOCUMENT_LIST:           { label: 'Document list',              source: 'document_log (all entries)',                           programmatic: false },
-    SITE_SURROUNDINGS:       { label: 'Site & surroundings',        source: 'document_summaries — doc_type: site_surroundings',     programmatic: false },
-    PLANNING_HISTORY:              { label: 'Planning history',                    source: 'planning_history table',                                        programmatic: false },
-    PROJECT_PLANNING_HISTORY:      { label: 'Project planning history (2 tables)', source: 'project_planning_history — on-site + nearby, as HTML tables',    programmatic: true },
-    PRE_APP_SUMMARY:         { label: 'Pre-app summary',            source: 'document_summaries — doc_type: pre_app',               programmatic: true },
-    EIA_SUMMARY:             { label: 'EIA summary',                source: 'document_summaries — doc_type: eia_response',          programmatic: true },
-    SCI_SUMMARY:             { label: 'SCI summary',                source: 'document_summaries — doc_type: sci',                   programmatic: true },
-    LOCAL_POLICIES:             { label: 'Local policies (HTML)',       source: 'project_policies — local, verbatim listing',           programmatic: true },
-    NATIONAL_POLICIES:          { label: 'National policies (HTML)',   source: 'project_policies — national, verbatim listing',        programmatic: true },
-    OTHER_POLICIES:             { label: 'Other policies (HTML)',      source: 'project_policies — other types, verbatim listing',     programmatic: true },
-    LOCAL_POLICY_NAMES:         { label: 'Local policy names',         source: 'project_policies — local, ref + name list only',       programmatic: true },
-    SUPPLEMENTARY_POLICY_NAMES: { label: 'Supplementary policy names', source: 'project_policies — supplementary, ref + name list',    programmatic: true },
-    SITE_SURROUNDINGS_HTML:     { label: 'Site & surroundings (HTML)', source: 'document_summaries — doc_type: site_surroundings, raw HTML', programmatic: true },
+    ABOUT_APPLICANT:         { label: 'About the applicant',        source: 'document_summaries, doc_type: about_applicant',       programmatic: true },
+    PROPOSED_DEVELOPMENT:    { label: 'Proposed development',       source: 'document_summaries, doc_type: proposed_development',  programmatic: false },
+    DOCUMENT_LIST:           { label: 'Document list',              source: 'document_log (all entries)',                          programmatic: false },
+    SITE_SURROUNDINGS:       { label: 'Site & surroundings',        source: 'document_summaries, doc_type: site_surroundings',     programmatic: false },
+    PLANNING_HISTORY:              { label: 'Planning history',                    source: 'planning_history table',                                       programmatic: false },
+    PROJECT_PLANNING_HISTORY:      { label: 'Project planning history (2 tables)', source: 'project_planning_history, on-site + nearby, as HTML tables',   programmatic: true },
+    PRE_APP_SUMMARY:         { label: 'Pre-app summary',            source: 'document_summaries, doc_type: pre_app',               programmatic: true },
+    EIA_SUMMARY:             { label: 'EIA summary',                source: 'document_summaries, doc_type: eia_response',          programmatic: true },
+    SCI_SUMMARY:             { label: 'SCI summary',                source: 'document_summaries, doc_type: sci',                   programmatic: true },
+    LOCAL_POLICIES:             { label: 'Local policies (HTML)',       source: 'project_policies, local, verbatim listing',           programmatic: true },
+    NATIONAL_POLICIES:          { label: 'National policies (HTML)',   source: 'project_policies, national, verbatim listing',        programmatic: true },
+    OTHER_POLICIES:             { label: 'Other policies (HTML)',      source: 'project_policies, other types, verbatim listing',     programmatic: true },
+    LOCAL_POLICY_NAMES:         { label: 'Local policy names',         source: 'project_policies, local, ref + name list only',       programmatic: true },
+    SUPPLEMENTARY_POLICY_NAMES: { label: 'Supplementary policy names', source: 'project_policies, supplementary, ref + name list',   programmatic: true },
+    SITE_SURROUNDINGS_HTML:     { label: 'Site & surroundings (HTML)', source: 'document_summaries, doc_type: site_surroundings, raw HTML', programmatic: true },
     PLANNING_HISTORY_TABLE:     { label: 'Planning history table',     source: 'planning_history table, rendered as HTML table',       programmatic: true },
-    PROPOSED_DEVELOPMENT_HTML:  { label: 'Proposed development (HTML)', source: 'document_summaries — doc_type: proposed_development, raw HTML', programmatic: true },
-    DOCUMENT_LIST_DOCS:         { label: 'Document list',              source: 'document_log — item_type: document, as bullet list',   programmatic: true },
-    DOCUMENT_LIST_DRAWINGS:     { label: 'Drawings list',              source: 'document_log — item_type: drawing, as bullet list',    programmatic: true },
-    LOCAL_POLICIES_CONTEXT:  { label: 'Local policies (context)',   source: 'project_policies — local, refs + notes for LLM',       programmatic: false },
-    NATIONAL_POLICIES_CONTEXT: { label: 'National policies (context)', source: 'project_policies — national, refs + notes for LLM', programmatic: false },
-    OTHER_POLICIES_CONTEXT:  { label: 'Other policies (context)',   source: 'project_policies — other, refs + notes for LLM',       programmatic: false },
+    PROPOSED_DEVELOPMENT_HTML:  { label: 'Proposed development (HTML)', source: 'document_summaries, doc_type: proposed_development, raw HTML', programmatic: true },
+    DOCUMENT_LIST_DOCS:         { label: 'Document list',              source: 'document_log, item_type: document, as bullet list',   programmatic: true },
+    DOCUMENT_LIST_DRAWINGS:     { label: 'Drawings list',              source: 'document_log, item_type: drawing, as bullet list',    programmatic: true },
+    LOCAL_POLICIES_CONTEXT:  { label: 'Local policies (context)',   source: 'project_policies, local, refs + notes for LLM',       programmatic: false },
+    NATIONAL_POLICIES_CONTEXT: { label: 'National policies (context)', source: 'project_policies, national, refs + notes for LLM', programmatic: false },
+    OTHER_POLICIES_CONTEXT:  { label: 'Other policies (context)',   source: 'project_policies, other, refs + notes for LLM',       programmatic: false },
     FULL_STATEMENT:          { label: 'Full statement',             source: 'Assembled HTML of all sections (runs_last only)',       programmatic: false },
   };
 
@@ -544,7 +544,7 @@
               <label class="argument-notes-label">Issue notes</label>
               <textarea
                 class="summary-field"
-                placeholder="Add notes on this issue — position, key evidence, approach..."
+                placeholder="Add notes on this issue: position, key evidence, approach..."
                 value={issue.summary ?? ''}
                 use:autoresize={issue.summary}
                 on:blur={(e) => updateKeyIssueSummary(issue.id, e.target.value)}
@@ -552,7 +552,7 @@
               <label class="argument-notes-label">Argument notes</label>
               <textarea
                 class="summary-field argument-notes-field"
-                placeholder="Outline the argument structure for this issue — how the proposals comply with policy, key evidence to cite..."
+                placeholder="Outline the argument structure for this issue: how the proposals comply with policy, key evidence to cite..."
                 value={issueNotes[issue.id]?.argument_for ?? ''}
                 use:autoresize={issueNotes[issue.id]?.argument_for}
                 on:blur={async (e) => {
@@ -731,7 +731,7 @@
                         class="card-dev-type-select"
                         value={appealCardDevTypes[type.id] ?? ''}
                         on:change={(e) => { appealCardDevTypes[type.id] = e.target.value; appealCardDevTypes = appealCardDevTypes; }}
-                        title="Development type — selects which guiding brief to use"
+                        title="Development type, selects which guiding brief to use"
                       >
                         <option value="">Dev type...</option>
                         {#each DEV_TYPES as dt}
@@ -836,7 +836,7 @@
                           {:else}
                             {#each $assessmentIssues as issue (issue.id)}
                               <div class="assessment-issue-row">
-                                <span class="assessment-issue-label">{issue.label}{issue.discipline ? ` — ${issue.discipline}` : ''}</span>
+                                <span class="assessment-issue-label">{issue.label}{issue.discipline ? `, ${issue.discipline}` : ''}</span>
                                 <button
                                   class="issue-generate-btn"
                                   disabled={$issueGenerating === issue.id}
@@ -866,7 +866,7 @@
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">Certificate B Notice <span class="coming-soon-badge">Coming Soon</span></span>
-                <span class="draft-type-desc">Article 13 DMPO 2015 ownership certificate — merged from project data.</span>
+                <span class="draft-type-desc">Article 13 DMPO 2015 ownership certificate, merged from project data.</span>
               </div>
             </div>
           </div>
@@ -876,7 +876,7 @@
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">Cover Letter <span class="coming-soon-badge">Coming Soon</span></span>
-                <span class="draft-type-desc">Covering letter for submission — merged from project data.</span>
+                <span class="draft-type-desc">Covering letter for submission, merged from project data.</span>
               </div>
             </div>
           </div>
@@ -896,7 +896,7 @@
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">Blank Document</span>
-                <span class="draft-type-desc">Open an empty editor — paste in any document to use Check, Export, and Doc Chat.</span>
+                <span class="draft-type-desc">Open an empty editor: paste in any document to use Check, Export, and Doc Chat.</span>
               </div>
               <div class="draft-type-actions">
                 <button class="draft-open-btn" on:click={openBlankDoc}>Open</button>
@@ -973,7 +973,7 @@
                       <div class="bd-evolve-chat">
                         <textarea
                           class="bd-chat-input"
-                          placeholder="Ask for changes — e.g. 'keep the reference to the original scheme but lead with the new position'…"
+                          placeholder="Ask for changes, e.g. 'keep the reference to the original scheme but lead with the new position'…"
                           rows="2"
                           value={evolve.input}
                           on:input={(e) => briefingEvolveState.update(st => ({ ...st, [s.track_id]: { ...st[s.track_id], input: e.target.value } }))}
@@ -1014,7 +1014,7 @@
       <div class="modal-body">
         <div class="log-form-field" style="margin-bottom:1rem">
           <label class="section-field-label">Title <span class="form-label-hint">(optional)</span></label>
-          <input class="add-section-input" type="text" bind:value={$briefingUploadTitle} placeholder="e.g. Briefing note v2 — April review" />
+          <input class="add-section-input" type="text" bind:value={$briefingUploadTitle} placeholder="e.g. Briefing note v2, April review" />
         </div>
         <div class="input-tabs">
           <button class="input-tab" class:active={$briefingUploadTab === 'upload'} on:click={() => $briefingUploadTab = 'upload'}>
@@ -1132,7 +1132,7 @@
           <div class="log-form-row">
             <div class="log-form-field">
               <label class="section-field-label">Document title <span style="color:#ef4444">*</span></label>
-              <input class="add-section-input" type="text" bind:value={$logTitle} placeholder="e.g. Officer Report — Land at Station Road" />
+              <input class="add-section-input" type="text" bind:value={$logTitle} placeholder="e.g. Officer Report, Land at Station Road" />
             </div>
             <div class="log-form-field log-form-field-sm">
               <label class="section-field-label">Reference / code</label>
@@ -1210,7 +1210,7 @@
           <div class="log-form-row">
             <div class="log-form-field">
               <label class="section-field-label">Document title <span style="color:#ef4444">*</span></label>
-              <input class="add-section-input" type="text" bind:value={$editTitle} placeholder="e.g. Officer Report — Land at Station Road" />
+              <input class="add-section-input" type="text" bind:value={$editTitle} placeholder="e.g. Officer Report, Land at Station Road" />
             </div>
             <div class="log-form-field log-form-field-sm">
               <label class="section-field-label">Reference / code</label>
@@ -1276,7 +1276,7 @@
   <div class="modal-overlay" on:click|self={() => $sectionsModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-sections">
       <div class="modal-header">
-        <span class="modal-title">Sections — {$sectionsTypeName}</span>
+        <span class="modal-title">Sections: {$sectionsTypeName}</span>
         <button class="modal-close" on:click={() => $sectionsModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body sections-body">
@@ -1315,7 +1315,7 @@
                       <div class="section-block">
                         <div class="section-block-header">
                           <label class="section-field-label">Template
-                            <span class="form-label-hint">— fixed structure with <code>{'{{VARIABLE}}'}</code>, <code>{'{{LLM:slug}}'}</code>…<code>{'{{/LLM}}'}</code> and <code>[Placeholder]</code> markers</span>
+                            <span class="form-label-hint">fixed structure with <code>{'{{VARIABLE}}'}</code>, <code>{'{{LLM:slug}}'}</code>…<code>{'{{/LLM}}'}</code> and <code>[Placeholder]</code> markers</span>
                           </label>
                           {#if $sectionTemplateText}
                             <span class="section-mode-badge section-mode-badge--template">Template active</span>
@@ -1334,11 +1334,11 @@
                         <label class="section-field-label">Generation prompt
                           <span class="form-label-hint">
                             {#if section.slug === 'planning_assessment'}
-                              — replaces the default assessment prompt when set
+                              : replaces the default assessment prompt when set
                             {:else if $sectionTemplateText}
-                              — ignored when template is set
+                              : ignored when template is set
                             {:else}
-                              — used when no template
+                              : used when no template
                             {/if}
                           </span>
                         </label>
@@ -1433,7 +1433,7 @@
   <div class="modal-overlay" on:click|self={() => $sectionExampleModalOpen = false} role="dialog" aria-modal="true">
     <div class="modal modal-wide">
       <div class="modal-header">
-        <span class="modal-title">Style Example — {exSection?.name}</span>
+        <span class="modal-title">Style Example: {exSection?.name}</span>
         <button class="modal-close" on:click={() => $sectionExampleModalOpen = false}><i class="las la-times"></i></button>
       </div>
       <div class="modal-body">
@@ -1503,7 +1503,7 @@
 <!-- Action prompt edit modals -->
 <PromptEditModal
   open={$draftKeyState.open}
-  title="Edit Prompt — Draft Issue Notes from Briefing"
+  title="Edit Prompt: Draft Issue Notes from Briefing"
   promptText={$draftKeyState.text}
   contextTemplate={$draftKeyState.contextTemplate}
   loading={$draftKeyState.loading}
@@ -1517,7 +1517,7 @@
 
 <PromptEditModal
   open={$draftArgsState.open}
-  title="Edit Prompt — Draft Arguments from Briefing"
+  title="Edit Prompt: Draft Arguments from Briefing"
   promptText={$draftArgsState.text}
   contextTemplate={$draftArgsState.contextTemplate}
   loading={$draftArgsState.loading}
@@ -1532,7 +1532,7 @@
 
 <PromptEditModal
   open={$stage1PromptState.open}
-  title="Edit Prompt — Generate Stage 1 Review"
+  title="Edit Prompt: Generate Stage 1 Review"
   promptText={$stage1PromptState.text}
   contextTemplate={$stage1PromptState.contextTemplate}
   loading={$stage1PromptState.loading}
@@ -1578,7 +1578,7 @@
 
 <PromptEditModal
   open={$appealPromptOpen}
-  title="Edit Generation Prompt — {appealPromptTitle}"
+  title="Edit Generation Prompt: {appealPromptTitle}"
   promptText={$appealPromptText}
   contextTemplate={`↑ YOUR INSTRUCTIONS (editable above)\n━━━ Dynamic context injected automatically ━━━\nUse {{GUIDING_BRIEF}} anywhere above to embed the guiding brief inline.\nThe project brief and working argument notes by issue are always appended below your prompt.`}
   loading={$appealPromptLoading}

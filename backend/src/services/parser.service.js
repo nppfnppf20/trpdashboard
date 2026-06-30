@@ -33,7 +33,7 @@ export async function parseFile(buffer, originalname) {
       const fallback = buffer.toString('utf8');
       return {
         text: fallback,
-        warning: `pdf-parse failed (${err.message}); content read as raw UTF-8 — accuracy may be reduced`
+        warning: `pdf-parse failed (${err.message}); content read as raw UTF-8, accuracy may be reduced`
       };
     }
   }

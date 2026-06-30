@@ -246,7 +246,7 @@
         {/if}
 
         <div class="ct-field">
-          <label class="ct-label">Notes for AI <span class="ct-label-opt">— optional</span></label>
+          <label class="ct-label">Notes for AI <span class="ct-label-opt">(optional)</span></label>
           <input type="text" class="form-input" bind:value={userNotes} placeholder="e.g. Local resident near the site entrance" />
         </div>
 
@@ -267,7 +267,7 @@
           <div class="ct-field">
             <label class="ct-label">Position</label>
             <select class="form-input" bind:value={reviewForm.position}>
-              <option value="">— select —</option>
+              <option value="">Select position</option>
               {#each POSITION_OPTIONS as p}<option value={p}>{p}</option>{/each}
             </select>
           </div>
@@ -385,7 +385,7 @@
               <td class="ct-td ct-td-pos">
                 {#if editing}
                   <select class="form-input ct-cell-input" bind:value={editForm.position}>
-                    <option value="">— select —</option>
+                    <option value="">Select position</option>
                     {#each POSITION_OPTIONS as p}<option value={p}>{p}</option>{/each}
                   </select>
                 {:else}

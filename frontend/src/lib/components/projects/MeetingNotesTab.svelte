@@ -714,7 +714,7 @@
           <div class="mn-briefing-result">
             <div class="form-group">
               <label>Title</label>
-              <input type="text" class="form-input" bind:value={bTitle} placeholder="e.g. Briefing Note — Feb 2025" />
+              <input type="text" class="form-input" bind:value={bTitle} placeholder="e.g. Briefing Note - Feb 2025" />
             </div>
             <div class="mn-briefing-preview">{@html bResult.summary_html}</div>
             {#if bSaveError}<div class="mn-error-sm">{bSaveError}</div>{/if}
@@ -842,7 +842,7 @@
             </div>
             <div class="form-group">
               <label>Consultant Notes</label>
-              <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes — included verbatim in the summary…"></textarea>
+              <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
             </div>
           </div>
           {#if uploadSummaryType === 'custom'}
