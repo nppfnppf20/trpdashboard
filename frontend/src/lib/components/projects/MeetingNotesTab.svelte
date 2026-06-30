@@ -413,6 +413,23 @@
         customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null
       });
 
+        // Auto-save suggested actions immediately — no editor confirmation step
+      const saved = await Promise.all(
+        (result.suggestedActions || []).map(a => createMeetingAction(projectId, {
+          action_text: a.action_text,
+          owner: a.owner || null,
+          due_date: a.due_date || null,
+          notes: a.notes || null,
+          transcript_id: result.transcript.id
+        }))
+      );
+      const enriched = saved.map(a => ({
+        ...a,
+        meeting_title: result.transcript.title,
+        meeting_date: result.transcript.meeting_date
+      }));
+      actions = [...enriched, ...actions];
+
       const newNote = {
         id: result.transcript.id,
         title: result.transcript.title,
@@ -422,13 +439,12 @@
         created_at: result.transcript.created_at,
         summary_id: result.summary?.id,
         summary_html: result.summary?.summary_html,
-        pending_count: 0,
+        pending_count: saved.length,
         complete_count: 0
       };
 
       notes = [newNote, ...notes];
       showUploadPanel = false;
-      openNoteEditor(newNote, result.suggestedActions || []);
     } catch (err) {
       uploadError = err.message;
     } finally {

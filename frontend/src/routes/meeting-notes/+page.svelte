@@ -57,6 +57,29 @@
   let notesError = null;
   let showAllNotes = false;
 
+  // Transcript expand state
+  let expandedTranscripts = new Set();
+  let transcriptData = {}; // { [noteId]: { loading, text, error } }
+
+  async function toggleTranscript(noteId) {
+    if (expandedTranscripts.has(noteId)) {
+      expandedTranscripts = new Set([...expandedTranscripts].filter(id => id !== noteId));
+    } else {
+      expandedTranscripts = new Set([...expandedTranscripts, noteId]);
+      if (!transcriptData[noteId]) {
+        transcriptData[noteId] = { loading: true, text: null, error: null };
+        transcriptData = { ...transcriptData };
+        try {
+          const data = await getMeetingTranscript(noteId);
+          transcriptData[noteId] = { loading: false, text: data.transcript_text, error: null };
+        } catch (err) {
+          transcriptData[noteId] = { loading: false, text: null, error: err.message };
+        }
+        transcriptData = { ...transcriptData };
+      }
+    }
+  }
+
   async function loadNotes() {
     if (meetingType === 'project') return;
     notesLoading = true;
@@ -125,6 +148,16 @@
         customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null
       });
 
+      // Auto-save suggested actions immediately
+      const saved = await Promise.all(
+        (result.suggestedActions || []).map(a => createStandaloneAction(result.transcript.id, {
+          action_text: a.action_text,
+          owner: a.owner || null,
+          due_date: a.due_date || null,
+          notes: a.notes || null
+        }))
+      );
+
       const newNote = {
         id: result.transcript.id,
         title: result.transcript.title,
@@ -135,15 +168,12 @@
         meeting_type: result.transcript.meeting_type,
         summary_id: result.summary?.id,
         summary_html: result.summary?.summary_html,
-        pending_count: 0,
+        pending_count: saved.length,
         complete_count: 0
       };
 
       notes = [newNote, ...notes];
       resetUpload();
-      openNoteEditor(newNote, result.suggestedActions || []);
-
-      // Refresh stream
       loadStream();
     } catch (err) {
       uploadError = err.message;
@@ -285,22 +315,28 @@
   }
 
   async function openNoteEditor(note, suggestedActions = null) {
-    editorNote = note;
-    editorIsNew = suggestedActions !== null;
+    // Resolve all async work BEFORE setting editorNote, so the modal
+    // mounts the RichTextEditor only once the content is ready.
+    let initialHtml = '';
+    let loadedActions = [];
+
     if (suggestedActions !== null) {
       const actionsHtml = suggestedActions.length ? buildActionsHtml(suggestedActions) : '';
-      editorInitialHtml = (note.summary_html || '') + actionsHtml;
-      editorActions = [];
+      initialHtml = (note.summary_html || '') + actionsHtml;
     } else {
-      // Fetch current actions from DB for existing notes
       try {
-        editorActions = await getMeetingNoteActions(note.id);
+        loadedActions = await getMeetingNoteActions(note.id);
       } catch {
-        editorActions = [];
+        loadedActions = [];
       }
       const baseHtml = stripActionsTable(note.summary_html || '');
-      editorInitialHtml = baseHtml + (editorActions.length ? buildActionsHtml(editorActions) : '');
+      initialHtml = baseHtml + (loadedActions.length ? buildActionsHtml(loadedActions) : '');
     }
+
+    editorActions = loadedActions;
+    editorInitialHtml = initialHtml;
+    editorIsNew = suggestedActions !== null;
+    editorNote = note; // set last — triggers modal render with content already populated
   }
 
   function closeNoteEditor() {
@@ -665,6 +701,9 @@
                         <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
                           <i class="las la-eye"></i> View
                         </button>
+                        <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)}>
+                          <i class="las la-file-alt"></i> {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
+                        </button>
                         <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
                           <i class="las la-download"></i> Download
                         </button>
@@ -674,6 +713,18 @@
                         <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete">
                           <i class="las la-trash"></i>
                         </button>
+                      </div>
+                    {/if}
+
+                    {#if expandedTranscripts.has(note.id)}
+                      <div class="mn-transcript">
+                        {#if transcriptData[note.id]?.loading}
+                          <span class="mn-spinner-blue"></span> Loading transcript…
+                        {:else if transcriptData[note.id]?.error}
+                          <span class="mn-error-sm">{transcriptData[note.id].error}</span>
+                        {:else if transcriptData[note.id]?.text}
+                          <pre class="mn-transcript-text">{transcriptData[note.id].text}</pre>
+                        {/if}
                       </div>
                     {/if}
                   </div>
@@ -725,6 +776,7 @@
       <div class="stream-list">
         {#each filteredStream as note (note.id)}
           <div class="stream-card">
+            <div class="stream-card-main">
             <div class="stream-card-left">
               <div class="stream-card-top">
                 <span class="type-badge {TYPE_COLORS[note.meeting_type] ?? 'badge-gray'}">
@@ -750,11 +802,26 @@
               <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
                 <i class="las la-eye"></i> View
               </button>
+              <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)} title="Full transcript">
+                <i class="las la-file-alt"></i> {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
+              </button>
               <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
                 <i class="las la-download"></i>
               </button>
             </div>
-          </div>
+            </div><!-- end stream-card-main -->
+
+          {#if expandedTranscripts.has(note.id)}
+            <div class="mn-transcript stream-transcript">
+              {#if transcriptData[note.id]?.loading}
+                <span class="mn-spinner-blue"></span> Loading transcript…
+              {:else if transcriptData[note.id]?.error}
+                <span class="mn-error-sm">{transcriptData[note.id].error}</span>
+              {:else if transcriptData[note.id]?.text}
+                <pre class="mn-transcript-text">{transcriptData[note.id].text}</pre>
+              {/if}
+            </div>
+          {/if}
         {/each}
       </div>
     {/if}
@@ -1036,16 +1103,23 @@
 
   .stream-card {
     display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: background 0.12s;
+  }
+  .stream-card:hover { background: #f1f5f9; }
+
+  .stream-card-main {
+    display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
     padding: 0.75rem 1rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    transition: background 0.12s;
   }
-  .stream-card:hover { background: #f1f5f9; }
 
   .stream-card-left { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; min-width: 0; }
   .stream-card-top { display: flex; align-items: center; gap: 0.5rem; }
@@ -1118,6 +1192,34 @@
   .mn-error { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 0.6rem 0.85rem; color: #991b1b; font-size: 0.875rem; }
   .mn-loading { display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.875rem; padding: 2rem; justify-content: center; }
   .mn-table-mt { margin-top: 0.75rem; }
+
+  /* ── Transcript ────────────────────────────────────────────────────────────── */
+  .mn-transcript {
+    margin-top: 0.6rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f1f5f9;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+  .stream-transcript {
+    margin-top: 0;
+    padding: 0 1rem 0.75rem;
+    border-top: 1px solid #e2e8f0;
+  }
+  .mn-transcript-text {
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: #475569;
+    white-space: pre-wrap;
+    line-height: 1.6;
+    margin: 0;
+    max-height: 360px;
+    overflow-y: auto;
+    background: #f8fafc;
+    border-radius: 4px;
+    padding: 0.75rem;
+  }
+  .mn-error-sm { color: #dc2626; font-size: 0.8rem; }
 
   /* ── Text helpers ──────────────────────────────────────────────────────────── */
   .mn-cell-muted { color: #64748b; font-size: 0.8rem; }
