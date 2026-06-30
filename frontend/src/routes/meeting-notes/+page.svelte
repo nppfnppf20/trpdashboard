@@ -822,6 +822,7 @@
               {/if}
             </div>
           {/if}
+          </div><!-- end stream-card -->
         {/each}
       </div>
     {/if}

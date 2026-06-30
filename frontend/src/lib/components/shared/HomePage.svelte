@@ -46,6 +46,10 @@
     goto('/meeting-notes');
   }
 
+  function navigateToMarketing() {
+    goto('/marketing');
+  }
+
   function openAddProjectModal() {
     showAddProjectModal = true;
   }
@@ -295,6 +299,47 @@
 
           <button class="tool-button tool-button-purple" on:click|stopPropagation={navigateToMeetingNotes}>
             Open Meeting Notes
+            <i class="las la-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Marketing Tool Card -->
+      <div class="tool-card" on:click={navigateToMarketing} on:keydown={(e) => e.key === 'Enter' && navigateToMarketing()} role="button" tabindex="0">
+        <div class="card-content">
+          <div class="card-icon card-icon-teal">
+            <i class="las la-bullhorn"></i>
+          </div>
+
+          <h2 class="card-title">
+            Marketing
+          </h2>
+
+          <p class="card-description">
+            Generate project-specific marketing content — LinkedIn posts and newsletters — from project data, with AI-powered drafting and a live rich-text editor.
+          </p>
+
+          <div class="features-list">
+            <div class="feature-item">
+              <i class="las la-magic feature-icon-teal"></i>
+              <span>AI-Generated Drafts</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-linkedin feature-icon-teal"></i>
+              <span>LinkedIn Posts</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-envelope-open-text feature-icon-teal"></i>
+              <span>Newsletters</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-edit feature-icon-teal"></i>
+              <span>Live Editable Output</span>
+            </div>
+          </div>
+
+          <button class="tool-button tool-button-teal" on:click|stopPropagation={navigateToMarketing}>
+            Open Marketing
             <i class="las la-arrow-right"></i>
           </button>
         </div>

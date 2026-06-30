@@ -41,6 +41,7 @@ import documentStyleTemplatesRoutes from './documentStyleTemplates.routes.js';
 import draftCheckRoutes from './draftCheck.routes.js';
 import consultationRoutes from './consultation.routes.js';
 import publicCommentsRoutes from './public_comments.routes.js';
+import marketingRoutes from './marketing.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -129,6 +130,9 @@ router.use('/api/stage1-review', stage1ReviewRoutes);
 router.use('/api/planning-application', sectionChatRoutes);
 router.use('/api/lpa', planningHistoryRoutes);
 router.use('/api/lpa', policyDocumentsRoutes);
+
+// Marketing tool
+router.use('/api/marketing', marketingRoutes);
 
 export default router;
 

@@ -12,6 +12,8 @@ export async function listDocumentTypes(req, res) {
         UNION
         SELECT slug AS value, name AS label FROM planning_applications.draft_types
         UNION
+        SELECT slug AS value, name AS label FROM marketing.draft_types
+        UNION
         -- Legacy values that exist in guiding briefs but have no draft type entry (e.g. 'hlpv' alias)
         SELECT document_type AS value, document_type AS label
         FROM admin_console.guiding_briefs
@@ -19,6 +21,8 @@ export async function listDocumentTypes(req, res) {
           SELECT slug FROM appeals.appeal_draft_types
           UNION ALL
           SELECT slug FROM planning_applications.draft_types
+          UNION ALL
+          SELECT slug FROM marketing.draft_types
         )
       ) t
       ORDER BY label
