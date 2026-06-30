@@ -14,6 +14,25 @@
   let loading = true;
   let loadError = null;
 
+  // Topics modal state
+  let topicsModalTypeId = null; // typeId whose modal is open, or null
+  // selectedTopics: { [typeId]: Set<topicId> } — populated once topics exist
+  let selectedTopics = {};
+
+  $: topicsModalType = $draftTypes.find(t => t.id === topicsModalTypeId) ?? null;
+
+  function openTopicsModal(typeId) {
+    topicsModalTypeId = typeId;
+  }
+
+  function closeTopicsModal() {
+    topicsModalTypeId = null;
+  }
+
+  function selectedCount(typeId) {
+    return selectedTopics[typeId]?.size ?? 0;
+  }
+
   onMount(async () => {
     loading = true;
     loadError = null;
@@ -103,6 +122,7 @@
       <div class="draft-types-list">
         {#each $draftTypes as type (type.id)}
           {@const draft = $drafts[type.id]}
+          {@const count = selectedCount(type.id)}
           <div class="draft-type-card">
             <div class="draft-type-main">
               <div class="draft-type-info">
@@ -116,6 +136,11 @@
                 {#if draft}
                   <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                 {/if}
+                <button class="draft-setting-btn" on:click={() => openTopicsModal(type.id)} title="Select topics for this content">
+                  <i class="las la-tags"></i>
+                  Select Topics
+                  {#if count > 0}<span class="topic-count-badge">{count}</span>{/if}
+                </button>
                 <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, !!draft)}>
                   {#if $draftGenerating === type.id}
                     <div class="mini-spinner"></div> Generating...
@@ -132,6 +157,32 @@
   {/if}
 
 </div>
+
+<!-- Topics selection modal -->
+{#if topicsModalTypeId !== null}
+  <div class="modal-overlay" on:click|self={closeTopicsModal} role="dialog" aria-modal="true">
+    <div class="modal modal-topics">
+      <div class="modal-header">
+        <span class="modal-title">Select Topics — {topicsModalType?.name ?? ''}</span>
+        <button class="modal-close" on:click={closeTopicsModal}><i class="las la-times"></i></button>
+      </div>
+      <div class="modal-body topics-body">
+        <div class="topics-empty">
+          <i class="las la-tags"></i>
+          <p>No topics yet.</p>
+          <p class="topics-empty-sub">Topics will appear here once they have been added.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-left"></div>
+        <div class="modal-footer-right">
+          <button class="modal-cancel" on:click={closeTopicsModal}>Close</button>
+          <button class="modal-run" on:click={closeTopicsModal}>Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Regenerate confirmation modal -->
 {#if regenPending !== null}
@@ -250,6 +301,39 @@
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
+  }
+
+  /* Matches planning application's .draft-setting-btn exactly */
+  .draft-setting-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.625rem;
+    background: transparent;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .draft-setting-btn:hover { background: #f1f5f9; color: #374151; }
+
+  .topic-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    background: #0369a1;
+    color: white;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .draft-open-btn {
@@ -413,12 +497,14 @@
     background: white;
     border-radius: 10px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    width: 420px;
+    width: 480px;
     max-width: 94vw;
     overflow: hidden;
   }
 
   .modal-confirm { width: 380px; }
+
+  .modal-topics { width: 520px; }
 
   .modal-header {
     display: flex;
@@ -453,6 +539,41 @@
     font-size: 0.825rem;
     color: #374151;
     line-height: 1.5;
+  }
+
+  /* Topics modal body */
+  .topics-body {
+    min-height: 200px;
+    max-height: 480px;
+    overflow-y: auto;
+  }
+
+  .topics-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 3rem 1rem;
+    color: #94a3b8;
+    text-align: center;
+  }
+
+  .topics-empty i {
+    font-size: 2.5rem;
+  }
+
+  .topics-empty p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #64748b;
+    font-weight: 500;
+  }
+
+  .topics-empty-sub {
+    font-size: 0.78rem !important;
+    color: #94a3b8 !important;
+    font-weight: 400 !important;
   }
 
   .modal-footer {

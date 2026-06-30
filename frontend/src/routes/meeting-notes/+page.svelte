@@ -17,7 +17,8 @@
     createStandaloneAction,
     createMeetingAction,
     updateMeetingAction,
-    deleteMeetingAction
+    deleteMeetingAction,
+    saveExtractedInsights,
   } from '$lib/api/meetingNotes.js';
 
   // ── Type selection ──────────────────────────────────────────────────────────
@@ -175,6 +176,11 @@
       notes = [newNote, ...notes];
       resetUpload();
       loadStream();
+
+      // If the backend extracted policy updates / CPD topics, show the preview modal
+      if (result.extractedInsights?.length > 0) {
+        openInsightsPreview(result.transcript.id, meetingType, result.extractedInsights);
+      }
     } catch (err) {
       uploadError = err.message;
     } finally {
@@ -413,6 +419,42 @@
     const metaLine = [dateStr, note.attendees_text].filter(Boolean).join(' · ');
     const html = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${note.summary_html || '<p>No summary available.</p>'}`;
     await exportHtmlToWord(html, `${title}${dateStr ? ` ${dateStr}` : ''}`, '/basicdocument.docx');
+  }
+
+  // ── Insights preview ────────────────────────────────────────────────────────
+  // Set after processInternalNote when extractedInsights are returned.
+  // Shape: { transcriptId, meetingType, items: [...], selected: Set<number> }
+  let insightsPreview = null;
+  let insightsSaving = false;
+
+  function openInsightsPreview(transcriptId, meetingType, items) {
+    insightsPreview = {
+      transcriptId,
+      meetingType,
+      items,
+      selected: new Set(items.map((_, i) => i)), // all selected by default
+    };
+  }
+
+  function toggleInsight(index) {
+    const next = new Set(insightsPreview.selected);
+    if (next.has(index)) next.delete(index); else next.add(index);
+    insightsPreview = { ...insightsPreview, selected: next };
+  }
+
+  async function confirmInsights() {
+    if (!insightsPreview) return;
+    const toSave = insightsPreview.items.filter((_, i) => insightsPreview.selected.has(i));
+    if (toSave.length === 0) { insightsPreview = null; return; }
+    insightsSaving = true;
+    try {
+      await saveExtractedInsights(insightsPreview.transcriptId, toSave);
+    } catch (err) {
+      alert('Failed to save insights: ' + err.message);
+    } finally {
+      insightsSaving = false;
+      insightsPreview = null;
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -835,6 +877,70 @@
   onClose={() => showCreateProjectModal = false}
   onProjectCreated={handleProjectCreated}
 />
+
+<!-- Insights preview modal -->
+{#if insightsPreview}
+  <div class="modal-backdrop" role="dialog">
+    <div class="mn-modal mn-insights-modal">
+
+      <div class="modal-header">
+        <div>
+          <h2 class="mn-modal-title">
+            {#if insightsPreview.meetingType === 'cpd'}
+              CPD Topics Extracted
+            {:else}
+              Policy Updates Extracted
+            {/if}
+          </h2>
+          <p class="mn-modal-meta">
+            {insightsPreview.items.length} item{insightsPreview.items.length !== 1 ? 's' : ''} found.
+            Deselect any you don't want to save.
+          </p>
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={() => insightsPreview = null} disabled={insightsSaving}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+
+      <div class="mn-insights-body">
+        {#each insightsPreview.items as item, i}
+          <label class="insight-card" class:insight-card--unchecked={!insightsPreview.selected.has(i)}>
+            <input
+              type="checkbox"
+              class="insight-checkbox"
+              checked={insightsPreview.selected.has(i)}
+              on:change={() => toggleInsight(i)}
+            />
+            <div class="insight-content">
+              <div class="insight-topic">{item.topic}</div>
+              {#if item.raised_by}
+                <div class="insight-raised">Raised by {item.raised_by}</div>
+              {/if}
+              {#if item.detail}
+                <div class="insight-detail">{item.detail}</div>
+              {/if}
+            </div>
+          </label>
+        {/each}
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" on:click={() => insightsPreview = null} disabled={insightsSaving}>
+          Skip — don't save
+        </button>
+        <button class="btn btn-primary" on:click={confirmInsights} disabled={insightsSaving || insightsPreview.selected.size === 0}>
+          {#if insightsSaving}
+            <span class="mn-spinner"></span> Saving…
+          {:else}
+            <i class="las la-check"></i>
+            Save {insightsPreview.selected.size} item{insightsPreview.selected.size !== 1 ? 's' : ''}
+          {/if}
+        </button>
+      </div>
+
+    </div>
+  </div>
+{/if}
 
 <!-- Note editor modal -->
 {#if editorNote}
@@ -1272,6 +1378,64 @@
   .modal-footer {
     display: flex; justify-content: flex-end; gap: 0.6rem;
     padding: 0.85rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0;
+  }
+
+  /* ── Insights preview modal ───────────────────────────────────────────────── */
+  .mn-insights-modal { max-width: 680px; max-height: 82vh; }
+
+  .mn-insights-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 1rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  .insight-card {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .insight-card:hover { border-color: #c4b5fd; background: #faf5ff; }
+  .insight-card--unchecked { opacity: 0.5; background: #f8fafc; }
+
+  .insight-checkbox {
+    margin-top: 0.2rem;
+    width: 15px;
+    height: 15px;
+    accent-color: #7c3aed;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .insight-content { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+
+  .insight-topic {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.3;
+  }
+
+  .insight-raised {
+    font-size: 0.75rem;
+    color: #7c3aed;
+    font-weight: 500;
+  }
+
+  .insight-detail {
+    font-size: 0.8rem;
+    color: #475569;
+    line-height: 1.55;
+    margin-top: 0.1rem;
   }
 
   /* ── Responsive ────────────────────────────────────────────────────────────── */

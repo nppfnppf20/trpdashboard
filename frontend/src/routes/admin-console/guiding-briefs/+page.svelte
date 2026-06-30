@@ -10,9 +10,15 @@
     'Mixed Use', 'Industrial', 'Change of Use', 'Agricultural', 'Urban Site', 'Other',
   ];
 
+  // Ordered list of tool groups; 'All' is synthetic
+  const TOOL_GROUPS = ['Planning Application', 'Marketing'];
+
   let briefs = $state([]);
   let loading = $state(true);
   let error = $state(null);
+
+  // Page-level tab filter
+  let activeGroup = $state('All');
 
   let modalOpen = $state(false);
   let modalSaving = $state(false);
@@ -39,20 +45,58 @@
     }
   }
 
-  // Group briefs by document_type for display.
-  // Includes any doc type that has at least one brief, even if not in the DB draft types list.
+  // Map from doc type value → its group
+  const docTypeGroupMap = $derived(
+    Object.fromEntries(documentTypes.map(d => [d.value, d.group ?? 'Other']))
+  );
+
+  // documentTypes grouped by tool, for <optgroup> in modal
+  const docTypesByGroup = $derived(
+    (() => {
+      const order = [...TOOL_GROUPS, 'Other'];
+      const map = {};
+      for (const g of order) map[g] = [];
+      for (const dt of documentTypes) {
+        const g = dt.group ?? 'Other';
+        if (!map[g]) map[g] = [];
+        map[g].push(dt);
+      }
+      return order.filter(g => map[g].length > 0).map(g => ({ group: g, types: map[g] }));
+    })()
+  );
+
+  // Count briefs per group for tab badges
+  const briefCountByGroup = $derived(
+    (() => {
+      const counts = { All: briefs.length };
+      for (const b of briefs) {
+        const g = docTypeGroupMap[b.document_type] ?? 'Other';
+        counts[g] = (counts[g] ?? 0) + 1;
+      }
+      return counts;
+    })()
+  );
+
+  // Which tabs to show (only groups that have ≥1 brief or ≥1 doc type)
+  const visibleGroups = $derived(
+    TOOL_GROUPS.filter(g =>
+      (briefCountByGroup[g] ?? 0) > 0 || documentTypes.some(d => (d.group ?? 'Other') === g)
+    )
+  );
+
+  // Group briefs by document_type for display, filtered by activeGroup
   const grouped = $derived(
     (() => {
       const knownValues = new Set(documentTypes.map(d => d.value));
       const allTypes = [
         ...documentTypes,
-        // Briefs whose doc type isn't in the fetched list (shouldn't happen, but safe fallback)
         ...briefs
           .filter(b => !knownValues.has(b.document_type))
-          .map(b => ({ value: b.document_type, label: b.document_type }))
+          .map(b => ({ value: b.document_type, label: b.document_type, group: 'Other' }))
           .filter((d, i, arr) => arr.findIndex(x => x.value === d.value) === i),
       ];
       return allTypes
+        .filter(dt => activeGroup === 'All' || (dt.group ?? 'Other') === activeGroup)
         .map(dt => ({ ...dt, items: briefs.filter(b => b.document_type === dt.value) }))
         .filter(g => g.items.length > 0);
     })()
@@ -60,7 +104,11 @@
 
   function openNew() {
     isNew = true; activeId = null;
-    form = { name: '', document_type: documentTypes[0]?.value ?? '', development_type: '', guidance_content: '', review_checklist: '', meeting_prompt: '', style_example: '' };
+    // Pre-select first type in the active group if filtered, otherwise overall first
+    const preferred = activeGroup !== 'All'
+      ? documentTypes.find(d => (d.group ?? 'Other') === activeGroup)
+      : documentTypes[0];
+    form = { name: '', document_type: preferred?.value ?? documentTypes[0]?.value ?? '', development_type: '', guidance_content: '', review_checklist: '', meeting_prompt: '', style_example: '' };
     activeTab = 'guidance';
     guidanceEditMode = true;
     modalError = null;
@@ -146,12 +194,33 @@
 
   {#if error}<div class="error-banner">{error}</div>{/if}
 
+  {#if !loading}
+    <!-- Tool filter tabs -->
+    <div class="tool-tabs">
+      <button class="tool-tab" class:active={activeGroup === 'All'} onclick={() => activeGroup = 'All'}>
+        All
+        <span class="tab-count">{briefCountByGroup['All'] ?? 0}</span>
+      </button>
+      {#each visibleGroups as g}
+        <button class="tool-tab" class:active={activeGroup === g} onclick={() => activeGroup = g}>
+          {g}
+          <span class="tab-count">{briefCountByGroup[g] ?? 0}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   {#if loading}
     <div class="loading">Loading…</div>
   {:else if !briefs.length}
     <div class="empty-state">
       <i class="las la-book-open"></i>
       <p>No guiding briefs yet. Click "New Guiding Brief" to add one.</p>
+    </div>
+  {:else if grouped.length === 0}
+    <div class="empty-state">
+      <i class="las la-book-open"></i>
+      <p>No guiding briefs for {activeGroup} yet.</p>
     </div>
   {:else}
     {#each grouped as group (group.value)}
@@ -254,8 +323,12 @@
         <div class="meta-field">
           <label for="gb-doctype">Document Type</label>
           <select id="gb-doctype" bind:value={form.document_type}>
-            {#each documentTypes as dt}
-              <option value={dt.value}>{dt.label}</option>
+            {#each docTypesByGroup as grp}
+              <optgroup label={grp.group}>
+                {#each grp.types as dt}
+                  <option value={dt.value}>{dt.label}</option>
+                {/each}
+              </optgroup>
             {/each}
           </select>
         </div>
@@ -376,7 +449,7 @@
 
 <style>
   .page { max-width: 1100px; }
-  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; }
   .page-header h1 { margin: 0 0 0.25rem; font-size: 1.5rem; color: #1e293b; }
   .page-header p { margin: 0; color: #64748b; font-size: 0.875rem; max-width: 600px; }
 
@@ -386,6 +459,49 @@
     border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 500; cursor: pointer; white-space: nowrap;
   }
   .btn-add:hover { background: #1d4ed8; }
+
+  /* Tool tabs */
+  .tool-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 1.75rem;
+  }
+
+  .tool-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+    white-space: nowrap;
+  }
+  .tool-tab:hover { color: #1e293b; background: #f8fafc; }
+  .tool-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+  .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    background: #f1f5f9;
+    color: #64748b;
+    border-radius: 9px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .tool-tab.active .tab-count { background: #dbeafe; color: #1d4ed8; }
 
   /* Groups */
   .group { margin-bottom: 2rem; }

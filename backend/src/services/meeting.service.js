@@ -91,6 +91,54 @@ function extractTag(text, tag) {
   return m ? m[1].trim() : null;
 }
 
+const EXTRACT_PROMPTS = {
+  internal: `You are analysing an internal planning team meeting transcript. Your sole task is to identify and extract POLICY UPDATES discussed in the meeting.
+
+Policy updates include: changes to national planning policy (NPPF, NPPGs, PPGs), changes to local plans or SPDs, emerging policies, new appeal decisions that set precedent, changes to regulations or legislation affecting planning.
+
+For each distinct policy update mentioned, extract:
+- topic: concise name/title (e.g. "NPPF Chapter 14 revision", "Local Plan partial review")
+- detail: a thorough account of what was said — what the policy change is, why it matters, any concerns or opportunities raised. Be detailed.
+- raised_by: who mentioned it (first name or role if identifiable, otherwise null)
+
+Return ONLY a valid JSON array — no explanation, no markdown code fences, nothing else. If there are no policy updates discussed, return [].
+
+Example format: [{"topic":"...","detail":"...","raised_by":"..."}]`,
+
+  cpd: `You are analysing a CPD (Continuing Professional Development) session record. Your task is to identify the key topics covered and extract meaningful insights from each.
+
+For each significant topic or learning point covered, extract:
+- topic: concise title of what was covered
+- detail: a thorough account — key points made, practical implications for planning work, anything noteworthy. Be detailed.
+
+Return ONLY a valid JSON array — no explanation, no markdown code fences, nothing else. If no clear topics emerge, return [].
+
+Example format: [{"topic":"...","detail":"..."}]`
+};
+
+export async function extractInsights(transcriptText, meetingType) {
+  const prompt = EXTRACT_PROMPTS[meetingType];
+  if (!prompt) return [];
+
+  try {
+    const raw = await callClaude(prompt, transcriptText.slice(0, 80000), undefined, 4096);
+    // Strip any accidental markdown fences
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(item => item?.topic?.trim())
+      .map(item => ({
+        topic:     item.topic?.trim() ?? '',
+        detail:    item.detail?.trim() ?? null,
+        raised_by: item.raised_by?.trim() || null,
+      }));
+  } catch (err) {
+    console.warn('[meeting.service] extractInsights failed:', err.message);
+    return [];
+  }
+}
+
 export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project') {
   const systemPrompt = await buildSystemPrompt();
 

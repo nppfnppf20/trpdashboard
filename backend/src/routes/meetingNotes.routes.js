@@ -14,7 +14,8 @@ import {
   createMeetingAction,
   createStandaloneAction,
   updateMeetingAction,
-  deleteMeetingAction
+  deleteMeetingAction,
+  saveExtractedInsights,
 } from '../controllers/meetingNotes.controller.js';
 
 const router = express.Router();
@@ -23,6 +24,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 // Literal-segment routes first to avoid param shadowing
 router.get('/', getAllMeetingNotes);
 router.post('/internal/process', upload.single('file'), processInternalMeetingNote);
+router.post('/:transcriptId/insights', saveExtractedInsights);
 router.post('/actions', createStandaloneAction);
 router.post('/projects/:projectId/process', upload.single('file'), processMeetingNote);
 router.get('/projects/:projectId/actions', getMeetingActions);

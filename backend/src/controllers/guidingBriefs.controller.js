@@ -7,15 +7,15 @@ const client = new Anthropic();
 export async function listDocumentTypes(req, res) {
   try {
     const { rows } = await pool.query(`
-      SELECT value, label FROM (
-        SELECT slug AS value, name AS label FROM appeals.appeal_draft_types
+      SELECT value, label, grp AS "group" FROM (
+        SELECT slug AS value, name AS label, 'Planning Application' AS grp FROM planning_applications.draft_types
         UNION
-        SELECT slug AS value, name AS label FROM planning_applications.draft_types
+        SELECT slug AS value, name AS label, 'Planning Application' AS grp FROM appeals.appeal_draft_types
         UNION
-        SELECT slug AS value, name AS label FROM marketing.draft_types
+        SELECT slug AS value, name AS label, 'Marketing' AS grp FROM marketing.draft_types
         UNION
         -- Legacy values that exist in guiding briefs but have no draft type entry (e.g. 'hlpv' alias)
-        SELECT document_type AS value, document_type AS label
+        SELECT document_type AS value, document_type AS label, 'Other' AS grp
         FROM admin_console.guiding_briefs
         WHERE document_type NOT IN (
           SELECT slug FROM appeals.appeal_draft_types
@@ -25,7 +25,7 @@ export async function listDocumentTypes(req, res) {
           SELECT slug FROM marketing.draft_types
         )
       ) t
-      ORDER BY label
+      ORDER BY grp, label
     `);
     res.json(rows);
   } catch (err) {

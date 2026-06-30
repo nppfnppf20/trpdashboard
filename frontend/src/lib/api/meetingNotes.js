@@ -137,6 +137,16 @@ export async function getMeetingNoteActions(meetingId) {
   return res.json();
 }
 
+export async function saveExtractedInsights(transcriptId, insights) {
+  const res = await authFetch(`/api/meeting-notes/${transcriptId}/insights`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ insights })
+  });
+  if (!res.ok) throw new Error('Failed to save insights');
+  return res.json();
+}
+
 export async function createStandaloneAction(transcriptId, { action_text, owner, due_date, notes }) {
   const res = await authFetch('/api/meeting-notes/actions', {
     method: 'POST',

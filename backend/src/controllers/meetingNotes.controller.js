@@ -1,6 +1,6 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processMeetingTranscript } from '../services/meeting.service.js';
+import { processMeetingTranscript, extractInsights } from '../services/meeting.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Process + save a meeting transcript (upload → LLM → store all 3 tables)
@@ -290,9 +290,15 @@ export async function processInternalMeetingNote(req, res) {
       return res.status(400).json({ error: 'No file or text provided' });
     }
 
-    const { meeting_title, meeting_date, attendees, summary_html, actions } = await processMeetingTranscript(
-      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type
-    );
+    // Run summary + insights extraction in parallel
+    const [summaryResult, extractedInsights] = await Promise.all([
+      processMeetingTranscript(
+        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type
+      ),
+      extractInsights(text, meeting_type),
+    ]);
+
+    const { meeting_title, meeting_date, attendees, summary_html, actions } = summaryResult;
 
     const title = meeting_title
       || (fileName ? fileName.replace(/\.[^.]+$/, '') : null)
@@ -317,7 +323,12 @@ export async function processInternalMeetingNote(req, res) {
       );
 
       await client.query('COMMIT');
-      res.status(201).json({ transcript, summary, suggestedActions: actions });
+      res.status(201).json({
+        transcript,
+        summary,
+        suggestedActions: actions,
+        extractedInsights,
+      });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -388,6 +399,46 @@ export async function getMeetingNoteActions(req, res) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Create action for a non-project transcript (internal / CPD)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save confirmed extracted insights (policy updates / CPD topics)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function saveExtractedInsights(req, res) {
+  const { transcriptId } = req.params;
+  const { insights } = req.body; // array of { topic, detail, raised_by }
+
+  if (!Array.isArray(insights) || insights.length === 0) {
+    return res.status(400).json({ error: 'insights must be a non-empty array' });
+  }
+
+  try {
+    const { rows: [transcript] } = await pool.query(
+      `SELECT meeting_type, meeting_date FROM planning_applications.meeting_transcripts WHERE id = $1`,
+      [transcriptId]
+    );
+    if (!transcript) return res.status(404).json({ error: 'Transcript not found' });
+
+    const insightType = transcript.meeting_type === 'cpd' ? 'cpd_topic' : 'policy_update';
+    const meetingDate = transcript.meeting_date ?? null;
+
+    const saved = await Promise.all(
+      insights.map(item =>
+        pool.query(
+          `INSERT INTO admin_console.extracted_insights
+             (transcript_id, meeting_type, insight_type, topic, detail, raised_by, meeting_date)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+          [transcriptId, transcript.meeting_type, insightType, item.topic, item.detail ?? null, item.raised_by ?? null, meetingDate]
+        ).then(r => r.rows[0])
+      )
+    );
+
+    res.status(201).json(saved);
+  } catch (err) {
+    console.error('meetingNotes.saveExtractedInsights error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
 
 export async function createStandaloneAction(req, res) {
   const { transcript_id, action_text, owner, due_date, notes } = req.body;
