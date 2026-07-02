@@ -4,6 +4,8 @@
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
+  import ActionTrackerTab from '$lib/components/projects/ActionTrackerTab.svelte';
+  import { confirmStagedActions, dismissStagedActions } from '$lib/api/trackerActions.js';
   import {
     getDocumentSummaries,
     generateDocumentSummary,
@@ -27,7 +29,49 @@
   $: projectId = project?.id;
 
   // Sub-tab
-  let activeSubTab = 'meetings'; // 'meetings' | 'briefing'
+  let activeSubTab = 'meetings'; // 'meetings' | 'briefing' | 'tracker'
+
+  // Staged tracker actions — set after meeting processing, cleared after confirm/dismiss
+  let stagedTrackerActions = [];
+  let showStagedModal = false;
+  let stagingEdits = []; // editable copy for the confirmation modal
+  let stagingConfirming = false;
+  let stagingError = null;
+
+  function openStagedModal(staged) {
+    stagingEdits = staged.map(a => ({ id: a.id, title: a.title, owner: a.owner || '', include: true }));
+    showStagedModal = true;
+    stagingError = null;
+  }
+
+  async function confirmStaged() {
+    stagingConfirming = true;
+    stagingError = null;
+    const toConfirm = stagingEdits.filter(a => a.include);
+    const toDiscard = stagingEdits.filter(a => !a.include).map(a => a.id);
+    try {
+      if (toConfirm.length > 0) {
+        await confirmStagedActions(projectId, toConfirm);
+      }
+      if (toDiscard.length > 0) {
+        await dismissStagedActions(projectId, toDiscard);
+      }
+      stagedTrackerActions = [];
+      showStagedModal = false;
+    } catch (e) {
+      stagingError = e.message;
+    } finally {
+      stagingConfirming = false;
+    }
+  }
+
+  async function dismissAllStaged() {
+    try {
+      await dismissStagedActions(projectId, stagedTrackerActions.map(a => a.id));
+      stagedTrackerActions = [];
+      showStagedModal = false;
+    } catch (e) { /* silent */ }
+  }
 
   // Briefing sub-tab state
   let showMeetingGuide = false;
@@ -445,6 +489,12 @@
 
       notes = [newNote, ...notes];
       showUploadPanel = false;
+
+      // Stage any extracted actions for tracker confirmation
+      if (result.stagedTrackerActions?.length > 0) {
+        stagedTrackerActions = result.stagedTrackerActions;
+        openStagedModal(result.stagedTrackerActions);
+      }
     } catch (err) {
       uploadError = err.message;
     } finally {
@@ -633,6 +683,12 @@
     </button>
     <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'briefing'} on:click={openBriefingTab}>
       <i class="las la-file-alt"></i> Briefing Note
+    </button>
+    <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'tracker'} on:click={() => activeSubTab = 'tracker'}>
+      <i class="las la-tasks"></i> Action Tracker
+      {#if stagedTrackerActions.length > 0}
+        <span class="mn-staged-badge">{stagedTrackerActions.length}</span>
+      {/if}
     </button>
   </div>
 
@@ -1158,6 +1214,20 @@
 
   {/if} <!-- end activeSubTab === 'briefing' / else -->
 
+  {#if activeSubTab === 'tracker'}
+    <!-- ── Action Tracker staged-actions banner ──────────────────────────── -->
+    {#if stagedTrackerActions.length > 0}
+      <div class="mn-staged-banner">
+        <i class="las la-info-circle"></i>
+        <span>{stagedTrackerActions.length} action{stagedTrackerActions.length !== 1 ? 's' : ''} from the last meeting are waiting to be added to the tracker.</span>
+        <button class="mn-staged-review-btn" on:click={() => openStagedModal(stagedTrackerActions)}>Review</button>
+        <button class="mn-staged-dismiss-btn" on:click={dismissAllStaged}>Dismiss</button>
+      </div>
+    {/if}
+
+    <ActionTrackerTab project={project} />
+  {/if}
+
 </div>
 
 <!-- ── Note Editor Modal ─────────────────────────────────────────────────── -->
@@ -1214,6 +1284,43 @@
         </button>
       </div>
 
+    </div>
+  </div>
+{/if}
+
+<!-- ── Staged Tracker Actions Confirmation Modal ─────────────────────────── -->
+{#if showStagedModal}
+  <div class="modal-backdrop" role="dialog" tabindex="-1">
+    <div class="mn-modal mn-staged-modal">
+      <div class="modal-header">
+        <h2 class="mn-modal-title">Add actions to tracker?</h2>
+        <p class="mn-staged-subtitle">These actions were extracted from the meeting. Review and confirm which ones to add to the Action Tracker.</p>
+      </div>
+
+      <div class="mn-staged-list">
+        {#each stagingEdits as row}
+          <div class="mn-staged-row" class:mn-staged-row--excluded={!row.include}>
+            <label class="mn-staged-check">
+              <input type="checkbox" bind:checked={row.include} />
+            </label>
+            <div class="mn-staged-fields">
+              <input class="mn-input-sm" bind:value={row.title} disabled={!row.include} placeholder="Action title" />
+              <input class="mn-input-sm mn-input-owner" bind:value={row.owner} disabled={!row.include} placeholder="Owner (optional)" />
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      {#if stagingError}<p class="mn-error-sm" style="padding:.5rem 1.25rem">{stagingError}</p>{/if}
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" on:click={dismissAllStaged} disabled={stagingConfirming}>
+          Dismiss all
+        </button>
+        <button class="btn btn-primary" on:click={confirmStaged} disabled={stagingConfirming || stagingEdits.filter(a => a.include).length === 0}>
+          {stagingConfirming ? 'Saving…' : `Add ${stagingEdits.filter(a => a.include).length} to tracker`}
+        </button>
+      </div>
     </div>
   </div>
 {/if}
@@ -1774,4 +1881,46 @@
   .mn-summary-html :global(ul) { margin: 0 0 0.5rem; padding-left: 1.25rem; }
   .mn-summary-html :global(li) { margin-bottom: 0.25rem; }
   .mn-summary-html :global(strong) { font-weight: 700; color: #1e293b; }
+
+  /* ── Action Tracker tab ─────────────────────────────────────────────────── */
+  .mn-staged-badge {
+    background: #f59e0b; color: #fff; font-size: .7rem; font-weight: 700;
+    padding: .1rem .4rem; border-radius: 99px; margin-left: .2rem;
+  }
+
+  .mn-staged-banner {
+    display: flex; align-items: center; gap: .6rem; padding: .65rem 1rem;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    font-size: .85rem; color: #92400e; flex-wrap: wrap;
+  }
+  .mn-staged-banner i { color: #f59e0b; flex-shrink: 0; }
+  .mn-staged-review-btn {
+    background: #f59e0b; color: #fff; border: none; border-radius: 5px;
+    padding: .25rem .65rem; font-size: .8rem; font-weight: 600; cursor: pointer;
+    margin-left: auto;
+  }
+  .mn-staged-review-btn:hover { background: #d97706; }
+  .mn-staged-dismiss-btn {
+    background: transparent; color: #92400e; border: 1px solid #fde68a;
+    border-radius: 5px; padding: .25rem .65rem; font-size: .8rem; cursor: pointer;
+  }
+  .mn-staged-dismiss-btn:hover { background: #fef3c7; }
+
+  /* ── Staged confirmation modal ──────────────────────────────────────────── */
+  .mn-staged-modal { max-width: 560px; width: 100%; }
+  .mn-staged-subtitle { font-size: .83rem; color: #64748b; margin: .25rem 0 0; }
+  .mn-staged-list { padding: .75rem 1.25rem; display: flex; flex-direction: column; gap: .5rem;
+    max-height: 50vh; overflow-y: auto; }
+  .mn-staged-row { display: flex; align-items: flex-start; gap: .65rem; padding: .6rem .75rem;
+    border: 1px solid #e2e8f0; border-radius: 8px; transition: opacity .15s; }
+  .mn-staged-row--excluded { opacity: .45; }
+  .mn-staged-check { padding-top: .35rem; flex-shrink: 0; }
+  .mn-staged-fields { display: flex; flex-direction: column; gap: .3rem; flex: 1; }
+  .mn-input-sm {
+    padding: .35rem .6rem; border: 1px solid #e2e8f0; border-radius: 6px;
+    font-size: .83rem; font-family: inherit; width: 100%; outline: none;
+  }
+  .mn-input-sm:focus { border-color: #93c5fd; }
+  .mn-input-sm:disabled { background: #f8fafc; color: #94a3b8; }
+  .mn-input-owner { color: #64748b; }
 </style>

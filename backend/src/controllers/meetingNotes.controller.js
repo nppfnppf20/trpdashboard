@@ -49,8 +49,22 @@ export async function processMeetingNote(req, res) {
         [transcript.id, projectId, summary_html]
       );
 
+      // Stage tracker actions for user review (confirmed = false)
+      const stagedTrackerActions = [];
+      for (let i = 0; i < actions.length; i++) {
+        const a = actions[i];
+        if (!a.action_text?.trim()) continue;
+        const { rows: [ta] } = await client.query(
+          `INSERT INTO planning_applications.tracker_actions
+             (project_id, title, owner, confirmed, source_transcript_id, order_index)
+           VALUES ($1, $2, $3, false, $4, $5) RETURNING id, title, owner`,
+          [projectId, a.action_text.trim(), a.owner?.trim() || null, transcript.id, i]
+        );
+        stagedTrackerActions.push(ta);
+      }
+
       await client.query('COMMIT');
-      res.status(201).json({ transcript, summary, suggestedActions: actions });
+      res.status(201).json({ transcript, summary, suggestedActions: actions, stagedTrackerActions });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
