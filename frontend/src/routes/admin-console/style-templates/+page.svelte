@@ -43,6 +43,7 @@
     proof_of_evidence: 'Proof of Evidence',
     planning_notice: 'Planning Notice',
     stage1_review: 'Stage 1 Review',
+    stage1_review_v2: 'Stage 1 Review v2',
   };
 
   const grouped = $derived(() => {

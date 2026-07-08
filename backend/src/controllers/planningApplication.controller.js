@@ -46,6 +46,7 @@ const ACTION_PROMPT_DEFAULTS = {
   scope_incorporation:           DEFAULT_SCOPE_INCORPORATION_PROMPT,
   incorporate_assessment:        DEFAULT_INCORPORATE_ASSESSMENT_PROMPT,
   stage1_review:                 DEFAULT_STAGE1_REVIEW_PROMPT,
+  stage1_review_v2:              DEFAULT_STAGE1_REVIEW_PROMPT,
   incorporate_appeal:            DEFAULT_INCORPORATE_APPEAL_PROMPT,
   generate_appeal_argument:      DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
   draft_check_brief:             DEFAULT_BRIEF_CHECK_TEMPLATE,

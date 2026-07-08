@@ -64,17 +64,20 @@ function api(typeId) {
     generateDraft:   (pid, _id, opts) => generateDraftFromPaNotes(pid, rawId(typeId), opts),
     generateSection: (pid, _id, sid) => generateSectionFromPaNotes(pid, rawId(typeId), sid),
   };
-  if (isStage1(typeId)) return {
-    getDraft:        paGetDraft,
-    saveDraft:       paSaveDraft,
-    getSections:     () => Promise.resolve([]),
-    createSection:   () => Promise.resolve(null),
-    updateSection:   () => Promise.resolve(null),
-    deleteSection:   () => Promise.resolve(null),
-    reorderSections: () => Promise.resolve(null),
-    generateDraft:   (pid, _id, opts) => generateStage1ReviewApi(pid, opts),
-    generateSection: () => Promise.resolve(null),
-  };
+  if (isStage1(typeId)) {
+    const slug = get(draftTypes).find(t => t.id === typeId)?.slug ?? 'stage1_review';
+    return {
+      getDraft:        paGetDraft,
+      saveDraft:       paSaveDraft,
+      getSections:     () => Promise.resolve([]),
+      createSection:   () => Promise.resolve(null),
+      updateSection:   () => Promise.resolve(null),
+      deleteSection:   () => Promise.resolve(null),
+      reorderSections: () => Promise.resolve(null),
+      generateDraft:   (pid, _id, opts) => generateStage1ReviewApi(pid, { ...opts, draftTypeSlug: slug }),
+      generateSection: () => Promise.resolve(null),
+    };
+  }
   return {
     getDraft:        paGetDraft,
     saveDraft:       paSaveDraft,
@@ -148,7 +151,7 @@ export async function loadDraftTypes() {
     ]);
 
     const tagged = [
-      ...paTypes.map(t => ({ ...t, tool: t.slug === 'stage1_review' ? 'stage1' : 'pa' })),
+      ...paTypes.map(t => ({ ...t, tool: t.slug === 'stage1_review' || t.slug === 'stage1_review_v2' ? 'stage1' : 'pa' })),
       ...appealTypesRaw.map(t => ({
         ...t,
         id: `appeal_${t.id}`,

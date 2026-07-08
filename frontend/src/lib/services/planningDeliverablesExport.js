@@ -31,19 +31,25 @@ const SLUG_TEMPLATE_MAP = {
   // Statement of Common Ground
   statement_of_common_ground:   SOCG_TEMPLATE,
   appeal_statement_of_common_ground: SOCG_TEMPLATE,
+  // Pre-application request letter
+  pre_application_request:      '/letter.docx',
 };
 
 const DEFAULT_TEMPLATE = CS_TEMPLATE;
 
 // Style maps keyed by template path
 // C&S family: h2 = section headings → Heading1, h3 = subsections → Heading3, bullets → Bullet1
-const CS_STYLES  = { h1: 'Heading1', h2: 'Heading1', h3: 'Heading3', h4: 'Heading3', p: 'Appealnumberedparagarphs', ul: 'Bullet1', ol: 'Bullet1' };
-const DEF_STYLES = { h1: 'Heading1', h2: 'Heading2', h3: 'Heading3', h4: 'Heading4', p: 'Normal', ul: 'ListBullet', ol: 'ListNumber' };
+const CS_STYLES     = { h1: 'Heading1', h2: 'Heading1', h3: 'Heading3', h4: 'Heading3', p: 'Appealnumberedparagarphs', ul: 'Bullet1', ol: 'Bullet1' };
+const DEF_STYLES    = { h1: 'Heading1', h2: 'Heading2', h3: 'Heading3', h4: 'Heading4', p: 'Normal', ul: 'ListBullet', ol: 'ListNumber' };
+const LETTER_STYLES = { h1: 'Heading1', h2: 'Heading2', h3: 'Heading3', h4: 'Heading3', p: 'Normal', ul: 'Bullet1', ol: 'Bullet1' };
 
-const CS_FAMILY = new Set([CS_TEMPLATE, SOC_TEMPLATE, SOCG_TEMPLATE]);
+const CS_FAMILY     = new Set([CS_TEMPLATE, SOC_TEMPLATE, SOCG_TEMPLATE]);
+const LETTER_FAMILY = new Set(['/letter.docx']);
 
 function getStyleMap(templatePath) {
-  return CS_FAMILY.has(templatePath) ? CS_STYLES : DEF_STYLES;
+  if (CS_FAMILY.has(templatePath))     return CS_STYLES;
+  if (LETTER_FAMILY.has(templatePath)) return LETTER_STYLES;
+  return DEF_STYLES;
 }
 
 function getTemplatePath(deliverable) {

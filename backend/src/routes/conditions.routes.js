@@ -1,0 +1,34 @@
+import express from 'express';
+import {
+  getConditionsData,
+  createCondition,
+  updateCondition,
+  deleteCondition,
+  createRequirement,
+  updateRequirement,
+  deleteRequirement,
+  createAdvancements,
+  suggestAdvancements,
+  updateAdvancement,
+  deleteAdvancement,
+  markExported,
+  markIssuedToClient,
+} from '../controllers/conditions.controller.js';
+
+const router = express.Router();
+
+router.get('/projects/:projectId', getConditionsData);
+router.post('/projects/:projectId/conditions', createCondition);
+router.post('/projects/:projectId/export', markExported);
+router.post('/projects/:projectId/issue-to-client', markIssuedToClient);
+router.put('/conditions/:conditionId', updateCondition);
+router.delete('/conditions/:conditionId', deleteCondition);
+router.post('/conditions/:conditionId/requirements', createRequirement);
+router.put('/requirements/:requirementId', updateRequirement);
+router.delete('/requirements/:requirementId', deleteRequirement);
+router.post('/projects/:projectId/advancements', createAdvancements);
+router.post('/projects/:projectId/advancements/suggest', suggestAdvancements);
+router.put('/advancements/:advancementId', updateAdvancement);
+router.delete('/advancements/:advancementId', deleteAdvancement);
+
+export default router;

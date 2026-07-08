@@ -264,6 +264,7 @@ const STARTING_DOC_VARS = [
   { slug: 'planning_statement',      variable: 'PLANNING_STATEMENT',      label: 'Planning Statement' },
   { slug: 'committee_report',        variable: 'COMMITTEE_REPORT',        label: 'Committee Report' },
   { slug: 'committee_minutes',       variable: 'COMMITTEE_MINUTES',       label: 'Committee Minutes' },
+  { slug: 'stage1_review',            variable: 'STAGE1_REVIEW',           label: 'Stage 1 Review' },
   { slug: 'other',                   variable: 'OTHER_DOCS',              label: 'Other Documents' },
   { slug: 'hlpv_data',               variable: 'HLPV_DATA',               label: 'HLPV Tool Data' },
   { slug: 'additional_designations', variable: 'ADDITIONAL_DESIGNATIONS', label: 'Additional Designations & Site Notes' },
@@ -287,7 +288,8 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
     .replace(/\{\{DOCUMENT_TYPE\}\}/g, draftTypeName)
     .replace(/\{\{PROJECT_BRIEF\}\}/g, cleanProjectBrief)
-    .replace(/\{\{BRIEFING_NOTES\}\}/g, cleanBriefingNotes);
+    .replace(/\{\{BRIEFING_NOTES\}\}/g, cleanBriefingNotes)
+    .replace(/\{\{STYLE_GUIDE\}\}/g, guidingBrief?.style_example?.trim() || '(no style example set for this document type)');
 
   for (const { slug, variable } of STARTING_DOC_VARS) {
     instructions = instructions.replace(
@@ -314,7 +316,9 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     ? `\n\nProject Briefing Notes:\n${briefingNotes.trim()}`
     : '';
 
-  const styleExampleBlock = guidingBrief?.style_example?.trim()
+  // Templates that reference {{STYLE_GUIDE}} (e.g. pre_application_request) carry the
+  // style example inline via the substitution above — don't also auto-append this block.
+  const styleExampleBlock = (!basePrompt.includes('{{STYLE_GUIDE}}') && guidingBrief?.style_example?.trim())
     ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${guidingBrief.style_example.trim()}`
     : '';
 

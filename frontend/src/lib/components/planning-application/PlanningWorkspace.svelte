@@ -27,7 +27,8 @@
 
   const draftKeyState  = actionPromptState('draft_key_summaries');
   const draftArgsState    = actionPromptState('draft_arguments_from_briefing');
-  const stage1PromptState = actionPromptState('stage1_review');
+  const stage1PromptState   = actionPromptState('stage1_review');
+  const stage1v2PromptState = actionPromptState('stage1_review_v2');
 
   $: appealPromptTitle = $draftTypes.find(t => t.id === $appealPromptTypeId)?.name ?? 'Appeal Document';
 
@@ -581,7 +582,7 @@
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
           {/if}
-          {#if activeType?.slug !== 'stage1_review' && $activeDraftTypeId !== 'blank'}
+          {#if activeType?.tool !== 'stage1' && $activeDraftTypeId !== 'blank'}
             <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { checkPanelOpen = false; } }} title="Chat with a document to draft a section">
               <i class="las la-comments"></i> Doc Chat
             </button>
@@ -657,7 +658,7 @@
                 incorporateReviewMode = false;
               }}
             />
-          {:else if activeType?.slug !== 'stage1_review'}
+          {:else if activeType?.tool !== 'stage1'}
             <PlanningDocIncorporatePanel
               {project}
               typeId={$activeDraftTypeId}
@@ -780,7 +781,10 @@
                     </button>
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openAppealPrompt(type.id)}><i class="las la-sliders-h"></i></button>
                   {:else if type.tool === 'stage1'}
-                    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt('stage1_review')}><i class="las la-sliders-h"></i></button>
+                    <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name, tool: type.tool }}>
+                      <i class="las la-file-import"></i> Starting docs
+                    </button>
+                    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
                   {:else}
                     <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
                   {/if}
@@ -1544,12 +1548,27 @@
   on:reset={() => resetActionPromptStore('stage1_review')}
 />
 
+<PromptEditModal
+  open={$stage1v2PromptState.open}
+  title="Edit Prompt: Generate Stage 1 Review v2"
+  promptText={$stage1v2PromptState.text}
+  contextTemplate={$stage1v2PromptState.contextTemplate}
+  loading={$stage1v2PromptState.loading}
+  saving={$stage1v2PromptState.saving}
+  saved={$stage1v2PromptState.saved}
+  on:close={() => closeActionPrompt('stage1_review_v2')}
+  on:change={(e) => setPromptText('stage1_review_v2', e.detail)}
+  on:save={() => saveActionPromptStore('stage1_review_v2')}
+  on:reset={() => resetActionPromptStore('stage1_review_v2')}
+/>
+
 {#if startingDocsType}
   <StartingDocsModal
     {project}
     typeId={startingDocsType.id}
     typeSlug={startingDocsType.slug}
     typeName={startingDocsType.name}
+    tool={startingDocsType.tool ?? 'appeal'}
     on:close={() => { startingDocsType = null; loadCardContextPcts(); }}
   />
 {/if}

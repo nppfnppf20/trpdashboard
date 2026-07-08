@@ -157,6 +157,7 @@
     listError = null;
     try {
       summaries = await getDocumentSummaries(projectId);
+      expandedIds = new Set(summaries.map(s => s.id));
     } catch (err) {
       listError = err.message;
     } finally {
@@ -290,6 +291,7 @@
         summary_html: resultSummaryHtml
       });
       summaries = [entry, ...summaries];
+      expandedIds = new Set([entry.id, ...expandedIds]);
       setMode(null);
     } catch (err) {
       saveError = err.message;
@@ -334,9 +336,13 @@
   }
 
   function toggleExpand(id) {
-    expandedIds = expandedIds.has(id)
-      ? new Set([...expandedIds].filter(x => x !== id))
-      : new Set([...expandedIds, id]);
+    const next = new Set(expandedIds);
+    if (next.has(id)) { next.delete(id); } else { next.add(id); }
+    expandedIds = next;
+  }
+
+  function isExpanded(id) {
+    return expandedIds.has(id);
   }
 
   // Prompt modal
@@ -683,9 +689,9 @@
       </div>
     {:else}
       {#each summaries as s (s.id)}
-        {@const expanded = expandedIds.has(s.id)}
         <div class="summary-card">
-          <div class="summary-card-header">
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
+          <div class="summary-card-header" on:click={() => toggleExpand(s.id)}>
             <div class="summary-meta">
               {#if s.doc_type}
                 <span class="type-badge" style="background:{TYPE_COLOURS[s.doc_type] ?? '#64748b'}22; color:{TYPE_COLOURS[s.doc_type] ?? '#64748b'}">
@@ -695,21 +701,20 @@
               {#if s.document_ref}
                 <span class="ref-chip">{s.document_ref}</span>
               {/if}
+              <span class="summary-title-inline">{s.title}</span>
             </div>
             <div class="summary-actions">
-              <button class="icon-btn" on:click={() => toggleExpand(s.id)} title={expanded ? 'Collapse' : 'Expand'}>
-                <i class="las la-{expanded ? 'chevron-up' : 'chevron-down'}"></i>
-              </button>
-              <button class="icon-btn danger" on:click={() => removeSummary(s.id)} title="Delete">
+              <span class="expand-hint">{isExpanded(s.id) ? 'Hide' : 'View'}</span>
+              <i class="las la-{isExpanded(s.id) ? 'chevron-up' : 'chevron-down'} expand-chevron"></i>
+              <button class="icon-btn danger" on:click|stopPropagation={() => removeSummary(s.id)} title="Delete">
                 <i class="las la-trash"></i>
               </button>
             </div>
           </div>
-          <div class="summary-title">{s.title}</div>
           {#if s.file_name}
             <div class="file-name-chip"><i class="las la-file"></i> {s.file_name}</div>
           {/if}
-          {#if expanded}
+          {#if isExpanded(s.id)}
             <div class="summary-body">
               {@html s.summary_html}
             </div>
@@ -1035,9 +1040,20 @@
 
   .summary-card-header {
     display: flex; justify-content: space-between;
-    align-items: flex-start; gap: 0.5rem;
+    align-items: center; gap: 0.5rem;
+    cursor: pointer; border-radius: 6px;
+    padding: 0.25rem 0.25rem;
+    margin: -0.25rem -0.25rem;
+    transition: background 0.1s;
   }
-  .summary-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
+  .summary-card-header:hover { background: #f8fafc; }
+  .summary-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; flex: 1; min-width: 0; }
+  .summary-title-inline {
+    font-size: 0.9rem; font-weight: 600; color: #1e293b;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .expand-hint { font-size: 0.75rem; color: #9333ea; font-weight: 500; white-space: nowrap; }
+  .expand-chevron { font-size: 0.9rem; color: #9333ea; }
 
   .type-badge {
     font-size: 0.7rem; font-weight: 600;
@@ -1050,7 +1066,7 @@
     border-radius: 4px; font-family: monospace;
   }
 
-  .summary-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+  .summary-actions { display: flex; gap: 0.375rem; flex-shrink: 0; align-items: center; }
   .icon-btn {
     width: 28px; height: 28px;
     display: flex; align-items: center; justify-content: center;

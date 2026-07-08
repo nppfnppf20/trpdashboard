@@ -10,17 +10,23 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { MODEL_SONNET } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
+import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
+import { parseFile } from '../services/parser.service.js';
 
 const client = new Anthropic();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load tone example at startup
+// Load tone example at startup — used two ways below:
+// - as the {{STYLE_GUIDE}} fallback for templates that reference it (e.g. v2)
+// - wrapped in TONE_EXAMPLE_BLOCK for legacy templates with no {{STYLE_GUIDE}} token (v1)
+let TONE_EXAMPLE_RAW = '';
 let TONE_EXAMPLE_BLOCK = '';
 try {
   const raw = readFileSync(join(__dirname, '../../../stage1reviewexample.md'), 'utf-8');
   if (raw.trim().length > 100) {
-    TONE_EXAMPLE_BLOCK = `\n\nThe following is a real Stage 1 Planning Appraisal written by this consultancy. Use it ONLY as a writing style reference — to learn the professional register, the level of detail expected in each section, and the way conclusions and risks are phrased. Do NOT reproduce any place names, policy references, distances, designations, site details, or factual content from it. Every fact in your output must come solely from the briefing note provided:\n<tone_example>\n${raw.trim()}\n</tone_example>`;
-    console.log('[stage1Review] Tone example loaded:', raw.trim().length, 'chars');
+    TONE_EXAMPLE_RAW = raw.trim();
+    TONE_EXAMPLE_BLOCK = `\n\nThe following is a real Stage 1 Planning Appraisal written by this consultancy. Use it ONLY as a writing style reference — to learn the professional register, the level of detail expected in each section, and the way conclusions and risks are phrased. Do NOT reproduce any place names, policy references, distances, designations, site details, or factual content from it. Every fact in your output must come solely from the briefing note provided:\n<tone_example>\n${TONE_EXAMPLE_RAW}\n</tone_example>`;
+    console.log('[stage1Review] Tone example loaded:', TONE_EXAMPLE_RAW.length, 'chars');
   }
 } catch (e) {
   console.warn('[stage1Review] Could not load stage1reviewexample.md:', e.message);
@@ -41,6 +47,15 @@ The following briefing note has been prepared by the project team and contains t
 {{BRIEFING_NOTES}}
 
 {{PLANNING_HISTORY}}
+
+## Planning Policy
+The following policies apply to this project. Use them in any sections of the appraisal where they are relevant according to the guiding brief.
+
+### Local Policies
+{{LOCAL_POLICIES}}
+
+### National Policies
+{{NATIONAL_POLICIES}}
 
 ---
 
@@ -70,7 +85,9 @@ export const DEFAULT_STAGE1_REVIEW_PROMPT = DEFAULT_STAGE1_SYSTEM_PROMPT;
 
 export async function generateStage1Review(req, res) {
   const { projectId } = req.params;
-  const { briefing_note_id } = req.body;
+  const { briefing_note_id, draft_type_slug } = req.body;
+  const promptKey = draft_type_slug ?? 'stage1_review';
+  const draftSlug = draft_type_slug ?? 'stage1_review';
 
   try {
     // ── 1. Project data ───────────────────────────────────────────────────────
@@ -85,6 +102,7 @@ export async function generateStage1Review(req, res) {
     const project = projectRows[0];
 
     // ── 2. Briefing note — full text, no truncation ───────────────────────────
+    // Priority: explicit briefing_note_id → starting docs selection → most recent transcript
     let briefingText = null;
     if (briefing_note_id) {
       const { rows: noteRows } = await pool.query(
@@ -94,13 +112,41 @@ export async function generateStage1Review(req, res) {
       );
       briefingText = noteRows[0]?.summary_html ?? null;
     } else {
-      const { rows: noteRows } = await pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-         ORDER BY created_at DESC LIMIT 1`,
+      // Check starting docs for a briefing note selection
+      const { rows: selectionRows } = await pool.query(
+        `SELECT content_text FROM planning_applications.stage1_starting_docs
+         WHERE project_id = $1 AND slot_slug = 'briefing_notes'`,
         [projectId]
       );
-      briefingText = noteRows[0]?.summary_html ?? null;
+      const selectionJson = selectionRows[0]?.content_text;
+      if (selectionJson) {
+        try {
+          const ids = JSON.parse(selectionJson);
+          if (Array.isArray(ids) && ids.length > 0) {
+            const { rows: noteRows } = await pool.query(
+              `SELECT title, summary_html FROM planning_applications.document_summaries
+               WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
+               ORDER BY created_at DESC`,
+              [ids, projectId]
+            );
+            if (noteRows.length) {
+              briefingText = noteRows
+                .map(r => `${r.title ? `[${r.title}]\n` : ''}${r.summary_html ?? ''}`)
+                .join('\n\n---\n\n');
+            }
+          }
+        } catch { /* malformed JSON */ }
+      }
+      // Fall back to most recent transcript
+      if (!briefingText) {
+        const { rows: noteRows } = await pool.query(
+          `SELECT summary_html FROM planning_applications.document_summaries
+           WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+           ORDER BY created_at DESC LIMIT 1`,
+          [projectId]
+        );
+        briefingText = noteRows[0]?.summary_html ?? null;
+      }
     }
 
     if (!briefingText?.trim()) {
@@ -110,7 +156,23 @@ export async function generateStage1Review(req, res) {
     // Strip HTML tags — keep full text, no character cap
     const briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
-    // ── 3. Planning history ───────────────────────────────────────────────────
+    // ── 3. Policies ───────────────────────────────────────────────────────────
+    const { rows: policyRows } = await pool.query(
+      `SELECT policy_reference, policy_name, policy_text, policy_type
+       FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, id`,
+      [projectId]
+    );
+    const formatPolicies = rows => rows.length
+      ? rows.map(p => {
+          const header = `${p.policy_reference}${p.policy_name ? `: ${p.policy_name}` : ''}`;
+          const text = p.policy_text?.trim() ? `\n${p.policy_text.trim()}` : '';
+          return header + text;
+        }).join('\n\n')
+      : '(none recorded)';
+    const localPolicies    = formatPolicies(policyRows.filter(p => p.policy_type === 'local'));
+    const nationalPolicies = formatPolicies(policyRows.filter(p => p.policy_type === 'national'));
+
+    // ── 4. Planning history ───────────────────────────────────────────────────
     const { rows: planningHistoryRows } = await pool.query(
       `SELECT section, planning_ref, description, decision, decision_date
        FROM public.project_planning_history
@@ -140,28 +202,49 @@ export async function generateStage1Review(req, res) {
       ? `## Planning History\n\n**On-site applications:**\n${formatHistoryPlain(onSiteRows)}\n\n**Nearby applications:**\n${formatHistoryPlain(nearbyRows)}`
       : '';
 
-    // ── 4. Guiding brief ──────────────────────────────────────────────────────
-    const guidingBrief = await getGuidingBrief('stage1_review', project.development_type || null);
+    // ── 5. Guiding brief + style template ─────────────────────────────────────
+    // Scoped to promptKey (e.g. 'stage1_review_v2') so the v2 experimentation
+    // track has its own guiding brief and style template, independent of v1.
+    const guidingBrief = await getGuidingBrief(promptKey, project.development_type || null);
     const guidingBriefText = guidingBrief?.guidance_content?.trim() || '(no guiding brief set for this document type)';
+    const styleTemplate = await getDocumentStyleTemplateByDocType(promptKey, project.development_type || null);
 
-    // ── 5. Load user prompt template from DB; fall back to default ─────────────
+    // ── 6. Load user prompt template from DB; fall back to default ─────────────
     const { rows: promptRows } = await pool.query(
-      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'stage1_review'`
+      `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = $1`,
+      [promptKey]
     );
     const promptTemplate = promptRows[0]?.prompt_text ?? DEFAULT_STAGE1_REVIEW_TEMPLATE;
 
-    // ── 6. Substitute variables ───────────────────────────────────────────────
+    // ── 6b. Fetch starting docs ───────────────────────────────────────────────
+    const { rows: startingDocRows } = await pool.query(
+      `SELECT slot_slug, content_text FROM planning_applications.stage1_starting_docs
+       WHERE project_id = $1`,
+      [projectId]
+    );
+    const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
+    const highLevelReview = startingDocs['high_level_planning_review']?.trim() || '(not provided)';
+
+    // ── 7. Substitute variables ───────────────────────────────────────────────
     const userPrompt = promptTemplate
       .replace(/\{\{GUIDING_BRIEF\}\}/g, guidingBriefText)
       .replace(/\{\{BRIEFING_NOTES\}\}/g, briefingPlain)
-      .replace(/\{\{PLANNING_HISTORY\}\}/g, planningHistoryBlock);
+      .replace(/\{\{PLANNING_HISTORY\}\}/g, planningHistoryBlock)
+      .replace(/\{\{HIGH_LEVEL_PLANNING_REVIEW\}\}/g, highLevelReview)
+      .replace(/\{\{LOCAL_POLICIES\}\}/g, localPolicies)
+      .replace(/\{\{NATIONAL_POLICIES\}\}/g, nationalPolicies)
+      .replace(/\{\{STYLE_GUIDE\}\}/g, styleTemplate?.style_text?.trim() || TONE_EXAMPLE_RAW || '(no house style example set for this document type)');
 
-    const systemPrompt = DEFAULT_STAGE1_SYSTEM_PROMPT + TONE_EXAMPLE_BLOCK;
+    // Templates that reference {{STYLE_GUIDE}} (e.g. stage1_review_v2) carry the style
+    // example in the user prompt instead — don't also append the legacy system-prompt block.
+    const systemPrompt = promptTemplate.includes('{{STYLE_GUIDE}}')
+      ? DEFAULT_STAGE1_SYSTEM_PROMPT
+      : DEFAULT_STAGE1_SYSTEM_PROMPT + TONE_EXAMPLE_BLOCK;
 
     // ── 7. Call LLM — expect HTML output directly ─────────────────────────────
     const bodyHtml = (await client.messages.stream({
       model: MODEL_SONNET,
-      max_tokens: 8000,
+      max_tokens: 64000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     }).finalText()).trim().replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
@@ -177,7 +260,8 @@ export async function generateStage1Review(req, res) {
 
     // ── 9. Save to drafts table ───────────────────────────────────────────────
     const { rows: typeRows } = await pool.query(
-      `SELECT id FROM planning_applications.draft_types WHERE slug = 'stage1_review' LIMIT 1`
+      `SELECT id FROM planning_applications.draft_types WHERE slug = $1 LIMIT 1`,
+      [draftSlug]
     );
     if (typeRows.length) {
       const draftTypeId = typeRows[0].id;
@@ -196,6 +280,68 @@ export async function generateStage1Review(req, res) {
     res.json({ html: documentHtml });
   } catch (err) {
     console.error('stage1Review.generate error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getStage1StartingDocs(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT slot_slug, content_text, file_name, updated_at
+       FROM planning_applications.stage1_starting_docs
+       WHERE project_id = $1`,
+      [projectId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getStage1StartingDocs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function upsertStage1StartingDoc(req, res) {
+  const { projectId, slotSlug } = req.params;
+  try {
+    let contentText = '';
+    let fileName = null;
+
+    if (req.file) {
+      const { text } = await parseFile(req.file.buffer, req.file.originalname);
+      contentText = text;
+      fileName = req.file.originalname;
+    } else {
+      contentText = req.body.content_text ?? '';
+      fileName = req.body.file_name ?? null;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.stage1_starting_docs
+         (project_id, slot_slug, content_text, file_name, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (project_id, slot_slug)
+       DO UPDATE SET content_text = $3, file_name = $4, updated_at = NOW()
+       RETURNING slot_slug, content_text, file_name, updated_at`,
+      [projectId, slotSlug, contentText, fileName]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('upsertStage1StartingDoc error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function deleteStage1StartingDoc(req, res) {
+  const { projectId, slotSlug } = req.params;
+  try {
+    await pool.query(
+      `DELETE FROM planning_applications.stage1_starting_docs
+       WHERE project_id = $1 AND slot_slug = $2`,
+      [projectId, slotSlug]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deleteStage1StartingDoc error:', err);
     res.status(500).json({ error: err.message });
   }
 }

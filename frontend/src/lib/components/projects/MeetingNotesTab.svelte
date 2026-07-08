@@ -79,6 +79,7 @@
   let briefingsLoaded = false;
   let briefingsLoading = false;
   let briefingsError = null;
+  let expandedBriefings = new Set();
   let bInputTab = 'upload'; // 'upload' | 'paste'
   let bFile = null;
   let bPasteText = '';
@@ -177,6 +178,12 @@
     } finally {
       bSaving = false;
     }
+  }
+
+  function toggleBriefing(id) {
+    const next = new Set(expandedBriefings);
+    if (next.has(id)) { next.delete(id); } else { next.add(id); }
+    expandedBriefings = next;
   }
 
   async function deleteBriefing(id) {
@@ -811,11 +818,20 @@
                     {#if b.created_at}<span class="mn-cell-muted">{formatDate(b.created_at)}</span>{/if}
                   </div>
                   <div class="mn-note-actions">
+                    <button class="btn btn-secondary btn-sm" on:click={() => toggleBriefing(b.id)}>
+                      <i class="las la-{expandedBriefings.has(b.id) ? 'eye-slash' : 'eye'}"></i>
+                      {expandedBriefings.has(b.id) ? 'Hide' : 'View'}
+                    </button>
                     <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(b.id)} title="Delete">
                       <i class="las la-trash"></i>
                     </button>
                   </div>
                 </div>
+                {#if expandedBriefings.has(b.id)}
+                  <div class="mn-briefing-expanded">
+                    {@html b.summary_html}
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -1401,6 +1417,20 @@
   }
   .mn-briefings-heading { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0 0 0.5rem; }
   .mn-briefing-paste-actions { display: flex; flex-direction: column; gap: 0.4rem; }
+
+  .mn-briefing-expanded {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f1f5f9;
+    font-size: 0.85rem;
+    color: #334155;
+    line-height: 1.7;
+  }
+  .mn-briefing-expanded :global(h3) { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0.75rem 0 0.25rem; }
+  .mn-briefing-expanded :global(h3:first-child) { margin-top: 0; }
+  .mn-briefing-expanded :global(p) { margin: 0 0 0.5rem; }
+  .mn-briefing-expanded :global(ul) { margin: 0 0 0.5rem; padding-left: 1.25rem; }
+  .mn-briefing-expanded :global(pre) { white-space: pre-wrap; font-family: inherit; }
 
   /* ── Top row ────────────────────────────────────────────────────────────── */
   .mn-top-row {

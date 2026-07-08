@@ -9,6 +9,12 @@
     getBriefingNotes,
     uploadBriefingNote,
   } from '$lib/api/appeal.js';
+  import {
+    getStage1StartingDocs,
+    upsertStage1StartingDocText,
+    upsertStage1StartingDocFile,
+    deleteStage1StartingDoc,
+  } from '$lib/api/stage1Review.js';
   import { listHlpvSessions, getFormattedHlpvSession } from '$lib/api/hlpv.js';
   import { listSocioSessions, getSocioSession } from '$lib/api/socioeconomics.js';
 
@@ -16,10 +22,14 @@
   export let typeId;   // e.g. 'appeal_1'
   export let typeSlug; // e.g. 'statement_of_case'
   export let typeName; // e.g. 'Statement of Case'
+  export let tool = 'appeal'; // 'appeal' | 'stage1'
 
   const dispatch = createEventDispatcher();
 
-  const rawTypeId = parseInt(typeId.replace('appeal_', ''), 10);
+  $: rawTypeId = (() => {
+    const id = typeof typeId === 'function' ? typeId() : typeId;
+    return parseInt(String(id ?? '').replace('appeal_', ''), 10);
+  })();
 
   // Hardcoded slot definitions per draft type slug
   const SLOT_DEFS = {
@@ -42,12 +52,21 @@
     socio_economic_baseline: [
       { slug: 'socio_data', label: 'Socio-economic Data', variable: '{{SOCIO_DATA}}' },
     ],
+    pre_application_request: [
+      { slug: 'stage1_review', label: 'Stage 1 Review', variable: '{{STAGE1_REVIEW}}' },
+    ],
+    stage1_review: [
+      { slug: 'high_level_planning_review', label: 'High Level Planning Review', variable: '{{HIGH_LEVEL_PLANNING_REVIEW}}' },
+    ],
+    stage1_review_v2: [
+      { slug: 'high_level_planning_review', label: 'High Level Planning Review', variable: '{{HIGH_LEVEL_PLANNING_REVIEW}}' },
+    ],
   };
 
   const OTHER_SLOT = { slug: 'other', label: 'Other Documents', variable: '{{OTHER_DOCS}}' };
 
   $: namedSlots = SLOT_DEFS[typeSlug] ?? [];
-  $: allSlots = [...namedSlots, OTHER_SLOT];
+  $: allSlots = tool === 'stage1' ? namedSlots : [...namedSlots, OTHER_SLOT];
 
   // Per-slot state: { content_text, file_name, saving, uploading, fileInput }
   let slotState = {};
@@ -126,8 +145,8 @@
     initSlotState();
     try {
       const [rows, ctx, notes, hlpvSessionsData, socioSessionsData] = await Promise.all([
-        getStartingDocs(project.id, rawTypeId),
-        getDraftContext(project.id, rawTypeId).catch(() => null),
+        tool === 'stage1' ? getStage1StartingDocs(project.id) : getStartingDocs(project.id, rawTypeId),
+        tool === 'stage1' ? Promise.resolve(null) : getDraftContext(project.id, rawTypeId).catch(() => null),
         getBriefingNotes(project.id).catch(() => []),
         typeSlug === 'hlpv_narrative' ? listHlpvSessions(project.id).catch(() => []) : Promise.resolve([]),
         typeSlug === 'socio_economic_baseline' ? listSocioSessions(project.id).catch(() => []) : Promise.resolve([]),
@@ -173,7 +192,11 @@
     selectedNoteIds = next;
     briefingNotesSaving = true;
     try {
-      await upsertStartingDocText(project.id, rawTypeId, 'briefing_notes', JSON.stringify([...next]));
+      if (tool === 'stage1') {
+        await upsertStage1StartingDocText(project.id, 'briefing_notes', JSON.stringify([...next]));
+      } else {
+        await upsertStartingDocText(project.id, rawTypeId, 'briefing_notes', JSON.stringify([...next]));
+      }
     } catch (err) {
       console.error('Failed to save briefing note selection:', err);
     } finally {
@@ -220,7 +243,9 @@
     st.saving = true;
     slotState = slotState;
     try {
-      const saved = await upsertStartingDocText(project.id, rawTypeId, slug, st.content_text);
+      const saved = tool === 'stage1'
+        ? await upsertStage1StartingDocText(project.id, slug, st.content_text)
+        : await upsertStartingDocText(project.id, rawTypeId, slug, st.content_text);
       slotState[slug].file_name = saved.file_name;
     } catch (err) {
       console.error('Failed to save starting doc:', err);
@@ -236,7 +261,9 @@
     slotState[slug].uploading = true;
     slotState = slotState;
     try {
-      const saved = await upsertStartingDocFile(project.id, rawTypeId, slug, file);
+      const saved = tool === 'stage1'
+        ? await upsertStage1StartingDocFile(project.id, slug, file)
+        : await upsertStartingDocFile(project.id, rawTypeId, slug, file);
       slotState[slug].content_text = saved.content_text;
       slotState[slug].file_name = saved.file_name;
     } catch (err) {
@@ -244,7 +271,6 @@
     } finally {
       slotState[slug].uploading = false;
       slotState = slotState;
-      // Reset file input
       if (fileInputs[slug]) fileInputs[slug].value = '';
     }
   }
@@ -253,7 +279,11 @@
     slotState[slug].saving = true;
     slotState = slotState;
     try {
-      await apiDeleteStartingDoc(project.id, rawTypeId, slug);
+      if (tool === 'stage1') {
+        await deleteStage1StartingDoc(project.id, slug);
+      } else {
+        await apiDeleteStartingDoc(project.id, rawTypeId, slug);
+      }
       slotState[slug].content_text = '';
       slotState[slug].file_name = null;
     } catch (err) {
