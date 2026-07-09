@@ -10,22 +10,26 @@
   const dispatch = createEventDispatcher();
 
   let advDate = '';
-  let sourceType = 'email';   // 'email' | 'note'
+  let sourceType = 'note';   // 'note' | 'email'
   let fullText = '';
   let selections = {};        // condition_id -> { checked, summary }
   let saving = false;
   let generating = false;
   let generatedNotice = false;
+  let skippedLabels = [];       // ticked conditions the source text had nothing relevant for
+  let lastGeneratedText = null; // avoid regenerating in a loop for the same text
   let error = null;
   let seeded = false;
 
   // Seed state whenever the modal opens
   $: if (show && !seeded) {
     advDate = new Date().toISOString().slice(0, 10);
-    sourceType = 'email';
+    sourceType = 'note';
     fullText = '';
     error = null;
     generatedNotice = false;
+    skippedLabels = [];
+    lastGeneratedText = null;
     selections = {};
     for (const c of conditions) {
       selections[c.id] = { checked: c.id === preselectedConditionId, summary: '', reqIds: {} };
@@ -37,6 +41,43 @@
 
   function conditionLabel(c) {
     return `${c.condition_number ? c.condition_number + '. ' : ''}${c.title}`;
+  }
+
+  // ── Sort the tick list: by condition number, or by type priority ──────────
+  let sortBy = 'number';   // 'number' | 'type'
+
+  const TYPE_PRIORITY = {
+    'Pre-Commencement': 1,
+    'Action Required (not Pre-Commencement)': 2,
+    'Pre-Beneficial Use': 3,
+    'Compliance': 4,
+    'Informative': 5,
+  };
+  function typePriority(t) { return TYPE_PRIORITY[t] || 6; }
+
+  function conditionNumberValue(num) {
+    const digits = (num || '').replace(/\D/g, '');
+    return digits ? parseInt(digits, 10) : 999999;
+  }
+
+  $: displayConditions = [...conditions].sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === 'type') cmp = typePriority(a.condition_type) - typePriority(b.condition_type);
+    if (cmp === 0) cmp = conditionNumberValue(a.condition_number) - conditionNumberValue(b.condition_number);
+    if (cmp === 0) cmp = a.id - b.id;
+    return cmp;
+  });
+
+  const TYPE_BADGE_CLASS = {
+    'Pre-Commencement': 'adv-type-red',
+    'Pre-Beneficial Use': 'adv-type-blue',
+    'Action Required (not Pre-Commencement)': 'adv-type-orange',
+    'Compliance': 'adv-type-green',
+    'Informative': 'adv-type-green',
+  };
+
+  function shortType(t) {
+    return t === 'Action Required (not Pre-Commencement)' ? 'Action Required' : t;
   }
 
   function toggle(id) {
@@ -67,11 +108,19 @@
 
     // Blank summaries: generate them from the pasted text (condition wording,
     // reason and previous advancements are read server-side). Typed summaries
-    // are left untouched — they take precedence.
+    // are left untouched — they take precedence. The model only fills blanks
+    // for conditions the text actually contains relevant new information for.
     const blanks = items.filter(i => !i.summary);
     if (blanks.length) {
       if (!fullText.trim()) {
         error = 'Paste the email trail / note text so summaries can be generated, or type a summary under each ticked condition.';
+        return;
+      }
+      // Already generated for this exact text and some ticked conditions came
+      // back with nothing relevant — don't regenerate in a loop
+      if (fullText === lastGeneratedText) {
+        const blankLabels = conditions.filter(c => blanks.some(b => b.condition_id === c.id)).map(conditionLabel);
+        error = `The pasted text had no relevant information for: ${blankLabels.join('; ')}. Untick them, type their summaries manually, or change the pasted text.`;
         return;
       }
       generating = true;
@@ -91,6 +140,10 @@
           }
         }
         selections = { ...selections };
+        skippedLabels = conditions
+          .filter(c => selections[c.id]?.checked && !selections[c.id].summary.trim())
+          .map(conditionLabel);
+        lastGeneratedText = fullText;
         generatedNotice = true;
       } catch (err) {
         error = err.message;
@@ -143,11 +196,11 @@
           <div class="field field--source">
             <label>Source</label>
             <div class="adv-source-toggle">
-              <button class="adv-source-btn" class:active={sourceType === 'email'} on:click={() => sourceType = 'email'}>
-                <i class="las la-envelope"></i> Email trail
-              </button>
               <button class="adv-source-btn" class:active={sourceType === 'note'} on:click={() => sourceType = 'note'}>
                 <i class="las la-sticky-note"></i> Note
+              </button>
+              <button class="adv-source-btn" class:active={sourceType === 'email'} on:click={() => sourceType = 'email'}>
+                <i class="las la-envelope"></i> Email trail
               </button>
             </div>
           </div>
@@ -171,17 +224,33 @@
           <div class="adv-notice">
             <i class="las la-magic"></i> Summaries generated from the pasted text — review or edit them, then press Save again.
           </div>
+          {#if skippedLabels.length}
+            <div class="adv-skip-notice">
+              <i class="las la-info-circle"></i>
+              No relevant information was found for: <strong>{skippedLabels.join('; ')}</strong> — untick them or type their summaries manually.
+            </div>
+          {/if}
         {/if}
 
         <div class="field">
-          <label>Applies to <span class="label-hint">tick the conditions — leave a summary blank to auto-summarise from the pasted text</span></label>
+          <div class="adv-applies-header">
+            <label>Applies to <span class="label-hint">tick the conditions — leave a summary blank to auto-summarise from the pasted text</span></label>
+            <div class="sort-pills">
+              <span class="sort-label">Sort:</span>
+              <button type="button" class="sort-pill" class:active={sortBy === 'number'} on:click={() => sortBy = 'number'}>No.</button>
+              <button type="button" class="sort-pill" class:active={sortBy === 'type'} on:click={() => sortBy = 'type'} title="Pre-Commencement first, then Action Required, Pre-Beneficial Use, Compliance, Informative">Type</button>
+            </div>
+          </div>
           <div class="adv-cond-list">
-            {#each conditions as c (c.id)}
+            {#each displayConditions as c (c.id)}
               {@const sel = selections[c.id]}
               <div class="adv-cond-row" class:checked={sel?.checked}>
                 <label class="adv-cond-check">
                   <input type="checkbox" checked={sel?.checked} on:change={() => toggle(c.id)} />
                   <span class="adv-cond-label">{conditionLabel(c)}</span>
+                  {#if c.condition_type}
+                    <span class="adv-cond-type {TYPE_BADGE_CLASS[c.condition_type] || ''}">{shortType(c.condition_type)}</span>
+                  {/if}
                 </label>
                 {#if sel?.checked}
                   {#if c.requirements?.length}
@@ -194,12 +263,12 @@
                       {/each}
                     </div>
                   {/if}
-                  <input
-                    type="text"
+                  <textarea
                     class="adv-summary-input"
+                    rows="2"
                     placeholder="Optional — leave blank to auto-summarise; anything typed here takes precedence"
                     bind:value={selections[c.id].summary}
-                  />
+                  ></textarea>
                 {/if}
               </div>
             {:else}
@@ -338,6 +407,54 @@
   .adv-source-btn:not(:last-child) { border-right: 1px solid #e2e8f0; }
   .adv-source-btn.active { color: #9333ea; background: #faf5ff; font-weight: 600; }
 
+  /* Applies-to header with sort pills */
+  .adv-applies-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .sort-pills {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+  .sort-label { font-size: 0.72rem; color: #94a3b8; margin-right: 2px; }
+  .sort-pill {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .sort-pill:hover { color: #1e293b; }
+  .sort-pill.active {
+    background: #f3e8ff;
+    border-color: #d8b4fe;
+    color: #7c3aed;
+    font-weight: 600;
+  }
+
+  .adv-cond-type {
+    font-size: 0.64rem;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 1px 7px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-left: auto;
+  }
+  .adv-type-red    { color: #b91c1c; background: #fee2e2; }
+  .adv-type-blue   { color: #2563eb; background: #dbeafe; }
+  .adv-type-orange { color: #ea580c; background: #ffedd5; }
+  .adv-type-green  { color: #16a34a; background: #dcfce7; }
+
   /* Condition tick list */
   .adv-cond-list {
     display: flex;
@@ -367,7 +484,12 @@
     color: #1e293b;
     font-weight: 500;
   }
-  .adv-summary-input { margin-left: 1.5rem; }
+  .adv-summary-input {
+    margin-left: 1.5rem;
+    line-height: 1.5;
+    resize: vertical;
+    font-size: 0.8rem;
+  }
   .adv-req-list {
     display: flex;
     flex-direction: column;
@@ -408,6 +530,18 @@
     color: #7e22ce;
     background: #faf5ff;
     border: 1px solid #e9d5ff;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+  }
+  .adv-skip-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
   }

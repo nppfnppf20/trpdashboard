@@ -5,7 +5,13 @@ const SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a pla
 1. SOURCE MATERIAL — typically an email trail or a typed note describing recent progress on discharging planning conditions.
 2. One or more CONDITIONS, each with its number, title, full wording, the stated reason for the condition, and the previous dated progress entries already in the tracker.
 
-For EACH condition listed, write the next dated entry in its progress log: a short note of what has just happened, written as if by the consultant team keeping the tracker.
+The user has selected these conditions as ones the source material may relate to. For each condition it ACTUALLY contains relevant new information for, write the next dated entry in its progress log: a short note of what has just happened, written as if by the consultant team keeping the tracker.
+
+Relevance — decide per condition:
+- Return an <ITEM> only for conditions where the source material contains relevant NEW information (something that happened for that condition beyond what its previous progress entries already record). Omit the others entirely — never pad, stretch or speculate to cover a condition the material does not address.
+- Exception: if the user has provided their own notes for a condition, always return an <ITEM> for it, based on those notes.
+- If the source material contains nothing relevant to any of the listed conditions, return exactly:
+<NONE/>
 
 Tone and voice — this matters:
 - Write in the team's own voice, first person plural, e.g. "Issued marked-up ground floor plan to LPA", "Chased officer for sign-off", "We confirmed in writing that…". Where another party acted, name them plainly: "LPA confirmed details acceptable", "Applicant provided updated drainage strategy".
@@ -57,10 +63,11 @@ ${(fullText || '').slice(0, 80000)}
 
 ${conditionBlocks}`;
 
-  const raw = await callClaude(SYSTEM_PROMPT, content, undefined, 4000);
+  const raw = await callClaude(SYSTEM_PROMPT, content, undefined, 8000);
 
   const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
   if (!blocks.length) {
+    if (/<NONE\s*\/?>/i.test(raw)) return [];   // nothing relevant found — a valid outcome
     console.error('[conditionsTracker.service] No ITEM blocks found. Raw (first 400):', raw.slice(0, 400));
     throw new Error('Could not generate summaries from the provided text');
   }

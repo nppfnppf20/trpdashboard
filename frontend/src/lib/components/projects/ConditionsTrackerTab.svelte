@@ -387,7 +387,7 @@
 
   // Add form inside the drawer
   let showTlAdd = false;
-  let tlAddForm = { advancement_date: '', source_type: 'email', summary: '', full_text: '' };
+  let tlAddForm = { advancement_date: '', source_type: 'note', summary: '', full_text: '' };
   let tlAddReqIds = {};   // requirement_id -> bool, for the drawer add form
   let tlAddSaving = false;
   let tlAddGenerating = false;
@@ -397,7 +397,7 @@
   function openTlAdd() {
     tlAddForm = {
       advancement_date: new Date().toISOString().slice(0, 10),
-      source_type: 'email',
+      source_type: 'note',
       summary: '',
       full_text: '',
     };
@@ -631,8 +631,8 @@
             <div class="tl-add-row">
               <input type="date" class="form-input tl-input" bind:value={tlAddForm.advancement_date} />
               <select class="form-input tl-input" bind:value={tlAddForm.source_type}>
-                <option value="email">Email trail</option>
                 <option value="note">Note</option>
+                <option value="email">Email trail</option>
               </select>
             </div>
             {#if timelineCondition.requirements.length}

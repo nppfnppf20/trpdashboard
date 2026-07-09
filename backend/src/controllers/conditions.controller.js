@@ -372,7 +372,9 @@ export async function createAdvancements(req, res) {
 }
 
 // Suggest per-condition summaries from source text: reads each condition's
-// wording, reason and previous advancements. User-supplied notes take precedence.
+// wording, reason and previous advancements. User-supplied notes take
+// precedence. Among the ticked conditions, only those the source material
+// actually contains relevant new information for come back with a summary.
 export async function suggestAdvancements(req, res) {
   const { projectId } = req.params;
   const { full_text, items } = req.body;
@@ -418,11 +420,11 @@ export async function suggestAdvancements(req, res) {
 
     const enriched = conditions.map(c => {
       const reqs = reqsByCondition[c.id] || [];
-      const ticked = tickedReqIds[c.id];
+      const ticked = tickedReqIds[c.id] || [];
       return {
         ...c,
         advancements: advByCondition[c.id] || [],
-        user_summary: userSummaries[c.id],
+        user_summary: userSummaries[c.id] || null,
         target_requirements: reqs.filter(r => ticked.includes(r.id)).map(r => r.requirement_text),
       };
     });
