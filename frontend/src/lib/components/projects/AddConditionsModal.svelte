@@ -17,6 +17,7 @@
     'Pre-Commencement',
     'Pre-Beneficial Use',
     'Action Required (not Pre-Commencement)',
+    'Compliance',
     'Informative',
   ];
 
@@ -53,7 +54,7 @@
   }
 
   function addRequirement(i) {
-    bulkRows = bulkRows.map((r, idx) => idx === i ? { ...r, requirements: [...r.requirements, ''] } : r);
+    bulkRows = bulkRows.map((r, idx) => idx === i ? { ...r, requirements: [...r.requirements, { text: '', type: '' }] } : r);
   }
 
   function removeRequirement(i, ri) {
@@ -84,7 +85,9 @@
           wording:          cleanPastedText(r.wording.trim()) || null,
           reason:           cleanPastedText(r.reason.trim()) || null,
           initial_actions:  cleanPastedText(r.initial_actions.trim()) || null,
-          requirements:     r.requirements.map(t => t.trim()).filter(Boolean)
+          requirements:     r.requirements
+            .filter(q => q.text.trim())
+            .map(q => ({ requirement_text: q.text.trim(), requirement_type: q.type || null }))
         });
         saved.push(row);
         number += 1;
@@ -142,7 +145,11 @@
                   <label>Requirements <span class="label-hint">separate parts that each need discharging</span></label>
                   {#each row.requirements as _, ri}
                     <div class="req-row">
-                      <input type="text" bind:value={row.requirements[ri]} placeholder="e.g. (a) Details of planting species and densities" />
+                      <input type="text" bind:value={row.requirements[ri].text} placeholder="e.g. (a) Details of planting species and densities" />
+                      <select class="req-type-select" bind:value={row.requirements[ri].type}>
+                        <option value="">Type…</option>
+                        {#each TYPE_OPTIONS as t}<option value={t}>{t}</option>{/each}
+                      </select>
                       <button class="req-remove-btn" on:click={() => removeRequirement(i, ri)} title="Remove requirement">
                         <i class="las la-times"></i>
                       </button>
@@ -340,6 +347,10 @@
     align-items: center;
   }
   .req-row input { flex: 1; }
+  .req-type-select {
+    flex: 0 0 190px;
+    font-size: 0.8rem;
+  }
   .req-remove-btn {
     flex-shrink: 0;
     width: 26px;

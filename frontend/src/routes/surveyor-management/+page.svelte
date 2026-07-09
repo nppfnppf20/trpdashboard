@@ -287,6 +287,7 @@
         <InstructedSurveyorsPanel
           quotes={instructedQuotes}
           {loading}
+          projectId={selectedProject?.unique_id}
           on:workStatusChange={handleWorkStatusChange}
         />
 

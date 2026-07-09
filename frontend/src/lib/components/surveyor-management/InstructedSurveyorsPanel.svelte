@@ -3,13 +3,17 @@
   import NotesModal from '$lib/components/shared/NotesModal.svelte';
   import ContactModal from '$lib/components/admin-console/ContactModal.svelte';
   import LineItemsModal from '$lib/components/admin-console/LineItemsModal.svelte';
-  import { updateQuoteDependencies, updateQuoteOperationalNotes } from '$lib/api/quotes.js';
+  import AddActionModal from './AddActionModal.svelte';
+  import SurveyActionsDrawer from './SurveyActionsDrawer.svelte';
+  import { updateQuoteDependencies } from '$lib/api/quotes.js';
+  import { getQuoteActions } from '$lib/api/quoteActions.js';
   import '$lib/styles/tables.css';
   import '$lib/styles/badges.css';
   import '$lib/styles/buttons.css';
 
   export let quotes = [];
   export let loading = false;
+  export let projectId = null;
 
   const dispatch = createEventDispatcher();
 
@@ -22,11 +26,72 @@
 
   // Internal modal state
   let showDependenciesModal = false;
-  let showOperationalNotesModal = false;
   let showContactModal = false;
   let showLineItemsModal = false;
   let selectedQuote = null;
   let selectedContact = null;
+
+  // Actions tracker state (replaces operational notes)
+  let actionsByQuote = {};      // quote_id -> [actions newest first]
+  let showAddAction = false;
+  let addActionPreselectId = null;
+  let actionsQuote = null;      // quote whose timeline drawer is open
+
+  $: if (projectId) loadActions(projectId);
+
+  async function loadActions(pid) {
+    try {
+      const rows = await getQuoteActions(pid);
+      const grouped = {};
+      for (const a of rows) (grouped[a.quote_id] ||= []).push(a);
+      actionsByQuote = grouped;
+    } catch (err) {
+      console.error('Failed to load actions:', err);
+      actionsByQuote = {};
+    }
+  }
+
+  function sortActions(arr) {
+    return [...arr].sort(
+      (a, b) => (b.action_date || '').localeCompare(a.action_date || '') || b.id - a.id
+    );
+  }
+
+  function formatActionDate(d) {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function openAddAction(quoteId = null) {
+    addActionPreselectId = quoteId;
+    showAddAction = true;
+  }
+
+  function handleActionsDone(e) {
+    for (const row of e.detail.rows) {
+      actionsByQuote = {
+        ...actionsByQuote,
+        [row.quote_id]: sortActions([...(actionsByQuote[row.quote_id] || []), row]),
+      };
+    }
+  }
+
+  function handleActionUpdated(e) {
+    const a = e.detail.action;
+    actionsByQuote = {
+      ...actionsByQuote,
+      [a.quote_id]: sortActions((actionsByQuote[a.quote_id] || []).map(x => x.id === a.id ? a : x)),
+    };
+  }
+
+  function handleActionDeleted(e) {
+    if (!actionsQuote) return;
+    const qid = actionsQuote.id;
+    actionsByQuote = {
+      ...actionsByQuote,
+      [qid]: (actionsByQuote[qid] || []).filter(x => x.id !== e.detail.id),
+    };
+  }
 
   function formatCurrency(amount) {
     return new Intl.NumberFormat('en-GB', {
@@ -64,11 +129,6 @@
     showDependenciesModal = true;
   }
 
-  function openOperationalNotesModal(quote) {
-    selectedQuote = quote;
-    showOperationalNotesModal = true;
-  }
-
   async function handleSaveDependencies(event) {
     if (selectedQuote) {
       try {
@@ -90,32 +150,14 @@
     selectedQuote = null;
   }
 
-  async function handleSaveOperationalNotes(event) {
-    if (selectedQuote) {
-      try {
-        await updateQuoteOperationalNotes(selectedQuote.id, event.detail.notes);
-
-        // Update local data on success
-        const index = quotes.findIndex(q => q.id === selectedQuote.id);
-        if (index !== -1) {
-          quotes[index].operational_notes = event.detail.notes;
-          quotes = quotes; // Trigger reactivity
-        }
-      } catch (error) {
-        console.error('Failed to save operational notes:', error);
-        alert('Failed to save operational notes: ' + error.message);
-        return; // Don't close modal on error
-      }
-    }
-    showOperationalNotesModal = false;
-    selectedQuote = null;
-  }
-
   </script>
 
 <div class="content-panel">
   <div class="panel-header">
     <h2>Instructed Surveyors</h2>
+    <button class="btn-add-action" on:click={() => openAddAction()} disabled={!quotes.length || !projectId}>
+      <i class="las la-history"></i> Add Action
+    </button>
   </div>
   {#if loading}
     <div class="loading">
@@ -136,7 +178,7 @@
             <th>Instructed Quote</th>
             <th>Work Status</th>
             <th>Dependencies</th>
-            <th>Operational Notes</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -204,13 +246,16 @@
                 {/if}
               </td>
               <td class="notes-cell-compact">
-                {#if quote.operational_notes}
-                  <button class="notes-link" on:click={() => openOperationalNotesModal(quote)} title={quote.operational_notes}>
-                    <span class="notes-preview">{quote.operational_notes}</span>
+                {#if actionsByQuote[quote.id]?.length}
+                  {@const latest = actionsByQuote[quote.id][0]}
+                  <button class="qa-progress-cell" on:click={() => actionsQuote = quote} title="View full actions timeline">
+                    <span class="qa-progress-date">{formatActionDate(latest.action_date)}</span>
+                    <span class="qa-progress-summary">{latest.summary.length > 90 ? latest.summary.slice(0, 90) + '…' : latest.summary}</span>
+                    <span class="qa-progress-count">{actionsByQuote[quote.id].length} action{actionsByQuote[quote.id].length !== 1 ? 's' : ''}</span>
                   </button>
                 {:else}
-                  <button class="notes-link empty" on:click={() => openOperationalNotesModal(quote)}>
-                    Click to add
+                  <button class="qa-progress-empty" on:click={() => openAddAction(quote.id)} title="Add first action">
+                    <i class="las la-plus"></i> Add
                   </button>
                 {/if}
               </td>
@@ -231,14 +276,28 @@
   on:close={() => { showDependenciesModal = false; selectedQuote = null; }}
 />
 
-<!-- Operational Notes Modal -->
-<NotesModal
-  show={showOperationalNotesModal}
-  title="Operational Notes - {selectedQuote?.discipline || ''}"
-  notes={selectedQuote?.operational_notes || ''}
-  on:save={handleSaveOperationalNotes}
-  on:close={() => { showOperationalNotesModal = false; selectedQuote = null; }}
+<!-- Add Action Modal (fan-out to ticked surveys) -->
+<AddActionModal
+  bind:show={showAddAction}
+  {projectId}
+  quotes={sortedQuotes}
+  preselectedQuoteId={addActionPreselectId}
+  on:done={handleActionsDone}
+  on:close={() => { showAddAction = false; addActionPreselectId = null; }}
 />
+
+<!-- Actions timeline drawer -->
+{#if actionsQuote}
+  <SurveyActionsDrawer
+    quote={actionsQuote}
+    actions={actionsByQuote[actionsQuote.id] || []}
+    {projectId}
+    on:done={handleActionsDone}
+    on:updated={handleActionUpdated}
+    on:deleted={handleActionDeleted}
+    on:close={() => actionsQuote = null}
+  />
+{/if}
 
 <!-- Contact Modal -->
 <ContactModal
@@ -371,6 +430,77 @@
   .notes-cell-compact {
     padding: 0.75rem 0.5rem !important;
   }
+
+  /* Actions tracker cell (mirrors conditions tracker progress cell) */
+  .btn-add-action {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    background: #faf5ff;
+    border: 1px solid #d8b4fe;
+    border-radius: 6px;
+    color: #7c3aed;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-add-action:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
+  .btn-add-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .qa-progress-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    max-width: 280px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 6px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .qa-progress-cell:hover { border-color: #c4b5fd; background: #faf5ff; }
+  .qa-progress-date {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #9333ea;
+  }
+  .qa-progress-summary {
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: #334155;
+  }
+  .qa-progress-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 100px;
+    padding: 1px 7px;
+    margin-top: 2px;
+  }
+  .qa-progress-empty {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #94a3b8;
+    background: white;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .qa-progress-empty:hover { color: #9333ea; border-color: #c4b5fd; background: #faf5ff; }
 
   .notes-link {
     background: white;

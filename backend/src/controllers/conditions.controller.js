@@ -51,7 +51,7 @@ export async function getConditionsData(req, res) {
         [projectId]
       ),
       pool.query(
-        `SELECT cr.id, cr.condition_id, cr.requirement_text, cr.status,
+        `SELECT cr.id, cr.condition_id, cr.requirement_text, cr.requirement_type, cr.status,
                 cr.sort_order, cr.created_at, cr.updated_at
          FROM planning_applications.condition_requirements cr
          JOIN planning_applications.conditions c ON c.id = cr.condition_id
@@ -146,17 +146,18 @@ export async function createCondition(req, res) {
     );
 
     const createdRequirements = [];
-    const reqTexts = (Array.isArray(requirements) ? requirements : [])
-      .map(r => (typeof r === 'string' ? r : r?.requirement_text) ?? '')
-      .map(t => t.trim())
-      .filter(Boolean);
-    for (let i = 0; i < reqTexts.length; i++) {
+    const reqItems = (Array.isArray(requirements) ? requirements : [])
+      .map(r => typeof r === 'string'
+        ? { text: r.trim(), type: null }
+        : { text: (r?.requirement_text ?? '').trim(), type: r?.requirement_type?.trim() || null })
+      .filter(r => r.text);
+    for (let i = 0; i < reqItems.length; i++) {
       const { rows: [reqRow] } = await client.query(
         `INSERT INTO planning_applications.condition_requirements
-           (condition_id, requirement_text, sort_order)
-         VALUES ($1, $2, $3)
+           (condition_id, requirement_text, requirement_type, sort_order)
+         VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [condition.id, reqTexts[i], i]
+        [condition.id, reqItems[i].text, reqItems[i].type, i]
       );
       createdRequirements.push(reqRow);
     }
@@ -242,18 +243,18 @@ export async function deleteCondition(req, res) {
 
 export async function createRequirement(req, res) {
   const { conditionId } = req.params;
-  const { requirement_text, status } = req.body;
+  const { requirement_text, requirement_type, status } = req.body;
   if (!requirement_text?.trim()) return res.status(400).json({ error: 'requirement_text is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.condition_requirements
-         (condition_id, requirement_text, status, sort_order)
+         (condition_id, requirement_text, requirement_type, status, sort_order)
        VALUES (
-         $1, $2, $3,
+         $1, $2, $3, $4,
          COALESCE((SELECT MAX(sort_order) + 1 FROM planning_applications.condition_requirements WHERE condition_id = $1), 0)
        )
        RETURNING *`,
-      [conditionId, requirement_text.trim(), status?.trim() || 'Outstanding']
+      [conditionId, requirement_text.trim(), requirement_type?.trim() || null, status?.trim() || 'Outstanding']
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -264,18 +265,20 @@ export async function createRequirement(req, res) {
 
 export async function updateRequirement(req, res) {
   const { requirementId } = req.params;
-  const { requirement_text, status, sort_order } = req.body;
+  const { requirement_text, requirement_type, status, sort_order } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.condition_requirements SET
          requirement_text = COALESCE($2, requirement_text),
-         status           = COALESCE($3, status),
-         sort_order       = COALESCE($4, sort_order),
+         requirement_type = CASE WHEN $3 THEN $4 ELSE requirement_type END,
+         status           = COALESCE($5, status),
+         sort_order       = COALESCE($6, sort_order),
          updated_at       = NOW()
        WHERE id = $1 RETURNING *`,
       [
         requirementId,
         requirement_text != null ? requirement_text.trim() || null : null,
+        'requirement_type' in req.body, requirement_type?.trim() || null,
         status?.trim() || null,
         sort_order ?? null,
       ]

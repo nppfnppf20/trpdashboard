@@ -37,6 +37,7 @@
     'Pre-Commencement',
     'Pre-Beneficial Use',
     'Action Required (not Pre-Commencement)',
+    'Compliance',
     'Informative',
   ];
 
@@ -50,14 +51,15 @@
   let sortDir = 'asc';
 
   // Type ordering: pre-commencement top, action required second,
-  // informative at the bottom; untyped rows last of all
+  // compliance and informative at the bottom; untyped rows last of all
   const TYPE_PRIORITY = {
     'Pre-Commencement': 1,
     'Action Required (not Pre-Commencement)': 2,
     'Pre-Beneficial Use': 3,
-    'Informative': 4,
+    'Compliance': 4,
+    'Informative': 5,
   };
-  function typePriority(t) { return TYPE_PRIORITY[t] || 5; }
+  function typePriority(t) { return TYPE_PRIORITY[t] || 6; }
 
   function setSort(key) {
     if (sortKey === key) {
@@ -253,6 +255,15 @@
   }
 
   const REQ_STATUS_OPTIONS = ['Outstanding', 'Complete'];
+
+  async function setRequirementType(conditionId, r, newType) {
+    try {
+      const updated = await updateConditionRequirement(r.id, { requirement_type: newType || null });
+      patchRequirement(conditionId, updated);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
 
   async function setRequirementStatus(conditionId, r, newStatus) {
     try {
@@ -518,8 +529,8 @@
       const reqs = c.requirements || [];
       const span = Math.max(1, reqs.length);
       const reqCells = (r) => r
-        ? `${td(r.requirement_text)}${td(r.status || 'Outstanding')}`
-        : `${td('')}${td('')}`;
+        ? `${td(r.requirement_text)}${td(r.requirement_type || '')}${td(r.status || 'Outstanding')}`
+        : `${td('')}${td('')}${td('')}`;
       const first = `<tr>
         ${td(c.condition_number, span)}
         ${td(c.title, span)}
@@ -538,7 +549,7 @@
     return `<h2>Conditions Tracker</h2>
 <p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
 <table style="border-collapse:collapse;width:100%;">
-  <thead><tr>${th('No.')}${th('Title')}${th('Type')}${th('Condition Wording')}${th('Reason')}${th('Separated Condition Requirements')}${th('Req. Status')}${th('Initial Actions')}${th('Original Consultant')}${th('Status')}</tr></thead>
+  <thead><tr>${th('No.')}${th('Title')}${th('Type')}${th('Condition Wording')}${th('Reason')}${th('Separated Condition Requirements')}${th('Req. Type')}${th('Req. Status')}${th('Initial Actions')}${th('Original Consultant')}${th('Status')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
   }
@@ -799,6 +810,7 @@
             <th class="ct-th ct-th-wording">Condition Wording</th>
             <th class="ct-th ct-th-reason">Reason</th>
             <th class="ct-th ct-th-req" title="Where applicable — split a condition into its separate parts">Separated Condition Requirements</th>
+            <th class="ct-th ct-th-reqtype">Req. Type</th>
             <th class="ct-th ct-th-reqstatus">Req. Status</th>
             <th class="ct-th ct-th-initial">Initial Actions</th>
             <th class="ct-th ct-th-consultant">Original Consultant</th>
@@ -812,7 +824,7 @@
             {@const editing = editingId === c.id}
             {@const reqRows = c.requirements.length ? c.requirements : [null]}
             {@const span = reqRows.length}
-            {@const done = c.status === 'Discharged' || c.condition_type === 'Informative'}
+            {@const done = c.status === 'Discharged' || c.condition_type === 'Informative' || c.condition_type === 'Compliance'}
             {#each reqRows as r, ri (r ? `r-${r.id}` : `e-${c.id}`)}
             <tr
               class="ct-row"
@@ -849,6 +861,7 @@
                   class:ct-type-precomm={(editing ? editForm.condition_type : c.condition_type) === 'Pre-Commencement'}
                   class:ct-type-prebeneficial={(editing ? editForm.condition_type : c.condition_type) === 'Pre-Beneficial Use'}
                   class:ct-type-actionreq={(editing ? editForm.condition_type : c.condition_type) === 'Action Required (not Pre-Commencement)'}
+                  class:ct-type-compliance={(editing ? editForm.condition_type : c.condition_type) === 'Compliance'}
                   class:ct-type-informative={(editing ? editForm.condition_type : c.condition_type) === 'Informative'}
                   value={editing ? editForm.condition_type : (c.condition_type || '')}
                   on:change={e => editing
@@ -956,6 +969,27 @@
                       + Add requirement
                     </button>
                   {/if}
+                {/if}
+              </td>
+
+              <!-- Requirement type (one per sub-row) -->
+              <td class="ct-td ct-td-reqtype" class:ct-td-internal={ri < span - 1}>
+                {#if r}
+                  <select
+                    class="form-input ct-type-select"
+                    class:ct-type-precomm={r.requirement_type === 'Pre-Commencement'}
+                    class:ct-type-prebeneficial={r.requirement_type === 'Pre-Beneficial Use'}
+                    class:ct-type-actionreq={r.requirement_type === 'Action Required (not Pre-Commencement)'}
+                    class:ct-type-compliance={r.requirement_type === 'Compliance'}
+                    class:ct-type-informative={r.requirement_type === 'Informative'}
+                    value={r.requirement_type || ''}
+                    on:change={e => setRequirementType(c.id, r, e.target.value)}
+                  >
+                    <option value="">Select type</option>
+                    {#each TYPE_OPTIONS as t}<option value={t}>{t}</option>{/each}
+                  </select>
+                {:else}
+                  <span class="ct-cell-muted">—</span>
                 {/if}
               </td>
 
@@ -1159,7 +1193,7 @@
   }
   .ct-table {
     width: 100%;
-    min-width: 1850px;
+    min-width: 1990px;
     border-collapse: collapse;
     font-size: 0.8rem;
   }
@@ -1198,6 +1232,7 @@
   .ct-th-wording      { min-width: 260px; max-width: 360px; }
   .ct-th-reason       { min-width: 180px; }
   .ct-th-req          { min-width: 220px; }
+  .ct-th-reqtype      { min-width: 140px; }
   .ct-th-reqstatus    { min-width: 110px; }
   .ct-th-initial      { min-width: 160px; }
   .ct-th-consultant   { min-width: 150px; }
@@ -1297,6 +1332,7 @@
   .ct-req-add-btn { margin-top: 6px; }
 
   .ct-td-reqstatus { vertical-align: top; }
+  .ct-td-reqtype { vertical-align: top; }
   .ct-reqstatus-select {
     font-size: 0.72rem;
     font-weight: 600;
@@ -1345,6 +1381,7 @@
   .ct-type-precomm       { background: #fff1f2; color: #b91c1c; border-color: #fca5a5; }
   .ct-type-prebeneficial { background: #eff6ff; color: #2563eb; border-color: #93c5fd; }
   .ct-type-actionreq     { background: #fff7ed; color: #ea580c; border-color: #fdba74; }
+  .ct-type-compliance    { background: #f0fdf4; color: #15803d; border-color: #86efac; }
   .ct-type-informative   { background: #f0fdf4; color: #16a34a; border-color: #86efac; }
 
   /* ── Progress cell ───────────────────────────────────────────────────────── */

@@ -9,6 +9,7 @@ const TYPE_COLORS = {
   'Pre-Commencement': [185, 28, 28],
   'Pre-Beneficial Use': [37, 99, 235],
   'Action Required (not Pre-Commencement)': [234, 88, 12],
+  'Compliance': [21, 128, 61],
   'Informative': [22, 163, 74],
 };
 
@@ -56,7 +57,7 @@ export function exportConditionsPdf(project, conditions) {
   // ── Table ─────────────────────────────────────────────────────────────────
   const head = [[
     'No.', 'Title', 'Type', 'Condition Wording', 'Reason',
-    'Separated Requirements', 'Req. Status', 'Initial Actions',
+    'Separated Requirements', 'Req. Type', 'Req. Status', 'Initial Actions',
     'Original Consultant', 'Progress', 'Status',
   ]];
 
@@ -85,6 +86,10 @@ export function exportConditionsPdf(project, conditions) {
       }
       row.push(
         { content: r ? r.requirement_text : '', styles: base },
+        {
+          content: r ? (r.requirement_type || '') : '',
+          styles: { ...base, fontStyle: r?.requirement_type ? 'bold' : 'normal', textColor: TYPE_COLORS[r?.requirement_type] || SLATE },
+        },
         {
           content: r ? (r.status || 'Outstanding') : '',
           styles: { ...base, fontStyle: r ? 'bold' : 'normal', textColor: r?.status === 'Complete' ? [22, 163, 74] : [217, 119, 6] },
@@ -127,16 +132,17 @@ export function exportConditionsPdf(project, conditions) {
     },
     columnStyles: {
       0: { cellWidth: 9 },
-      1: { cellWidth: 24 },
-      2: { cellWidth: 16 },
-      3: { cellWidth: 50 },
-      4: { cellWidth: 31 },
-      5: { cellWidth: 32 },
-      6: { cellWidth: 13 },
-      7: { cellWidth: 22 },
+      1: { cellWidth: 22 },
+      2: { cellWidth: 15 },
+      3: { cellWidth: 46 },
+      4: { cellWidth: 28 },
+      5: { cellWidth: 31 },
+      6: { cellWidth: 16 },
+      7: { cellWidth: 13 },
       8: { cellWidth: 22 },
-      9: { cellWidth: 44 },
-      10: { cellWidth: 14 },
+      9: { cellWidth: 22 },
+      10: { cellWidth: 40 },
+      11: { cellWidth: 13 },
     },
     didDrawPage: (data) => {
       doc.setFont('helvetica', 'normal');

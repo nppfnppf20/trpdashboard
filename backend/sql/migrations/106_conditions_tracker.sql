@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS planning_applications.condition_requirements (
   id               SERIAL PRIMARY KEY,
   condition_id     INTEGER NOT NULL REFERENCES planning_applications.conditions(id) ON DELETE CASCADE,
   requirement_text TEXT NOT NULL,
+  requirement_type TEXT,
   status           TEXT NOT NULL DEFAULT 'Outstanding',
   sort_order       INTEGER NOT NULL DEFAULT 0,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -45,6 +46,10 @@ CREATE TABLE IF NOT EXISTS planning_applications.condition_requirements (
 
 CREATE INDEX IF NOT EXISTS idx_condition_requirements_condition
   ON planning_applications.condition_requirements(condition_id);
+
+-- In case the table was created before requirement_type was added
+ALTER TABLE planning_applications.condition_requirements
+  ADD COLUMN IF NOT EXISTS requirement_type TEXT;
 
 -- Dated advancements: a running progress log per condition (typed notes or
 -- pasted email trails). One paste can fan out to several conditions, each
