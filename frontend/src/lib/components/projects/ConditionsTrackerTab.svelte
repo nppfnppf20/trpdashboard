@@ -6,6 +6,7 @@
   import AddConditionsModal from '$lib/components/projects/AddConditionsModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import ConditionEmailModal from '$lib/components/projects/ConditionEmailModal.svelte';
+  import BulkFeeQuoteModal from '$lib/components/projects/BulkFeeQuoteModal.svelte';
   import { cleanPastedText } from '$lib/utils/pdfText.js';
   import {
     getConditionsData,
@@ -338,10 +339,21 @@
   // ── Fee quote email ───────────────────────────────────────────────────────
   let emailCondition = null;
   let showEmailModal = false;
+  let showBulkFeeQuote = false;
 
   function openEmailCompose(c) {
     emailCondition = c;
     showEmailModal = true;
+  }
+
+  // ── Fee quote sent (confirmed from the email modals) ──────────────────────
+  function handleFeeQuoteSent(e) {
+    const { condition: updated, advancements: advRows } = e.detail;
+    conditions = conditions.map(x => x.id === updated.id
+      ? { ...x, ...updated, requirements: x.requirements, advancements: x.advancements }
+      : x
+    );
+    if (advRows?.length) handleAdvancementsDone({ detail: { rows: advRows } });
   }
 
   // ── Timeline drawer ───────────────────────────────────────────────────────
@@ -563,7 +575,17 @@
   bind:show={showEmailModal}
   {project}
   condition={emailCondition}
+  on:sent={handleFeeQuoteSent}
   on:close={() => { showEmailModal = false; emailCondition = null; }}
+/>
+
+<BulkFeeQuoteModal
+  bind:show={showBulkFeeQuote}
+  {projectId}
+  {project}
+  conditions={sortedConditions}
+  on:sent={handleFeeQuoteSent}
+  on:close={() => showBulkFeeQuote = false}
 />
 
 <!-- ── Progress timeline drawer ───────────────────────────────────────────── -->
@@ -710,6 +732,9 @@
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => openAddAdvancement()} disabled={!conditions.length}>
         <i class="las la-history"></i> Add Advancement
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showBulkFeeQuote = true} disabled={!conditions.length} title="Draft a fee quote email for each condition (beta)">
+        <i class="las la-flask"></i> Draft Fee Quote Emails
       </button>
     </div>
     <div class="ct-topbar-right">

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS planning_applications.conditions (
   condition_type   TEXT,
   original_consultant       TEXT,
   original_consultant_email TEXT,
+  fee_quote_requested_at    TIMESTAMPTZ,
   wording          TEXT,
   reason           TEXT,
   initial_actions  TEXT,
@@ -28,6 +29,8 @@ ALTER TABLE planning_applications.conditions
   ADD COLUMN IF NOT EXISTS original_consultant TEXT;
 ALTER TABLE planning_applications.conditions
   ADD COLUMN IF NOT EXISTS original_consultant_email TEXT;
+ALTER TABLE planning_applications.conditions
+  ADD COLUMN IF NOT EXISTS fee_quote_requested_at TIMESTAMPTZ;
 
 -- Separated requirements within a condition (e.g. parts (a), (b), (c))
 CREATE TABLE IF NOT EXISTS planning_applications.condition_requirements (

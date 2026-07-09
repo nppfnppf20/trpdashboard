@@ -296,7 +296,10 @@ export let selectedProject;
 </div>
 
 <!-- Briefing Editor Modal -->
+<!-- Keyed so prev/next navigation remounts the editor with fresh per-draft state
+     (briefingApplied, mergeDone, selectedSurveyors) instead of reusing the old instance -->
 {#if showEditor}
+  {#key currentDraftIndex}
   <BriefingEditor
     show={showEditor}
     projectId={selectedProject?.unique_id}
@@ -311,6 +314,7 @@ export let selectedProject;
     on:prev={handlePrev}
     on:next={handleNext}
   />
+  {/key}
 {/if}
 
 <!-- Draft Setup Modal -->

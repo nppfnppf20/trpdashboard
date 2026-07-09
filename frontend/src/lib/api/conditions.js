@@ -1,6 +1,19 @@
 // @ts-nocheck
 import { authFetch } from './client.js';
 
+export async function suggestFeeQuoteWorks(projectId, conditionIds) {
+  const res = await authFetch(`/api/conditions/projects/${projectId}/fee-quote-works`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ condition_ids: conditionIds }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to generate fee quote items');
+  }
+  return res.json(); // { suggestions: [{ condition_id, works: [string] }] }
+}
+
 export async function getConditionsData(projectId) {
   const res = await authFetch(`/api/conditions/projects/${projectId}`);
   if (!res.ok) throw new Error('Failed to fetch conditions data');

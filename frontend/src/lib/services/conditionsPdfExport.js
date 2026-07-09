@@ -68,7 +68,7 @@ export function exportConditionsPdf(project, conditions) {
     const span = reqs.length;
 
     const progress = (c.advancements || [])
-      .map(a => `${formatDate(a.advancement_date)} — ${a.summary}`)
+      .map(a => `${formatDate(a.advancement_date)} - ${a.summary}`)
       .join('\n\n');
     const consultant = [c.original_consultant, c.original_consultant_email].filter(Boolean).join('\n');
 

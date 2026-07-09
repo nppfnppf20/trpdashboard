@@ -38,6 +38,16 @@ export async function saveDocumentSummary(projectId, { title, document_ref, file
   return res.json();
 }
 
+export async function updateDocumentSummary(summaryId, { title, summary_html }) {
+  const res = await authFetch(`/api/planning-application/document-summaries/${summaryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, summary_html })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to update document summary'); }
+  return res.json();
+}
+
 export async function deleteDocumentSummary(summaryId) {
   const res = await authFetch(`/api/planning-application/document-summaries/${summaryId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete document summary');

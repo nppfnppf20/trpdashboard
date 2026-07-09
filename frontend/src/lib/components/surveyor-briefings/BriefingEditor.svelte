@@ -354,6 +354,34 @@
 
         <div class="form-group">
           <label>Email Content:</label>
+          {#if precomputedCheck}
+            {#if precomputedCheck.status === 'loading'}
+              <div class="check-status check-loading">
+                <i class="las la-circle-notch la-spin"></i>
+                Checking briefing note for additional scope items…
+              </div>
+            {:else if precomputedCheck.status === 'error'}
+              <div class="check-status check-error">
+                <i class="las la-exclamation-triangle"></i>
+                Briefing note check failed: {precomputedCheck.error}
+              </div>
+            {:else if precomputedCheck.status === 'ready' && !precomputedCheck.apiResult}
+              <div class="check-status check-skipped">
+                <i class="las la-info-circle"></i>
+                Briefing note check skipped — no "Scope of Work" section found in this template
+              </div>
+            {:else if precomputedCheck.status === 'ready' && precomputedCheck.apiResult.hasChanges}
+              <div class="check-status check-applied">
+                <i class="las la-magic"></i>
+                "Additional Information" section added from the briefing note
+              </div>
+            {:else if precomputedCheck.status === 'ready'}
+              <div class="check-status check-none">
+                <i class="las la-check"></i>
+                Briefing note checked — nothing to add beyond the standard scope
+              </div>
+            {/if}
+          {/if}
           {#if merging}
             <div class="merging-indicator">
               <div class="spinner"></div>
@@ -590,6 +618,22 @@
     color: #64748b;
     font-size: 0.875rem;
   }
+
+  .check-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+  }
+  .check-status i { font-size: 1rem; }
+  .check-loading { background: #f8fafc; color: #64748b; }
+  .check-error { background: #fef2f2; color: #b91c1c; }
+  .check-skipped { background: #fffbeb; color: #b45309; }
+  .check-applied { background: #faf5ff; color: #7c3aed; }
+  .check-none { background: #f0fdf4; color: #15803d; }
 
   .spinner {
     width: 20px; height: 20px;

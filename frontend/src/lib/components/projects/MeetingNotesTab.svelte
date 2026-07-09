@@ -10,6 +10,7 @@
     getDocumentSummaries,
     generateDocumentSummary,
     saveDocumentSummary,
+    updateDocumentSummary,
     deleteDocumentSummary
   } from '$lib/api/projectDocs.js';
   import {
@@ -184,6 +185,44 @@
     const next = new Set(expandedBriefings);
     if (next.has(id)) { next.delete(id); } else { next.add(id); }
     expandedBriefings = next;
+  }
+
+  // Briefing editor modal
+  let editingBriefing = null;   // the briefing being edited
+  let bEditTitle = '';
+  let bEditSaving = false;
+  let bEditError = null;
+  let briefingEditor;           // bind:this on RichTextEditor
+
+  function openBriefingEditor(b) {
+    editingBriefing = b;
+    bEditTitle = b.title ?? '';
+    bEditError = null;
+  }
+
+  function closeBriefingEditor() {
+    if (bEditSaving) return;
+    editingBriefing = null;
+    bEditError = null;
+  }
+
+  async function saveBriefingEdit() {
+    if (!bEditTitle.trim()) { bEditError = 'Please enter a title.'; return; }
+    bEditSaving = true;
+    bEditError = null;
+    try {
+      const html = briefingEditor?.getHTML() ?? editingBriefing.summary_html;
+      const updated = await updateDocumentSummary(editingBriefing.id, {
+        title: bEditTitle.trim(),
+        summary_html: html
+      });
+      briefings = briefings.map(b => b.id === editingBriefing.id ? { ...b, ...updated } : b);
+      editingBriefing = null;
+    } catch (err) {
+      bEditError = err.message;
+    } finally {
+      bEditSaving = false;
+    }
   }
 
   async function deleteBriefing(id) {
@@ -822,6 +861,9 @@
                       <i class="las la-{expandedBriefings.has(b.id) ? 'eye-slash' : 'eye'}"></i>
                       {expandedBriefings.has(b.id) ? 'Hide' : 'View'}
                     </button>
+                    <button class="btn btn-secondary btn-sm" on:click={() => openBriefingEditor(b)}>
+                      <i class="las la-pen"></i> Edit
+                    </button>
                     <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(b.id)} title="Delete">
                       <i class="las la-trash"></i>
                     </button>
@@ -1304,6 +1346,45 @@
   </div>
 {/if}
 
+<!-- ── Briefing Editor Modal ─────────────────────────────────────────────── -->
+{#if editingBriefing}
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && closeBriefingEditor()}>
+    <div class="mn-modal mn-editor-modal">
+
+      <div class="modal-header mn-editor-header">
+        <input type="text" class="form-input mn-briefing-title-input" bind:value={bEditTitle} placeholder="Briefing title" disabled={bEditSaving} />
+        <button class="btn btn-icon btn-ghost close-btn" on:click={closeBriefingEditor} disabled={bEditSaving}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+
+      <div class="mn-editor-body">
+        <RichTextEditor
+          bind:this={briefingEditor}
+          content={editingBriefing.summary_html || ''}
+          placeholder="Briefing transcript…"
+          fullHeight={false}
+        />
+      </div>
+
+      {#if bEditError}<p class="mn-error-sm" style="padding:0.5rem 1.5rem 0">{bEditError}</p>{/if}
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" on:click={closeBriefingEditor} disabled={bEditSaving}>Cancel</button>
+        <button class="btn btn-primary" on:click={saveBriefingEdit} disabled={bEditSaving}>
+          {#if bEditSaving}
+            <span class="mn-spinner"></span> Saving…
+          {:else}
+            <i class="las la-save"></i> Save changes
+          {/if}
+        </button>
+      </div>
+
+    </div>
+  </div>
+{/if}
+
 <!-- ── Staged Tracker Actions Confirmation Modal ─────────────────────────── -->
 {#if showStagedModal}
   <div class="modal-backdrop" role="dialog" tabindex="-1">
@@ -1416,6 +1497,7 @@
     line-height: 1.6;
   }
   .mn-briefings-heading { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0 0 0.5rem; }
+  .mn-briefing-title-input { font-weight: 600; max-width: 480px; }
   .mn-briefing-paste-actions { display: flex; flex-direction: column; gap: 0.4rem; }
 
   .mn-briefing-expanded {

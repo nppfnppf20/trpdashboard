@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  feeQuoteWorks,
   getConditionsData,
   createCondition,
   updateCondition,
@@ -28,6 +29,7 @@ router.put('/requirements/:requirementId', updateRequirement);
 router.delete('/requirements/:requirementId', deleteRequirement);
 router.post('/projects/:projectId/advancements', createAdvancements);
 router.post('/projects/:projectId/advancements/suggest', suggestAdvancements);
+router.post('/projects/:projectId/fee-quote-works', feeQuoteWorks);
 router.put('/advancements/:advancementId', updateAdvancement);
 router.delete('/advancements/:advancementId', deleteAdvancement);
 

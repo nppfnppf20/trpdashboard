@@ -1,5 +1,34 @@
 import { pool } from '../db.js';
-import { suggestAdvancementSummaries } from '../services/conditionsTracker.service.js';
+import { suggestAdvancementSummaries, suggestFeeQuoteWorks } from '../services/conditionsTracker.service.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fee quote drafting: per condition, list the works the wording requires.
+// The email template itself is assembled on the frontend with the wording
+// and reason inserted verbatim.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function feeQuoteWorks(req, res) {
+  const { projectId } = req.params;
+  const { condition_ids } = req.body;
+  if (!Array.isArray(condition_ids) || !condition_ids.length) {
+    return res.status(400).json({ error: 'At least one condition is required' });
+  }
+  try {
+    const { rows: conditions } = await pool.query(
+      `SELECT id, condition_number, title, wording, reason
+       FROM planning_applications.conditions
+       WHERE project_id = $1 AND id = ANY($2::int[])`,
+      [projectId, condition_ids]
+    );
+    if (!conditions.length) return res.status(404).json({ error: 'No matching conditions found' });
+
+    const suggestions = await suggestFeeQuoteWorks(conditions);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('conditions.feeQuoteWorks error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate fee quote items' });
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Get all conditions (with requirements) + tracker meta for a project
@@ -11,7 +40,7 @@ export async function getConditionsData(req, res) {
     const [{ rows: conditions }, { rows: requirements }, { rows: advancements }, { rows: advReqLinks }, { rows: meta }] = await Promise.all([
       pool.query(
         `SELECT id, condition_number, title, condition_type, wording, reason, initial_actions,
-                original_consultant, original_consultant_email,
+                original_consultant, original_consultant_email, fee_quote_requested_at,
                 status, source_file_name, sort_order, created_at, updated_at
          FROM planning_applications.conditions
          WHERE project_id = $1
@@ -149,7 +178,7 @@ export async function createCondition(req, res) {
 
 export async function updateCondition(req, res) {
   const { conditionId } = req.params;
-  const { condition_number, title, condition_type, wording, reason, initial_actions, original_consultant, original_consultant_email, status, sort_order } = req.body;
+  const { condition_number, title, condition_type, wording, reason, initial_actions, original_consultant, original_consultant_email, fee_quote_requested_at, status, sort_order } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.conditions SET
@@ -161,8 +190,9 @@ export async function updateCondition(req, res) {
          initial_actions  = CASE WHEN $11 THEN $12 ELSE initial_actions END,
          original_consultant       = CASE WHEN $13 THEN $14 ELSE original_consultant END,
          original_consultant_email = CASE WHEN $15 THEN $16 ELSE original_consultant_email END,
-         status           = COALESCE($17, status),
-         sort_order       = COALESCE($18, sort_order),
+         fee_quote_requested_at    = CASE WHEN $17 THEN $18::timestamptz ELSE fee_quote_requested_at END,
+         status           = COALESCE($19, status),
+         sort_order       = COALESCE($20, sort_order),
          updated_at       = NOW()
        WHERE id = $1 RETURNING *`,
       [
@@ -175,6 +205,7 @@ export async function updateCondition(req, res) {
         'initial_actions' in req.body, initial_actions?.trim() || null,
         'original_consultant' in req.body, original_consultant?.trim() || null,
         'original_consultant_email' in req.body, original_consultant_email?.trim() || null,
+        'fee_quote_requested_at' in req.body, fee_quote_requested_at || null,
         status?.trim() || null,
         sort_order ?? null,
       ]

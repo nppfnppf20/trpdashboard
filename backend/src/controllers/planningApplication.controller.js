@@ -1382,6 +1382,26 @@ export async function replaceDocumentSummary(req, res) {
   }
 }
 
+export async function updateDocumentSummary(req, res) {
+  const { summaryId } = req.params;
+  const { title, summary_html } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  if (!summary_html?.trim()) return res.status(400).json({ error: 'summary_html is required' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.document_summaries
+         SET title = $1, summary_html = $2
+       WHERE id = $3 RETURNING *`,
+      [title.trim(), summary_html.trim(), summaryId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Document summary not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('pa.updateDocumentSummary error:', err);
+    res.status(500).json({ error: 'Failed to update document summary' });
+  }
+}
+
 export async function deleteDocumentSummary(req, res) {
   const { summaryId } = req.params;
   try {

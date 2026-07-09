@@ -35,6 +35,7 @@ import {
   generateDocumentSummary,
   saveDocumentSummary,
   replaceDocumentSummary,
+  updateDocumentSummary,
   deleteDocumentSummary,
   suggestDocumentUpdates,
   getSectionPrompt,
@@ -143,6 +144,7 @@ router.post('/projects/:projectId/document-summaries/generate', upload.single('f
 router.post('/projects/:projectId/document-summaries/suggest', suggestDocumentUpdates);
 router.put('/projects/:projectId/document-summaries/by-type', replaceDocumentSummary);
 router.post('/projects/:projectId/document-summaries', saveDocumentSummary);
+router.put('/document-summaries/:summaryId', updateDocumentSummary);
 router.delete('/document-summaries/:summaryId', deleteDocumentSummary);
 
 // Doc type prompts

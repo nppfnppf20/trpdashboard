@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher, tick } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import { updateCondition, createConditionAdvancements } from '$lib/api/conditions.js';
 
   export let show = false;
   export let project;
@@ -13,6 +14,8 @@
   let toName = '';
   let currentSubject = '';
   let seededForId = null;
+  let sentSaving = false;
+  let sentDone = false;
 
   $: projectRef = project?.project_id || '';
   $: projectName = project?.site_name || project?.project_name || '';
@@ -23,12 +26,13 @@
     toEmail = condition.original_consultant_email || '';
     toName = condition.original_consultant || '';
     currentSubject = buildSubject(condition);
+    sentDone = !!condition.fee_quote_requested_at;
     tick().then(() => richTextEditor?.setHTML(buildEmailHtml(condition, toName)));
   }
 
   function buildSubject(c) {
     const condLabel = c.condition_number ? `Condition ${c.condition_number}` : 'Condition';
-    return `Fee Quote Request — ${condLabel}: ${c.title}${projectRef ? ` (${projectRef})` : ''}`;
+    return `Fee Quote Request - ${condLabel}: ${c.title}${projectRef ? ` (${projectRef})` : ''}`;
   }
 
   function buildEmailHtml(c, name) {
@@ -111,9 +115,37 @@
     window.location.href = `mailto:${encodeURIComponent(toEmail.trim())}?subject=${encodeURIComponent(currentSubject || '')}&body=${encodeURIComponent(plainText)}`;
   }
 
+  // Confirm the fee quote request as sent: stamps the condition and logs a
+  // progress entry, so the tracker reflects it without any manual toggling.
+  async function handleConfirmSent() {
+    if (!condition || sentSaving) return;
+    sentSaving = true;
+    try {
+      const updated = await updateCondition(condition.id, {
+        fee_quote_requested_at: new Date().toISOString(),
+      });
+      const summary = toName?.trim()
+        ? `Fee quote request sent to ${toName.trim()}`
+        : 'Fee quote request sent';
+      const rows = await createConditionAdvancements(project.id, {
+        advancement_date: new Date().toISOString().slice(0, 10),
+        full_text: null,
+        source_type: 'note',
+        items: [{ condition_id: condition.id, summary }],
+      });
+      sentDone = true;
+      dispatch('sent', { condition: updated, advancements: rows });
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      sentSaving = false;
+    }
+  }
+
   function handleClose() {
     show = false;
     seededForId = null;
+    sentDone = false;
     dispatch('close');
   }
 </script>
@@ -163,8 +195,17 @@
         <button class="btn btn-secondary" on:click={handleCopyToClipboard} disabled={!richTextEditor}>
           <i class="las la-copy"></i> Copy to Clipboard
         </button>
-        <button class="btn btn-send" on:click={handleOpenInEmail} disabled={!richTextEditor}>
+        <button class="btn btn-secondary" on:click={handleOpenInEmail} disabled={!richTextEditor}>
           <i class="las la-envelope"></i> Open in Email
+        </button>
+        <button class="btn btn-confirm-sent" class:is-sent={sentDone} on:click={handleConfirmSent} disabled={sentSaving || sentDone}>
+          {#if sentSaving}
+            Confirming…
+          {:else if sentDone}
+            <i class="las la-check-double"></i> Sent
+          {:else}
+            <i class="las la-check"></i> Confirm Sent
+          {/if}
         </button>
       </div>
     </div>
@@ -306,4 +347,14 @@
     color: white;
   }
   .btn-send:hover:not(:disabled) { background: #7e22ce; }
+  .btn-confirm-sent {
+    background: #16a34a;
+    color: white;
+  }
+  .btn-confirm-sent:hover:not(:disabled) { background: #15803d; }
+  .btn-confirm-sent.is-sent {
+    background: #dcfce7;
+    color: #16a34a;
+    opacity: 1;
+  }
 </style>

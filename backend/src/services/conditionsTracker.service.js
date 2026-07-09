@@ -72,3 +72,61 @@ ${conditionBlocks}`;
     }))
     .filter(s => Number.isFinite(s.condition_id) && s.summary);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fee quote drafting: for each condition, list the actual works/documents the
+// condition wording requires the consultant to provide. The email itself is
+// assembled programmatically (wording and reason are inserted verbatim by
+// code, never rewritten by the LLM).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FEE_QUOTE_PROMPT = `You are a planning consultant assistant. For EACH planning condition provided, identify the actual work the appointed consultant is being asked to provide in order to discharge the condition.
+
+Rules:
+- Read the condition wording carefully. List ONLY the documents, plans, schemes, surveys, details or other deliverables that the wording itself requires to be submitted, approved or carried out. Nothing extra, no speculative additions, no general advice items.
+- Each item is a short noun phrase naming the deliverable, e.g. "Landscape and Ecological Management Plan covering establishment and aftercare", "Details of proposed planting species and densities".
+- Use the terminology of the condition wording itself wherever possible.
+- If the condition is a simple compliance condition with no deliverable (e.g. a time limit), return a single item stating the compliance action, e.g. "Confirmation of commencement date, no further deliverables identified".
+- Never use an em dash anywhere in your output. Use a comma or the word "to" instead.
+- Plain text only, no markdown.
+
+Return your response using EXACTLY this XML structure, one <ITEM> block per condition, in the order given, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<CONDITION_ID>the numeric id given for the condition</CONDITION_ID>
+<WORKS>
+<WORK>first deliverable</WORK>
+<WORK>second deliverable</WORK>
+</WORKS>
+</ITEM>`;
+
+export async function suggestFeeQuoteWorks(conditions) {
+  const blocks = conditions.map(c => `CONDITION (id: ${c.id})
+Number: ${c.condition_number || 'n/a'}
+Title: ${c.title}
+Wording: ${c.wording || 'n/a'}
+Reason: ${c.reason || 'n/a'}`).join('\n\n');
+
+  const raw = await callClaude(FEE_QUOTE_PROMPT, blocks, undefined, 8000);
+
+  const items = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
+  if (!items.length) {
+    console.error('[conditionsTracker.service] No ITEM blocks in fee quote works. Raw (first 400):', raw.slice(0, 400));
+    throw new Error('Could not generate fee quote items');
+  }
+
+  return items
+    .map(block => {
+      const worksBlock = extractTag(block, 'WORKS') || '';
+      const works = (worksBlock.match(/<WORK>[\s\S]*?<\/WORK>/gi) || [])
+        .map(w => extractTag(w, 'WORK'))
+        .filter(Boolean)
+        // belt and braces: no em dashes, ever
+        .map(w => w.replace(/\s*—\s*/g, ', ').replace(/\s*–\s*/g, ', '));
+      return {
+        condition_id: parseInt(extractTag(block, 'CONDITION_ID'), 10),
+        works,
+      };
+    })
+    .filter(s => Number.isFinite(s.condition_id));
+}
