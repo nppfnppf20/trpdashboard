@@ -1465,9 +1465,9 @@ export async function uploadBriefingNote(req, res) {
     const summaryHtml = await summariseDocument(text, fileName, 'briefing_transcript', customPrompt);
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.document_summaries
-         (project_id, title, file_name, doc_type, summary_html)
-       VALUES ($1, $2, $3, 'briefing_transcript', $4) RETURNING id, title, file_name, created_at`,
-      [projectId, title, fileName, summaryHtml]
+         (project_id, title, file_name, doc_type, summary_html, transcript_text)
+       VALUES ($1, $2, $3, 'briefing_transcript', $4, $5) RETURNING id, title, file_name, created_at`,
+      [projectId, title, fileName, summaryHtml, text]
     );
     res.status(201).json(rows[0]);
   } catch (err) {

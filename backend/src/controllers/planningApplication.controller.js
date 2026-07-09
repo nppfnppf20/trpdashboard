@@ -1296,7 +1296,8 @@ export async function getDocumentSummaries(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, project_id, title, document_ref, file_name, doc_type, summary_html, created_at
+      `SELECT id, project_id, title, document_ref, file_name, doc_type, summary_html, created_at,
+              (transcript_text IS NOT NULL) AS has_transcript
        FROM planning_applications.document_summaries
        WHERE project_id = $1 ORDER BY created_at DESC`,
       [projectId]
@@ -1333,7 +1334,7 @@ export async function generateDocumentSummary(req, res) {
     const customPrompt = promptRows[0]?.prompt_template ?? null;
 
     const summaryHtml = await summariseDocument(text, fileName, docType, customPrompt);
-    res.json({ summary_html: summaryHtml, file_name: fileName });
+    res.json({ summary_html: summaryHtml, file_name: fileName, transcript_text: text });
   } catch (err) {
     console.error('pa.generateDocumentSummary error:', err);
     res.status(500).json({ error: err.message });
@@ -1342,15 +1343,15 @@ export async function generateDocumentSummary(req, res) {
 
 export async function saveDocumentSummary(req, res) {
   const { projectId } = req.params;
-  const { title, document_ref, file_name, doc_type, summary_html } = req.body;
+  const { title, document_ref, file_name, doc_type, summary_html, transcript_text } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
   if (!summary_html?.trim()) return res.status(400).json({ error: 'summary_html is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.document_summaries
-         (project_id, title, document_ref, file_name, doc_type, summary_html)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [projectId, title.trim(), document_ref?.trim() || null, file_name || null, doc_type || null, summary_html.trim()]
+         (project_id, title, document_ref, file_name, doc_type, summary_html, transcript_text)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [projectId, title.trim(), document_ref?.trim() || null, file_name || null, doc_type || null, summary_html.trim(), transcript_text || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -1380,6 +1381,21 @@ export async function replaceDocumentSummary(req, res) {
   } catch (err) {
     console.error('pa.replaceDocumentSummary error:', err);
     res.status(500).json({ error: 'Failed to replace document summary' });
+  }
+}
+
+export async function getDocumentSummaryTranscript(req, res) {
+  const { summaryId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT transcript_text FROM planning_applications.document_summaries WHERE id = $1`,
+      [summaryId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Document summary not found' });
+    res.json({ transcript_text: rows[0].transcript_text });
+  } catch (err) {
+    console.error('pa.getDocumentSummaryTranscript error:', err);
+    res.status(500).json({ error: 'Failed to fetch transcript' });
   }
 }
 
@@ -1616,9 +1632,9 @@ export async function uploadBriefingNote(req, res) {
 
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.document_summaries
-         (project_id, title, file_name, doc_type, summary_html)
-       VALUES ($1, $2, $3, 'briefing_transcript', $4) RETURNING id, title, file_name, created_at`,
-      [projectId, title, fileName, summaryHtml]
+         (project_id, title, file_name, doc_type, summary_html, transcript_text)
+       VALUES ($1, $2, $3, 'briefing_transcript', $4, $5) RETURNING id, title, file_name, created_at`,
+      [projectId, title, fileName, summaryHtml, text]
     );
     res.status(201).json(rows[0]);
   } catch (err) {

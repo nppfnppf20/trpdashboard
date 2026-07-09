@@ -11,7 +11,8 @@
     generateDocumentSummary,
     saveDocumentSummary,
     updateDocumentSummary,
-    deleteDocumentSummary
+    deleteDocumentSummary,
+    getDocumentSummaryTranscript
   } from '$lib/api/projectDocs.js';
   import {
     getMeetingNotes,
@@ -80,7 +81,6 @@
   let briefingsLoaded = false;
   let briefingsLoading = false;
   let briefingsError = null;
-  let expandedBriefings = new Set();
   let bInputTab = 'upload'; // 'upload' | 'paste'
   let bFile = null;
   let bPasteText = '';
@@ -129,7 +129,8 @@
     const escaped = bPasteText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     bResult = {
       summary_html: `<pre style="white-space:pre-wrap;font-family:inherit;font-size:0.875rem;line-height:1.6;">${escaped}</pre>`,
-      file_name: null
+      file_name: null,
+      transcript_text: bPasteText
     };
     bTitle = 'Briefing Transcript';
   }
@@ -167,7 +168,8 @@
         title: bTitle,
         file_name: bResult.file_name || null,
         doc_type: 'briefing_transcript',
-        summary_html: bResult.summary_html
+        summary_html: bResult.summary_html,
+        transcript_text: bResult.transcript_text || null
       });
       briefings = [entry, ...briefings];
       bResult = null;
@@ -181,10 +183,31 @@
     }
   }
 
-  function toggleBriefing(id) {
-    const next = new Set(expandedBriefings);
-    if (next.has(id)) { next.delete(id); } else { next.add(id); }
-    expandedBriefings = next;
+  // Briefing viewer modal
+  let viewingBriefing = null;
+
+  // Briefing transcript viewer modal (lazy-loaded)
+  let briefingTranscripts = {}; // id -> { loading, text, error }
+  let viewingTranscriptBriefing = null;
+
+  function openBriefingTranscript(b) {
+    viewingTranscriptBriefing = b;
+    loadBriefingTranscript(b);
+  }
+
+  async function loadBriefingTranscript(b) {
+    if (briefingTranscripts[b.id]) return;
+    if (b.transcript_text) {
+      briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: false, text: b.transcript_text, error: null } };
+      return;
+    }
+    briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: true, text: null, error: null } };
+    try {
+      const data = await getDocumentSummaryTranscript(b.id);
+      briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: false, text: data.transcript_text, error: null } };
+    } catch (err) {
+      briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: false, text: null, error: err.message } };
+    }
   }
 
   // Briefing editor modal
@@ -857,23 +880,22 @@
                     {#if b.created_at}<span class="mn-cell-muted">{formatDate(b.created_at)}</span>{/if}
                   </div>
                   <div class="mn-note-actions">
-                    <button class="btn btn-secondary btn-sm" on:click={() => toggleBriefing(b.id)}>
-                      <i class="las la-{expandedBriefings.has(b.id) ? 'eye-slash' : 'eye'}"></i>
-                      {expandedBriefings.has(b.id) ? 'Hide' : 'View'}
+                    <button class="btn btn-secondary btn-sm" on:click={() => viewingBriefing = b}>
+                      <i class="las la-eye"></i> View
                     </button>
                     <button class="btn btn-secondary btn-sm" on:click={() => openBriefingEditor(b)}>
                       <i class="las la-pen"></i> Edit
                     </button>
+                    {#if b.has_transcript || b.transcript_text}
+                      <button class="btn btn-secondary btn-sm" on:click={() => openBriefingTranscript(b)}>
+                        <i class="las la-file-alt"></i> Transcript
+                      </button>
+                    {/if}
                     <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(b.id)} title="Delete">
                       <i class="las la-trash"></i>
                     </button>
                   </div>
                 </div>
-                {#if expandedBriefings.has(b.id)}
-                  <div class="mn-briefing-expanded">
-                    {@html b.summary_html}
-                  </div>
-                {/if}
               </div>
             {/each}
           </div>
@@ -1346,6 +1368,77 @@
   </div>
 {/if}
 
+<!-- ── Briefing Viewer Modal ─────────────────────────────────────────────── -->
+{#if viewingBriefing}
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && (viewingBriefing = null)}>
+    <div class="mn-modal mn-editor-modal">
+
+      <div class="modal-header">
+        <div>
+          <h2 class="mn-modal-title">{viewingBriefing.title}</h2>
+          {#if viewingBriefing.created_at}
+            <p class="mn-modal-meta">{formatDate(viewingBriefing.created_at)}</p>
+          {/if}
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={() => viewingBriefing = null}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mn-summary-html">
+          {@html viewingBriefing.summary_html}
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" on:click={() => viewingBriefing = null}>Close</button>
+        <button class="btn btn-primary btn-sm" on:click={() => { openBriefingEditor(viewingBriefing); viewingBriefing = null; }}>
+          <i class="las la-pen"></i> Edit
+        </button>
+      </div>
+
+    </div>
+  </div>
+{/if}
+
+<!-- ── Briefing Transcript Viewer Modal ──────────────────────────────────── -->
+{#if viewingTranscriptBriefing}
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && (viewingTranscriptBriefing = null)}>
+    <div class="mn-modal mn-editor-modal">
+
+      <div class="modal-header">
+        <div>
+          <h2 class="mn-modal-title">{viewingTranscriptBriefing.title}</h2>
+          <p class="mn-modal-meta">Full transcript{#if viewingTranscriptBriefing.created_at}&nbsp;&bull; {formatDate(viewingTranscriptBriefing.created_at)}{/if}</p>
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={() => viewingTranscriptBriefing = null}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        {#if briefingTranscripts[viewingTranscriptBriefing.id]?.loading}
+          <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading transcript…</div>
+        {:else if briefingTranscripts[viewingTranscriptBriefing.id]?.error}
+          <div class="mn-error">{briefingTranscripts[viewingTranscriptBriefing.id].error}</div>
+        {:else if briefingTranscripts[viewingTranscriptBriefing.id]?.text}
+          <pre class="mn-transcript-text mn-transcript-modal-text">{briefingTranscripts[viewingTranscriptBriefing.id].text}</pre>
+        {:else}
+          <p class="mn-empty">No transcript stored for this briefing.</p>
+        {/if}
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" on:click={() => viewingTranscriptBriefing = null}>Close</button>
+      </div>
+
+    </div>
+  </div>
+{/if}
+
 <!-- ── Briefing Editor Modal ─────────────────────────────────────────────── -->
 {#if editingBriefing}
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
@@ -1499,20 +1592,6 @@
   .mn-briefings-heading { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0 0 0.5rem; }
   .mn-briefing-title-input { font-weight: 600; max-width: 480px; }
   .mn-briefing-paste-actions { display: flex; flex-direction: column; gap: 0.4rem; }
-
-  .mn-briefing-expanded {
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid #f1f5f9;
-    font-size: 0.85rem;
-    color: #334155;
-    line-height: 1.7;
-  }
-  .mn-briefing-expanded :global(h3) { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0.75rem 0 0.25rem; }
-  .mn-briefing-expanded :global(h3:first-child) { margin-top: 0; }
-  .mn-briefing-expanded :global(p) { margin: 0 0 0.5rem; }
-  .mn-briefing-expanded :global(ul) { margin: 0 0 0.5rem; padding-left: 1.25rem; }
-  .mn-briefing-expanded :global(pre) { white-space: pre-wrap; font-family: inherit; }
 
   /* ── Top row ────────────────────────────────────────────────────────────── */
   .mn-top-row {
@@ -1847,6 +1926,11 @@
     border-radius: 4px;
     padding: 0.75rem;
   }
+  .mn-transcript-modal-text {
+    max-height: none;
+    overflow-y: visible;
+    font-size: 0.85rem;
+  }
 
   /* ── Badges ─────────────────────────────────────────────────────────────── */
   .mn-badge {
@@ -1993,6 +2077,7 @@
   .mn-summary-html :global(ul) { margin: 0 0 0.5rem; padding-left: 1.25rem; }
   .mn-summary-html :global(li) { margin-bottom: 0.25rem; }
   .mn-summary-html :global(strong) { font-weight: 700; color: #1e293b; }
+  .mn-summary-html :global(pre) { white-space: pre-wrap; font-family: inherit; margin: 0; }
 
   /* ── Action Tracker tab ─────────────────────────────────────────────────── */
   .mn-staged-badge {

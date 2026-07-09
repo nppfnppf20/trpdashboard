@@ -466,10 +466,14 @@ export async function summariseDocument(text, fileName, docType, customPrompt = 
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
-    max_tokens: 4000,
+    max_tokens: 16000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }]
   });
+
+  if (response.stop_reason === 'max_tokens') {
+    console.warn(`[summariseDocument] Output truncated at max_tokens for docType=${docType}`);
+  }
 
   return noEmDash(response.content[0].text.trim()).replace(/\s*–\s*/g, ' to ');
 }

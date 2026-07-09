@@ -28,14 +28,20 @@ export async function generateDocumentSummary(projectId, { file, text, fileName,
   }
 }
 
-export async function saveDocumentSummary(projectId, { title, document_ref, file_name, doc_type, summary_html }) {
+export async function saveDocumentSummary(projectId, { title, document_ref, file_name, doc_type, summary_html, transcript_text }) {
   const res = await authFetch(`/api/planning-application/projects/${projectId}/document-summaries`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, document_ref, file_name, doc_type, summary_html })
+    body: JSON.stringify({ title, document_ref, file_name, doc_type, summary_html, transcript_text })
   });
   if (!res.ok) throw new Error('Failed to save document summary');
   return res.json();
+}
+
+export async function getDocumentSummaryTranscript(summaryId) {
+  const res = await authFetch(`/api/planning-application/document-summaries/${summaryId}/transcript`);
+  if (!res.ok) throw new Error('Failed to fetch transcript');
+  return res.json(); // { transcript_text }
 }
 
 export async function updateDocumentSummary(summaryId, { title, summary_html }) {

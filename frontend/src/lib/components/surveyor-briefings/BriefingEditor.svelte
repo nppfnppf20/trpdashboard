@@ -451,6 +451,12 @@
             <i class="las la-paper-plane"></i> Send Email
           {/if}
         </button>
+        {#if stepTotal > 1}
+          <button class="btn btn-send-all" disabled title="Coming soon — send every drafted email in one go">
+            <i class="las la-paper-plane"></i> Send All
+            <span class="soon-badge">Coming soon</span>
+          </button>
+        {/if}
       </div>
     </div>
   </div>
@@ -697,6 +703,24 @@
     color: white;
   }
   .btn-send:hover:not(:disabled) { background: #047857; }
+
+  .btn-send-all {
+    background: #059669;
+    color: white;
+    opacity: 0.5;
+    cursor: not-allowed;
+    position: relative;
+  }
+
+  .soon-badge {
+    padding: 0.1rem 0.4rem;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
 
   .btn-spinner {
     width: 16px; height: 16px;
