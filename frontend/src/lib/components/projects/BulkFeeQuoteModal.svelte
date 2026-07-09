@@ -40,6 +40,43 @@
 
   $: selectedCount = Object.values(selected).filter(Boolean).length;
 
+  // ── Sort the tick list: by condition number, or by type priority ──────────
+  let sortBy = 'number';   // 'number' | 'type'
+
+  const TYPE_PRIORITY = {
+    'Pre-Commencement': 1,
+    'Action Required (not Pre-Commencement)': 2,
+    'Pre-Beneficial Use': 3,
+    'Compliance': 4,
+    'Informative': 5,
+  };
+  function typePriority(t) { return TYPE_PRIORITY[t] || 6; }
+
+  function conditionNumberValue(num) {
+    const digits = (num || '').replace(/\D/g, '');
+    return digits ? parseInt(digits, 10) : 999999;
+  }
+
+  $: displayConditions = [...conditions].sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === 'type') cmp = typePriority(a.condition_type) - typePriority(b.condition_type);
+    if (cmp === 0) cmp = conditionNumberValue(a.condition_number) - conditionNumberValue(b.condition_number);
+    if (cmp === 0) cmp = a.id - b.id;
+    return cmp;
+  });
+
+  const TYPE_BADGE_CLASS = {
+    'Pre-Commencement': 'bfq-type-red',
+    'Pre-Beneficial Use': 'bfq-type-blue',
+    'Action Required (not Pre-Commencement)': 'bfq-type-orange',
+    'Compliance': 'bfq-type-green',
+    'Informative': 'bfq-type-green',
+  };
+
+  function shortType(t) {
+    return t === 'Action Required (not Pre-Commencement)' ? 'Action Required' : t;
+  }
+
   function selectAllConditions() {
     selected = Object.fromEntries(conditions.map(c => [c.id, true]));
   }
@@ -89,7 +126,7 @@ ${worksHtml}
 
   // ── Generate ──────────────────────────────────────────────────────────────
   async function generate() {
-    const picked = conditions.filter(c => selected[c.id]);
+    const picked = displayConditions.filter(c => selected[c.id]);
     if (!picked.length) { error = 'Tick at least one condition.'; return; }
 
     phase = 'generating';
@@ -288,22 +325,28 @@ ${worksHtml}
           <div class="select-toolbar">
             <span class="select-count"><strong>{selectedCount}</strong> of {conditions.length} selected</span>
             <div class="select-toolbar-right">
+              <div class="sort-pills">
+                <span class="sort-label">Sort:</span>
+                <button class="sort-pill" class:active={sortBy === 'number'} on:click={() => sortBy = 'number'}>No.</button>
+                <button class="sort-pill" class:active={sortBy === 'type'} on:click={() => sortBy = 'type'} title="Pre-Commencement first, then Action Required, Pre-Beneficial Use, Compliance, Informative">Type</button>
+              </div>
               <button class="btn-link" on:click={deselectAllConditions}>Deselect all</button>
               <button class="btn-link" on:click={selectAllConditions}>Select all</button>
             </div>
           </div>
           <div class="cond-list">
-            {#each conditions as c (c.id)}
+            {#each displayConditions as c (c.id)}
               <label class="cond-row" class:checked={selected[c.id]}>
                 <input type="checkbox" checked={selected[c.id]} on:change={() => selected = { ...selected, [c.id]: !selected[c.id] }} />
                 <span class="cond-label">{conditionLabel(c)}</span>
+                {#if c.condition_type}
+                  <span class="cond-type {TYPE_BADGE_CLASS[c.condition_type] || ''}">{shortType(c.condition_type)}</span>
+                {/if}
                 {#if c.original_consultant}
                   <span class="cond-consultant"><i class="las la-user"></i> {c.original_consultant}</span>
                 {/if}
                 {#if c.status === 'Discharged'}
                   <span class="cond-tag cond-tag-green">Discharged</span>
-                {:else if c.condition_type === 'Informative'}
-                  <span class="cond-tag cond-tag-green">Informative</span>
                 {/if}
               </label>
             {:else}
@@ -515,7 +558,46 @@ ${worksHtml}
     flex-shrink: 0;
   }
   .select-count { font-size: 0.82rem; color: #475569; }
-  .select-toolbar-right { display: flex; gap: 0.75rem; }
+  .select-toolbar-right { display: flex; gap: 0.75rem; align-items: center; }
+
+  .sort-pills {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .sort-label { font-size: 0.75rem; color: #94a3b8; margin-right: 2px; }
+  .sort-pill {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .sort-pill:hover { color: #1e293b; }
+  .sort-pill.active {
+    background: #f3e8ff;
+    border-color: #d8b4fe;
+    color: #7c3aed;
+    font-weight: 600;
+  }
+
+  .cond-type {
+    font-size: 0.66rem;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 1px 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .bfq-type-red    { color: #b91c1c; background: #fee2e2; }
+  .bfq-type-blue   { color: #2563eb; background: #dbeafe; }
+  .bfq-type-orange { color: #ea580c; background: #ffedd5; }
+  .bfq-type-green  { color: #16a34a; background: #dcfce7; }
   .btn-link {
     background: none;
     border: none;

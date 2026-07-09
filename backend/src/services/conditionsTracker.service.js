@@ -80,12 +80,14 @@ ${conditionBlocks}`;
 // code, never rewritten by the LLM).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const FEE_QUOTE_PROMPT = `You are a planning consultant assistant. For EACH planning condition provided, identify the actual work the appointed consultant is being asked to provide in order to discharge the condition.
+const FEE_QUOTE_PROMPT = `You are a planning consultant assistant. For EACH planning condition provided, identify the actual work the appointed consultant is being asked to provide in order to discharge the condition. This list goes in a fee quote request email that also quotes the full condition wording, so the consultant reads the detail there themselves.
 
 Rules:
-- Read the condition wording carefully. List ONLY the documents, plans, schemes, surveys, details or other deliverables that the wording itself requires to be submitted, approved or carried out. Nothing extra, no speculative additions, no general advice items.
-- Each item is a short noun phrase naming the deliverable, e.g. "Landscape and Ecological Management Plan covering establishment and aftercare", "Details of proposed planting species and densities".
-- Use the terminology of the condition wording itself wherever possible.
+- Read the condition wording carefully and identify EVERY distinct document, plan, scheme, survey or piece of work the wording requires to be submitted, approved or carried out. Capture all of them, but list each deliverable ONCE.
+- Name each deliverable at a high level ONLY. Do NOT itemise or summarise its required contents: no lists of what it must include, no sub-parts, no specifications. Where the condition sets out what the deliverable must contain (e.g. lettered parts (a), (b), (c) or a list of details), simply append "in line with the requirements stated within the condition wording" to the deliverable's name.
+- Example: a condition requiring a CEMP that must include parts (a) to (h) becomes exactly one short item: "Construction Environmental Management Plan (CEMP: Biodiversity) in line with the requirements stated within the condition wording". It must NOT become a paragraph reciting parts (a) to (h).
+- Use the condition wording's own name for the deliverable. Keep each item to a single short line.
+- Separate items only for genuinely separate deliverables (e.g. a condition requiring both a lighting scheme and a landscaping plan is two items). Sub-parts of one document are never separate items.
 - If the condition is a simple compliance condition with no deliverable (e.g. a time limit), return a single item stating the compliance action, e.g. "Confirmation of commencement date, no further deliverables identified".
 - Never use an em dash anywhere in your output. Use a comma or the word "to" instead.
 - Plain text only, no markdown.
