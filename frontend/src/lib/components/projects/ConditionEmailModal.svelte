@@ -40,20 +40,22 @@
     const projectLine = [projectRef, projectName].filter(Boolean).join(': ');
     const condLabel = c.condition_number ? `Condition ${c.condition_number}: ` : '';
     const wording = (c.wording || '').replace(/\n/g, '<br>');
+    const reason = (c.reason || '').replace(/\n/g, '<br>');
 
     return `<p>${greeting}</p>
 <p>We have received an approval${projectLine ? ` for <strong>${projectLine}</strong>` : ''} (decision notice attached).</p>
 <p>Please can we request a fee quote related to the following condition:</p>
 <p><strong>${condLabel}${c.title}</strong></p>
-<p>${wording}</p>
+<p><em>"${wording}"</em></p>
+${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
 <p>Can I please request a fee quote for the following works:</p>
 <p><em>[Our commentary and fee quote request items - add here]</em></p>
-<p>I'd also welcome your thoughts as to whether any other works will be required in order to discharge the condition in your view.</p>
-<p>If you can get back to me with the following, that would be much appreciated:</p>
+<p>I'd also welcome your thoughts on whether, in your view, any further works are likely to be required in order to discharge the condition.</p>
+<p>It would be much appreciated if you could come back to me with the following:</p>
 <ul>
-<li>Fee quote request</li>
+<li>A fee quote</li>
 <li>Indicative timescales</li>
-<li>Any required information</li>
+<li>Details of any information you require from us</li>
 </ul>
 <p>Many thanks</p>`;
   }
@@ -234,6 +236,7 @@
     max-height: 90vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .modal-header {
@@ -269,6 +272,7 @@
 
   .modal-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 1.5rem;
     display: flex;

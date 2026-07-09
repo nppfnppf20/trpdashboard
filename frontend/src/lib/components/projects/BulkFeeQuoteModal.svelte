@@ -40,6 +40,13 @@
 
   $: selectedCount = Object.values(selected).filter(Boolean).length;
 
+  function selectAllConditions() {
+    selected = Object.fromEntries(conditions.map(c => [c.id, true]));
+  }
+  function deselectAllConditions() {
+    selected = Object.fromEntries(conditions.map(c => [c.id, false]));
+  }
+
   function conditionLabel(c) {
     return `${c.condition_number ? c.condition_number + '. ' : ''}${c.title}`;
   }
@@ -66,16 +73,16 @@
 <p>We have received an approval${projectLine ? ` for <strong>${projectLine}</strong>` : ''} (decision notice attached).</p>
 <p>Please can we request a fee quote related to the following condition:</p>
 <p><strong>${condLabel}${c.title}</strong></p>
-<p>${wording}</p>
-${reason ? `<p><em>Reason: ${reason}</em></p>` : ''}
+<p><em>"${wording}"</em></p>
+${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
 <p>Can I please request a fee quote for the following works:</p>
 ${worksHtml}
-<p>I'd also welcome your thoughts as to whether any other works will be required in order to discharge the condition in your view.</p>
-<p>If you can get back to me with the following, that would be much appreciated:</p>
+<p>I'd also welcome your thoughts on whether, in your view, any further works are likely to be required in order to discharge the condition.</p>
+<p>It would be much appreciated if you could come back to me with the following:</p>
 <ul>
-<li>Fee quote request</li>
+<li>A fee quote</li>
 <li>Indicative timescales</li>
-<li>Any required information</li>
+<li>Details of any information you require from us</li>
 </ul>
 <p>Many thanks</p>`;
   }
@@ -278,6 +285,13 @@ ${worksHtml}
             the requested works list is suggested from the condition wording for you to review.
             Discharged and informative conditions are unticked by default.
           </p>
+          <div class="select-toolbar">
+            <span class="select-count"><strong>{selectedCount}</strong> of {conditions.length} selected</span>
+            <div class="select-toolbar-right">
+              <button class="btn-link" on:click={deselectAllConditions}>Deselect all</button>
+              <button class="btn-link" on:click={selectAllConditions}>Select all</button>
+            </div>
+          </div>
           <div class="cond-list">
             {#each conditions as c (c.id)}
               <label class="cond-row" class:checked={selected[c.id]}>
@@ -382,6 +396,7 @@ ${worksHtml}
     max-height: 90vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .modal-header {
@@ -484,12 +499,33 @@ ${worksHtml}
 
   .modal-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 1.25rem 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
   }
+
+  .select-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+  .select-count { font-size: 0.82rem; color: #475569; }
+  .select-toolbar-right { display: flex; gap: 0.75rem; }
+  .btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: #7c3aed;
+    cursor: pointer;
+  }
+  .btn-link:hover { text-decoration: underline; }
 
   .error-banner {
     display: flex;
@@ -514,7 +550,10 @@ ${worksHtml}
     flex-direction: column;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    overflow: hidden;
+    overflow-y: auto;
+    max-height: 55vh;
+    flex-shrink: 1;
+    min-height: 0;
   }
   .cond-row {
     display: flex;
