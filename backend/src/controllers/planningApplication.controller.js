@@ -37,6 +37,7 @@ import {
   DEFAULT_INCORPORATE_APPEAL_PROMPT,
   DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
 } from '../services/llm.service.js';
+import { BASE_SECTIONS, ISSUE_QUESTIONS, TAIL_SECTIONS } from '../services/meetingGuideContent.js';
 import { DEFAULT_STAGE1_REVIEW_PROMPT } from './stage1Review.controller.js';
 import { DEFAULT_BRIEF_CHECK_TEMPLATE, DEFAULT_CONSISTENCY_CHECK_TEMPLATE, DEFAULT_GRAMMAR_CHECK_TEMPLATE } from './draftCheck.controller.js';
 
@@ -1380,6 +1381,14 @@ export async function replaceDocumentSummary(req, res) {
     console.error('pa.replaceDocumentSummary error:', err);
     res.status(500).json({ error: 'Failed to replace document summary' });
   }
+}
+
+export async function getMeetingGuide(_req, res) {
+  res.json({
+    baseSections: BASE_SECTIONS,
+    issueQuestions: ISSUE_QUESTIONS,
+    tailSections: TAIL_SECTIONS
+  });
 }
 
 export async function updateDocumentSummary(req, res) {

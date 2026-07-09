@@ -5,7 +5,7 @@
  *   suggestEmailEdits             — suggests scope section edits for a specific discipline
  */
 
-import { callClaude, parseJSON, MODEL_SONNET } from './llm.shared.js';
+import { callClaude, parseJSON, noEmDash, MODEL_SONNET } from './llm.shared.js';
 
 const DISCIPLINE_SYSTEM = `You are a planning consultant reviewing a project briefing note.
 Your task is to identify which specialist surveyor disciplines are required based on the project description, site characteristics, and constraints mentioned.
@@ -44,16 +44,21 @@ ${briefingText}`;
   return Array.isArray(parsed) ? parsed : [];
 }
 
-const EMAIL_EDIT_SYSTEM = `You are a planning consultant reviewing a surveyor briefing email alongside a project briefing note.
+const EMAIL_EDIT_SYSTEM = `You are a planning consultant preparing a briefing email that will be sent directly to a specialist consultant. You are reviewing the email's existing scope of work alongside a project briefing note.
 Your only task is to identify project-specific information in the briefing note that is NOT already covered by the existing scope of work, and return it as a new section.
 
-Rules:
-- You may ONLY add content — never modify or remove anything from the existing scope.
+Content rules:
+- You may ONLY add content. Never modify or remove anything from the existing scope.
 - If there is relevant additional information, return it as a new HTML section with the exact heading <h3>Additional Information</h3>, formatted as a concise bullet list.
 - Do not repeat anything already stated in the existing scope.
-- Do not add speculative content — only items directly supported by the briefing note.
+- Do not add speculative content. Only include items directly supported by the briefing note.
 - Do NOT modify any [PLACEHOLDER] tokens.
-- If there is nothing to add, return hasChanges: false.`;
+- If there is nothing to add, return hasChanges: false.
+
+Tone and style rules:
+- The section you write is inserted verbatim into the email and read by the consultant it is sent to. Write it as part of that email: state facts about the site and project plainly, and where a request or instruction is needed, address the consultant directly as "you".
+- Never refer to the recipient in the third person (e.g. "the ecology consultant should be aware that...") and never address or refer to the project team sending the email. You are speaking TO the consultant.
+- Absolutely no em dashes or en dashes, ever. Use commas, brackets, or separate sentences instead, and write ranges with "to" (e.g. "20 to 30 years", not "20-30 years").`;
 
 /**
  * Suggest edits to the scope sections of a briefing email based on a briefing note.
@@ -75,9 +80,9 @@ ${briefingText}
 
 ---
 
-Is there any project-specific information in the briefing note that is NOT already covered by the scope above and that would be relevant to ask the ${discipline} surveyor about?
+Is there any project-specific information in the briefing note that is NOT already covered by the scope above and that the ${discipline} consultant receiving this email needs to know or act on?
 
-If YES: return ONLY an <h3>Additional Information</h3> section as HTML with bullet points covering the new items. Do not repeat anything already in the scope.
+If YES: return ONLY an <h3>Additional Information</h3> section as HTML with bullet points covering the new items, written as part of the email to the consultant. Do not repeat anything already in the scope.
 If NO: return hasChanges as false.
 
 Respond with JSON only:
@@ -85,5 +90,9 @@ Respond with JSON only:
 
   const raw = await callClaude(EMAIL_EDIT_SYSTEM, user, MODEL_SONNET);
   const parsed = parseJSON(raw);
-  return parsed ?? { hasChanges: false, reasoning: 'Could not parse LLM response', suggestedContent: null };
+  if (!parsed) return { hasChanges: false, reasoning: 'Could not parse LLM response', suggestedContent: null };
+  if (parsed.suggestedContent) {
+    parsed.suggestedContent = noEmDash(parsed.suggestedContent).replace(/\s*–\s*/g, ' to ');
+  }
+  return parsed;
 }

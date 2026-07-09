@@ -5,6 +5,7 @@
  */
 
 import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, HOUSE_STYLE_BLOCK } from './llm.shared.js';
+import { BASE_SECTIONS, ISSUE_QUESTIONS, TAIL_SECTIONS } from './meetingGuideContent.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants — Assessment
@@ -85,6 +86,18 @@ const OUTPUT_VAR_PLACEHOLDER_LABELS = {
 // Prompt constants — Document summarisation
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Outline of the kick-off meeting guide, rebuilt from meetingGuideContent.js
+// so the briefing summary structure always matches the on-screen guide
+function buildMeetingGuideOutline() {
+  const block = (s) => `${s.title}\n${s.questions.map(q => `- ${q}`).join('\n')}`;
+  const keyIssues = [
+    '9. Key Issues',
+    'For each planning issue or constraint discussed (e.g. landscape, heritage, ecology, highways), use a numbered sub-heading per issue (9.1, 9.2, …) and cover:',
+    ...ISSUE_QUESTIONS.map(q => `- ${q}`)
+  ].join('\n');
+  return [...BASE_SECTIONS.map(block), keyIssues, ...TAIL_SECTIONS.map(block)].join('\n\n');
+}
+
 const DEFAULT_SUMMARY_PROMPTS = {
   pre_app: `You are a planning consultant preparing a Planning Statement. Summarise the key content of this pre-application response in 2–3 short paragraphs.
 Write as a factual account of what the LPA said — the position taken, the issues raised, and what was supported or accepted. Keep each paragraph brief and to the point. Do not use headings or bullet points.
@@ -110,18 +123,22 @@ Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
 Structure your summary to cover: the formal description of development, the main components of the proposal, key technical figures or specifications, and any design or sustainability principles.
 Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
 
-  briefing_transcript: `You are a senior planning consultant. You have been given a transcript of a project briefing or client meeting relating to a planning application.
+  briefing_transcript: `You are a senior planning consultant. You have been given a transcript of a project briefing or kick-off meeting relating to a planning application. The meeting followed (or loosely followed) TRP's standard project kick-off meeting guide.
 
-Produce a detailed structured summary of this transcript for use as context when drafting a Planning Statement. Your summary should capture:
+Produce a detailed structured summary of this transcript, organised under the meeting guide's sections below. Capture everything material that was said — figures, names, dates, contacts, positions taken, decisions made, and instructions given. Do not compress or omit nuance: this summary will be used as background context when drafting all sections of a Planning Statement, so missing detail is worse than length.
 
-1. **Proposed Development** — what is being proposed, at what scale, and with what key components, as described in the briefing (not just formal figures — include the strategic framing of what this project is)
-2. **Planning Strategy** — the overall planning angle, how the case is being framed, and the key arguments the consultant or applicant intends to make
-3. **Planning Benefits** — the material planning benefits identified or discussed
-4. **Policy Positioning** — how the proposal is positioned against key national or local policies, any policy conflicts acknowledged and how they are addressed
-5. **Constraints and Sensitivities** — known issues, objections, or sensitivities and the approach to addressing them
-6. **Specific Instructions or Directions** — any explicit instructions about tone, emphasis, sections to prioritise, or approaches to avoid
+Meeting guide sections (use the section titles as <h3> headings, in this order; the bullet points under each show what the guide asked — cover whichever were actually discussed):
 
-Be comprehensive. This summary will be used as background context by an AI when drafting all sections of a Planning Statement — do not compress or omit nuance.
+${buildMeetingGuideOutline()}
+
+If the transcript contains material that does not fit any section above, add a final section headed "Other" and summarise it there. Only include "Other" if it is needed.
+
+Strict rules:
+- Only use information actually present in the transcript. Never invent, infer, or pad.
+- If a section was not addressed in the meeting, omit that section entirely: no heading, no placeholder.
+- Within a section, only cover the points that were actually discussed.
+- Absolutely no em dashes or en dashes, ever. Use commas, brackets, colons, or separate sentences instead, and write ranges with "to" (e.g. "20 to 30 years").
+
 Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>, <li> tags.`,
 
   other: `You are a planning consultant. Provide a structured summary of this document.
@@ -454,7 +471,7 @@ export async function summariseDocument(text, fileName, docType, customPrompt = 
     messages: [{ role: 'user', content: userPrompt }]
   });
 
-  return response.content[0].text.trim();
+  return noEmDash(response.content[0].text.trim()).replace(/\s*–\s*/g, ' to ');
 }
 
 export async function suggestTranscriptUpdates(text) {

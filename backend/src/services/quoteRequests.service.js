@@ -248,7 +248,9 @@ export async function mergeTemplate(templateId, projectId, surveyorIds) {
       p.client,
       p.client_spv_name,
       p.sub_sector,
-      p.sector
+      p.sector,
+      p.sub_sectors,
+      p.sectors
     FROM public.projects p
     WHERE p.unique_id = $1
   `;
@@ -283,24 +285,44 @@ export async function mergeTemplate(templateId, projectId, surveyorIds) {
     }
   }
 
-  // Placeholder replacement function
-  function replacePlaceholders(text) {
-    return text
-      .replace(/\[PROJECT_NAME\]/g, project.project_name || '')
-      .replace(/\[PROJECT_CODE\]/g, project.project_code || '')
-      .replace(/\[ADDRESS\]/g, project.address || '')
-      .replace(/\[AREA\]/g, project.area || '')
-      .replace(/\[CLIENT_NAME\]/g, project.client || project.client_spv_name || '')
-      .replace(/\[PROJECT_TYPE\]/g, project.sub_sector || '')
-      .replace(/\[SECTOR\]/g, project.sector || '')
-      .replace(/\[SURVEYOR_NAME\]/g, surveyorName)
-      .replace(/\[DISCIPLINE\]/g, discipline)
-      .replace(/\[CONTACT_NAME\]/g, surveyorName) // Fallback to org name if no specific contact
-      .replace(/\[DATE\]/g, new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' }));
+  // Sectors are multi-select JSONB arrays (migration 019); fall back to the
+  // legacy singular columns for projects created before that
+  const joinArr = (v) => (Array.isArray(v) && v.length ? v.join(', ') : '');
+
+  const placeholderValues = {
+    PROJECT_NAME: project.project_name || '',
+    PROJECT_CODE: project.project_code || '',
+    ADDRESS: project.address || '',
+    AREA: project.area || '',
+    CLIENT_NAME: project.client || project.client_spv_name || '',
+    PROJECT_TYPE: joinArr(project.sub_sectors) || project.sub_sector || '',
+    SECTOR: joinArr(project.sectors) || project.sector || '',
+    SURVEYOR_NAME: surveyorName,
+    DISCIPLINE: discipline,
+    CONTACT_NAME: surveyorName, // Fallback to org name if no specific contact
+    DATE: new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
+  };
+
+  // Replace placeholders; when dropBlankLines is set, a blank value removes the
+  // whole <li> containing its token instead of leaving a dangling "Label:" line
+  function replacePlaceholders(text, { dropBlankLines = false } = {}) {
+    let out = text;
+    for (const [token, value] of Object.entries(placeholderValues)) {
+      if (dropBlankLines && !value) {
+        // (?:(?!<\/li>)[\s\S])*? = any content that doesn't cross an </li>,
+        // so only the single list item holding the token is removed
+        out = out.replace(
+          new RegExp(`<li[^>]*>(?:(?!<\\/li>)[\\s\\S])*?\\[${token}\\](?:(?!<\\/li>)[\\s\\S])*?<\\/li>\\s*`, 'g'),
+          ''
+        );
+      }
+      out = out.replace(new RegExp(`\\[${token}\\]`, 'g'), value);
+    }
+    return out;
   }
 
   // Merge template content and subject line
-  const mergedContent = replacePlaceholders(template.template_content);
+  const mergedContent = replacePlaceholders(template.template_content, { dropBlankLines: true });
   const mergedSubject = replacePlaceholders(template.subject_line);
 
   return {

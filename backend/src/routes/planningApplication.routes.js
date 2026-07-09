@@ -37,6 +37,7 @@ import {
   replaceDocumentSummary,
   updateDocumentSummary,
   deleteDocumentSummary,
+  getMeetingGuide,
   suggestDocumentUpdates,
   getSectionPrompt,
   resetSectionPrompt,
@@ -144,6 +145,7 @@ router.post('/projects/:projectId/document-summaries/generate', upload.single('f
 router.post('/projects/:projectId/document-summaries/suggest', suggestDocumentUpdates);
 router.put('/projects/:projectId/document-summaries/by-type', replaceDocumentSummary);
 router.post('/projects/:projectId/document-summaries', saveDocumentSummary);
+router.get('/meeting-guide', getMeetingGuide);
 router.put('/document-summaries/:summaryId', updateDocumentSummary);
 router.delete('/document-summaries/:summaryId', deleteDocumentSummary);
 

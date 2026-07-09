@@ -1,13 +1,26 @@
 <script>
   import MeetingGuideSection from './MeetingGuideSection.svelte';
-  import { buildGuide } from './meetingGuideContent.js';
+  import { fetchGuideContent, buildGuide } from './meetingGuideContent.js';
 
   export let show = false;
   export let project = null;
   export let issueTracks = []; // pass active tracks in so we don't need an extra fetch
   export let onClose;
 
-  $: sections = buildGuide(issueTracks);
+  let sections = [];
+  let guideError = null;
+
+  $: if (show) loadSections(issueTracks);
+
+  async function loadSections(tracks) {
+    guideError = null;
+    try {
+      const guide = await fetchGuideContent();
+      sections = buildGuide(guide, tracks);
+    } catch (err) {
+      guideError = err.message;
+    }
+  }
 
   function handlePrint() {
     window.print();
@@ -43,11 +56,17 @@
           Each section maps to data the system can extract from the resulting transcript.
         </p>
 
-        <div class="sections">
-          {#each sections as section}
-            <MeetingGuideSection {section} />
-          {/each}
-        </div>
+        {#if guideError}
+          <p class="guide-error">{guideError}</p>
+        {:else if sections.length === 0}
+          <p class="intro">Loading guide…</p>
+        {:else}
+          <div class="sections">
+            {#each sections as section}
+              <MeetingGuideSection {section} />
+            {/each}
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -145,6 +164,12 @@
     font-size: 0.85rem;
     color: #64748b;
     line-height: 1.5;
+  }
+
+  .guide-error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #dc2626;
   }
 
   .sections {

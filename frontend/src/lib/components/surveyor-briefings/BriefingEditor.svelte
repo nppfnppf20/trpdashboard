@@ -115,17 +115,21 @@
     }
   }
 
-  // Inserts sectionHtml before <h3>Key Requirements</h3>, or at the end if not found
+  // Inserts sectionHtml before <h3>Key Requirements</h3> if present, otherwise
+  // before the closing lines ("If you require any additional information…" /
+  // "Best regards"), falling back to the end of the email.
   function appendAdditionalSection(fullHtml, sectionHtml) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(fullHtml, 'text/html');
     const body = doc.body;
-    const keyReqNode = Array.from(body.childNodes).find(
-      n => n.nodeName === 'H3' && n.textContent.trim().toLowerCase() === 'key requirements'
-    );
+    const children = Array.from(body.childNodes);
+    const insertBeforeNode =
+      children.find(n => n.nodeName === 'H3' && n.textContent.trim().toLowerCase() === 'key requirements')
+      ?? children.find(n => /^(if you require|best regards|kind regards|many thanks|yours\b)/i.test(n.textContent?.trim() ?? ''))
+      ?? null;
     const tempDiv = doc.createElement('div');
     tempDiv.innerHTML = sectionHtml;
-    while (tempDiv.firstChild) body.insertBefore(tempDiv.firstChild, keyReqNode ?? null);
+    while (tempDiv.firstChild) body.insertBefore(tempDiv.firstChild, insertBeforeNode);
     return body.innerHTML;
   }
 
@@ -148,10 +152,24 @@
 
   $: hasSurveyorSelected = selectedSurveyors.length > 0;
 
+  // Unwrap <strong>/<b> and bold inline styles so only headings paste as bold
+  function stripInlineBold(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    tmp.querySelectorAll('strong, b').forEach(el => {
+      while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+      el.remove();
+    });
+    tmp.querySelectorAll('[style*="font-weight"]').forEach(el => {
+      if (!/^h[1-6]$/i.test(el.tagName)) el.style.fontWeight = '';
+    });
+    return tmp.innerHTML;
+  }
+
   async function handleCopyToClipboard() {
     if (!richTextEditor) return;
     try {
-      const htmlContent = richTextEditor.getHTML();
+      const htmlContent = stripInlineBold(richTextEditor.getHTML());
       const plainText = stripHtml(htmlContent);
       if (navigator.clipboard && window.ClipboardItem) {
         const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
@@ -162,7 +180,7 @@
         fallbackCopyRichText(htmlContent);
       }
     } catch (err) {
-      fallbackCopyRichText(richTextEditor.getHTML());
+      fallbackCopyRichText(stripInlineBold(richTextEditor.getHTML()));
     }
   }
 
