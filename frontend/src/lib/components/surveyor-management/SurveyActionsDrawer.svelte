@@ -119,7 +119,7 @@
   }
 
   async function removeAction(actionId) {
-    if (!confirm('Delete this action?')) return;
+    if (!confirm('Delete this update?')) return;
     try {
       await deleteQuoteAction(actionId);
       dispatch('deleted', { id: actionId });
@@ -142,7 +142,7 @@
         <div class="tl-header-text">
           <h3 class="tl-title">{quote.discipline || 'Survey'} · {quote.surveyor_organisation || ''}</h3>
           <p class="tl-subtitle">
-            {actions.length} action{actions.length !== 1 ? 's' : ''}
+            {actions.length} update{actions.length !== 1 ? 's' : ''}
             {#if quote.work_status}· {quote.work_status}{/if}
           </p>
         </div>
@@ -170,18 +170,18 @@
             <div class="tl-add-btns">
               <button class="tl-btn tl-btn-ghost" on:click={() => showAdd = false} disabled={addSaving || addGenerating}>Cancel</button>
               <button class="tl-btn tl-btn-primary" on:click={saveAdd} disabled={addSaving || addGenerating}>
-                {#if addGenerating}Summarising…{:else if addSaving}Saving…{:else if addGenerated}Confirm & Save{:else}Save Action{/if}
+                {#if addGenerating}Summarising…{:else if addSaving}Saving…{:else if addGenerated}Confirm & Save{:else}Save Progress{/if}
               </button>
             </div>
           </div>
         {:else}
           <button class="tl-add-btn" on:click={openAdd}>
-            <i class="las la-plus"></i> Add Action
+            <i class="las la-plus"></i> Add Progress
           </button>
         {/if}
 
         {#if actions.length === 0 && !showAdd}
-          <p class="tl-empty">No actions recorded yet.</p>
+          <p class="tl-empty">No progress recorded yet.</p>
         {/if}
 
         <div class="tl-entries">

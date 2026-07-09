@@ -391,7 +391,9 @@ export let selectedProject;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    height: 100%;
+    /* min-height (not height) so the card grows with its content instead of
+       letting long tables spill past the card bounds */
+    min-height: 100%;
   }
 
   .panel-header {

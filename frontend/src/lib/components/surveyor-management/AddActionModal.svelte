@@ -53,7 +53,7 @@
         summary: selections[q.id].summary.trim(),
       }));
 
-    if (!items.length) { error = 'Tick at least one survey this action applies to.'; return; }
+    if (!items.length) { error = 'Tick at least one survey this update applies to.'; return; }
     if (!actionDate) { error = 'A date is required.'; return; }
 
     // Blank summaries: generate them from the pasted text (survey scope and
@@ -120,7 +120,7 @@
   <div class="adv-backdrop" on:click|self={close} role="presentation">
     <div class="adv-modal">
       <div class="adv-header">
-        <h3>Add Action</h3>
+        <h3>Add Progress</h3>
         <button class="adv-close-btn" on:click={close}>&times;</button>
       </div>
 
@@ -198,7 +198,7 @@
         <div class="adv-footer-actions">
           <button class="btn-cancel" on:click={close} disabled={saving || generating}>Cancel</button>
           <button class="btn-save" on:click={save} disabled={saving || generating}>
-            {#if generating}Summarising…{:else if saving}Saving…{:else if generatedNotice}Confirm & Save{:else}Save Action{/if}
+            {#if generating}Summarising…{:else if saving}Saving…{:else if generatedNotice}Confirm & Save{:else}Save Progress{/if}
           </button>
         </div>
       </div>

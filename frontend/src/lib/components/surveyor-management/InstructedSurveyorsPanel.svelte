@@ -156,7 +156,7 @@
   <div class="panel-header">
     <h2>Instructed Surveyors</h2>
     <button class="btn-add-action" on:click={() => openAddAction()} disabled={!quotes.length || !projectId}>
-      <i class="las la-history"></i> Add Action
+      <i class="las la-history"></i> Add Progress
     </button>
   </div>
   {#if loading}
@@ -178,7 +178,7 @@
             <th>Instructed Quote</th>
             <th>Work Status</th>
             <th>Dependencies</th>
-            <th>Actions</th>
+            <th>Progress</th>
           </tr>
         </thead>
         <tbody>
@@ -248,13 +248,13 @@
               <td class="notes-cell-compact">
                 {#if actionsByQuote[quote.id]?.length}
                   {@const latest = actionsByQuote[quote.id][0]}
-                  <button class="qa-progress-cell" on:click={() => actionsQuote = quote} title="View full actions timeline">
+                  <button class="qa-progress-cell" on:click={() => actionsQuote = quote} title="View full progress timeline">
                     <span class="qa-progress-date">{formatActionDate(latest.action_date)}</span>
                     <span class="qa-progress-summary">{latest.summary.length > 90 ? latest.summary.slice(0, 90) + '…' : latest.summary}</span>
-                    <span class="qa-progress-count">{actionsByQuote[quote.id].length} action{actionsByQuote[quote.id].length !== 1 ? 's' : ''}</span>
+                    <span class="qa-progress-count">{actionsByQuote[quote.id].length} update{actionsByQuote[quote.id].length !== 1 ? 's' : ''}</span>
                   </button>
                 {:else}
-                  <button class="qa-progress-empty" on:click={() => openAddAction(quote.id)} title="Add first action">
+                  <button class="qa-progress-empty" on:click={() => openAddAction(quote.id)} title="Add first update">
                     <i class="las la-plus"></i> Add
                   </button>
                 {/if}

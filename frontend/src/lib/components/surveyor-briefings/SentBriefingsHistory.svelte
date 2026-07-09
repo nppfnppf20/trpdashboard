@@ -149,6 +149,18 @@
 
   .table-wrapper {
     overflow-x: auto;
+    /* Cap long histories with their own scrollbar so the Master Templates
+       section below stays reachable */
+    max-height: 420px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+  }
+
+  .data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
   }
 
   .data-table {

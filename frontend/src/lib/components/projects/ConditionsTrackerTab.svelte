@@ -152,6 +152,13 @@
     return 'ct-status-notstarted';
   }
 
+  // ── Full screen view ──────────────────────────────────────────────────────
+  let isFullscreen = false;
+
+  function handleFullscreenKeydown(e) {
+    if (e.key === 'Escape' && isFullscreen) isFullscreen = false;
+  }
+
   // ── Add conditions modal ──────────────────────────────────────────────────
   let showAddConditions = false;
 
@@ -732,8 +739,10 @@
   </div>
 {/if}
 
+<svelte:window on:keydown={handleFullscreenKeydown} />
+
 <!-- ── Conditions tracker content ─────────────────────────────────────────── -->
-<div class="ct-tab">
+<div class="ct-tab" class:ct-fullscreen={isFullscreen}>
 
   <!-- Top bar -->
   <div class="ct-topbar">
@@ -768,6 +777,9 @@
       </button>
       <button class="btn btn-ghost btn-sm ct-issue-btn" title="Email integration coming soon" on:click={handleIssueToClient} disabled={!conditions.length}>
         <i class="las la-paper-plane"></i> Send to Client
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => isFullscreen = !isFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Open the tracker full screen'}>
+        <i class="las {isFullscreen ? 'la-compress' : 'la-expand'}"></i> {isFullscreen ? 'Exit' : 'Full Screen'}
       </button>
     </div>
   </div>
@@ -1109,6 +1121,47 @@
     padding: 1rem 0;
     min-height: 200px;
   }
+
+  /* Full screen: lift the whole tracker over the project modal (its own
+     modals/drawer all sit at z-index 2000+ so they still open on top) */
+  .ct-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    background: #fff;
+    padding: 1.25rem 1.75rem;
+    margin: 0;
+    overflow-y: auto;
+  }
+
+  /* In full screen, fit the table to the viewport: drop the fixed min-width,
+     shrink column minimums and padding so it all shows without side-scrolling
+     on a normal monitor (scrollbar only returns if the window is too narrow) */
+  .ct-fullscreen .ct-table {
+    min-width: 100%;
+    font-size: 0.75rem;
+  }
+  .ct-fullscreen .ct-th,
+  .ct-fullscreen .ct-td { padding: 0.5rem 0.5rem; }
+  .ct-fullscreen .ct-th-number       { width: 46px; }
+  .ct-fullscreen .ct-th-title        { min-width: 110px; }
+  .ct-fullscreen .ct-th-type         { min-width: 105px; }
+  .ct-fullscreen .ct-th-wording      { min-width: 190px; max-width: none; }
+  .ct-fullscreen .ct-th-reason       { min-width: 130px; }
+  .ct-fullscreen .ct-th-req          { min-width: 150px; }
+  .ct-fullscreen .ct-th-reqtype      { min-width: 100px; }
+  .ct-fullscreen .ct-th-reqstatus    { min-width: 85px; }
+  .ct-fullscreen .ct-th-initial      { min-width: 105px; }
+  .ct-fullscreen .ct-th-consultant   { min-width: 105px; }
+  .ct-fullscreen .ct-th-progress     { min-width: 130px; }
+  .ct-fullscreen .ct-long-text,
+  .ct-fullscreen .ct-req-text,
+  .ct-fullscreen .ct-initial-text { font-size: 0.73rem; }
+  /* Stop the long type option labels forcing their columns wide: fix the
+     select width (full labels still show in the opened dropdown) */
+  .ct-fullscreen .ct-type-select { width: 105px; }
+  .ct-fullscreen .ct-status-select,
+  .ct-fullscreen .ct-reqstatus-select { width: 85px; }
 
   /* ── Top bar ─────────────────────────────────────────────────────────────── */
   .ct-topbar {
