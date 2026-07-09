@@ -32,6 +32,13 @@ ALTER TABLE planning_applications.conditions
 ALTER TABLE planning_applications.conditions
   ADD COLUMN IF NOT EXISTS fee_quote_requested_at TIMESTAMPTZ;
 
+-- Status wording change: 'Not Required' became 'N/A'; compliance and
+-- informative conditions default to N/A (nothing to discharge)
+UPDATE planning_applications.conditions SET status = 'N/A' WHERE status = 'Not Required';
+UPDATE planning_applications.conditions
+  SET status = 'N/A'
+  WHERE condition_type IN ('Compliance', 'Informative') AND status = 'Not Started';
+
 -- Separated requirements within a condition (e.g. parts (a), (b), (c))
 CREATE TABLE IF NOT EXISTS planning_applications.condition_requirements (
   id               SERIAL PRIMARY KEY,

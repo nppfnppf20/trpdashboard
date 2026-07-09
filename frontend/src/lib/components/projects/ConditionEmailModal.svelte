@@ -32,7 +32,8 @@
 
   function buildSubject(c) {
     const condLabel = c.condition_number ? `Condition ${c.condition_number}` : 'Condition';
-    return `Fee Quote Request - ${condLabel}: ${c.title}${projectRef ? ` (${projectRef})` : ''}`;
+    const projectPart = [projectName, projectRef ? `(${projectRef})` : ''].filter(Boolean).join(' ');
+    return `${projectPart ? `${projectPart} - ` : ''}Fee Quote Request - ${condLabel}: ${c.title}`;
   }
 
   function buildEmailHtml(c, name) {
@@ -44,6 +45,7 @@
 
     return `<p>${greeting}</p>
 <p>We have received an approval${projectLine ? ` for <strong>${projectLine}</strong>` : ''} (decision notice attached).</p>
+${c.original_consultant ? `<p>As you may recall, this is a project you have previously worked on.</p>` : ''}
 <p>Please can we request a fee quote related to the following condition:</p>
 <p><strong>${condLabel}${c.title}</strong></p>
 <p><em>"${wording}"</em></p>

@@ -334,7 +334,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1100;
+    /* Always the top-most picker: must sit above the briefing editor (1000)
+       and the conditions tracker's fullscreen view (1500) + its modals (10000) */
+    z-index: 10500;
     backdrop-filter: blur(2px);
   }
 

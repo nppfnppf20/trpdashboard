@@ -7,6 +7,7 @@
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import ConditionEmailModal from '$lib/components/projects/ConditionEmailModal.svelte';
   import BulkFeeQuoteModal from '$lib/components/projects/BulkFeeQuoteModal.svelte';
+  import SelectSurveyorModal from '$lib/components/surveyor-briefings/SelectSurveyorModal.svelte';
   import { cleanPastedText } from '$lib/utils/pdfText.js';
   import {
     getConditionsData,
@@ -32,7 +33,7 @@
   let loading = true;
   let error = null;
 
-  const STATUS_OPTIONS = ['Not Started', 'In Progress', 'Submitted', 'Discharged', 'Not Required'];
+  const STATUS_OPTIONS = ['Not Started', 'In Progress', 'Submitted', 'Discharged', 'N/A'];
   const TYPE_OPTIONS = [
     'Pre-Commencement',
     'Pre-Beneficial Use',
@@ -148,8 +149,13 @@
     if (s === 'discharged')   return 'ct-status-discharged';
     if (s === 'submitted')    return 'ct-status-submitted';
     if (s === 'in progress')  return 'ct-status-inprogress';
-    if (s === 'not required') return 'ct-status-notrequired';
+    if (s === 'n/a' || s === 'not required') return 'ct-status-notrequired';
     return 'ct-status-notstarted';
+  }
+
+  // Compliance / informative conditions have nothing to discharge
+  function typeImpliesNA(t) {
+    return t === 'Compliance' || t === 'Informative';
   }
 
   // ── Full screen view ──────────────────────────────────────────────────────
@@ -222,7 +228,10 @@
 
   async function updateType(c, newType) {
     try {
-      const updated = await updateCondition(c.id, { condition_type: newType || null });
+      const updated = await updateCondition(c.id, {
+        condition_type: newType || null,
+        ...(typeImpliesNA(newType) ? { status: 'N/A' } : {}),
+      });
       conditions = conditions.map(x => x.id === c.id ? { ...x, ...updated, requirements: x.requirements } : x);
     } catch (err) {
       alert(err.message);
@@ -352,6 +361,41 @@
         : c
       );
     }
+  }
+
+  // ── Surveyor picker for the Original Consultant field ─────────────────────
+  // Opens from a row directly (saves immediately) or from edit mode (fills the form)
+  let showSurveyorPicker = false;
+  let pickerForConditionId = null;   // null = picking for the edit form
+
+  function openSurveyorPicker(conditionId = null) {
+    pickerForConditionId = conditionId;
+    showSurveyorPicker = true;
+  }
+
+  async function handleSurveyorPick(e) {
+    const s = e.detail;
+    const name = s.contactName || s.surveyorOrganisation || '';
+    const email = s.contactEmail || '';
+    if (pickerForConditionId != null) {
+      try {
+        const updated = await updateCondition(pickerForConditionId, {
+          original_consultant: name || null,
+          original_consultant_email: email || null,
+        });
+        conditions = conditions.map(x => x.id === pickerForConditionId
+          ? { ...x, ...updated, requirements: x.requirements, advancements: x.advancements }
+          : x
+        );
+      } catch (err) {
+        alert(err.message);
+      }
+    } else {
+      editForm.original_consultant = name;
+      editForm.original_consultant_email = email;
+    }
+    pickerForConditionId = null;
+    showSurveyorPicker = false;
   }
 
   // ── Fee quote email ───────────────────────────────────────────────────────
@@ -604,6 +648,13 @@
   conditions={sortedConditions}
   on:sent={handleFeeQuoteSent}
   on:close={() => showBulkFeeQuote = false}
+/>
+
+<SelectSurveyorModal
+  show={showSurveyorPicker}
+  selectedSurveyors={[]}
+  on:select={handleSurveyorPick}
+  on:close={() => { showSurveyorPicker = false; pickerForConditionId = null; }}
 />
 
 <!-- ── Progress timeline drawer ───────────────────────────────────────────── -->
@@ -876,9 +927,14 @@
                   class:ct-type-compliance={(editing ? editForm.condition_type : c.condition_type) === 'Compliance'}
                   class:ct-type-informative={(editing ? editForm.condition_type : c.condition_type) === 'Informative'}
                   value={editing ? editForm.condition_type : (c.condition_type || '')}
-                  on:change={e => editing
-                    ? (editForm.condition_type = e.target.value)
-                    : updateType(c, e.target.value)}
+                  on:change={e => {
+                    if (editing) {
+                      editForm.condition_type = e.target.value;
+                      if (typeImpliesNA(e.target.value)) editForm.status = 'N/A';
+                    } else {
+                      updateType(c, e.target.value);
+                    }
+                  }}
                 >
                   <option value="">Select type</option>
                   {#each TYPE_OPTIONS as t}<option value={t}>{t}</option>{/each}
@@ -1038,19 +1094,31 @@
               <!-- Original Consultant -->
               <td class="ct-td ct-td-consultant" rowspan={span}>
                 {#if editing}
-                  <input type="text" class="form-input ct-cell-input" bind:value={editForm.original_consultant} placeholder="Name / organisation" />
+                  <div class="ct-consultant-edit-row">
+                    <input type="text" class="form-input ct-cell-input" bind:value={editForm.original_consultant} placeholder="Name / organisation" />
+                    <button class="btn btn-icon btn-secondary" type="button" title="Select a surveyor" on:click={() => openSurveyorPicker(null)}>
+                      <i class="las la-address-book"></i>
+                    </button>
+                  </div>
                   <input type="email" class="form-input ct-cell-input" bind:value={editForm.original_consultant_email} placeholder="email" style="margin-top:4px" />
                 {:else}
-                  {#if c.original_consultant || c.original_consultant_email}
-                    {#if c.original_consultant}
-                      <span class="ct-consultant-name">{c.original_consultant}</span>
-                    {/if}
-                    {#if c.original_consultant_email}
-                      <a class="ct-consultant-email" href="mailto:{c.original_consultant_email}">{c.original_consultant_email}</a>
-                    {/if}
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
-                  {/if}
+                  <div class="ct-consultant-display">
+                    <div class="ct-consultant-info">
+                      {#if c.original_consultant || c.original_consultant_email}
+                        {#if c.original_consultant}
+                          <span class="ct-consultant-name">{c.original_consultant}</span>
+                        {/if}
+                        {#if c.original_consultant_email}
+                          <a class="ct-consultant-email" href="mailto:{c.original_consultant_email}">{c.original_consultant_email}</a>
+                        {/if}
+                      {:else}
+                        <span class="ct-cell-muted">—</span>
+                      {/if}
+                    </div>
+                    <button class="btn btn-icon btn-ghost ct-consultant-pick" type="button" title="Select a surveyor" on:click={() => openSurveyorPicker(c.id)}>
+                      <i class="las la-address-book"></i>
+                    </button>
+                  </div>
                 {/if}
               </td>
 
@@ -1333,6 +1401,20 @@
     word-break: break-all;
   }
   .ct-consultant-email:hover { text-decoration: underline; }
+  .ct-consultant-edit-row {
+    display: flex;
+    gap: 4px;
+    align-items: stretch;
+  }
+  .ct-consultant-edit-row .ct-cell-input { flex: 1; min-width: 0; }
+  .ct-consultant-display {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .ct-consultant-info { flex: 1; min-width: 0; }
+  .ct-consultant-pick { visibility: hidden; flex-shrink: 0; }
+  .ct-td-consultant:hover .ct-consultant-pick { visibility: visible; }
 
   /* ── Long text (wording / reason) ────────────────────────────────────────── */
   .ct-long-text {

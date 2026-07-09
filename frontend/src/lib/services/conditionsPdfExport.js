@@ -18,6 +18,7 @@ const STATUS_COLORS = {
   'In Progress': [217, 119, 6],
   'Submitted': [37, 99, 235],
   'Discharged': [22, 163, 74],
+  'N/A': [109, 40, 217],
   'Not Required': [109, 40, 217],
 };
 

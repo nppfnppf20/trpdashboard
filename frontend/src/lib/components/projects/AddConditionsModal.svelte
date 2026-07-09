@@ -82,6 +82,7 @@
           condition_number: String(number),
           title:            r.title.trim() || `Condition ${number}`,
           condition_type:   r.condition_type || null,
+          status:           (r.condition_type === 'Compliance' || r.condition_type === 'Informative') ? 'N/A' : undefined,
           wording:          cleanPastedText(r.wording.trim()) || null,
           reason:           cleanPastedText(r.reason.trim()) || null,
           initial_actions:  cleanPastedText(r.initial_actions.trim()) || null,
