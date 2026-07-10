@@ -589,7 +589,6 @@
         ${td((c.wording || '').replace(/\n/g, '<br>'), span)}
         ${td((c.reason || '').replace(/\n/g, '<br>'), span)}
         ${reqCells(reqs[0])}
-        ${td((c.initial_actions || '').replace(/\n/g, '<br>'), span)}
         ${td([c.original_consultant, c.original_consultant_email].filter(Boolean).join('<br>'), span)}
         ${td(c.status || '', span)}
       </tr>`;
@@ -600,7 +599,7 @@
     return `<h2>Conditions Tracker</h2>
 <p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
 <table style="border-collapse:collapse;width:100%;">
-  <thead><tr>${th('No.')}${th('Title')}${th('Type')}${th('Condition Wording')}${th('Reason')}${th('Separated Condition Requirements')}${th('Req. Type')}${th('Req. Status')}${th('Initial Actions')}${th('Original Consultant')}${th('Status')}</tr></thead>
+  <thead><tr>${th('No.')}${th('Title')}${th('Type')}${th('Condition Wording')}${th('Reason')}${th('Separated Condition Requirements')}${th('Req. Type')}${th('Req. Status')}${th('Original Consultant')}${th('Status')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
   }
@@ -875,7 +874,7 @@
             <th class="ct-th ct-th-req" title="Where applicable — split a condition into its separate parts">Separated Condition Requirements</th>
             <th class="ct-th ct-th-reqtype">Req. Type</th>
             <th class="ct-th ct-th-reqstatus">Req. Status</th>
-            <th class="ct-th ct-th-initial">Initial Actions</th>
+            <th class="ct-th ct-th-initial">TRP Internal Notes</th>
             <th class="ct-th ct-th-consultant">Original Consultant</th>
             <th class="ct-th ct-th-progress">Progress</th>
             <th class="ct-th ct-th-status">Status</th>
@@ -1503,10 +1502,10 @@
   /* ── Type dropdown ───────────────────────────────────────────────────────── */
   .ct-td-type { vertical-align: top; }
   .ct-type-select {
-    font-size: 0.72rem;
+    font-size: 0.66rem;
     font-weight: 600;
     font-family: inherit;
-    padding: 0.2rem 0.4rem;
+    padding: 0.2rem 0.3rem;
     border-radius: 6px;
     border: 1px solid #e2e8f0;
     cursor: pointer;

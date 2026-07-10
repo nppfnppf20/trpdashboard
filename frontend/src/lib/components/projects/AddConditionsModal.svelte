@@ -163,7 +163,7 @@
               </div>
               <div class="bulk-form-row">
                 <div class="field">
-                  <label>Initial Actions / Notes</label>
+                  <label>TRP Internal Notes</label>
                   <textarea bind:value={row.initial_actions} rows="1" placeholder="First steps, who's responsible, anything to note…"></textarea>
                 </div>
               </div>

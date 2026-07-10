@@ -44,6 +44,15 @@
     return status ? status.replace(/\s+/g, '-') : 'pending';
   }
 
+  // Sum of line item costs (always stored excl. VAT). Falls back to the stored
+  // total for quotes without line items.
+  function exclVatTotal(quote) {
+    if (quote.line_items && quote.line_items.length > 0) {
+      return quote.line_items.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
+    }
+    return parseFloat(quote.total) || 0;
+  }
+
   function openContactModal(quote) {
     selectedContact = {
       name: quote.contact_name,
@@ -251,6 +260,7 @@
             <th>Contact Name</th>
             <th>Line Items</th>
             <th>Total (excl. VAT)</th>
+            <th>Total (incl. VAT)</th>
             <th>Instruction Status</th>
             <th>Notes</th>
             <th>Actions</th>
@@ -288,6 +298,7 @@
                   <span class="count-badge">0</span>
                 {/if}
               </td>
+              <td>{formatCurrency(exclVatTotal(quote))}</td>
               <td class="text-bold">{formatCurrency(quote.total)}</td>
               <td>
                 <select

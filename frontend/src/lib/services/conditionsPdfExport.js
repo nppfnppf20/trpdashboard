@@ -40,13 +40,13 @@ export function exportConditionsPdf(project, conditions) {
   // ── Title block (first page) ──────────────────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.setTextColor(88, 28, 135);
+  doc.setTextColor(30, 41, 59);
   doc.text('Conditions Tracker', margin, 13);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(71, 85, 105);
-  const projectLine = [project?.project_id, project?.site_name || project?.project_name].filter(Boolean).join(' — ');
+  const projectLine = [project?.project_id, project?.site_name || project?.project_name].filter(Boolean).join(' - ');
   if (projectLine) doc.text(projectLine, margin, 19);
 
   doc.setTextColor(148, 163, 184);
@@ -58,7 +58,7 @@ export function exportConditionsPdf(project, conditions) {
   // ── Table ─────────────────────────────────────────────────────────────────
   const head = [[
     'No.', 'Title', 'Type', 'Condition Wording', 'Reason',
-    'Separated Requirements', 'Req. Type', 'Req. Status', 'Initial Actions',
+    'Separated Requirements', 'Req. Type', 'Req. Status',
     'Original Consultant', 'Progress', 'Status',
   ]];
 
@@ -80,7 +80,11 @@ export function exportConditionsPdf(project, conditions) {
         row.push(
           { content: c.condition_number || '', rowSpan: span, styles: { ...base, fontStyle: 'bold', halign: 'center' } },
           { content: c.title || '', rowSpan: span, styles: { ...base, fontStyle: 'bold' } },
-          { content: c.condition_type || '', rowSpan: span, styles: { ...base, textColor: TYPE_COLORS[c.condition_type] || SLATE, fontStyle: c.condition_type ? 'bold' : 'normal' } },
+          {
+            content: c.condition_type || '',
+            rowSpan: span,
+            styles: { ...base, fontSize: 6, textColor: TYPE_COLORS[c.condition_type] || SLATE, fontStyle: c.condition_type ? 'bold' : 'normal' },
+          },
           { content: c.wording || '', rowSpan: span, styles: base },
           { content: c.reason || '', rowSpan: span, styles: base },
         );
@@ -89,7 +93,7 @@ export function exportConditionsPdf(project, conditions) {
         { content: r ? r.requirement_text : '', styles: base },
         {
           content: r ? (r.requirement_type || '') : '',
-          styles: { ...base, fontStyle: r?.requirement_type ? 'bold' : 'normal', textColor: TYPE_COLORS[r?.requirement_type] || SLATE },
+          styles: { ...base, fontSize: 6, textColor: TYPE_COLORS[r?.requirement_type] || SLATE, fontStyle: r?.requirement_type ? 'bold' : 'normal' },
         },
         {
           content: r ? (r.status || 'Outstanding') : '',
@@ -98,7 +102,6 @@ export function exportConditionsPdf(project, conditions) {
       );
       if (i === 0) {
         row.push(
-          { content: c.initial_actions || '', rowSpan: span, styles: base },
           { content: consultant, rowSpan: span, styles: base },
           { content: progress, rowSpan: span, styles: base },
           { content: c.status || 'Not Started', rowSpan: span, styles: { ...base, fontStyle: 'bold', textColor: STATUS_COLORS[c.status] || SLATE } },
@@ -125,25 +128,25 @@ export function exportConditionsPdf(project, conditions) {
       overflow: 'linebreak',
     },
     headStyles: {
-      fillColor: [124, 58, 237],
-      textColor: 255,
+      fillColor: [241, 245, 249],
+      textColor: [51, 65, 85],
       fontSize: 7,
       fontStyle: 'bold',
       valign: 'middle',
+      lineColor: [203, 213, 225],
     },
     columnStyles: {
       0: { cellWidth: 9 },
-      1: { cellWidth: 22 },
-      2: { cellWidth: 15 },
-      3: { cellWidth: 46 },
-      4: { cellWidth: 28 },
-      5: { cellWidth: 31 },
-      6: { cellWidth: 16 },
-      7: { cellWidth: 13 },
-      8: { cellWidth: 22 },
-      9: { cellWidth: 22 },
-      10: { cellWidth: 40 },
-      11: { cellWidth: 13 },
+      1: { cellWidth: 24 },
+      2: { cellWidth: 16 },
+      3: { cellWidth: 51 },
+      4: { cellWidth: 31 },
+      5: { cellWidth: 33 },
+      6: { cellWidth: 17 },
+      7: { cellWidth: 14 },
+      8: { cellWidth: 24 },
+      9: { cellWidth: 44 },
+      10: { cellWidth: 14 },
     },
     didDrawPage: (data) => {
       doc.setFont('helvetica', 'normal');
