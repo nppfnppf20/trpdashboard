@@ -86,6 +86,7 @@ export async function getQuotes(filters = {}) {
           'item', qli.item,
           'description', qli.description,
           'cost', qli.cost,
+          'vat_included', COALESCE(qli.vat_included, false),
           'is_instructed', COALESCE(qli.is_instructed, false)
         ) ORDER BY qli.created_at
       ) FILTER (WHERE qli.id IS NOT NULL) as line_items
@@ -138,6 +139,7 @@ export async function getQuoteById(id) {
           'item', qli.item,
           'description', qli.description,
           'cost', qli.cost,
+          'vat_included', COALESCE(qli.vat_included, false),
           'is_instructed', COALESCE(qli.is_instructed, false)
         ) ORDER BY qli.created_at
       ) FILTER (WHERE qli.id IS NOT NULL) as line_items
@@ -400,16 +402,18 @@ export async function createQuote(data) {
           quote_id,
           item,
           description,
-          cost
-        ) VALUES ($1, $2, $3, $4)
+          cost,
+          vat_included
+        ) VALUES ($1, $2, $3, $4, $5)
       `;
-      
+
       for (const item of data.line_items) {
         await client.query(lineItemQuery, [
           quote.id,
           item.item,
           item.description || '',
-          item.cost
+          item.cost,
+          item.vat_included !== false
         ]);
       }
     }
@@ -459,9 +463,9 @@ export async function updateQuoteInstructionStatus(id, instructionStatus, select
         [id, selectedLineItems]
       );
 
-      // Calculate total from selected line items
+      // Calculate total from selected line items (adding 20% VAT where included)
       const totalQuery = `
-        SELECT SUM(cost) as total
+        SELECT SUM(CASE WHEN vat_included THEN cost * 1.2 ELSE cost END) as total
         FROM admin_console.quote_line_items
         WHERE quote_id = $1 AND id = ANY($2)
       `;
@@ -677,8 +681,9 @@ export async function updateQuote(id, data) {
           quote_id,
           item,
           description,
-          cost
-        ) VALUES ($1, $2, $3, $4)
+          cost,
+          vat_included
+        ) VALUES ($1, $2, $3, $4, $5)
       `;
 
       for (const item of data.line_items) {
@@ -686,7 +691,8 @@ export async function updateQuote(id, data) {
           id,
           item.item,
           item.description || '',
-          item.cost
+          item.cost,
+          item.vat_included === true
         ]);
       }
     }

@@ -28,8 +28,14 @@
     }
   }
 
-  $: total = lineItems.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
-  $: instructedTotal = lineItems.filter(item => item.is_instructed).reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
+  // Line total: cost plus 20% VAT when the line has VAT included
+  function lineTotal(item) {
+    const cost = parseFloat(item.cost) || 0;
+    return item.vat_included ? cost * 1.2 : cost;
+  }
+
+  $: total = lineItems.reduce((sum, item) => sum + lineTotal(item), 0);
+  $: instructedTotal = lineItems.filter(item => item.is_instructed).reduce((sum, item) => sum + lineTotal(item), 0);
   $: isPartiallyInstructed = instructionStatus === 'partially instructed';
   $: hasInstructedItems = lineItems.some(item => item.is_instructed);
 </script>
@@ -57,7 +63,9 @@
                 {/if}
                 <th>Item</th>
                 <th>Description</th>
-                <th class="cost-column">Cost</th>
+                <th class="cost-column">Cost (excl. VAT)</th>
+                <th class="vat-column">VAT</th>
+                <th class="cost-column">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -79,18 +87,26 @@
                   <td class="item-name">{item.item}</td>
                   <td class="item-description">{item.description || '-'}</td>
                   <td class="cost-column">{formatCurrency(item.cost)}</td>
+                  <td class="vat-column">
+                    {#if item.vat_included}
+                      <i class="las la-check"></i>
+                    {:else}
+                      -
+                    {/if}
+                  </td>
+                  <td class="cost-column">{formatCurrency(lineTotal(item))}</td>
                 </tr>
               {/each}
             </tbody>
             <tfoot>
               {#if isPartiallyInstructed}
                 <tr class="subtotal-row">
-                  <td colspan={isPartiallyInstructed ? 3 : 2} class="total-label">Instructed Total</td>
+                  <td colspan={isPartiallyInstructed ? 5 : 4} class="total-label">Instructed Total</td>
                   <td class="cost-column subtotal-amount">{formatCurrency(instructedTotal)}</td>
                 </tr>
               {/if}
               <tr class="total-row">
-                <td colspan={isPartiallyInstructed ? 3 : 2} class="total-label">Quote Total (excl. VAT)</td>
+                <td colspan={isPartiallyInstructed ? 5 : 4} class="total-label">Quote Total</td>
                 <td class="cost-column total-amount">{formatCurrency(total)}</td>
               </tr>
             </tfoot>
@@ -216,6 +232,12 @@
   .cost-column {
     text-align: right;
     white-space: nowrap;
+  }
+
+  .vat-column {
+    text-align: center;
+    white-space: nowrap;
+    color: #16a34a;
   }
   
   .line-items-table tfoot {

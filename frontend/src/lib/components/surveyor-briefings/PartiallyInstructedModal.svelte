@@ -52,11 +52,17 @@
     handleClose();
   }
   
+  // Line total: cost plus 20% VAT when the line has VAT included
+  function lineTotal(item) {
+    const cost = parseFloat(item.cost) || 0;
+    return item.vat_included ? cost * 1.2 : cost;
+  }
+
   // Calculate totals
-  $: fullTotal = lineItems.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
+  $: fullTotal = lineItems.reduce((sum, item) => sum + lineTotal(item), 0);
   $: selectedTotal = lineItems
     .filter(item => selectedItems.includes(item.id))
-    .reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
+    .reduce((sum, item) => sum + lineTotal(item), 0);
 </script>
 
 {#if show}
@@ -80,7 +86,7 @@
                 <th class="checkbox-column">Select</th>
                 <th>Item</th>
                 <th>Description</th>
-                <th class="cost-column">Cost</th>
+                <th class="cost-column">Total (incl. VAT where applicable)</th>
               </tr>
             </thead>
             <tbody>
@@ -96,7 +102,7 @@
                   </td>
                   <td class="item-name">{item.item}</td>
                   <td class="item-description">{item.description || '-'}</td>
-                  <td class="cost-column">{formatCurrency(item.cost)}</td>
+                  <td class="cost-column">{formatCurrency(lineTotal(item))}</td>
                 </tr>
               {/each}
             </tbody>

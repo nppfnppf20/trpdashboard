@@ -14,7 +14,7 @@
   let discipline = '';
   let organisation = '';
   let contact = '';
-  let lineItems = [{ item: '', description: '', cost: '' }];
+  let lineItems = [{ item: '', description: '', cost: '', vatIncluded: true }];
   let additionalNotes = '';
 
   let organisations = [];
@@ -58,14 +58,17 @@
     }
   }
 
-  // Reactive total calculation - updates automatically when lineItems change
-  $: total = lineItems.reduce((sum, item) => {
+  // Line total: cost plus 20% VAT when VAT included is ticked
+  function lineTotal(item) {
     const cost = parseFloat(item.cost) || 0;
-    return sum + cost;
-  }, 0);
+    return item.vatIncluded ? cost * 1.2 : cost;
+  }
+
+  // Reactive total calculation - updates automatically when lineItems change
+  $: total = lineItems.reduce((sum, item) => sum + lineTotal(item), 0);
 
   function addLineItem() {
-    lineItems = [...lineItems, { item: '', description: '', cost: '' }];
+    lineItems = [...lineItems, { item: '', description: '', cost: '', vatIncluded: true }];
   }
 
   function removeLineItem(index) {
@@ -90,7 +93,8 @@
         .map(item => ({
           item: item.item,
           description: item.description,
-          cost: parseFloat(item.cost) || 0
+          cost: parseFloat(item.cost) || 0,
+          vat_included: item.vatIncluded !== false
         }));
 
       const quoteData = {
@@ -113,7 +117,7 @@
       discipline = '';
       organisation = '';
       contact = '';
-      lineItems = [{ item: '', description: '', cost: '' }];
+      lineItems = [{ item: '', description: '', cost: '', vatIncluded: true }];
       additionalNotes = '';
       
       // Close modal
@@ -185,10 +189,12 @@
         <table class="line-items-table">
           <thead>
             <tr>
-              <th style="width: 30%;">Item</th>
-              <th style="width: 45%;">Description</th>
-              <th style="width: 15%;">Cost (£ excl. VAT)</th>
-              <th style="width: 10%;"></th>
+              <th style="width: 25%;">Item</th>
+              <th style="width: 35%;">Description</th>
+              <th style="width: 14%;">Cost (£ excl. VAT)</th>
+              <th style="width: 8%;" class="vat-header">VAT</th>
+              <th style="width: 13%;">Total (£)</th>
+              <th style="width: 5%;"></th>
             </tr>
           </thead>
           <tbody>
@@ -228,6 +234,16 @@
                     }}
                   />
                 </td>
+                <td class="vat-cell">
+                  <input
+                    type="checkbox"
+                    bind:checked={lineItem.vatIncluded}
+                    title="VAT included (adds 20%)"
+                  />
+                </td>
+                <td class="line-total-cell">
+                  £{lineTotal(lineItem).toFixed(2)}
+                </td>
                 <td class="action-cell">
                   {#if lineItems.length > 1}
                     <button
@@ -252,7 +268,7 @@
 
         <!-- Total Display -->
         <div class="total-display">
-          <span class="total-label">Total (excl. VAT):</span>
+          <span class="total-label">Total:</span>
           <span class="total-amount">£{total.toFixed(2)}</span>
         </div>
 
@@ -478,6 +494,24 @@
 
   .action-cell {
     text-align: center;
+  }
+
+  .vat-header,
+  .vat-cell {
+    text-align: center;
+  }
+
+  .line-items-table .vat-cell input[type="checkbox"] {
+    width: auto;
+    cursor: pointer;
+    accent-color: #3b82f6;
+    transform: scale(1.2);
+  }
+
+  .line-total-cell {
+    font-weight: 600;
+    color: #1e293b;
+    white-space: nowrap;
   }
 
   .remove-line-btn {
