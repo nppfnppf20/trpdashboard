@@ -46,7 +46,8 @@ export async function createSurveyorOrganisation(data) {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to create surveyor organisation');
+    const message = err.error || 'Failed to create surveyor organisation';
+    throw new Error(err.details ? `${message}: ${err.details}` : message);
   }
 
   return await response.json();
@@ -64,7 +65,8 @@ export async function updateSurveyorOrganisation(id, data) {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to update surveyor organisation');
+    const message = err.error || 'Failed to update surveyor organisation';
+    throw new Error(err.details ? `${message}: ${err.details}` : message);
   }
 
   return await response.json();
@@ -80,7 +82,8 @@ export async function deleteSurveyorOrganisation(id) {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to delete surveyor organisation');
+    const message = err.error || 'Failed to delete surveyor organisation';
+    throw new Error(err.details ? `${message}: ${err.details}` : message);
   }
 
   return await response.json();

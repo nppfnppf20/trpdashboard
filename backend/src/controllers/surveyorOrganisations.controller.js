@@ -109,6 +109,9 @@ export async function updateSurveyorOrganisation(req, res) {
     res.json(surveyor);
   } catch (error) {
     console.error('Error updating surveyor organisation:', error);
+    if (error.status === 409) {
+      return res.status(409).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Failed to update surveyor organisation', details: error.message });
   }
 }

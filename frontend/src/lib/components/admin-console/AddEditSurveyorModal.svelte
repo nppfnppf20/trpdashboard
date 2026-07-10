@@ -106,6 +106,7 @@
       approval_status,
       small_business: small_business || null,
       contacts: contacts.map(c => ({
+        id: c.id || null,
         name: c.name.trim(),
         email: c.email?.trim() || null,
         phone_number: c.phone_number?.trim() || null,

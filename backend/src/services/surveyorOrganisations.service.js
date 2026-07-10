@@ -155,24 +155,50 @@ export async function updateSurveyorOrganisation(id, data) {
       [organisation, discipline, location || null, notes || null, approval_status || 'approved', small_business || null, id]
     );
 
-    // Replace contacts: delete existing, insert new
-    await client.query(
-      `DELETE FROM admin_console.contacts WHERE organisation_id = $1 AND organisation_type = 'surveyor'`,
+    // Diff contacts against existing rows rather than delete-and-reinsert:
+    // contacts are referenced by quotes and quote_request_recipients, so
+    // surviving contacts must keep their ids.
+    const existingResult = await client.query(
+      `SELECT id FROM admin_console.contacts WHERE organisation_id = $1 AND organisation_type = 'surveyor'`,
       [id]
     );
+    const existingIds = new Set(existingResult.rows.map(r => r.id));
+    const keptIds = new Set(contacts.map(c => c.id).filter(Boolean));
+
+    const removedIds = [...existingIds].filter(cid => !keptIds.has(cid));
+    if (removedIds.length > 0) {
+      await client.query(
+        `DELETE FROM admin_console.contacts WHERE id = ANY($1)`,
+        [removedIds]
+      );
+    }
 
     for (const contact of contacts) {
-      await client.query(
-        `INSERT INTO admin_console.contacts (name, email, phone_number, organisation_id, organisation_type, is_primary)
-         VALUES ($1, $2, $3, $4, 'surveyor', $5)`,
-        [contact.name, contact.email || null, contact.phone_number || null, id, contact.is_primary || false]
-      );
+      if (contact.id && existingIds.has(contact.id)) {
+        await client.query(
+          `UPDATE admin_console.contacts
+           SET name = $1, email = $2, phone_number = $3, is_primary = $4
+           WHERE id = $5`,
+          [contact.name, contact.email || null, contact.phone_number || null, contact.is_primary || false, contact.id]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO admin_console.contacts (name, email, phone_number, organisation_id, organisation_type, is_primary)
+           VALUES ($1, $2, $3, $4, 'surveyor', $5)`,
+          [contact.name, contact.email || null, contact.phone_number || null, id, contact.is_primary || false]
+        );
+      }
     }
 
     await client.query('COMMIT');
     return getSurveyorOrganisationById(id);
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.code === '23503') {
+      const friendly = new Error('A removed contact is still linked to existing quote requests, so it cannot be deleted.');
+      friendly.status = 409;
+      throw friendly;
+    }
     throw err;
   } finally {
     client.release();
