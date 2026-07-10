@@ -288,8 +288,8 @@ ${worksHtml}
     window.location.href = `mailto:${encodeURIComponent(toEmail.trim())}?subject=${encodeURIComponent(currentSubject || '')}&body=${encodeURIComponent(plainText)}`;
   }
 
-  // Confirm the current draft's fee quote request as sent: stamps the
-  // condition and logs a progress entry.
+  // Confirm the current draft's fee quote request as sent: stamps every
+  // condition in the draft and logs a progress entry for each.
   let sentSaving = false;
 
   async function handleConfirmSent() {
@@ -297,21 +297,23 @@ ${worksHtml}
     if (!d || d.sent || sentSaving) return;
     sentSaving = true;
     try {
-      const updated = await updateCondition(d.condition.id, {
-        fee_quote_requested_at: new Date().toISOString(),
-      });
       const summary = toName?.trim()
         ? `Fee quote request sent to ${toName.trim()}`
         : 'Fee quote request sent';
-      const rows = await createConditionAdvancements(projectId, {
-        advancement_date: new Date().toISOString().slice(0, 10),
-        full_text: null,
-        source_type: 'note',
-        items: [{ condition_id: d.condition.id, summary }],
-      });
+      for (const c of d.conditions) {
+        const updated = await updateCondition(c.id, {
+          fee_quote_requested_at: new Date().toISOString(),
+        });
+        const rows = await createConditionAdvancements(projectId, {
+          advancement_date: new Date().toISOString().slice(0, 10),
+          full_text: null,
+          source_type: 'note',
+          items: [{ condition_id: c.id, summary }],
+        });
+        dispatch('sent', { condition: updated, advancements: rows });
+      }
       d.sent = true;
       drafts = [...drafts];
-      dispatch('sent', { condition: updated, advancements: rows });
     } catch (err) {
       alert(err.message);
     } finally {
@@ -353,7 +355,7 @@ ${worksHtml}
               Email {currentIndex + 1} of {drafts.length}
               {#if drafts[currentIndex].sent}<span class="step-sent-badge"><i class="las la-check-double"></i> Sent</span>{/if}
             </span>
-            <span class="step-label">{conditionLabel(drafts[currentIndex].condition)}</span>
+            <span class="step-label">{draftLabel(drafts[currentIndex])}</span>
           </div>
           <button class="step-nav-btn" on:click={goNext} disabled={currentIndex === drafts.length - 1} title="Next email">
             <i class="las la-angle-right"></i>
@@ -407,7 +409,7 @@ ${worksHtml}
         {:else if phase === 'generating'}
           <div class="generating">
             <div class="spinner"></div>
-            <p class="generating-label">Drafting {selectedCount} email{selectedCount !== 1 ? 's' : ''}…</p>
+            <p class="generating-label">Drafting emails for {selectedCount} condition{selectedCount !== 1 ? 's' : ''}…</p>
             <p class="generating-hint">Reading each condition and identifying the works a fee quote is needed for.</p>
           </div>
 
@@ -439,7 +441,7 @@ ${worksHtml}
         </button>
         {#if phase === 'select'}
           <button class="btn btn-send" on:click={generate} disabled={selectedCount === 0}>
-            <i class="las la-magic"></i> Draft {selectedCount} Email{selectedCount !== 1 ? 's' : ''}
+            <i class="las la-magic"></i> Draft Emails for {selectedCount} Condition{selectedCount !== 1 ? 's' : ''}
           </button>
         {:else if phase === 'generating'}
           <button class="btn btn-send" disabled>
