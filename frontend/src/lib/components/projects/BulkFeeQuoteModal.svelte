@@ -89,37 +89,62 @@
   }
 
   // ── Template (mirrors the single fee quote email; wording and reason are
-  //    inserted verbatim here in code, never rewritten by the LLM) ───────────
-  function buildSubject(c) {
-    const condLabel = c.condition_number ? `Condition ${c.condition_number}` : 'Condition';
-    const projectPart = [projectName, projectRef ? `(${projectRef})` : ''].filter(Boolean).join(' ');
-    return `${projectPart ? `${projectPart} - ` : ''}Fee Quote Request - ${condLabel}: ${c.title}`;
+  //    inserted verbatim here in code, never rewritten by the LLM).
+  //    A draft covers one or more conditions: conditions sharing the same
+  //    consultant are combined into a single email. ─────────────────────────
+  function condNums(cs) {
+    return cs.map(c => c.condition_number).filter(Boolean);
   }
 
-  function buildDraftHtml(c, works, name) {
+  function buildSubject(cs) {
+    const projectPart = [projectName, projectRef ? `(${projectRef})` : ''].filter(Boolean).join(' ');
+    const prefix = projectPart ? `${projectPart} - ` : '';
+    if (cs.length === 1) {
+      const c = cs[0];
+      const condLabel = c.condition_number ? `Condition ${c.condition_number}` : 'Condition';
+      return `${prefix}Fee Quote Request - ${condLabel}: ${c.title}`;
+    }
+    const nums = condNums(cs);
+    return `${prefix}Fee Quote Request - Conditions ${nums.length ? nums.join(', ') : cs.map(c => c.title).join('; ')}`;
+  }
+
+  function buildDraftHtml(cs, worksById, name) {
     const greeting = name?.trim() ? `Hi ${name.trim()},` : 'Hi,';
     const projectLine = [projectRef, projectName].filter(Boolean).join(': ');
-    const condLabel = c.condition_number ? `Condition ${c.condition_number}: ` : '';
-    const wording = (c.wording || '').replace(/\n/g, '<br>');
-    const reason = (c.reason || '').replace(/\n/g, '<br>');
+    const plural = cs.length > 1;
+    const hasConsultant = cs.some(c => c.original_consultant);
 
-    const worksHtml = works?.length
+    const conditionsHtml = cs.map(c => {
+      const condLabel = c.condition_number ? `Condition ${c.condition_number}: ` : '';
+      const wording = (c.wording || '').replace(/\n/g, '<br>');
+      const reason = (c.reason || '').replace(/\n/g, '<br>');
+      return `<p><strong>${condLabel}${c.title}</strong></p>
+<p><em>"${wording}"</em></p>
+${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}`;
+    }).join('\n');
+
+    const worksList = (works) => works?.length
       ? `<ul>${works.map(w => `<li>${w}</li>`).join('')}</ul>`
       : `<p><em>[Our commentary and fee quote request items - add here]</em></p>`;
 
+    const worksHtml = plural
+      ? cs.map(c => {
+          const condLabel = c.condition_number ? `Condition ${c.condition_number}` : c.title;
+          return `<p><strong>${condLabel}:</strong></p>\n${worksList(worksById[c.id])}`;
+        }).join('\n')
+      : worksList(worksById[cs[0].id]);
+
     return `<p>${greeting}</p>
 <p>We have received an approval${projectLine ? ` for <strong>${projectLine}</strong>` : ''} (decision notice attached).</p>
-${c.original_consultant ? `<p>As you may recall, this is a project you have previously worked on.</p>` : ''}
-<p>Please can we request a fee quote related to the following condition:</p>
-<p><strong>${condLabel}${c.title}</strong></p>
-<p><em>"${wording}"</em></p>
-${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
-<p>Can I please request a fee quote for the following works:</p>
+${hasConsultant ? `<p>As you may recall, this is a project you have previously worked on.</p>` : ''}
+<p>Please can we request ${plural ? 'fee quotes related to the following conditions' : 'a fee quote related to the following condition'}:</p>
+${conditionsHtml}
+<p>Can I please request ${plural ? 'fee quotes' : 'a fee quote'} for the following works:</p>
 ${worksHtml}
-<p>I'd also welcome your thoughts on whether, in your view, any further works are likely to be required in order to discharge the condition.</p>
+<p>I'd also welcome your thoughts on whether, in your view, any further works are likely to be required in order to discharge the ${plural ? 'conditions' : 'condition'}.</p>
 <p>It would be much appreciated if you could come back to me with the following:</p>
 <ul>
-<li>A fee quote</li>
+<li>${plural ? 'Fee quotes' : 'A fee quote'}</li>
 <li>Indicative timescales</li>
 <li>Details of any information you require from us</li>
 </ul>
@@ -137,13 +162,28 @@ ${worksHtml}
       const { suggestions } = await suggestFeeQuoteWorks(projectId, picked.map(c => c.id));
       const worksById = Object.fromEntries(suggestions.map(s => [s.condition_id, s.works]));
 
-      drafts = picked.map(c => ({
-        condition: c,
-        toEmail: c.original_consultant_email || '',
-        toName: c.original_consultant || '',
-        subject: buildSubject(c),
-        html: buildDraftHtml(c, worksById[c.id], c.original_consultant || ''),
-        sent: !!c.fee_quote_requested_at,
+      // Group conditions sharing the same consultant into one email;
+      // conditions with no consultant stay as individual drafts
+      const groups = [];
+      const groupByKey = {};
+      for (const c of picked) {
+        const key = (c.original_consultant_email || c.original_consultant || '').trim().toLowerCase();
+        if (key && groupByKey[key]) {
+          groupByKey[key].push(c);
+        } else {
+          const group = [c];
+          if (key) groupByKey[key] = group;
+          groups.push(group);
+        }
+      }
+
+      drafts = groups.map(cs => ({
+        conditions: cs,
+        toEmail: cs[0].original_consultant_email || '',
+        toName: cs[0].original_consultant || '',
+        subject: buildSubject(cs),
+        html: buildDraftHtml(cs, worksById, cs[0].original_consultant || ''),
+        sent: cs.every(c => !!c.fee_quote_requested_at),
       }));
       currentIndex = 0;
       phase = 'editor';
@@ -153,6 +193,14 @@ ${worksHtml}
       error = err.message;
       phase = 'select';
     }
+  }
+
+  function draftLabel(d) {
+    if (!d) return '';
+    if (d.conditions.length === 1) return conditionLabel(d.conditions[0]);
+    const nums = condNums(d.conditions);
+    const who = d.toName ? ` - ${d.toName}` : '';
+    return `Conditions ${nums.join(', ')}${who}`;
   }
 
   // ── Editor navigation (edits persist across prev/next) ───────────────────
