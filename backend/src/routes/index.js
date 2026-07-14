@@ -39,6 +39,7 @@ import stage1ReviewRoutes from './stage1Review.routes.js';
 import planningHistoryRoutes from './planningHistory.routes.js';
 import policyDocumentsRoutes from './policyDocuments.routes.js';
 import sectionChatRoutes from './sectionChat.routes.js';
+import projectChatRoutes from './projectChat.routes.js';
 import documentStyleTemplatesRoutes from './documentStyleTemplates.routes.js';
 import draftCheckRoutes from './draftCheck.routes.js';
 import consultationRoutes from './consultation.routes.js';
@@ -135,6 +136,7 @@ router.use('/api/admin-console/email', emailDigestRoutes);
 router.use('/api/scraper-filters', scraperFiltersRoutes);
 router.use('/api/stage1-review', stage1ReviewRoutes);
 router.use('/api/planning-application', sectionChatRoutes);
+router.use('/api/project-chat', projectChatRoutes);
 router.use('/api/lpa', planningHistoryRoutes);
 router.use('/api/lpa', policyDocumentsRoutes);
 

@@ -14,6 +14,7 @@
   import ConsultationTrackerTab from '$lib/components/projects/ConsultationTrackerTab.svelte';
   import ConditionsTrackerTab from '$lib/components/projects/ConditionsTrackerTab.svelte';
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
+  import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
@@ -33,7 +34,7 @@
   let betaDropdownOpen = false;
   let policyFormOpen = false;
 
-  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs'];
+  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs', 'project_chat'];
 
   function closeBetaDropdown() {
     betaDropdownOpen = false;
@@ -600,6 +601,13 @@
                 role="menuitem"
               >
                 Project Docs
+              </button>
+              <button
+                class="beta-dropdown-item {activeTab === 'project_chat' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('project_chat')}
+                role="menuitem"
+              >
+                Project Chat
               </button>
             </div>
           {/if}
@@ -1456,6 +1464,8 @@
             <LpaDecisionAnalysisTab project={projectData} />
           {:else if activeTab === 'project_docs'}
             <ProjectDocsTab project={projectData} />
+          {:else if activeTab === 'project_chat'}
+            <ProjectChatTab project={projectData} />
           {:else if activeTab === 'meeting_notes'}
             <MeetingNotesTab project={projectData} />
           {:else if activeTab === 'consultation_tracker'}
