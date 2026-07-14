@@ -34,7 +34,7 @@
   let betaDropdownOpen = false;
   let policyFormOpen = false;
 
-  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs', 'project_chat'];
+  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs', 'stages'];
 
   function closeBetaDropdown() {
     betaDropdownOpen = false;
@@ -517,10 +517,10 @@
           Project Details
         </button>
         <button
-          class="tab-button {activeTab === 'stages' ? 'active' : ''}"
-          on:click={() => activeTab = 'stages'}
+          class="tab-button {activeTab === 'project_chat' ? 'active' : ''}"
+          on:click={() => activeTab = 'project_chat'}
         >
-          Key Issues
+          Project Chat
         </button>
         <button
           class="tab-button {activeTab === 'policy_and_history' ? 'active' : ''}"
@@ -603,11 +603,11 @@
                 Project Docs
               </button>
               <button
-                class="beta-dropdown-item {activeTab === 'project_chat' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('project_chat')}
+                class="beta-dropdown-item {activeTab === 'stages' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('stages')}
                 role="menuitem"
               >
-                Project Chat
+                Key Issues
               </button>
             </div>
           {/if}
