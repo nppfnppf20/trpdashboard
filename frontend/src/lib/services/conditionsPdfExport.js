@@ -5,21 +5,15 @@ import autoTable from 'jspdf-autotable';
 // condition (like the on-screen table), one row slice per requirement,
 // full advancement history in the Progress column.
 
-const TYPE_COLORS = {
-  'Pre-Commencement': [185, 28, 28],
-  'Pre-Beneficial Use': [37, 99, 235],
-  'Action Required (not Pre-Commencement)': [234, 88, 12],
-  'Compliance': [21, 128, 61],
-  'Informative': [22, 163, 74],
-};
-
-const STATUS_COLORS = {
-  'Not Started': [100, 116, 139],
-  'In Progress': [217, 119, 6],
-  'Submitted': [37, 99, 235],
-  'Discharged': [22, 163, 74],
-  'N/A': [109, 40, 217],
-  'Not Required': [109, 40, 217],
+// Cell box fills (same scheme as the Excel copy): wording cell coloured by
+// condition type, req. type cell by requirement type, text stays dark.
+// A colour key above the table replaces a separate Type column.
+const TYPE_FILLS = {
+  'Pre-Commencement': [255, 0, 0],
+  'Pre-Beneficial Use': [0, 176, 240],
+  'Action Required (not Pre-Commencement)': [255, 192, 0],
+  'Compliance': [146, 208, 80],
+  'Informative': [146, 208, 80],
 };
 
 const SLATE = [51, 65, 85];
@@ -55,11 +49,32 @@ export function exportConditionsPdf(project, conditions) {
     pageWidth - margin, 19, { align: 'right' }
   );
 
+  // ── Colour key (replaces the Type column: box fills carry the type) ───────
+  const legend = [
+    ['Pre-Commencement', TYPE_FILLS['Pre-Commencement']],
+    ['Pre-Beneficial Use', TYPE_FILLS['Pre-Beneficial Use']],
+    ['Action Required (not Pre-Commencement)', TYPE_FILLS['Action Required (not Pre-Commencement)']],
+    ['Compliance / Informative', TYPE_FILLS['Compliance']],
+  ];
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(51, 65, 85);
+  let lx = margin;
+  const ly = 24.5;
+  for (const [label, fill] of legend) {
+    doc.setFillColor(fill[0], fill[1], fill[2]);
+    doc.setDrawColor(148, 163, 184);
+    doc.rect(lx, ly - 2.7, 3.4, 3.4, 'FD');
+    lx += 4.8;
+    doc.text(label, lx, ly);
+    lx += doc.getTextWidth(label) + 7;
+  }
+
   // ── Table ─────────────────────────────────────────────────────────────────
   const head = [[
-    'No.', 'Title', 'Type', 'Condition Wording', 'Reason',
-    'Separated Requirements', 'Req. Type', 'Req. Status',
-    'Original Consultant', 'Progress', 'Status',
+    'No.', 'Title', 'Condition Wording', 'Reason',
+    'Separated Requirements',
+    'Original Consultant', 'Progress',
   ]];
 
   const body = [];
@@ -81,30 +96,23 @@ export function exportConditionsPdf(project, conditions) {
           { content: c.condition_number || '', rowSpan: span, styles: { ...base, fontStyle: 'bold', halign: 'center' } },
           { content: c.title || '', rowSpan: span, styles: { ...base, fontStyle: 'bold' } },
           {
-            content: c.condition_type || '',
+            content: c.wording || '',
             rowSpan: span,
-            styles: { ...base, fontSize: 6, textColor: TYPE_COLORS[c.condition_type] || SLATE, fontStyle: c.condition_type ? 'bold' : 'normal' },
+            styles: { ...base, ...(TYPE_FILLS[c.condition_type] ? { fillColor: TYPE_FILLS[c.condition_type] } : {}) },
           },
-          { content: c.wording || '', rowSpan: span, styles: base },
           { content: c.reason || '', rowSpan: span, styles: base },
         );
       }
       row.push(
-        { content: r ? r.requirement_text : '', styles: base },
         {
-          content: r ? (r.requirement_type || '') : '',
-          styles: { ...base, fontSize: 6, textColor: TYPE_COLORS[r?.requirement_type] || SLATE, fontStyle: r?.requirement_type ? 'bold' : 'normal' },
-        },
-        {
-          content: r ? (r.status || 'Outstanding') : '',
-          styles: { ...base, fontStyle: r ? 'bold' : 'normal', textColor: r?.status === 'Complete' ? [22, 163, 74] : [217, 119, 6] },
+          content: r ? r.requirement_text : '',
+          styles: { ...base, ...(r && TYPE_FILLS[r.requirement_type] ? { fillColor: TYPE_FILLS[r.requirement_type] } : {}) },
         },
       );
       if (i === 0) {
         row.push(
           { content: consultant, rowSpan: span, styles: base },
           { content: progress, rowSpan: span, styles: base },
-          { content: c.status || 'Not Started', rowSpan: span, styles: { ...base, fontStyle: 'bold', textColor: STATUS_COLORS[c.status] || SLATE } },
         );
       }
       body.push(row);
@@ -114,7 +122,7 @@ export function exportConditionsPdf(project, conditions) {
   autoTable(doc, {
     head,
     body,
-    startY: 23,
+    startY: 28,
     margin: { left: margin, right: margin, top: 13, bottom: 11 },
     theme: 'grid',
     styles: {
@@ -137,16 +145,12 @@ export function exportConditionsPdf(project, conditions) {
     },
     columnStyles: {
       0: { cellWidth: 9 },
-      1: { cellWidth: 24 },
-      2: { cellWidth: 16 },
-      3: { cellWidth: 51 },
-      4: { cellWidth: 31 },
-      5: { cellWidth: 33 },
-      6: { cellWidth: 17 },
-      7: { cellWidth: 14 },
-      8: { cellWidth: 24 },
-      9: { cellWidth: 44 },
-      10: { cellWidth: 14 },
+      1: { cellWidth: 29 },
+      2: { cellWidth: 64 },
+      3: { cellWidth: 40 },
+      4: { cellWidth: 47 },
+      5: { cellWidth: 32 },
+      6: { cellWidth: 56 },
     },
     didDrawPage: (data) => {
       doc.setFont('helvetica', 'normal');

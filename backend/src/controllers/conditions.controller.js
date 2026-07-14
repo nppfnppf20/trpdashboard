@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { suggestAdvancementSummaries, suggestFeeQuoteWorks } from '../services/conditionsTracker.service.js';
+import { suggestAdvancementSummaries, suggestFeeQuoteWorks, draftAdvancementsSummaryEmail } from '../services/conditionsTracker.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee quote drafting: per condition, list the works the wording requires.
@@ -434,6 +434,70 @@ export async function suggestAdvancements(req, res) {
   } catch (err) {
     console.error('conditions.suggestAdvancements error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate summaries' });
+  }
+}
+
+// Draft a client progress summary email from the advancements logged in a
+// date range. The LLM is told the email's length must follow the advancements'
+// own content — a starting draft, not a finished email.
+export async function advancementsSummaryEmail(req, res) {
+  const { projectId } = req.params;
+  const { from_date, to_date } = req.body;
+  if (!from_date || !to_date) return res.status(400).json({ error: 'from_date and to_date are required' });
+
+  try {
+    const [{ rows: entries }, { rows: [project] }] = await Promise.all([
+      pool.query(
+        `SELECT c.id AS condition_id, c.condition_number, c.title, c.status,
+                ca.advancement_date::text, ca.summary
+         FROM planning_applications.condition_advancements ca
+         JOIN planning_applications.conditions c ON c.id = ca.condition_id
+         WHERE c.project_id = $1 AND ca.advancement_date BETWEEN $2 AND $3
+         ORDER BY
+           c.sort_order ASC,
+           COALESCE(NULLIF(regexp_replace(c.condition_number, '\\D', '', 'g'), '')::int, 999999) ASC,
+           c.id ASC,
+           ca.advancement_date ASC, ca.id ASC`,
+        [projectId, from_date, to_date]
+      ),
+      pool.query(
+        `SELECT project_name, project_id FROM public.projects WHERE id = $1`,
+        [projectId]
+      ),
+    ]);
+
+    if (!entries.length) {
+      return res.status(404).json({ error: 'No advancements were logged between those dates' });
+    }
+
+    // Group by condition, preserving the ORDER BY above
+    const conditions = [];
+    const byId = {};
+    for (const e of entries) {
+      if (!byId[e.condition_id]) {
+        byId[e.condition_id] = {
+          condition_number: e.condition_number,
+          title: e.title,
+          status: e.status,
+          advancements: [],
+        };
+        conditions.push(byId[e.condition_id]);
+      }
+      byId[e.condition_id].advancements.push({ advancement_date: e.advancement_date, summary: e.summary });
+    }
+
+    const email = await draftAdvancementsSummaryEmail({
+      projectName: project?.project_name || '',
+      projectRef: project?.project_id || '',
+      fromDate: from_date,
+      toDate: to_date,
+      conditions,
+    });
+
+    res.json({ ...email, advancement_count: entries.length });
+  } catch (err) {
+    console.error('conditions.advancementsSummaryEmail error:', err);
+    res.status(500).json({ error: err.message || 'Failed to draft the summary email' });
   }
 }
 

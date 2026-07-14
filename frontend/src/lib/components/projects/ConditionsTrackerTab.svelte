@@ -6,6 +6,7 @@
   import AddConditionsModal from '$lib/components/projects/AddConditionsModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import ConditionEmailModal from '$lib/components/projects/ConditionEmailModal.svelte';
+  import SummaryEmailModal from '$lib/components/projects/SummaryEmailModal.svelte';
   import BulkFeeQuoteModal from '$lib/components/projects/BulkFeeQuoteModal.svelte';
   import SelectSurveyorModal from '$lib/components/surveyor-briefings/SelectSurveyorModal.svelte';
   import { cleanPastedText } from '$lib/utils/pdfText.js';
@@ -403,6 +404,9 @@
   let showEmailModal = false;
   let showBulkFeeQuote = false;
 
+  // ── Summary email (advancements in a date range) ──────────────────────────
+  let showSummaryEmail = false;
+
   function openEmailCompose(c) {
     emailCondition = c;
     showEmailModal = true;
@@ -551,6 +555,93 @@
     }
   }
 
+  // ── Copy for Excel ────────────────────────────────────────────────────────
+  // Grid matching the user's Excel template (paste at A9):
+  // A Number | B Title | C Wording | D Reason | E Separated Requirement |
+  // F Initial actions/notes | G Proposed Discharge Programme (blank) | H Progress (blank)
+  // One row per requirement; condition cells only on the first row of each group.
+  async function handleCopyForExcel() {
+    if (!conditions.length) { alert('No conditions to copy.'); return; }
+
+    const esc = (t) => String(t ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // mso-data-placement keeps in-cell line breaks inside ONE Excel cell
+    const cellHtml = (t, { fill = null, bold = false } = {}) =>
+      `<td style="vertical-align:top;border:0.5pt solid #000;${fill ? `background:${fill};` : ''}${bold ? 'font-weight:bold;' : ''}">${esc(t).replace(/\n/g, '<br style="mso-data-placement:same-cell;">')}</td>`;
+    const tsvCell = (t) => {
+      const s = String(t ?? '');
+      return /[\t\n"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+
+    // Basic solid fills for the Condition Wording cell, keyed to type
+    const WORDING_FILLS = {
+      'Pre-Commencement': '#FF0000',
+      'Pre-Beneficial Use': '#00B0F0',
+      'Action Required (not Pre-Commencement)': '#FFC000',
+      'Compliance': '#92D050',
+      'Informative': '#92D050',
+    };
+
+    const HEADERS = [
+      'Number',
+      'Title',
+      'Condition Wording',
+      'Reason',
+      'Separated Condition Requirements (where applicable)',
+      'Req. Type',
+      'Initial Actions/Notes',
+      'Proposed Discharge Programme',
+      'Progress',
+    ];
+
+    const htmlRows = [`<tr>${HEADERS.map(h => cellHtml(h, { bold: true })).join('')}</tr>`];
+    const tsvRows = [HEADERS.map(tsvCell).join('\t')];
+    for (const c of sortedConditions) {
+      const wordingFill = WORDING_FILLS[c.condition_type] || null;
+      const reqs = c.requirements?.length ? c.requirements : [null];
+      reqs.forEach((r, i) => {
+        const first = i === 0;
+        const vals = [
+          first ? (c.condition_number || '') : '',
+          first ? (c.title || '') : '',
+          first ? (c.wording || '') : '',
+          first ? (c.reason || '') : '',
+          r ? r.requirement_text : '',
+          r ? (r.requirement_type || '') : '',
+          first ? (c.initial_actions || '') : '',
+          '',   // Proposed Discharge Programme — left blank
+          '',   // Progress — left blank
+        ];
+        const reqTypeFill = r ? WORDING_FILLS[r.requirement_type] || null : null;
+        const cells = vals.map((v, col) => cellHtml(v, {
+          bold: col === 1 && first,                          // Title cell bold
+          fill: col === 2 && first ? wordingFill             // Wording cell coloured by condition type
+              : col === 5 ? reqTypeFill                      // Req. Type cell coloured by requirement type
+              : null,
+        }));
+        htmlRows.push(`<tr>${cells.join('')}</tr>`);
+        tsvRows.push(vals.map(tsvCell).join('\t'));
+      });
+    }
+
+    const html = `<table>${htmlRows.join('')}</table>`;
+    const tsv = tsvRows.join('\r\n');
+
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([tsv], { type: 'text/plain' }),
+        })]);
+      } else {
+        await navigator.clipboard.writeText(tsv);
+      }
+      alert('Copied (header row included). In your Excel template, click the cell where the header row should sit and paste (Ctrl+V).');
+    } catch (err) {
+      alert('Failed to copy: ' + err.message);
+    }
+  }
+
   // ── Export ────────────────────────────────────────────────────────────────
 
   async function handleExportPdf() {
@@ -638,6 +729,12 @@
   condition={emailCondition}
   on:sent={handleFeeQuoteSent}
   on:close={() => { showEmailModal = false; emailCondition = null; }}
+/>
+
+<SummaryEmailModal
+  bind:show={showSummaryEmail}
+  {project}
+  on:close={() => showSummaryEmail = false}
 />
 
 <BulkFeeQuoteModal
@@ -816,17 +913,17 @@
           <span class="ct-meta-badge ct-meta-badge-issued"><i class="las la-paper-plane"></i> Issued {formatDateTime(meta.last_issued_to_client_at)}</span>
         {/if}
       </div>
-      <button class="btn btn-secondary btn-sm" disabled title="Coming soon">
-        <i class="las la-magic"></i> Summarise
+      <button class="btn btn-secondary btn-sm" on:click={() => showSummaryEmail = true} disabled={!conditions.length} title="Draft a client progress email from the advancements in a date range">
+        <i class="las la-envelope-open-text"></i> Summary Email
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={handleCopyForExcel} disabled={!conditions.length} title="Copy the table as a grid to paste into the Excel template at cell A9">
+        <i class="las la-table"></i> Copy for Excel
       </button>
       <button class="btn btn-secondary btn-sm" on:click={handleExport} disabled={!conditions.length}>
         <i class="las la-file-word"></i> Word
       </button>
       <button class="btn btn-secondary btn-sm" on:click={handleExportPdf} disabled={!conditions.length}>
         <i class="las la-file-pdf"></i> PDF
-      </button>
-      <button class="btn btn-ghost btn-sm ct-issue-btn" title="Email integration coming soon" on:click={handleIssueToClient} disabled={!conditions.length}>
-        <i class="las la-paper-plane"></i> Send to Client
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => isFullscreen = !isFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Open the tracker full screen'}>
         <i class="las {isFullscreen ? 'la-compress' : 'la-expand'}"></i> {isFullscreen ? 'Exit' : 'Full Screen'}

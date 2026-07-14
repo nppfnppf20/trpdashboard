@@ -81,6 +81,63 @@ ${conditionBlocks}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Summary email: draft a client progress update covering the advancements
+// logged within a date range. The advancements are the content — the email's
+// length and detail must follow theirs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUMMARY_EMAIL_PROMPT = `You are a planning consultant assistant. Draft a progress summary email to the client covering recent progress on discharging the planning conditions on their project.
+
+You will be given the project name and reference, the date range covered, and the dated progress entries ("advancements") logged in that period, grouped by condition.
+
+Content rules — these matter most:
+- The advancements ARE the content. Report what they say and nothing more: no padding, no speculation, no invented next steps, no restating condition wording or requirements.
+- Match the length and detail of the email to the length and detail of the advancements themselves. Sparse entries make a short email; detailed entries can carry more. Never stretch thin material to make the email look fuller.
+- Group the body by condition, in the order given. Introduce each with a short line naming the condition (number and title), then brief prose drawn from that condition's entries.
+- Where several entries exist for one condition, fold them into a short chronological account rather than repeating each entry verbatim.
+- Open with one or two sentences saying this is a progress update for the period, and close with a brief offer to discuss. Use the greeting "Hi [name]," and sign off "Many thanks" with no signature block.
+
+Tone:
+- First person plural ("we"), plain professional English, written as the consultant team updating their client.
+- No marketing language, no report-speak.
+- Plain text only — no markdown, no asterisks, no headings syntax.
+- Never use an em dash anywhere. Use a comma, a colon or the word "to" instead.
+
+Return your response using EXACTLY this XML structure, nothing before or after it:
+
+<EMAIL>
+<SUBJECT>the email subject line</SUBJECT>
+<BODY>the full email body</BODY>
+</EMAIL>`;
+
+export async function draftAdvancementsSummaryEmail({ projectName, projectRef, fromDate, toDate, conditions }) {
+  const blocks = conditions.map(c => {
+    const entries = c.advancements.map(a => `  - ${a.advancement_date}: ${a.summary}`).join('\n');
+    return `CONDITION
+Number: ${c.condition_number || 'n/a'}
+Title: ${c.title}
+Current status: ${c.status || 'n/a'}
+Progress entries in the period:
+${entries}`;
+  }).join('\n\n');
+
+  const content = `PROJECT: ${[projectRef, projectName].filter(Boolean).join(' - ') || 'n/a'}
+PERIOD COVERED: ${fromDate} to ${toDate}
+
+${blocks}`;
+
+  const raw = await callClaude(SUMMARY_EMAIL_PROMPT, content, undefined, 4000);
+
+  const subject = extractTag(raw, 'SUBJECT');
+  const body = extractTag(raw, 'BODY');
+  if (!body) {
+    console.error('[conditionsTracker.service] No BODY in summary email. Raw (first 400):', raw.slice(0, 400));
+    throw new Error('Could not draft the summary email');
+  }
+  return { subject: subject || 'Planning conditions progress update', body };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Fee quote drafting: for each condition, list the actual works/documents the
 // condition wording requires the consultant to provide. The email itself is
 // assembled programmatically (wording and reason are inserted verbatim by

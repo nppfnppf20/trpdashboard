@@ -8,7 +8,10 @@
   import InstructedModal from '$lib/components/surveyor-briefings/InstructedModal.svelte';
   import NotInstructedModal from '$lib/components/surveyor-briefings/NotInstructedModal.svelte';
   import PartiallyInstructedModal from '$lib/components/surveyor-briefings/PartiallyInstructedModal.svelte';
+  import AddActionModal from './AddActionModal.svelte';
+  import SurveyActionsDrawer from './SurveyActionsDrawer.svelte';
   import { updateQuoteNotes } from '$lib/api/quotes.js';
+  import { getQuoteActions } from '$lib/api/quoteActions.js';
   import '$lib/styles/tables.css';
   import '$lib/styles/badges.css';
   import '$lib/styles/buttons.css';
@@ -32,6 +35,68 @@
   let editingQuote = null;
   let selectedContact = null;
   let pendingStatusChange = null;
+
+  // Actions tracker state — full timeline per quote (quote + instructed stages)
+  let actionsByQuote = {};      // quote_id -> [actions newest first]
+  let showAddAction = false;
+  let addActionPreselectId = null;
+  let actionsQuote = null;      // quote whose timeline drawer is open
+
+  $: if (projectId) loadActions(projectId);
+
+  async function loadActions(pid) {
+    try {
+      const rows = await getQuoteActions(pid);
+      const grouped = {};
+      for (const a of rows) (grouped[a.quote_id] ||= []).push(a);
+      actionsByQuote = grouped;
+    } catch (err) {
+      console.error('Failed to load actions:', err);
+      actionsByQuote = {};
+    }
+  }
+
+  function sortActions(arr) {
+    return [...arr].sort(
+      (a, b) => (b.action_date || '').localeCompare(a.action_date || '') || b.id - a.id
+    );
+  }
+
+  function formatActionDate(d) {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function openAddAction(quoteId = null) {
+    addActionPreselectId = quoteId;
+    showAddAction = true;
+  }
+
+  function handleActionsDone(e) {
+    for (const row of e.detail.rows) {
+      actionsByQuote = {
+        ...actionsByQuote,
+        [row.quote_id]: sortActions([...(actionsByQuote[row.quote_id] || []), row]),
+      };
+    }
+  }
+
+  function handleActionUpdated(e) {
+    const a = e.detail.action;
+    actionsByQuote = {
+      ...actionsByQuote,
+      [a.quote_id]: sortActions((actionsByQuote[a.quote_id] || []).map(x => x.id === a.id ? a : x)),
+    };
+  }
+
+  function handleActionDeleted(e) {
+    if (!actionsQuote) return;
+    const qid = actionsQuote.id;
+    actionsByQuote = {
+      ...actionsByQuote,
+      [qid]: (actionsByQuote[qid] || []).filter(x => x.id !== e.detail.id),
+    };
+  }
 
   function formatCurrency(amount) {
     return new Intl.NumberFormat('en-GB', {
@@ -238,10 +303,15 @@
 <div class="content-panel">
   <div class="panel-header">
     <h2>Surveyor Quotes</h2>
-    <button class="btn btn-primary" on:click={openAddQuoteModal}>
-      <i class="las la-plus"></i>
-      New Quote
-    </button>
+    <div class="panel-header-actions">
+      <button class="btn-add-action" on:click={() => openAddAction()} disabled={!quotes.length || !projectId}>
+        <i class="las la-history"></i> Add Progress
+      </button>
+      <button class="btn btn-primary" on:click={openAddQuoteModal}>
+        <i class="las la-plus"></i>
+        New Quote
+      </button>
+    </div>
   </div>
   {#if loading}
     <div class="loading">
@@ -263,6 +333,7 @@
             <th>Total (incl. VAT)</th>
             <th>Instruction Status</th>
             <th>Notes</th>
+            <th>Progress</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -323,6 +394,20 @@
                   </button>
                 {/if}
               </td>
+              <td class="notes-cell-compact">
+                {#if actionsByQuote[quote.id]?.length}
+                  {@const latest = actionsByQuote[quote.id][0]}
+                  <button class="qa-progress-cell" on:click={() => actionsQuote = quote} title="View full progress timeline">
+                    <span class="qa-progress-date">{formatActionDate(latest.action_date)}</span>
+                    <span class="qa-progress-summary">{latest.summary.length > 90 ? latest.summary.slice(0, 90) + '…' : latest.summary}</span>
+                    <span class="qa-progress-count">{actionsByQuote[quote.id].length} update{actionsByQuote[quote.id].length !== 1 ? 's' : ''}</span>
+                  </button>
+                {:else}
+                  <button class="qa-progress-empty" on:click={() => openAddAction(quote.id)} title="Add first update">
+                    <i class="las la-plus"></i> Add
+                  </button>
+                {/if}
+              </td>
               <td class="actions-cell">
                 <button
                   class="action-btn edit-btn"
@@ -346,6 +431,31 @@
     </div>
   {/if}
 </div>
+
+<!-- Add Progress Modal (fan-out to ticked quotes) -->
+<AddActionModal
+  bind:show={showAddAction}
+  {projectId}
+  {quotes}
+  stage="quote"
+  preselectedQuoteId={addActionPreselectId}
+  on:done={handleActionsDone}
+  on:close={() => { showAddAction = false; addActionPreselectId = null; }}
+/>
+
+<!-- Actions timeline drawer -->
+{#if actionsQuote}
+  <SurveyActionsDrawer
+    quote={actionsQuote}
+    actions={actionsByQuote[actionsQuote.id] || []}
+    {projectId}
+    stage="quote"
+    on:done={handleActionsDone}
+    on:updated={handleActionUpdated}
+    on:deleted={handleActionDeleted}
+    on:close={() => actionsQuote = null}
+  />
+{/if}
 
 <!-- Notes Modal -->
 <NotesModal
@@ -438,6 +548,82 @@
     font-weight: 600;
     color: #1e293b;
   }
+
+  .panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .btn-add-action {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    background: #faf5ff;
+    border: 1px solid #d8b4fe;
+    border-radius: 6px;
+    color: #7c3aed;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-add-action:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
+  .btn-add-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .qa-progress-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    max-width: 280px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 6px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .qa-progress-cell:hover { border-color: #c4b5fd; background: #faf5ff; }
+  .qa-progress-date {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #9333ea;
+  }
+  .qa-progress-summary {
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: #334155;
+  }
+  .qa-progress-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 100px;
+    padding: 1px 7px;
+    margin-top: 2px;
+  }
+  .qa-progress-empty {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #94a3b8;
+    background: white;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .qa-progress-empty:hover { color: #9333ea; border-color: #c4b5fd; background: #faf5ff; }
 
   .table-wrapper {
     flex: 1;

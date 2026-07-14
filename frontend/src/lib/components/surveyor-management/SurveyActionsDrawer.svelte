@@ -9,9 +9,10 @@
     deleteQuoteAction,
   } from '$lib/api/quoteActions.js';
 
-  export let quote = null;      // the instructed quote whose timeline is open
-  export let actions = [];      // this quote's actions, newest first
+  export let quote = null;      // the quote whose timeline is open
+  export let actions = [];      // this quote's actions, newest first (all stages — quote-stage history carries over)
   export let projectId;
+  export let stage = 'instructed'; // 'instructed' | 'quote' — stamped on entries added here, picks the LLM prompt
 
   const dispatch = createEventDispatcher();
 
@@ -58,6 +59,7 @@
       try {
         const { suggestions } = await suggestQuoteActionSummaries(projectId, {
           full_text: addForm.full_text,
+          stage,
           items: [{ quote_id: quote.id, user_summary: null }],
         });
         const s = suggestions.find(x => x.quote_id === quote.id) ?? suggestions[0];
@@ -82,6 +84,7 @@
         action_date: addForm.action_date,
         full_text: addForm.full_text.trim() || null,
         source_type: addForm.source_type,
+        stage,
         items: [{ quote_id: quote.id, summary: addForm.summary.trim() }],
       });
       dispatch('done', { rows });
@@ -210,6 +213,9 @@
                       <i class="las {a.source_type === 'email' ? 'la-envelope' : 'la-sticky-note'}"></i>
                       {a.source_type === 'email' ? 'Email trail' : 'Note'}
                     </span>
+                    {#if a.stage && a.stage !== stage}
+                      <span class="tl-stage-badge">{a.stage === 'quote' ? 'Quote stage' : 'Instructed'}</span>
+                    {/if}
                     <div class="tl-entry-btns">
                       <button class="tl-icon-btn" title="Edit" on:click={() => startEdit(a)}><i class="las la-pen"></i></button>
                       <button class="tl-icon-btn tl-icon-btn-danger" title="Delete" on:click={() => removeAction(a.id)}><i class="las la-trash"></i></button>
@@ -448,6 +454,16 @@
     padding: 1px 8px;
   }
   .tl-source-email { color: #2563eb; background: #dbeafe; }
+  .tl-stage-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #b45309;
+    background: #fef3c7;
+    border-radius: 100px;
+    padding: 1px 8px;
+  }
   .tl-entry-btns {
     margin-left: auto;
     display: flex;

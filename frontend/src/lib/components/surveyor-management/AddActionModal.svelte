@@ -6,10 +6,13 @@
 
   export let show = false;
   export let projectId;
-  export let quotes = [];              // instructed quotes for the project
+  export let quotes = [];              // quotes for the project (instructed only, or all at quote stage)
   export let preselectedQuoteId = null; // open with one survey already ticked
+  export let stage = 'instructed';     // 'instructed' | 'quote' — stamped on new entries, picks the LLM prompt
 
   const dispatch = createEventDispatcher();
+
+  $: noun = stage === 'quote' ? 'quote' : 'survey';
 
   let actionDate = '';
   let sourceType = 'email';   // 'email' | 'note'
@@ -53,7 +56,7 @@
         summary: selections[q.id].summary.trim(),
       }));
 
-    if (!items.length) { error = 'Tick at least one survey this update applies to.'; return; }
+    if (!items.length) { error = `Tick at least one ${noun} this update applies to.`; return; }
     if (!actionDate) { error = 'A date is required.'; return; }
 
     // Blank summaries: generate them from the pasted text (survey scope and
@@ -62,7 +65,7 @@
     const blanks = items.filter(i => !i.summary);
     if (blanks.length) {
       if (!fullText.trim()) {
-        error = 'Paste the email trail / note text so summaries can be generated, or type a summary under each ticked survey.';
+        error = `Paste the email trail / note text so summaries can be generated, or type a summary under each ticked ${noun}.`;
         return;
       }
       generating = true;
@@ -70,6 +73,7 @@
       try {
         const { suggestions } = await suggestQuoteActionSummaries(projectId, {
           full_text: fullText,
+          stage,
           items: items.map(i => ({
             quote_id: i.quote_id,
             user_summary: i.summary || null,
@@ -97,6 +101,7 @@
         action_date: actionDate,
         full_text: fullText.trim() || null,
         source_type: sourceType,
+        stage,
         items,
       });
       dispatch('done', { rows });
@@ -164,7 +169,7 @@
         {/if}
 
         <div class="field">
-          <label>Applies to <span class="label-hint">tick the surveys — leave a summary blank to auto-summarise from the pasted text</span></label>
+          <label>Applies to <span class="label-hint">tick the {noun}s — leave a summary blank to auto-summarise from the pasted text</span></label>
           <div class="adv-cond-list">
             {#each quotes as q (q.id)}
               {@const sel = selections[q.id]}
@@ -183,7 +188,7 @@
                 {/if}
               </div>
             {:else}
-              <p class="adv-no-conditions">No instructed surveys yet.</p>
+              <p class="adv-no-conditions">{stage === 'quote' ? 'No quotes yet.' : 'No instructed surveys yet.'}</p>
             {/each}
           </div>
         </div>
@@ -194,7 +199,7 @@
       {/if}
 
       <div class="adv-footer">
-        <span class="adv-count-hint">{checkedCount} survey{checkedCount !== 1 ? 's' : ''} selected</span>
+        <span class="adv-count-hint">{checkedCount} {noun}{checkedCount !== 1 ? 's' : ''} selected</span>
         <div class="adv-footer-actions">
           <button class="btn-cancel" on:click={close} disabled={saving || generating}>Cancel</button>
           <button class="btn-save" on:click={save} disabled={saving || generating}>

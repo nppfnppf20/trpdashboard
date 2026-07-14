@@ -10,11 +10,11 @@ export async function getQuoteActions(projectId) {
   return res.json(); // [{ id, quote_id, action_date, summary, full_text, source_type }]
 }
 
-export async function createQuoteActions(projectId, { action_date, full_text, source_type, items }) {
+export async function createQuoteActions(projectId, { action_date, full_text, source_type, stage, items }) {
   const res = await authFetch(`${API_BASE}/projects/${projectId}/actions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_date, full_text, source_type, items }),
+    body: JSON.stringify({ action_date, full_text, source_type, stage, items }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
@@ -23,11 +23,11 @@ export async function createQuoteActions(projectId, { action_date, full_text, so
   return res.json(); // created rows
 }
 
-export async function suggestQuoteActionSummaries(projectId, { full_text, items }) {
+export async function suggestQuoteActionSummaries(projectId, { full_text, stage, items }) {
   const res = await authFetch(`${API_BASE}/projects/${projectId}/actions/suggest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ full_text, items }),
+    body: JSON.stringify({ full_text, stage, items }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
