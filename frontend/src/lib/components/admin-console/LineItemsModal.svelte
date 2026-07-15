@@ -61,10 +61,13 @@
                 {#if isPartiallyInstructed}
                   <th class="status-column">Status</th>
                 {/if}
+                <th>Stage</th>
                 <th>Item</th>
                 <th>Description</th>
                 <th class="cost-column">Cost (excl. VAT)</th>
                 <th class="vat-column">VAT</th>
+                <th class="vat-column">Opt</th>
+                <th class="vat-column">TBC</th>
                 <th class="cost-column">Total</th>
               </tr>
             </thead>
@@ -84,11 +87,26 @@
                       {/if}
                     </td>
                   {/if}
+                  <td class="item-description">{item.stage || '-'}</td>
                   <td class="item-name">{item.item}</td>
                   <td class="item-description">{item.description || '-'}</td>
                   <td class="cost-column">{formatCurrency(item.cost)}</td>
                   <td class="vat-column">
                     {#if item.vat_included}
+                      <i class="las la-check"></i>
+                    {:else}
+                      -
+                    {/if}
+                  </td>
+                  <td class="vat-column">
+                    {#if item.is_optional}
+                      <i class="las la-check"></i>
+                    {:else}
+                      -
+                    {/if}
+                  </td>
+                  <td class="vat-column">
+                    {#if item.is_tbc}
                       <i class="las la-check"></i>
                     {:else}
                       -
@@ -101,12 +119,12 @@
             <tfoot>
               {#if isPartiallyInstructed}
                 <tr class="subtotal-row">
-                  <td colspan={isPartiallyInstructed ? 5 : 4} class="total-label">Instructed Total</td>
+                  <td colspan={isPartiallyInstructed ? 8 : 7} class="total-label">Instructed Total</td>
                   <td class="cost-column subtotal-amount">{formatCurrency(instructedTotal)}</td>
                 </tr>
               {/if}
               <tr class="total-row">
-                <td colspan={isPartiallyInstructed ? 5 : 4} class="total-label">Quote Total</td>
+                <td colspan={isPartiallyInstructed ? 8 : 7} class="total-label">Quote Total</td>
                 <td class="cost-column total-amount">{formatCurrency(total)}</td>
               </tr>
             </tfoot>

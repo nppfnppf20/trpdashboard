@@ -4,6 +4,35 @@
  */
 
 import * as quotesService from '../services/quotes.service.js';
+import { parseFile } from '../services/parser.service.js';
+import { extractQuoteFromText } from '../services/quoteExtraction.service.js';
+
+/**
+ * POST /api/admin-console/quotes/extract-from-document
+ * Parse an uploaded fee quote (PDF/Word) and extract fields to prefill the
+ * Add Quote form. Nothing is saved; the user reviews the suggestion.
+ */
+export async function extractFromDocument(req, res) {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const result = await parseFile(req.file.buffer, req.file.originalname);
+    const text = (typeof result === 'string' ? result : result.text) || '';
+    if (!text.trim()) {
+      return res.status(422).json({ error: 'Could not read any text from this document. Scanned PDFs are not supported.' });
+    }
+
+    const extraction = await extractQuoteFromText(text, req.file.originalname);
+    if (!extraction) {
+      return res.status(422).json({ error: 'Could not extract quote details from this document.' });
+    }
+
+    res.json({ extraction, warning: typeof result === 'object' ? result.warning ?? null : null });
+  } catch (error) {
+    console.error('Error extracting quote from document:', error);
+    res.status(500).json({ error: 'Failed to extract quote from document', details: error.message });
+  }
+}
 
 /**
  * GET /api/admin-console/quotes

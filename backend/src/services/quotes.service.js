@@ -86,6 +86,9 @@ export async function getQuotes(filters = {}) {
           'item', qli.item,
           'description', qli.description,
           'cost', qli.cost,
+          'stage', qli.stage,
+          'is_optional', qli.is_optional,
+          'is_tbc', qli.is_tbc,
           'vat_included', COALESCE(qli.vat_included, false),
           'is_instructed', COALESCE(qli.is_instructed, false)
         ) ORDER BY qli.created_at
@@ -139,6 +142,9 @@ export async function getQuoteById(id) {
           'item', qli.item,
           'description', qli.description,
           'cost', qli.cost,
+          'stage', qli.stage,
+          'is_optional', qli.is_optional,
+          'is_tbc', qli.is_tbc,
           'vat_included', COALESCE(qli.vat_included, false),
           'is_instructed', COALESCE(qli.is_instructed, false)
         ) ORDER BY qli.created_at
@@ -403,8 +409,11 @@ export async function createQuote(data) {
           item,
           description,
           cost,
+          stage,
+          is_optional,
+          is_tbc,
           vat_included
-        ) VALUES ($1, $2, $3, $4, $5)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `;
 
       for (const item of data.line_items) {
@@ -413,6 +422,9 @@ export async function createQuote(data) {
           item.item,
           item.description || '',
           item.cost,
+          item.stage?.trim() || null,
+          item.is_optional ?? null,
+          item.is_tbc ?? null,
           item.vat_included !== false
         ]);
       }
@@ -682,8 +694,11 @@ export async function updateQuote(id, data) {
           item,
           description,
           cost,
+          stage,
+          is_optional,
+          is_tbc,
           vat_included
-        ) VALUES ($1, $2, $3, $4, $5)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `;
 
       for (const item of data.line_items) {
@@ -692,6 +707,9 @@ export async function updateQuote(id, data) {
           item.item,
           item.description || '',
           item.cost,
+          item.stage?.trim() || null,
+          item.is_optional ?? null,
+          item.is_tbc ?? null,
           item.vat_included === true
         ]);
       }

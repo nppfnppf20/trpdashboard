@@ -13,6 +13,9 @@ import {
   advancementsSummaryEmail,
   updateAdvancement,
   deleteAdvancement,
+  listProjectQuotes,
+  linkConditionQuote,
+  unlinkConditionQuote,
   markExported,
   markIssuedToClient,
 } from '../controllers/conditions.controller.js';
@@ -34,5 +37,8 @@ router.post('/projects/:projectId/advancements/summary-email', advancementsSumma
 router.post('/projects/:projectId/fee-quote-works', feeQuoteWorks);
 router.put('/advancements/:advancementId', updateAdvancement);
 router.delete('/advancements/:advancementId', deleteAdvancement);
+router.get('/projects/:projectId/quotes', listProjectQuotes);
+router.post('/conditions/:conditionId/quote-links', linkConditionQuote);
+router.delete('/conditions/:conditionId/quote-links/:quoteId', unlinkConditionQuote);
 
 export default router;

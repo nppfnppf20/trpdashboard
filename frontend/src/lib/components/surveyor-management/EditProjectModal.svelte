@@ -10,7 +10,7 @@
   let discipline = '';
   let organisation = '';
   let contact = '';
-  let lineItems = [{ item: '', description: '', cost: '', vatIncluded: true }];
+  let lineItems = [{ stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
   let additionalNotes = '';
 
   let organisations = [];
@@ -35,13 +35,16 @@
     if (quote.line_items && quote.line_items.length > 0) {
       lineItems = quote.line_items.map(item => ({
         id: item.id,
+        stage: item.stage || '',
         item: item.item || '',
         description: item.description || '',
         cost: item.cost?.toString() || '',
-        vatIncluded: item.vat_included === true
+        vatIncluded: item.vat_included === true,
+        optional: item.is_optional === true,
+        tbc: item.is_tbc === true
       }));
     } else {
-      lineItems = [{ item: '', description: '', cost: '', vatIncluded: true }];
+      lineItems = [{ stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
     }
   }
 
@@ -70,7 +73,7 @@
   $: total = lineItems.reduce((sum, item) => sum + lineTotal(item), 0);
 
   function addLineItem() {
-    lineItems = [...lineItems, { item: '', description: '', cost: '', vatIncluded: true }];
+    lineItems = [...lineItems, { stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
   }
 
   function removeLineItem(index) {
@@ -96,6 +99,9 @@
         item: item.item,
         description: item.description,
         cost: parseFloat(item.cost) || 0,
+        stage: item.stage?.trim() || null,
+        is_optional: item.optional === true,
+        is_tbc: item.tbc === true,
         vat_included: item.vatIncluded === true
       }));
 
@@ -118,7 +124,7 @@
     discipline = '';
     organisation = '';
     contact = '';
-    lineItems = [{ item: '', description: '', cost: '', vatIncluded: true }];
+    lineItems = [{ stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
     additionalNotes = '';
     dispatch('close');
   }
@@ -185,17 +191,27 @@
         <table class="line-items-table">
           <thead>
             <tr>
-              <th style="width: 25%;">Item</th>
-              <th style="width: 35%;">Description</th>
-              <th style="width: 14%;">Cost (£ excl. VAT)</th>
-              <th style="width: 8%;" class="vat-header">VAT</th>
-              <th style="width: 13%;">Total (£)</th>
-              <th style="width: 5%;"></th>
+              <th style="width: 11%;">Stage</th>
+              <th style="width: 20%;">Item</th>
+              <th style="width: 26%;">Description</th>
+              <th style="width: 12%;">Cost (£ excl. VAT)</th>
+              <th style="width: 6%;" class="vat-header">VAT</th>
+              <th style="width: 6%;" class="vat-header">Opt</th>
+              <th style="width: 6%;" class="vat-header">TBC</th>
+              <th style="width: 9%;">Total (£)</th>
+              <th style="width: 4%;"></th>
             </tr>
           </thead>
           <tbody>
             {#each lineItems as lineItem, index}
               <tr>
+                <td>
+                  <input
+                    type="text"
+                    bind:value={lineItem.stage}
+                    placeholder="Stage"
+                  />
+                </td>
                 <td>
                   <input
                     type="text"
@@ -235,6 +251,20 @@
                     type="checkbox"
                     bind:checked={lineItem.vatIncluded}
                     title="VAT included (adds 20%)"
+                  />
+                </td>
+                <td class="vat-cell">
+                  <input
+                    type="checkbox"
+                    bind:checked={lineItem.optional}
+                    title="Optional line item"
+                  />
+                </td>
+                <td class="vat-cell">
+                  <input
+                    type="checkbox"
+                    bind:checked={lineItem.tbc}
+                    title="To be confirmed"
                   />
                 </td>
                 <td class="line-total-cell">

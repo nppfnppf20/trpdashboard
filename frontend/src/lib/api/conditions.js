@@ -133,6 +133,28 @@ export async function deleteConditionAdvancement(advancementId) {
   return res.json();
 }
 
+export async function getProjectQuotesForConditions(projectId) {
+  const res = await authFetch(`/api/conditions/projects/${projectId}/quotes`);
+  if (!res.ok) throw new Error('Failed to fetch project quotes');
+  return res.json(); // { quotes: [{ id, status, total, organisation, discipline, contact_name }] }
+}
+
+export async function linkConditionQuote(conditionId, quoteId) {
+  const res = await authFetch(`/api/conditions/conditions/${conditionId}/quote-links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quote_id: quoteId }),
+  });
+  if (!res.ok) throw new Error('Failed to link quote');
+  return res.json();
+}
+
+export async function unlinkConditionQuote(conditionId, quoteId) {
+  const res = await authFetch(`/api/conditions/conditions/${conditionId}/quote-links/${quoteId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to unlink quote');
+  return res.json();
+}
+
 export async function markConditionsExported(projectId) {
   const res = await authFetch(`/api/conditions/projects/${projectId}/export`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to record export');

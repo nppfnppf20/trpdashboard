@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
-  import { createQuote } from '$lib/api/quotes.js';
+  import { createQuote, extractQuoteFromDocument } from '$lib/api/quotes.js';
   import { getAllSurveyorOrganisations } from '$lib/api/surveyorOrganisations.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
@@ -14,7 +14,7 @@
   let discipline = '';
   let organisation = '';
   let contact = '';
-  let lineItems = [{ item: '', description: '', cost: '', vatIncluded: true }];
+  let lineItems = [{ stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
   let additionalNotes = '';
 
   let organisations = [];
@@ -68,7 +68,7 @@
   $: total = lineItems.reduce((sum, item) => sum + lineTotal(item), 0);
 
   function addLineItem() {
-    lineItems = [...lineItems, { item: '', description: '', cost: '', vatIncluded: true }];
+    lineItems = [...lineItems, { stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
   }
 
   function removeLineItem(index) {
@@ -94,6 +94,9 @@
           item: item.item,
           description: item.description,
           cost: parseFloat(item.cost) || 0,
+          stage: item.stage?.trim() || null,
+          is_optional: item.optional === true,
+          is_tbc: item.tbc === true,
           vat_included: item.vatIncluded !== false
         }));
 
@@ -117,9 +120,11 @@
       discipline = '';
       organisation = '';
       contact = '';
-      lineItems = [{ item: '', description: '', cost: '', vatIncluded: true }];
+      lineItems = [{ stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
       additionalNotes = '';
-      
+      extractNotice = null;
+      extractError = null;
+
       // Close modal
       dispatch('close');
     } catch (error) {
@@ -130,6 +135,70 @@
 
   function handleClose() {
     dispatch('close');
+  }
+
+  // ── Prefill from an uploaded quote document (PDF/Word) ─────────────────────
+  let dragOver = false;
+  let extracting = false;
+  let extractError = null;
+  let extractNotice = null;   // { organisation, warning }
+  let fileInput;
+
+  function handleDrop(e) {
+    dragOver = false;
+    const file = e.dataTransfer?.files?.[0];
+    if (file) runExtraction(file);
+  }
+
+  function handleFilePick(e) {
+    const file = e.target.files?.[0];
+    if (file) runExtraction(file);
+    e.target.value = '';
+  }
+
+  async function runExtraction(file) {
+    if (!/\.(pdf|docx?|txt)$/i.test(file.name)) {
+      extractError = 'Please upload a PDF or Word document.';
+      return;
+    }
+    extracting = true;
+    extractError = null;
+    extractNotice = null;
+    try {
+      const { extraction, warning } = await extractQuoteFromDocument(file);
+
+      // Discipline: only set if it matches an existing option
+      if (extraction.discipline) {
+        const match = disciplineOptions.find(
+          o => o.label.toLowerCase() === extraction.discipline.toLowerCase()
+        );
+        if (match) discipline = match.label;
+      }
+
+      if (extraction.line_items?.length) {
+        lineItems = extraction.line_items.map(li => ({
+          stage: li.stage || '',
+          item: li.item || '',
+          description: li.description || '',
+          cost: li.cost != null ? String(li.cost) : '',
+          vatIncluded: li.vat_included === true,
+          optional: li.is_optional === true,
+          tbc: li.is_tbc === true
+        }));
+      }
+
+      if (extraction.notes) {
+        additionalNotes = additionalNotes
+          ? `${additionalNotes}\n${extraction.notes}`
+          : extraction.notes;
+      }
+
+      extractNotice = { organisation: extraction.organisation_name || null, warning: warning || null };
+    } catch (err) {
+      extractError = err.message;
+    } finally {
+      extracting = false;
+    }
   }
 </script>
 
@@ -147,6 +216,48 @@
       </div>
 
       <div class="modal-body">
+        <!-- Prefill from document -->
+        <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
+        <div
+          class="extract-dropzone"
+          class:drag-over={dragOver}
+          class:extracting
+          on:click={() => !extracting && fileInput.click()}
+          on:dragover|preventDefault={() => dragOver = true}
+          on:dragleave={() => dragOver = false}
+          on:drop|preventDefault={handleDrop}
+        >
+          {#if extracting}
+            <i class="las la-circle-notch la-spin"></i>
+            Reading quote…
+          {:else}
+            <i class="las la-file-upload"></i>
+            Drag &amp; drop the quote PDF here to prefill the form, or click to browse
+          {/if}
+        </div>
+        <input
+          type="file"
+          accept=".pdf,.doc,.docx,.txt"
+          bind:this={fileInput}
+          on:change={handleFilePick}
+          style="display: none;"
+        />
+        {#if extractNotice}
+          <div class="extract-notice">
+            <i class="las la-magic"></i>
+            Fields suggested from the document — review everything before saving.
+            {#if extractNotice.organisation}
+              Quote appears to be from <strong>{extractNotice.organisation}</strong>; select the organisation and contact below.
+            {/if}
+            {#if extractNotice.warning}
+              <div class="extract-warning">{extractNotice.warning}</div>
+            {/if}
+          </div>
+        {/if}
+        {#if extractError}
+          <div class="extract-error">{extractError}</div>
+        {/if}
+
         <!-- Discipline Field -->
         <div class="form-group">
           <label for="discipline">Discipline <span class="required">*</span></label>
@@ -189,17 +300,27 @@
         <table class="line-items-table">
           <thead>
             <tr>
-              <th style="width: 25%;">Item</th>
-              <th style="width: 35%;">Description</th>
-              <th style="width: 14%;">Cost (£ excl. VAT)</th>
-              <th style="width: 8%;" class="vat-header">VAT</th>
-              <th style="width: 13%;">Total (£)</th>
-              <th style="width: 5%;"></th>
+              <th style="width: 11%;">Stage</th>
+              <th style="width: 20%;">Item</th>
+              <th style="width: 26%;">Description</th>
+              <th style="width: 12%;">Cost (£ excl. VAT)</th>
+              <th style="width: 6%;" class="vat-header">VAT</th>
+              <th style="width: 6%;" class="vat-header">Opt</th>
+              <th style="width: 6%;" class="vat-header">TBC</th>
+              <th style="width: 9%;">Total (£)</th>
+              <th style="width: 4%;"></th>
             </tr>
           </thead>
           <tbody>
             {#each lineItems as lineItem, index}
               <tr>
+                <td>
+                  <input
+                    type="text"
+                    bind:value={lineItem.stage}
+                    placeholder="Stage"
+                  />
+                </td>
                 <td>
                   <AutocompleteInput
                     suggestions={lineItemSuggestions}
@@ -239,6 +360,20 @@
                     type="checkbox"
                     bind:checked={lineItem.vatIncluded}
                     title="VAT included (adds 20%)"
+                  />
+                </td>
+                <td class="vat-cell">
+                  <input
+                    type="checkbox"
+                    bind:checked={lineItem.optional}
+                    title="Optional line item"
+                  />
+                </td>
+                <td class="vat-cell">
+                  <input
+                    type="checkbox"
+                    bind:checked={lineItem.tbc}
+                    title="To be confirmed"
                   />
                 </td>
                 <td class="line-total-cell">
@@ -623,5 +758,52 @@
     .cost-field {
       width: 100%;
     }
+  }
+
+  /* Prefill-from-document drop zone */
+  .extract-dropzone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    margin-bottom: 1rem;
+    border: 2px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .extract-dropzone i { font-size: 1.2rem; }
+  .extract-dropzone:hover { border-color: #93c5fd; background: #eff6ff; color: #2563eb; }
+  .extract-dropzone.drag-over { border-color: #3b82f6; background: #dbeafe; color: #1d4ed8; }
+  .extract-dropzone.extracting { cursor: wait; color: #2563eb; border-color: #93c5fd; background: #eff6ff; }
+
+  .extract-notice {
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.85rem;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    border-radius: 8px;
+    color: #1e40af;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+  .extract-notice i { margin-right: 0.25rem; }
+  .extract-warning {
+    margin-top: 0.35rem;
+    color: #92400e;
+  }
+  .extract-error {
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.85rem;
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+    border-radius: 8px;
+    color: #dc2626;
+    font-size: 0.8rem;
   }
 </style>

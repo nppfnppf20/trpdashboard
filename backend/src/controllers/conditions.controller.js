@@ -37,7 +37,7 @@ export async function feeQuoteWorks(req, res) {
 export async function getConditionsData(req, res) {
   const { projectId } = req.params;
   try {
-    const [{ rows: conditions }, { rows: requirements }, { rows: advancements }, { rows: advReqLinks }, { rows: meta }] = await Promise.all([
+    const [{ rows: conditions }, { rows: requirements }, { rows: advancements }, { rows: advReqLinks }, { rows: quoteLinks }, { rows: quoteActions }, { rows: meta }] = await Promise.all([
       pool.query(
         `SELECT id, condition_number, title, condition_type, wording, reason, initial_actions,
                 original_consultant, original_consultant_email, fee_quote_requested_at,
@@ -77,6 +77,29 @@ export async function getConditionsData(req, res) {
         [projectId]
       ),
       pool.query(
+        `SELECT cql.condition_id, cql.quote_id,
+                q.status AS quote_status, q.total AS quote_total,
+                so.organisation, so.discipline
+         FROM planning_applications.condition_quote_links cql
+         JOIN planning_applications.conditions c ON c.id = cql.condition_id
+         JOIN admin_console.quotes q ON q.id = cql.quote_id
+         LEFT JOIN admin_console.surveyor_organisations so ON so.id = q.surveyor_organisation_id
+         WHERE c.project_id = $1`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT qa.quote_id, qa.id, qa.action_date, qa.summary, qa.full_text, qa.source_type
+         FROM admin_console.quote_actions qa
+         WHERE qa.quote_id IN (
+           SELECT cql.quote_id
+           FROM planning_applications.condition_quote_links cql
+           JOIN planning_applications.conditions c ON c.id = cql.condition_id
+           WHERE c.project_id = $1
+         )
+         ORDER BY qa.action_date DESC, qa.id DESC`,
+        [projectId]
+      ),
+      pool.query(
         `SELECT last_exported_at, last_issued_to_client_at
          FROM planning_applications.conditions_tracker_meta
          WHERE project_id = $1`,
@@ -96,10 +119,26 @@ export async function getConditionsData(req, res) {
     for (const a of advancements) {
       (advByCondition[a.condition_id] ||= []).push({ ...a, requirement_ids: reqIdsByAdvancement[a.id] || [] });
     }
+    const actionsByQuote = {};
+    for (const qa of quoteActions) {
+      (actionsByQuote[qa.quote_id] ||= []).push(qa);
+    }
+    const quotesByCondition = {};
+    for (const link of quoteLinks) {
+      (quotesByCondition[link.condition_id] ||= []).push({
+        quote_id: link.quote_id,
+        quote_status: link.quote_status,
+        quote_total: link.quote_total,
+        organisation: link.organisation,
+        discipline: link.discipline,
+        actions: actionsByQuote[link.quote_id] || [],
+      });
+    }
     const withRequirements = conditions.map(c => ({
       ...c,
       requirements: byCondition[c.id] || [],
       advancements: advByCondition[c.id] || [],
+      linked_quotes: quotesByCondition[c.id] || [],
     }));
 
     res.json({
@@ -578,6 +617,71 @@ export async function deleteAdvancement(req, res) {
   } catch (err) {
     console.error('conditions.deleteAdvancement error:', err);
     res.status(500).json({ error: 'Failed to delete advancement' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quote links: attach quotes from surveyor management to conditions
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Quotes on this project, for the link picker
+export async function listProjectQuotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT q.id, q.status, q.total,
+              so.organisation, so.discipline,
+              c.name AS contact_name
+       FROM admin_console.quotes q
+       JOIN public.projects p ON p.unique_id = q.project_id
+       LEFT JOIN admin_console.surveyor_organisations so ON so.id = q.surveyor_organisation_id
+       LEFT JOIN admin_console.contacts c ON c.id = q.contact_id
+       WHERE p.id = $1
+       ORDER BY so.organisation ASC NULLS LAST, q.created_at DESC`,
+      [projectId]
+    );
+    res.json({ quotes: rows });
+  } catch (err) {
+    console.error('conditions.listProjectQuotes error:', err);
+    res.status(500).json({ error: 'Failed to fetch project quotes' });
+  }
+}
+
+export async function linkConditionQuote(req, res) {
+  const { conditionId } = req.params;
+  const { quote_id } = req.body;
+  if (!quote_id) return res.status(400).json({ error: 'quote_id is required' });
+  try {
+    // Only link quotes on the same project as the condition
+    await pool.query(
+      `INSERT INTO planning_applications.condition_quote_links (condition_id, quote_id)
+       SELECT c.id, q.id
+       FROM planning_applications.conditions c
+       JOIN public.projects p ON p.id = c.project_id
+       JOIN admin_console.quotes q ON q.project_id = p.unique_id
+       WHERE c.id = $1 AND q.id = $2
+       ON CONFLICT DO NOTHING`,
+      [conditionId, quote_id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('conditions.linkConditionQuote error:', err);
+    res.status(500).json({ error: 'Failed to link quote' });
+  }
+}
+
+export async function unlinkConditionQuote(req, res) {
+  const { conditionId, quoteId } = req.params;
+  try {
+    await pool.query(
+      `DELETE FROM planning_applications.condition_quote_links
+       WHERE condition_id = $1 AND quote_id = $2`,
+      [conditionId, quoteId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('conditions.unlinkConditionQuote error:', err);
+    res.status(500).json({ error: 'Failed to unlink quote' });
   }
 }
 

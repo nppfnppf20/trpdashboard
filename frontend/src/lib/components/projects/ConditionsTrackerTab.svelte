@@ -21,6 +21,9 @@
     suggestConditionAdvancementSummaries,
     updateConditionAdvancement,
     deleteConditionAdvancement,
+    getProjectQuotesForConditions,
+    linkConditionQuote,
+    unlinkConditionQuote,
     markConditionsExported,
     markConditionsIssuedToClient,
   } from '$lib/api/conditions.js';
@@ -427,10 +430,108 @@
   $: timelineCondition = conditions.find(c => c.id === timelineConditionId) || null;
 
   function openTimeline(c) { timelineConditionId = c.id; }
+
+  // ── Linked quotes (from surveyor management) ──────────────────────────────
+  // Quote actions interleave with the condition's own advancements, read-only
+  function mergedTimeline(c) {
+    const own = (c.advancements || []).map(a => ({ ...a, _kind: 'condition' }));
+    const fromQuotes = (c.linked_quotes || []).flatMap(q =>
+      (q.actions || []).map(a => ({
+        id: `q-${a.id}`,
+        advancement_date: a.action_date,
+        summary: a.summary,
+        full_text: a.full_text,
+        source_type: a.source_type,
+        _kind: 'quote',
+        _org: q.organisation || 'Quote',
+      }))
+    );
+    return [...own, ...fromQuotes].sort((a, b) =>
+      String(b.advancement_date || '').localeCompare(String(a.advancement_date || ''))
+      || String(b.id).localeCompare(String(a.id))
+    );
+  }
+
+  $: tlMerged = timelineCondition ? mergedTimeline(timelineCondition) : [];
+
+  let showQuotePicker = false;
+  let projectQuotes = [];
+  let quotesLoading = false;
+  let quotesLoaded = false;
+
+  async function toggleQuotePicker() {
+    showQuotePicker = !showQuotePicker;
+    if (showQuotePicker && !quotesLoaded) {
+      quotesLoading = true;
+      try {
+        const data = await getProjectQuotesForConditions(projectId);
+        projectQuotes = data.quotes;
+        quotesLoaded = true;
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        quotesLoading = false;
+      }
+    }
+  }
+
+  function quoteMatchesConsultant(q, c) {
+    const name = (c?.original_consultant || '').trim().toLowerCase();
+    if (!name) return false;
+    const org = (q.organisation || '').trim().toLowerCase();
+    const contact = (q.contact_name || '').trim().toLowerCase();
+    return (org && (org.includes(name) || name.includes(org)))
+        || (contact && (contact.includes(name) || name.includes(contact)));
+  }
+
+  // Likely matches (same org/contact as the condition's consultant) float to the top
+  $: pickerQuotes = timelineCondition
+    ? [...projectQuotes].sort((a, b) =>
+        (quoteMatchesConsultant(b, timelineCondition) ? 1 : 0) - (quoteMatchesConsultant(a, timelineCondition) ? 1 : 0))
+    : projectQuotes;
+
+  function isQuoteLinked(quoteId) {
+    return (timelineCondition?.linked_quotes || []).some(q => q.quote_id === quoteId);
+  }
+
+  // Reload without the loading spinner (keeps the drawer open and fresh)
+  async function refreshData() {
+    try {
+      const data = await getConditionsData(projectId);
+      conditions = data.conditions;
+      meta = data.meta;
+    } catch (err) {
+      console.error('conditions refresh failed:', err);
+    }
+  }
+
+  async function handleLinkQuote(quoteId) {
+    try {
+      await linkConditionQuote(timelineConditionId, quoteId);
+      await refreshData();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function handleUnlinkQuote(quoteId) {
+    try {
+      await unlinkConditionQuote(timelineConditionId, quoteId);
+      await refreshData();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  function formatQuoteTotal(total) {
+    const n = Number(total);
+    return Number.isFinite(n) && n > 0 ? `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}` : null;
+  }
   function closeTimeline() {
     timelineConditionId = null;
     tlEditingId = null;
     showTlAdd = false;
+    showQuotePicker = false;
   }
 
   // Add form inside the drawer
@@ -646,7 +747,8 @@
 
   async function handleExportPdf() {
     if (!conditions.length) { alert('No conditions to export.'); return; }
-    exportConditionsPdf(project, sortedConditions);
+    // Progress column includes linked quote actions, interleaved by date
+    exportConditionsPdf(project, sortedConditions.map(c => ({ ...c, advancements: mergedTimeline(c) })));
     try {
       const updated = await markConditionsExported(projectId);
       meta = { ...meta, ...updated };
@@ -765,7 +867,7 @@
             {timelineCondition.condition_number ? `Condition ${timelineCondition.condition_number}: ` : ''}{timelineCondition.title}
           </h3>
           <p class="tl-subtitle">
-            {timelineCondition.advancements.length} advancement{timelineCondition.advancements.length !== 1 ? 's' : ''}
+            {tlMerged.length} progress entr{tlMerged.length !== 1 ? 'ies' : 'y'}
             {#if timelineCondition.condition_type}· {timelineCondition.condition_type}{/if}
           </p>
         </div>
@@ -773,6 +875,55 @@
       </div>
 
       <div class="tl-body">
+        <!-- Linked quotes from surveyor management -->
+        <div class="tl-quotes">
+          <div class="tl-quotes-hd">
+            <span class="tl-quotes-label"><i class="las la-file-invoice-dollar"></i> Linked Quotes</span>
+            <button class="ct-expand-btn" on:click={toggleQuotePicker}>
+              {showQuotePicker ? 'Close' : '+ Link quote'}
+            </button>
+          </div>
+          {#each timelineCondition.linked_quotes || [] as q (q.quote_id)}
+            <div class="tl-quote-chip">
+              <span class="tl-quote-org">{q.organisation || 'Quote'}</span>
+              {#if q.discipline}<span class="tl-quote-meta">{q.discipline}</span>{/if}
+              {#if q.quote_status}<span class="tl-quote-status">{q.quote_status}</span>{/if}
+              {#if formatQuoteTotal(q.quote_total)}<span class="tl-quote-meta">{formatQuoteTotal(q.quote_total)}</span>{/if}
+              <button class="btn btn-icon btn-ghost tl-quote-unlink" title="Unlink quote" on:click={() => handleUnlinkQuote(q.quote_id)}>
+                <i class="las la-times"></i>
+              </button>
+            </div>
+          {:else}
+            {#if !showQuotePicker}
+              <p class="tl-quotes-none">No quotes linked. Link one to pull its updates into this timeline.</p>
+            {/if}
+          {/each}
+          {#if showQuotePicker}
+            <div class="tl-quote-picker">
+              {#if quotesLoading}
+                <p class="tl-quotes-none">Loading quotes…</p>
+              {:else}
+                {#each pickerQuotes as q (q.id)}
+                  {@const linked = isQuoteLinked(q.id)}
+                  <div class="tl-quote-option" class:tl-quote-option-match={quoteMatchesConsultant(q, timelineCondition)}>
+                    <div class="tl-quote-option-info">
+                      <span class="tl-quote-org">{q.organisation || 'Unnamed quote'}</span>
+                      <span class="tl-quote-meta">
+                        {[q.discipline, q.status, formatQuoteTotal(q.total), q.contact_name].filter(Boolean).join(' · ')}
+                      </span>
+                    </div>
+                    <button class="btn btn-sm {linked ? 'btn-ghost' : 'btn-secondary'}" on:click={() => linked ? handleUnlinkQuote(q.id) : handleLinkQuote(q.id)}>
+                      {linked ? 'Unlink' : 'Link'}
+                    </button>
+                  </div>
+                {:else}
+                  <p class="tl-quotes-none">No quotes recorded for this project yet.</p>
+                {/each}
+              {/if}
+            </div>
+          {/if}
+        </div>
+
         {#if showTlAdd}
           <div class="tl-add-form">
             <div class="tl-add-row">
@@ -814,14 +965,14 @@
           </button>
         {/if}
 
-        {#if timelineCondition.advancements.length === 0 && !showTlAdd}
+        {#if tlMerged.length === 0 && !showTlAdd}
           <p class="tl-empty">No advancements recorded yet.</p>
         {/if}
 
         <div class="tl-entries">
-          {#each timelineCondition.advancements as a (a.id)}
+          {#each tlMerged as a (a.id)}
             <div class="tl-entry">
-              <div class="tl-entry-marker"></div>
+              <div class="tl-entry-marker" class:tl-entry-marker-quote={a._kind === 'quote'}></div>
               <div class="tl-entry-content">
                 {#if tlEditingId === a.id}
                   <div class="tl-add-row">
@@ -855,12 +1006,19 @@
                       <i class="las {a.source_type === 'email' ? 'la-envelope' : 'la-sticky-note'}"></i>
                       {a.source_type === 'email' ? 'Email trail' : 'Note'}
                     </span>
-                    <div class="tl-entry-btns">
-                      <button class="btn btn-icon btn-ghost" title="Edit" on:click={() => startTlEdit(a)}><i class="las la-pen"></i></button>
-                      <button class="btn btn-icon btn-danger-ghost" title="Delete" on:click={() => removeAdvancement(timelineCondition.id, a.id)}><i class="las la-trash"></i></button>
-                    </div>
+                    {#if a._kind === 'quote'}
+                      <span class="tl-quote-badge" title="From the linked quote's actions log in surveyor management">
+                        <i class="las la-file-invoice-dollar"></i> {a._org}
+                      </span>
+                    {/if}
+                    {#if a._kind !== 'quote'}
+                      <div class="tl-entry-btns">
+                        <button class="btn btn-icon btn-ghost" title="Edit" on:click={() => startTlEdit(a)}><i class="las la-pen"></i></button>
+                        <button class="btn btn-icon btn-danger-ghost" title="Delete" on:click={() => removeAdvancement(timelineCondition.id, a.id)}><i class="las la-trash"></i></button>
+                      </div>
+                    {/if}
                   </div>
-                  {#if a.requirement_ids?.length}
+                  {#if a._kind !== 'quote' && a.requirement_ids?.length}
                     <div class="tl-req-tags">
                       {#each timelineCondition.requirements.filter(req => a.requirement_ids.includes(req.id)) as req (req.id)}
                         <span class="tl-req-tag" title={req.requirement_text}>
@@ -1218,14 +1376,18 @@
                 {/if}
               </td>
 
-              <!-- Progress -->
+              <!-- Progress (condition advancements + linked quote actions) -->
               <td class="ct-td ct-td-progress" rowspan={span}>
-                {#if c.advancements?.length}
-                  {@const latest = c.advancements[0]}
+                {#if mergedTimeline(c).length}
+                  {@const merged = mergedTimeline(c)}
+                  {@const latest = merged[0]}
                   <button class="ct-progress-cell" on:click={() => openTimeline(c)} title="View full progress timeline">
-                    <span class="ct-progress-date">{formatDate(latest.advancement_date)}</span>
+                    <span class="ct-progress-date">
+                      {formatDate(latest.advancement_date)}
+                      {#if latest._kind === 'quote'}<i class="las la-file-invoice-dollar" title="From linked quote"></i>{/if}
+                    </span>
                     <span class="ct-progress-summary">{latest.summary.length > 90 ? latest.summary.slice(0, 90) + '…' : latest.summary}</span>
-                    <span class="ct-progress-count">{c.advancements.length} update{c.advancements.length !== 1 ? 's' : ''}</span>
+                    <span class="ct-progress-count">{merged.length} update{merged.length !== 1 ? 's' : ''}</span>
                   </button>
                 {:else}
                   <button class="ct-progress-empty" on:click={() => openAddAdvancement(c.id)} title="Add first advancement">
@@ -1765,6 +1927,117 @@
     padding: 0.4rem 0.6rem;
     font-size: 0.78rem;
   }
+  /* ── Linked quotes in the drawer ─────────────────────────────────────────── */
+  .tl-quotes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.75rem 0.875rem;
+    background: #f8fafc;
+  }
+  .tl-quotes-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .tl-quotes-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .tl-quotes-none {
+    margin: 0;
+    font-size: 0.76rem;
+    color: #94a3b8;
+  }
+  .tl-quote-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.35rem 0.6rem;
+  }
+  .tl-quote-org {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #1e293b;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-quote-meta {
+    font-size: 0.7rem;
+    color: #64748b;
+    flex-shrink: 0;
+  }
+  .tl-quote-status {
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: #2563eb;
+    background: #dbeafe;
+    border-radius: 999px;
+    padding: 1px 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .tl-quote-unlink { flex-shrink: 0; }
+  .tl-quote-picker {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    overflow-y: auto;
+    max-height: 220px;
+  }
+  .tl-quote-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .tl-quote-option:last-child { border-bottom: none; }
+  .tl-quote-option-match { background: #faf5ff; }
+  .tl-quote-option-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Quote entries in the timeline */
+  .tl-entry-marker-quote { background: #0ea5e9; }
+  .tl-quote-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #0369a1;
+    background: #e0f2fe;
+    border-radius: 100px;
+    padding: 1px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+  .ct-progress-date .las { margin-left: 3px; color: #0369a1; }
+
   .tl-req-picker {
     display: flex;
     flex-direction: column;

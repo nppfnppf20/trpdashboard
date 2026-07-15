@@ -19,6 +19,20 @@ export async function getQuotes(filters = {}) {
   return await response.json();
 }
 
+export async function extractQuoteFromDocument(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await authFetch(`${API_BASE_URL}/quotes/extract-from-document`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    const e = await response.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to extract quote from document');
+  }
+  return await response.json(); // { extraction, warning }
+}
+
 export async function getQuoteById(id) {
   const response = await authFetch(`${API_BASE_URL}/quotes/${id}`);
   if (!response.ok) throw new Error('Failed to fetch quote');
@@ -50,8 +64,8 @@ export async function createQuote(quoteData) {
     body: JSON.stringify(quoteData)
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to create quote');
+    const error = await response.json().catch(() => ({}));
+    throw new Error([error.error || 'Failed to create quote', error.details].filter(Boolean).join(': '));
   }
   return await response.json();
 }
