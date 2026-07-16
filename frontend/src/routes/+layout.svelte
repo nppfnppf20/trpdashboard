@@ -29,9 +29,44 @@
 {/if}
 
 {#if $loading}
-  <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center;">
-    <div style="color: #4b5563; font-size: 1rem;">Loading...</div>
+  <div class="app-loading">
+    <div class="app-loading-spinner"></div>
+    <div class="app-loading-text">Loading...</div>
   </div>
 {:else}
   {@render children?.()}
 {/if}
+
+<style>
+  .app-loading {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    background: #f4f6fb;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+
+  .app-loading-spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid #e5e7eb;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: app-loading-spin 0.8s linear infinite;
+  }
+
+  .app-loading-text {
+    color: #4b5563;
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+
+  @keyframes app-loading-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>
