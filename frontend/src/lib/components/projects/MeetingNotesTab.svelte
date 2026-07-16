@@ -753,11 +753,9 @@
     <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'briefing'} on:click={openBriefingTab}>
       <i class="las la-file-alt"></i> Briefing Note
     </button>
-    <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'tracker'} on:click={() => activeSubTab = 'tracker'}>
+    <button class="mn-subtab mn-subtab--disabled" disabled title="Coming soon">
       <i class="las la-tasks"></i> Action Tracker
-      {#if stagedTrackerActions.length > 0}
-        <span class="mn-staged-badge">{stagedTrackerActions.length}</span>
-      {/if}
+      <span class="mn-coming-soon-tag">Coming soon</span>
     </button>
   </div>
 
@@ -1544,6 +1542,18 @@
   }
   .mn-subtab:hover { color: #1e293b; }
   .mn-subtab--active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
+  .mn-subtab--disabled { color: #cbd5e1; cursor: not-allowed; }
+  .mn-subtab--disabled:hover { color: #cbd5e1; }
+  .mn-coming-soon-tag {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: #f1f5f9;
+    color: #94a3b8;
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+  }
 
   /* ── Briefing sub-tab ───────────────────────────────────────────────────── */
   .mn-briefing-tab { display: flex; flex-direction: column; gap: 1rem; }
