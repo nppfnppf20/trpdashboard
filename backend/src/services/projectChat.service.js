@@ -301,6 +301,27 @@ async function serializePlanningHistory(projectId) {
   return { text, count: rows.length };
 }
 
+async function serializePolicies(projectId) {
+  const { rows } = await pool.query(
+    `SELECT policy_reference, policy_name, policy_type, policy_text,
+            relevant_supporting_text, notes, is_key_policy
+       FROM project_policies
+      WHERE project_id = $1
+      ORDER BY is_key_policy DESC, policy_type, id`,
+    [projectId]
+  );
+  if (!rows.length) return null;
+
+  const text = rows.map(r => [
+    `Policy${r.policy_reference ? ` ${r.policy_reference}` : ''}: ${r.policy_name}${r.policy_type ? ` (${r.policy_type})` : ''}${r.is_key_policy ? ' [key policy]' : ''}`,
+    r.policy_text ? `  Policy text: ${r.policy_text}` : null,
+    r.relevant_supporting_text ? `  Relevant supporting text: ${r.relevant_supporting_text}` : null,
+    r.notes ? `  Notes: ${r.notes}` : null,
+  ].filter(Boolean).join('\n')).join('\n\n');
+
+  return { text, count: rows.length };
+}
+
 async function serializePublicComments(projectId) {
   const [{ rows: comments }, { rows: analysis }] = await Promise.all([
     pool.query(
@@ -482,6 +503,7 @@ const TABLE_GROUPS = [
   { key: 'conditions',       sourceId: 'COND', label: 'Conditions Tracker',       serialize: serializeConditions },
   { key: 'actions',          sourceId: 'A',    label: 'Action Tracker',           serialize: serializeActions },
   { key: 'planning_history', sourceId: 'H',    label: 'Planning History',         serialize: serializePlanningHistory },
+  { key: 'policies',         sourceId: 'POL',  label: 'Relevant Policies',        serialize: serializePolicies },
   { key: 'public_comments',  sourceId: 'PC',   label: 'Public Comments',          serialize: serializePublicComments },
   { key: 'surveyor',         sourceId: 'S',    label: 'Surveyor Management',      serialize: serializeSurveyor },
 ];
