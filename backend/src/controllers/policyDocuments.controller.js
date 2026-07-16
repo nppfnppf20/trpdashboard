@@ -4,7 +4,7 @@ export async function listPolicyDocuments(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, section, plan_name, year_adopted, created_at
+      `SELECT id, section, plan_name, year_adopted, summary, relevance, created_at
        FROM policy_documents
        WHERE project_id = $1
        ORDER BY section, id`,
@@ -19,10 +19,10 @@ export async function listPolicyDocuments(req, res) {
 
 export async function createPolicyDocument(req, res) {
   const { projectId } = req.params;
-  const { section, plan_name, year_adopted } = req.body;
+  const { section, plan_name, year_adopted, summary, relevance } = req.body;
 
-  if (!section || !['adopted', 'emerging', 'other'].includes(section)) {
-    return res.status(400).json({ error: 'section must be adopted, emerging or other' });
+  if (!section || !['adopted', 'emerging', 'other', 'supplementary'].includes(section)) {
+    return res.status(400).json({ error: 'section must be adopted, emerging, other or supplementary' });
   }
   if (!plan_name?.trim()) {
     return res.status(400).json({ error: 'plan_name is required' });
@@ -30,10 +30,10 @@ export async function createPolicyDocument(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO policy_documents (project_id, section, plan_name, year_adopted)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, section, plan_name, year_adopted, created_at`,
-      [projectId, section, plan_name.trim(), year_adopted || null]
+      `INSERT INTO policy_documents (project_id, section, plan_name, year_adopted, summary, relevance)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, section, plan_name, year_adopted, summary, relevance, created_at`,
+      [projectId, section, plan_name.trim(), year_adopted || null, summary?.trim() || null, relevance?.trim() || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -44,7 +44,7 @@ export async function createPolicyDocument(req, res) {
 
 export async function updatePolicyDocument(req, res) {
   const { id } = req.params;
-  const { plan_name, year_adopted } = req.body;
+  const { plan_name, year_adopted, summary, relevance } = req.body;
 
   if (!plan_name?.trim()) {
     return res.status(400).json({ error: 'plan_name is required' });
@@ -53,10 +53,10 @@ export async function updatePolicyDocument(req, res) {
   try {
     const { rows } = await pool.query(
       `UPDATE policy_documents
-       SET plan_name = $1, year_adopted = $2, updated_at = NOW()
-       WHERE id = $3
-       RETURNING id, section, plan_name, year_adopted, created_at`,
-      [plan_name.trim(), year_adopted || null, id]
+       SET plan_name = $1, year_adopted = $2, summary = $3, relevance = $4, updated_at = NOW()
+       WHERE id = $5
+       RETURNING id, section, plan_name, year_adopted, summary, relevance, created_at`,
+      [plan_name.trim(), year_adopted || null, summary?.trim() || null, relevance?.trim() || null, id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Entry not found' });
     res.json(rows[0]);

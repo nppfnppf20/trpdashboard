@@ -20,7 +20,7 @@
   let saving = false;
   let formError = null;
 
-  const emptyForm = () => ({ plan_name: '', year_adopted: '' });
+  const emptyForm = () => ({ plan_name: '', year_adopted: '', summary: '', relevance: '' });
   let form = emptyForm();
 
   onMount(() => { if (projectId) load(); });
@@ -54,7 +54,9 @@
     editingId = doc.id;
     form = {
       plan_name: doc.plan_name || '',
-      year_adopted: doc.year_adopted ?? ''
+      year_adopted: doc.year_adopted ?? '',
+      summary: doc.summary || '',
+      relevance: doc.relevance || ''
     };
     formError = null;
     showForm = true;
@@ -72,10 +74,13 @@
     saving = true;
     formError = null;
     try {
+      const richSection = formSection === 'supplementary' || formSection === 'other';
       const payload = {
         section: formSection,
         plan_name: form.plan_name.trim(),
-        year_adopted: (formSection === 'adopted' || formSection === 'other') && form.year_adopted ? parseInt(form.year_adopted) : null
+        year_adopted: formSection === 'adopted' && form.year_adopted ? parseInt(form.year_adopted) : null,
+        summary: richSection ? (form.summary.trim() || null) : null,
+        relevance: richSection ? (form.relevance.trim() || null) : null
       };
       if (editingId) {
         const updated = await updatePolicyDocument(editingId, payload);
@@ -103,9 +108,10 @@
   }
 
   const SECTIONS = [
-    { key: 'adopted',  label: 'Development Plan Adopted' },
-    { key: 'emerging', label: 'Development Plan Emerging' },
-    { key: 'other',    label: 'Other Material Considerations' }
+    { key: 'adopted',       label: 'Development Plan Adopted' },
+    { key: 'emerging',      label: 'Development Plan Emerging' },
+    { key: 'supplementary', label: 'Supplementary Guidance' },
+    { key: 'other',         label: 'Other Material Considerations' }
   ];
 
   function docsForSection(key) {
@@ -129,6 +135,7 @@
 
     {#each SECTIONS as sec}
       {#if showForm && formSection === sec.key}
+        {@const rich = sec.key === 'supplementary' || sec.key === 'other'}
         <div class="rd-form-card">
           <div class="form-title">
             {editingId ? 'Edit Entry' : 'Add Entry'}
@@ -136,16 +143,31 @@
 
           <div class="form-row">
             <div class="field">
-              <label>Plan Name <span class="required">*</span></label>
-              <input type="text" bind:value={form.plan_name} placeholder="e.g. Local Plan 2019" />
+              <label>{rich ? 'Name' : 'Plan Name'} <span class="required">*</span></label>
+              <input type="text" bind:value={form.plan_name} placeholder={sec.key === 'supplementary' ? 'e.g. Renewable Energy SPD' : sec.key === 'other' ? 'e.g. NPPF (2024)' : 'e.g. Local Plan 2019'} />
             </div>
           </div>
 
-          {#if sec.key === 'adopted' || sec.key === 'other'}
+          {#if sec.key === 'adopted'}
             <div class="form-row">
               <div class="field">
                 <label>Year Adopted</label>
                 <input type="number" bind:value={form.year_adopted} placeholder="e.g. 2021" min="1900" max="2100" />
+              </div>
+            </div>
+          {/if}
+
+          {#if rich}
+            <div class="form-row">
+              <div class="field">
+                <label>Summary</label>
+                <textarea bind:value={form.summary} rows="3" placeholder="What this covers…"></textarea>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label>Relevance to Project <span class="optional">(optional)</span></label>
+                <textarea bind:value={form.relevance} rows="2" placeholder="How this applies to the project…"></textarea>
               </div>
             </div>
           {/if}
@@ -173,11 +195,13 @@
         {#if docsForSection(sec.key).length === 0}
           <div class="rd-empty">No entries yet.</div>
         {:else}
+          {@const rich = sec.key === 'supplementary' || sec.key === 'other'}
           <table class="rd-table">
             <thead>
               <tr>
-                <th>Plan Name</th>
-                {#if sec.key === 'adopted' || sec.key === 'other'}<th>Year Adopted</th>{/if}
+                <th>{rich ? 'Name' : 'Plan Name'}</th>
+                {#if sec.key === 'adopted'}<th>Year Adopted</th>{/if}
+                {#if rich}<th>Summary</th><th>Relevance to Project</th>{/if}
                 <th></th>
               </tr>
             </thead>
@@ -185,8 +209,12 @@
               {#each docsForSection(sec.key) as doc (doc.id)}
                 <tr>
                   <td class="cell-name">{doc.plan_name}</td>
-                  {#if sec.key === 'adopted' || sec.key === 'other'}
+                  {#if sec.key === 'adopted'}
                     <td class="cell-year">{doc.year_adopted ?? '—'}</td>
+                  {/if}
+                  {#if rich}
+                    <td class="cell-text">{doc.summary ?? '—'}</td>
+                    <td class="cell-text">{doc.relevance ?? '—'}</td>
                   {/if}
                   <td class="cell-actions">
                     <button class="icon-btn" on:click={() => openEdit(doc)} title="Edit">
@@ -276,7 +304,8 @@
   .field { display: flex; flex-direction: column; gap: 0.25rem; }
   label { font-size: 0.75rem; font-weight: 600; color: #475569; }
   .required { color: #ef4444; }
-  input[type="text"], input[type="number"] {
+  .optional { color: #94a3b8; font-weight: 400; }
+  input[type="text"], input[type="number"], textarea {
     padding: 0.45rem 0.6rem;
     border: 1px solid #d1d5db;
     border-radius: 6px;
@@ -284,8 +313,9 @@
     font-family: inherit;
     color: #1e293b;
     background: white;
+    resize: vertical;
   }
-  input[type="text"]:focus, input[type="number"]:focus {
+  input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
     outline: none;
     border-color: #9333ea;
     box-shadow: 0 0 0 3px #f3e8ff;
@@ -404,6 +434,7 @@
 
   .cell-name { line-height: 1.4; }
   .cell-year { color: #64748b; white-space: nowrap; width: 5rem; }
+  .cell-text { color: #64748b; line-height: 1.4; white-space: pre-wrap; }
   .cell-actions { text-align: right; white-space: nowrap; width: 4rem; }
 
   .icon-btn {

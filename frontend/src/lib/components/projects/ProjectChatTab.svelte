@@ -59,15 +59,18 @@
   $: detailsGroup = groups.find(g => g.key === 'project_details');
   $: historyGroup = groups.find(g => g.key === 'planning_history');
   $: policiesGroup = groups.find(g => g.key === 'policies');
-  // Loose table groups shown below Documents/Meetings. Planning History and
-  // Policies live in the Project Information group instead; hidden groups are dropped.
+  $: policyDocsGroup = groups.find(g => g.key === 'policy_documents');
+  // Loose table groups shown below Documents/Meetings. Planning History,
+  // Policies and Policy Documents live in the Project Information group
+  // instead; hidden groups are dropped.
   $: tableGroups = groups.filter(g =>
-    !['project_details', 'documents', 'meetings', 'planning_history', 'policies', ...HIDDEN_GROUP_KEYS].includes(g.key)
+    !['project_details', 'documents', 'meetings', 'planning_history', 'policies', 'policy_documents', ...HIDDEN_GROUP_KEYS].includes(g.key)
   );
   // Every selectable table-shaped group key, wherever it appears in the UI
   $: selectableGroupKeys = [
     ...(historyGroup && historyGroup.count > 0 ? ['planning_history'] : []),
     ...(policiesGroup && policiesGroup.count > 0 ? ['policies'] : []),
+    ...(policyDocsGroup && policyDocsGroup.count > 0 ? ['policy_documents'] : []),
     ...tableGroups.filter(g => g.count > 0).map(g => g.key),
   ];
 
@@ -119,24 +122,23 @@
     selectableGroupKeys.every(k => selectedGroups.has(k)) &&
     groups.length > 0;
 
-  // Project Information group (Project Details + Planning History + Policies)
-  $: infoSelectableCount =
-    (detailsGroup ? 1 : 0) +
-    (historyGroup && historyGroup.count > 0 ? 1 : 0) +
-    (policiesGroup && policiesGroup.count > 0 ? 1 : 0);
+  // Project Information group (Project Details + Planning History + Policies + Policy Documents)
+  $: infoGroups = [
+    ['planning_history', historyGroup],
+    ['policies', policiesGroup],
+    ['policy_documents', policyDocsGroup],
+  ].filter(([, g]) => g && g.count > 0);
+  $: infoSelectableCount = (detailsGroup ? 1 : 0) + infoGroups.length;
   $: infoSelectedCount =
     (detailsSelected ? 1 : 0) +
-    (selectedGroups.has('planning_history') ? 1 : 0) +
-    (selectedGroups.has('policies') ? 1 : 0);
+    infoGroups.filter(([key]) => selectedGroups.has(key)).length;
 
   function toggleProjectInfo() {
     const selectAll = infoSelectedCount < infoSelectableCount;
     detailsSelected = selectAll && !!detailsGroup;
     const next = new Set(selectedGroups);
-    if (selectAll && historyGroup && historyGroup.count > 0) next.add('planning_history');
-    else next.delete('planning_history');
-    if (selectAll && policiesGroup && policiesGroup.count > 0) next.add('policies');
-    else next.delete('policies');
+    for (const key of ['planning_history', 'policies', 'policy_documents']) next.delete(key);
+    if (selectAll) for (const [key] of infoGroups) next.add(key);
     selectedGroups = next;
   }
 
@@ -157,7 +159,7 @@
 
   $: sourceLabels = buildSourceLabels(groups);
   function buildSourceLabels(gs) {
-    const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PC: 'Public Comments', S: 'Surveyor Management' };
+    const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
     for (const d of gs.find(g => g.key === 'documents')?.items ?? []) map[`D${d.id}`] = d.label;
     for (const m of gs.find(g => g.key === 'meetings')?.items ?? []) map[`M${m.id}`] = m.label;
     return map;
@@ -173,7 +175,7 @@
   function renderReply(text) {
     const escaped = escapeHtml(text);
     return escaped
-      .replace(/\[((?:D\d+|M\d+|COND|POL|PC|P|C|K|A|H|S)(?:\s*[§·][^\]]*)?)\]/g, (match, inner) => {
+      .replace(/\[((?:D\d+|M\d+|COND|POL|PD|PC|P|C|K|A|H|S)(?:\s*[§·][^\]]*)?)\]/g, (match, inner) => {
         const id = inner.split(/[\s§·]/)[0];
         const label = sourceLabels[id];
         const title = label ? ` title="${escapeHtml(label)}"` : '';
@@ -306,6 +308,18 @@
                 />
                 <span class="pc-item-label">Relevant Policies ({policiesGroup.count})</span>
                 {#if policiesGroup.chars > 0}<span class="pc-chars">{fmtChars(policiesGroup.chars)}</span>{/if}
+              </label>
+            {/if}
+            {#if policyDocsGroup}
+              <label class="pc-row pc-row-item" class:pc-row-disabled={policyDocsGroup.count === 0}>
+                <input
+                  type="checkbox"
+                  checked={selectedGroups.has('policy_documents')}
+                  disabled={policyDocsGroup.count === 0}
+                  on:change={() => toggleTableGroup('policy_documents')}
+                />
+                <span class="pc-item-label">Policy Documents ({policyDocsGroup.count})</span>
+                {#if policyDocsGroup.chars > 0}<span class="pc-chars">{fmtChars(policyDocsGroup.chars)}</span>{/if}
               </label>
             {/if}
           {/if}

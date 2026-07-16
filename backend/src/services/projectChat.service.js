@@ -322,6 +322,37 @@ async function serializePolicies(projectId) {
   return { text, count: rows.length };
 }
 
+async function serializePolicyDocuments(projectId) {
+  const { rows } = await pool.query(
+    `SELECT section, plan_name, year_adopted, summary, relevance
+       FROM policy_documents
+      WHERE project_id = $1
+      ORDER BY section, id`,
+    [projectId]
+  );
+  if (!rows.length) return null;
+
+  const SECTION_LABELS = {
+    adopted: 'Development Plan Adopted',
+    emerging: 'Development Plan Emerging',
+    supplementary: 'Supplementary Guidance',
+    other: 'Other Material Considerations',
+  };
+
+  const parts = [];
+  for (const key of Object.keys(SECTION_LABELS)) {
+    const sectionRows = rows.filter(r => r.section === key);
+    if (!sectionRows.length) continue;
+    parts.push(`${SECTION_LABELS[key]}:\n` + sectionRows.map(r => [
+      `- ${r.plan_name}${r.year_adopted ? ` (adopted ${r.year_adopted})` : ''}`,
+      r.summary ? `  Summary: ${r.summary}` : null,
+      r.relevance ? `  Relevance to project: ${r.relevance}` : null,
+    ].filter(Boolean).join('\n')).join('\n'));
+  }
+
+  return { text: parts.join('\n\n'), count: rows.length };
+}
+
 async function serializePublicComments(projectId) {
   const [{ rows: comments }, { rows: analysis }] = await Promise.all([
     pool.query(
@@ -504,6 +535,7 @@ const TABLE_GROUPS = [
   { key: 'actions',          sourceId: 'A',    label: 'Action Tracker',           serialize: serializeActions },
   { key: 'planning_history', sourceId: 'H',    label: 'Planning History',         serialize: serializePlanningHistory },
   { key: 'policies',         sourceId: 'POL',  label: 'Relevant Policies',        serialize: serializePolicies },
+  { key: 'policy_documents', sourceId: 'PD',   label: 'Policy Documents',         serialize: serializePolicyDocuments },
   { key: 'public_comments',  sourceId: 'PC',   label: 'Public Comments',          serialize: serializePublicComments },
   { key: 'surveyor',         sourceId: 'S',    label: 'Surveyor Management',      serialize: serializeSurveyor },
 ];
