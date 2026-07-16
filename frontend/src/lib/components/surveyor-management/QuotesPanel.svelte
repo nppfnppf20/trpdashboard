@@ -118,6 +118,56 @@
     return parseFloat(quote.total) || 0;
   }
 
+  // ── Column sorting — default: discipline A→Z ───────────────────────────────
+  let sortKey = 'discipline';
+  let sortDir = 1;   // 1 asc, -1 desc
+
+  function setSort(key) {
+    if (sortKey === key) {
+      sortDir = -sortDir;
+    } else {
+      sortKey = key;
+      sortDir = 1;
+    }
+  }
+
+  function sortValue(quote, key) {
+    switch (key) {
+      case 'discipline': return (quote.discipline || '').toLowerCase();
+      case 'organisation': return (quote.surveyor_organisation || '').toLowerCase();
+      case 'exclVat': return exclVatTotal(quote);
+      case 'total': return parseFloat(quote.total) || 0;
+      case 'status': return (quote.instruction_status || '').toLowerCase();
+      default: return '';
+    }
+  }
+
+  $: sortedQuotes = [...quotes].sort((a, b) => {
+    const va = sortValue(a, sortKey);
+    const vb = sortValue(b, sortKey);
+    let cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
+    if (cmp === 0) {
+      // Stable tiebreak: discipline, then organisation
+      cmp = (a.discipline || '').localeCompare(b.discipline || '')
+        || (a.surveyor_organisation || '').localeCompare(b.surveyor_organisation || '');
+    }
+    return cmp * sortDir;
+  });
+
+  function sortIcon(key) {
+    if (sortKey !== key) return 'la-sort';
+    return sortDir === 1 ? 'la-sort-up' : 'la-sort-down';
+  }
+
+  // Alternate subtle shading each time the discipline changes down the table,
+  // so quotes for the same discipline read as one visual group
+  $: rowBands = sortedQuotes.reduce((bands, q, i) => {
+    const d = (q.discipline || '').toLowerCase();
+    const prev = i ? (sortedQuotes[i - 1].discipline || '').toLowerCase() : null;
+    bands.push(i === 0 ? 0 : (d === prev ? bands[i - 1] : 1 - bands[i - 1]));
+    return bands;
+  }, []);
+
   function openContactModal(quote) {
     selectedContact = {
       name: quote.contact_name,
@@ -325,21 +375,31 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>Discipline</th>
-            <th>Organisation</th>
+            <th class="sortable" on:click={() => setSort('discipline')}>
+              Discipline <i class="las {sortIcon('discipline')}" class:sort-active={sortKey === 'discipline'}></i>
+            </th>
+            <th class="sortable" on:click={() => setSort('organisation')}>
+              Organisation <i class="las {sortIcon('organisation')}" class:sort-active={sortKey === 'organisation'}></i>
+            </th>
             <th>Contact Name</th>
             <th>Line Items</th>
-            <th>Total (excl. VAT)</th>
-            <th>Total (incl. VAT)</th>
-            <th>Instruction Status</th>
+            <th class="sortable" on:click={() => setSort('exclVat')}>
+              Total (excl. VAT) <i class="las {sortIcon('exclVat')}" class:sort-active={sortKey === 'exclVat'}></i>
+            </th>
+            <th class="sortable" on:click={() => setSort('total')}>
+              Total (incl. VAT) <i class="las {sortIcon('total')}" class:sort-active={sortKey === 'total'}></i>
+            </th>
+            <th class="sortable" on:click={() => setSort('status')}>
+              Instruction Status <i class="las {sortIcon('status')}" class:sort-active={sortKey === 'status'}></i>
+            </th>
             <th>Notes</th>
             <th>Progress</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {#each quotes as quote}
-            <tr>
+          {#each sortedQuotes as quote, i (quote.id)}
+            <tr class:discipline-band={rowBands[i] === 1}>
               <td>{quote.discipline}</td>
               <td>{quote.surveyor_organisation}</td>
               <td>
@@ -756,5 +816,35 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
+  }
+
+  /* Sortable column headers */
+  th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  th.sortable:hover {
+    color: #1e293b;
+  }
+
+  th.sortable i {
+    font-size: 0.85rem;
+    color: #cbd5e1;
+    vertical-align: middle;
+  }
+
+  th.sortable i.sort-active {
+    color: #3b82f6;
+  }
+
+  /* Alternating discipline-group shading */
+  tbody tr.discipline-band {
+    background: #f1f5f9;
+  }
+
+  tbody tr.discipline-band:hover {
+    background: #e8eef5;
   }
 </style>
