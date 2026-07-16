@@ -34,7 +34,7 @@
   let betaDropdownOpen = false;
   let policyFormOpen = false;
 
-  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs', 'stages'];
+  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs', 'stages', 'completeness'];
 
   function closeBetaDropdown() {
     betaDropdownOpen = false;
@@ -547,12 +547,6 @@
           Conditions Tracker
         </button>
         <button
-          class="tab-button {activeTab === 'completeness' ? 'active' : ''}"
-          on:click={() => activeTab = 'completeness'}
-        >
-          Completeness
-        </button>
-        <button
           class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
           on:click={() => activeTab = 'surveyor'}
         >
@@ -608,6 +602,13 @@
                 role="menuitem"
               >
                 Key Issues
+              </button>
+              <button
+                class="beta-dropdown-item {activeTab === 'completeness' ? 'active' : ''}"
+                on:click={() => handleBetaTabSelect('completeness')}
+                role="menuitem"
+              >
+                Completeness
               </button>
             </div>
           {/if}
