@@ -479,6 +479,8 @@
   lineItems={selectedQuote?.line_items || []}
   discipline={selectedQuote?.discipline || ''}
   organisation={selectedQuote?.surveyor_organisation || ''}
+  quoteId={selectedQuote?.id || null}
+  allQuotes={quotes}
   on:close={() => { showLineItemsModal = false; selectedQuote = null; }}
 />
 

@@ -313,6 +313,8 @@
   discipline={selectedQuote?.discipline || ''}
   organisation={selectedQuote?.surveyor_organisation || ''}
   instructionStatus={selectedQuote?.instruction_status || ''}
+  quoteId={selectedQuote?.id || null}
+  allQuotes={quotes}
   on:close={() => { showLineItemsModal = false; selectedQuote = null; }}
 />
 
