@@ -467,7 +467,7 @@
           </div>
 
           <h2 class="card-title">
-            Tenders
+            Tenders <span class="beta-tag">Beta</span>
           </h2>
 
           <p class="card-description">
