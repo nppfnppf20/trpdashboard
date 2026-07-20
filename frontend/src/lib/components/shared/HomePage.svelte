@@ -22,6 +22,10 @@
     goto('/webscraper');
   }
 
+  function navigateToTenders() {
+    goto('/tenders');
+  }
+
   function navigateToPlanningDeliverables() {
     goto('/planning');
   }
@@ -450,6 +454,48 @@
 
           <button class="tool-button tool-button-orange" on:click|stopPropagation={navigateToWebScraper}>
             Launch Web Scraper
+            <i class="las la-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tenders Card -->
+      <div class="tool-card" on:click={navigateToTenders} on:keydown={(e) => e.key === 'Enter' && navigateToTenders()} role="button" tabindex="0">
+        <div class="card-content">
+          <div class="card-icon card-icon-indigo">
+            <i class="las la-landmark"></i>
+          </div>
+
+          <h2 class="card-title">
+            Tenders
+          </h2>
+
+          <p class="card-description">
+            Track public procurement opportunities from Find a Tender, automatically filtered for
+            planning, regeneration and socio-economic consultancy work, with council activity insights.
+          </p>
+
+          <div class="features-list">
+            <div class="feature-item">
+              <i class="las la-file-contract feature-icon-indigo"></i>
+              <span>Live &amp; Awarded Notices</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-magic feature-icon-indigo"></i>
+              <span>AI Relevance Filtering</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-landmark feature-icon-indigo"></i>
+              <span>Council Activity Rankings</span>
+            </div>
+            <div class="feature-item">
+              <i class="las la-sync feature-icon-indigo"></i>
+              <span>One-Click Data Sync</span>
+            </div>
+          </div>
+
+          <button class="tool-button tool-button-indigo" on:click|stopPropagation={navigateToTenders}>
+            Open Tenders
             <i class="las la-arrow-right"></i>
           </button>
         </div>

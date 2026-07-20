@@ -109,11 +109,11 @@
     return status ? status.replace(/\s+/g, '-') : 'pending';
   }
 
-  // Sum of line item costs (always stored excl. VAT). Falls back to the stored
-  // total for quotes without line items.
+  // Sum of line item costs (always stored excl. VAT), excluding optional items.
+  // Falls back to the stored total for quotes without line items.
   function exclVatTotal(quote) {
     if (quote.line_items && quote.line_items.length > 0) {
-      return quote.line_items.reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
+      return quote.line_items.reduce((sum, item) => sum + (item.is_optional ? 0 : (parseFloat(item.cost) || 0)), 0);
     }
     return parseFloat(quote.total) || 0;
   }

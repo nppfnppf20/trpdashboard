@@ -64,8 +64,8 @@
     return item.vatIncluded ? cost * 1.2 : cost;
   }
 
-  // Reactive total calculation - updates automatically when lineItems change
-  $: total = lineItems.reduce((sum, item) => sum + lineTotal(item), 0);
+  // Reactive total calculation - updates automatically when lineItems change (optional items excluded)
+  $: total = lineItems.reduce((sum, item) => sum + (item.optional ? 0 : lineTotal(item)), 0);
 
   function addLineItem() {
     lineItems = [...lineItems, { stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false }];
