@@ -277,6 +277,7 @@
           quotes={allQuotes}
           {loading}
           projectId={selectedProject?.unique_id}
+          project={selectedProject}
           on:statusChange={handleStatusChange}
           on:updateQuote={handleUpdateQuoteEvent}
           on:deleteQuote={handleDeleteQuoteEvent}

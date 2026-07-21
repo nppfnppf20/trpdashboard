@@ -12,6 +12,9 @@
   import SurveyActionsDrawer from './SurveyActionsDrawer.svelte';
   import { updateQuoteNotes } from '$lib/api/quotes.js';
   import { getQuoteActions } from '$lib/api/quoteActions.js';
+  import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
+  import { exportQuotesPdf } from '$lib/services/quotesPdfExport.js';
+  import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import '$lib/styles/tables.css';
   import '$lib/styles/badges.css';
   import '$lib/styles/buttons.css';
@@ -19,6 +22,21 @@
   export let quotes = [];
   export let loading = false;
   export let projectId = null;
+  export let project = null;
+
+  let sentRequests = [];
+  let exporting = false;
+
+  $: if (projectId) loadSentRequests(projectId); else sentRequests = [];
+
+  async function loadSentRequests(pid) {
+    try {
+      sentRequests = await getSentRequestsForProject(pid);
+    } catch (err) {
+      console.error('Failed to load sent quote requests:', err);
+      sentRequests = [];
+    }
+  }
 
   const dispatch = createEventDispatcher();
 
@@ -116,6 +134,12 @@
       return quote.line_items.reduce((sum, item) => sum + (item.is_optional ? 0 : (parseFloat(item.cost) || 0)), 0);
     }
     return parseFloat(quote.total) || 0;
+  }
+
+  // Single line item total: cost plus 20% VAT when the line has VAT included
+  function lineTotal(item) {
+    const cost = parseFloat(item.cost) || 0;
+    return item.vat_included ? cost * 1.2 : cost;
   }
 
   // ── Column sorting — default: discipline A→Z ───────────────────────────────
@@ -348,6 +372,73 @@
     // Dispatch to parent so it updates its quotes array
     dispatch('addQuote', { quote: newQuote });
   }
+
+  // ── Export: PDF and Word summaries of quote requests sent + quotes in ──────
+
+  function handleExportPdf() {
+    exportQuotesPdf(project, sortedQuotes, sentRequests);
+  }
+
+  async function handleExportWord() {
+    exporting = true;
+    try {
+      const html = buildExportHtml();
+      const projectRef = project?.project_code || project?.project_reference || project?.site_name || 'Project';
+      await exportHtmlToWord(html, `${projectRef} Surveyor Quotes.docx`);
+    } finally {
+      exporting = false;
+    }
+  }
+
+  function buildExportHtml() {
+    const th = (t) => `<th style="text-align:left;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;font-size:11px;font-weight:600;">${t}</th>`;
+    const td = (t) => `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;">${t ?? ''}</td>`;
+
+    const requestRows = sentRequests.map(r => {
+      const recipients = (r.recipients || [])
+        .map(rc => `${rc.organisation}${rc.contact_name ? ` (${rc.contact_name})` : ''}`)
+        .join('<br>');
+      return `<tr>
+        ${td(new Date(r.sent_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))}
+        ${td(r.template_discipline || '')}
+        ${td(recipients)}
+      </tr>`;
+    }).join('');
+
+    // The Word converter has no rowspan support, so quote-level cells are
+    // repeated on every line-item row rather than merged, keeping every row
+    // the same width and the columns aligned under the header.
+    const quoteRows = sortedQuotes.map(q => {
+      const items = q.line_items?.length ? q.line_items : [null];
+      return items.map(item => `<tr>
+        ${td(q.discipline || '')}
+        ${td(q.surveyor_organisation || '')}
+        ${td(q.contact_name || '')}
+        ${td(q.instruction_status || 'pending')}
+        ${td(item ? (item.item || '') : 'No line items')}
+        ${td(item ? formatCurrency(item.cost) : '')}
+        ${td(item ? (item.vat_included ? 'Y' : 'N') : '')}
+        ${td(item ? formatCurrency(lineTotal(item)) : '')}
+        ${td(formatCurrency(q.total))}
+      </tr>`).join('');
+    }).join('');
+
+    const projectLine = [project?.project_code, project?.site_name || project?.project_name].filter(Boolean).join(' - ');
+    const exportedDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    return `<h2>Surveyor Quotes Summary</h2>
+<p>Project: ${projectLine} | Exported: ${exportedDate}</p>
+<h3>Quote Requests Sent</h3>
+${sentRequests.length ? `<table style="border-collapse:collapse;width:100%;">
+  <thead><tr>${th('Sent Date')}${th('Discipline')}${th('Recipients')}</tr></thead>
+  <tbody>${requestRows}</tbody>
+</table>` : '<p>No quote requests have been sent for this project.</p>'}
+<h3>Quotes Received</h3>
+${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
+  <thead><tr>${th('Discipline')}${th('Organisation')}${th('Contact')}${th('Status')}${th('Item')}${th('Cost (excl. VAT)')}${th('VAT')}${th('Line Total')}${th('Quote Total (incl. VAT)')}</tr></thead>
+  <tbody>${quoteRows}</tbody>
+</table>` : '<p>No quotes received for this project.</p>'}`;
+  }
 </script>
 
 <div class="content-panel">
@@ -356,6 +447,12 @@
     <div class="panel-header-actions">
       <button class="btn-add-action" on:click={() => openAddAction()} disabled={!quotes.length || !projectId}>
         <i class="las la-history"></i> Add Progress
+      </button>
+      <button class="btn btn-secondary" on:click={handleExportWord} disabled={exporting || (!quotes.length && !sentRequests.length)} title="Export a Word summary of quote requests sent and quotes received">
+        <i class="las la-file-word"></i> Word
+      </button>
+      <button class="btn btn-secondary" on:click={handleExportPdf} disabled={!quotes.length && !sentRequests.length} title="Export a PDF summary of quote requests sent and quotes received">
+        <i class="las la-file-pdf"></i> PDF
       </button>
       <button class="btn btn-primary" on:click={openAddQuoteModal}>
         <i class="las la-plus"></i>

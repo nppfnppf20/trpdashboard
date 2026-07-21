@@ -165,9 +165,13 @@ function generalTableToOOXML(tableEl) {
   const totalWidth = 9072; // twips (~15.9cm, standard page width minus margins)
   const colWidth = Math.floor(totalWidth / colCount);
 
+  // tblLayout=fixed forces Word to honour the widths below instead of
+  // autofitting the table to its content, which is what was pushing wide
+  // tables (e.g. the Quotes export) off the right edge of a portrait page.
   const tblPr = `<w:tblPr>
     <w:tblStyle w:val="TableGrid"/>
     <w:tblW w:w="${totalWidth}" w:type="dxa"/>
+    <w:tblLayout w:type="fixed"/>
     <w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>
   </w:tblPr>`;
 
@@ -179,8 +183,8 @@ function generalTableToOOXML(tableEl) {
     const cellsXml = cells.map(cell => {
       const text = escapeXml(cell.textContent.trim());
       const runs = isHeader || cell.tagName.toLowerCase() === 'th'
-        ? `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`
-        : `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+        ? `<w:r><w:rPr><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`
+        : `<w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
       return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/></w:tcPr><w:p>${runs}</w:p></w:tc>`;
     }).join('');
     const trPr = isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
