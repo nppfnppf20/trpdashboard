@@ -7,7 +7,8 @@ import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs, DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT, DEFAULT_INCORPORATE_APPEAL_PROMPT, DEFAULT_DRAFT_ARGUMENTS_PROMPT, DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT, DEFAULT_SCOPE_INCORPORATION_PROMPT } from '../services/llm.service.js';
-import { generateAppealDraftFromPrompt, amendDraftFromBriefing as amendDraftFromBriefingService, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
+import { generateAppealDraftFromPrompt, generateIssueOrderedSection, amendDraftFromBriefing as amendDraftFromBriefingService, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
+import { fetchLinkedPoliciesByTrack, fetchIssueTypesByTrack } from './planningApplication.controller.js';
 
 // Keys that this controller reads from admin_console.llm_prompts
 const APPEAL_PROMPT_KEYS = new Set([
@@ -875,6 +876,95 @@ export async function generateDraft(req, res) {
 // PA-notes variants — same as above but read from planning_applications.issue_notes
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Marker tokens a draft type's main prompt can emit in place of a section it
+// deliberately skips — e.g. Planning Statement v3 writes everything except
+// Policy/Assessment, then each marker is replaced with that section's own
+// dedicated prompt (from appeals.appeal_draft_sections, matched by slug).
+// No-op for any draft type whose prompt doesn't contain these tokens.
+const SECTION_SPLICE_MARKERS = {
+  planning_policy:     '[[POLICY_SECTION]]',
+  planning_assessment: '[[PLANNING_ASSESSMENT_SECTION]]',
+};
+
+// Each spliced section gets its own guiding brief (document_type in
+// admin_console.guiding_briefs) rather than reusing the main document's —
+// falls back to the main draft type's guiding brief if not set.
+const SECTION_GUIDING_BRIEF_SLUGS = {
+  planning_policy:     'planning_policy_v3',
+  planning_assessment: 'planning_assessment_v3',
+};
+
+// Matches an <h2>...heading...</h2> block through to the next <h2> (or end of
+// document) — used to find/replace a section the model wrote directly instead
+// of leaving the marker for it.
+function buildHeadingBlockPattern(sectionName) {
+  const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`<h2>[^<]*${escaped}[^<]*<\\/h2>[\\s\\S]*?(?=<h2>|$)`, 'i');
+}
+
+// Pre-substitutes project-level and data-driven variables into a prompt so they
+// are resolved before generateAppealDraftFromPrompt handles the remaining
+// {{vars}} (GUIDING_BRIEF, PROJECT_NAME, etc). No-op for prompts that don't
+// reference these variables.
+async function substituteAppealPromptVariables(promptText, project, projectId) {
+  if (!promptText) return promptText;
+
+  const lpaName = Array.isArray(project.local_planning_authority)
+    ? project.local_planning_authority.join(', ')
+    : project.local_planning_authority || '';
+
+  let text = promptText
+    .replace(/\{\{SITE_ADDRESS\}\}/g, project.address || '(not set)')
+    .replace(/\{\{LPA_NAME\}\}/g, lpaName || '(not set)')
+    .replace(/\{\{DEVELOPMENT_DESCRIPTION\}\}/g, project.development_description || '(not set)');
+
+  if (/\{\{(LOCAL_POLICIES|NATIONAL_POLICIES)\}\}/.test(text)) {
+    const { rows: policyRows } = await pool.query(
+      `SELECT policy_reference, policy_name, policy_text, policy_type
+       FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, id`,
+      [projectId]
+    );
+    const formatPolicies = rows => rows.length
+      ? rows.map(p => {
+          const header = `${p.policy_reference}${p.policy_name ? `: ${p.policy_name}` : ''}`;
+          const body = p.policy_text?.trim() ? `\n${p.policy_text.trim()}` : '';
+          return header + body;
+        }).join('\n\n')
+      : '(none recorded)';
+    text = text
+      .replace(/\{\{LOCAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'local')))
+      .replace(/\{\{NATIONAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'national')));
+  }
+
+  if (/\{\{PLANNING_HISTORY\}\}/.test(text)) {
+    const { rows: historyRows } = await pool.query(
+      `SELECT section, planning_ref, description, decision, decision_date
+       FROM public.project_planning_history WHERE project_id = $1 ORDER BY section, id`,
+      [projectId]
+    );
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+    const fmtHistory = rows => rows.length
+      ? rows.map(h => {
+          const parts = [];
+          if (h.planning_ref) parts.push(`Ref: ${h.planning_ref}`);
+          if (h.description)  parts.push(h.description);
+          if (h.decision)     parts.push(`Decision: ${h.decision}`);
+          const d = fmtDate(h.decision_date);
+          if (d) parts.push(`Date: ${d}`);
+          return parts.join(', ');
+        }).join('\n')
+      : 'None recorded.';
+    const onSite = historyRows.filter(r => r.section === 'on_site');
+    const nearby = historyRows.filter(r => r.section === 'nearby');
+    const block = historyRows.length
+      ? `On-site:\n${fmtHistory(onSite)}\n\nNearby:\n${fmtHistory(nearby)}`
+      : '(none recorded)';
+    text = text.replace(/\{\{PLANNING_HISTORY\}\}/g, block);
+  }
+
+  return text;
+}
+
 export async function generateDraftFromPaNotes(req, res) {
   const { projectId, typeId } = req.params;
   const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
@@ -892,64 +982,7 @@ export async function generateDraftFromPaNotes(req, res) {
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
     const draftType = typeRows[0];
 
-    // Pre-substitute project-level and data-driven variables into the prompt so they are
-    // resolved before generateAppealDraftFromPrompt handles the remaining {{vars}}.
-    // This is a no-op for doc types whose prompts don't use these variables.
-    let typePrompt = draftType.generation_prompt;
-    if (typePrompt) {
-      const lpaName = Array.isArray(project.local_planning_authority)
-        ? project.local_planning_authority.join(', ')
-        : project.local_planning_authority || '';
-
-      typePrompt = typePrompt
-        .replace(/\{\{SITE_ADDRESS\}\}/g, project.address || '(not set)')
-        .replace(/\{\{LPA_NAME\}\}/g, lpaName || '(not set)')
-        .replace(/\{\{DEVELOPMENT_DESCRIPTION\}\}/g, project.development_description || '(not set)');
-
-      if (/\{\{(LOCAL_POLICIES|NATIONAL_POLICIES)\}\}/.test(typePrompt)) {
-        const { rows: policyRows } = await pool.query(
-          `SELECT policy_reference, policy_name, policy_text, policy_type
-           FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, id`,
-          [projectId]
-        );
-        const formatPolicies = rows => rows.length
-          ? rows.map(p => {
-              const header = `${p.policy_reference}${p.policy_name ? `: ${p.policy_name}` : ''}`;
-              const text = p.policy_text?.trim() ? `\n${p.policy_text.trim()}` : '';
-              return header + text;
-            }).join('\n\n')
-          : '(none recorded)';
-        typePrompt = typePrompt
-          .replace(/\{\{LOCAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'local')))
-          .replace(/\{\{NATIONAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'national')));
-      }
-
-      if (/\{\{PLANNING_HISTORY\}\}/.test(typePrompt)) {
-        const { rows: historyRows } = await pool.query(
-          `SELECT section, planning_ref, description, decision, decision_date
-           FROM public.project_planning_history WHERE project_id = $1 ORDER BY section, id`,
-          [projectId]
-        );
-        const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
-        const fmtHistory = rows => rows.length
-          ? rows.map(h => {
-              const parts = [];
-              if (h.planning_ref) parts.push(`Ref: ${h.planning_ref}`);
-              if (h.description)  parts.push(h.description);
-              if (h.decision)     parts.push(`Decision: ${h.decision}`);
-              const d = fmtDate(h.decision_date);
-              if (d) parts.push(`Date: ${d}`);
-              return parts.join(', ');
-            }).join('\n')
-          : 'None recorded.';
-        const onSite = historyRows.filter(r => r.section === 'on_site');
-        const nearby = historyRows.filter(r => r.section === 'nearby');
-        const block = historyRows.length
-          ? `On-site:\n${fmtHistory(onSite)}\n\nNearby:\n${fmtHistory(nearby)}`
-          : '(none recorded)';
-        typePrompt = typePrompt.replace(/\{\{PLANNING_HISTORY\}\}/g, block);
-      }
-    }
+    const typePrompt = await substituteAppealPromptVariables(draftType.generation_prompt, project, projectId);
 
     const { rows: issues } = await pool.query(
       `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
@@ -1009,7 +1042,7 @@ export async function generateDraftFromPaNotes(req, res) {
       } catch { /* malformed JSON — ignore */ }
     }
 
-    const contentHtml = await generateAppealDraftFromPrompt({
+    let contentHtml = await generateAppealDraftFromPrompt({
       projectName: project.project_name,
       draftTypeName: draftType.name,
       typePrompt,
@@ -1019,6 +1052,67 @@ export async function generateDraftFromPaNotes(req, res) {
       startingDocs,
       briefingNotes,
     });
+
+    // Splice in any sections the main prompt deliberately left as markers —
+    // see SECTION_SPLICE_MARKERS. No-op when the main prompt contains neither
+    // a marker nor a same-named heading (i.e. this draft type doesn't use them).
+    // These sections are generated issue-by-issue (one <h3> + one LLM call per
+    // project issue) so each can draw on that issue's linked policies and any
+    // development-type-specific policy snippets (admin_console.issue_types).
+    let linkedPoliciesByTrack = null;
+    let issueTypesByTrack = null;
+
+    for (const [sectionSlug, marker] of Object.entries(SECTION_SPLICE_MARKERS)) {
+      const { rows: sectionRows } = await pool.query(
+        `SELECT * FROM appeals.appeal_draft_sections WHERE draft_type_id = $1 AND slug = $2`,
+        [typeId, sectionSlug]
+      );
+      const sectionDef = sectionRows[0];
+
+      const hasMarker = contentHtml.includes(marker);
+      // The model is instructed to leave a marker instead of writing this section,
+      // but occasionally writes it anyway despite that — fall back to replacing
+      // its heading block by name so the split still happens correctly.
+      const headingPattern = sectionDef ? buildHeadingBlockPattern(sectionDef.name) : null;
+      const hasHeading = !hasMarker && headingPattern?.test(contentHtml);
+      if (!hasMarker && !hasHeading) continue;
+
+      const sectionPrompt = sectionDef?.generation_prompt?.trim();
+      if (!sectionPrompt) {
+        contentHtml = hasMarker ? contentHtml.split(marker).join('') : contentHtml.replace(headingPattern, '');
+        continue;
+      }
+
+      // Fetched once, lazily, and reused across both sections.
+      if (!linkedPoliciesByTrack) {
+        [linkedPoliciesByTrack, issueTypesByTrack] = await Promise.all([
+          fetchLinkedPoliciesByTrack(projectId),
+          fetchIssueTypesByTrack(projectId),
+        ]);
+      }
+
+      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      const sectionGuidingBriefSlug = SECTION_GUIDING_BRIEF_SLUGS[sectionSlug];
+      const sectionGuidingBrief = sectionGuidingBriefSlug
+        ? await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type)
+        : guidingBrief;
+
+      const sectionHtml = await generateIssueOrderedSection({
+        sectionName: sectionDef.name,
+        sectionPromptTemplate: substitutedSectionPrompt,
+        projectName: project.project_name,
+        issues,
+        linkedPoliciesByTrack,
+        issueTypesByTrack,
+        guidingBrief: sectionGuidingBrief,
+        projectBrief,
+        startingDocs,
+        briefingNotes,
+      });
+      contentHtml = hasMarker
+        ? contentHtml.split(marker).join(sectionHtml)
+        : contentHtml.replace(headingPattern, sectionHtml + '\n\n');
+    }
 
     const { rows } = await pool.query(
       `INSERT INTO appeals.appeal_drafts (project_id, draft_type_id, content_html, generated_at, updated_at)
@@ -1145,7 +1239,8 @@ export async function generateSectionFromPaNotes(req, res) {
   const { projectId, typeId, sectionId } = req.params;
   try {
     const { rows: projectRows } = await pool.query(
-      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+      `SELECT project_name, development_type, address, local_planning_authority, development_description
+       FROM public.projects WHERE id = $1`, [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
@@ -1178,10 +1273,17 @@ export async function generateSectionFromPaNotes(req, res) {
       return lines.join('\n');
     }).join('\n\n---\n\n');
 
-    const guidingBrief = await getGuidingBrief(typeRows[0].slug, projectRows[0].development_type);
+    const guidingBrief = await getGuidingBrief(
+      GUIDING_BRIEF_SLUG_ALIAS[typeRows[0].slug] || typeRows[0].slug,
+      projectRows[0].development_type
+    );
+
+    const substitutedPrompt = await substituteAppealPromptVariables(
+      sectionRows[0].generation_prompt, projectRows[0], projectId
+    );
 
     const html = await generateDraftSection({
-      section: sectionRows[0],
+      section: { ...sectionRows[0], generation_prompt: substitutedPrompt },
       projectName: projectRows[0].project_name,
       draftTypeName: typeRows[0].name,
       issueContext,

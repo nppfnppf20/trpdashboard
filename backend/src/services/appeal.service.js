@@ -344,6 +344,85 @@ The guiding brief describes how this type of document should be structured and a
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Issue-ordered section generation — for draft types (e.g. Planning Statement v3's
+// Policy/Assessment sections) that want one subsection per project issue, each
+// drawing on that issue's linked policies and any development-type-specific
+// snippets (admin_console.issue_types), rather than one flat call for the section.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const POLICY_TIER_LABELS = { national: 'National Policy', local: 'Local Policy', neighbourhood: 'Neighbourhood Policy', supplementary: 'Supplementary Guidance', other: 'Other Policy' };
+const POLICY_TIER_ORDER = ['national', 'local', 'neighbourhood', 'supplementary', 'other'];
+
+// New context this adds beyond what generateAppealDraftFromPrompt already injects
+// (guiding brief, project brief, briefing notes, that issue's own argument notes).
+function buildIssueSnippetContext(linkedPolicies = [], issueType = null) {
+  const lines = [];
+
+  if (issueType) {
+    if (issueType.nppf_text?.trim())           lines.push(`### NPPF\n${noEmDash(issueType.nppf_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
+    if (issueType.nppg_text?.trim())           lines.push(`### NPPG\n${noEmDash(issueType.nppg_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
+    if (issueType.other_national_text?.trim()) lines.push(`### Other National Policy\n${noEmDash(issueType.other_national_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
+    if (issueType.other_guidance_text?.trim()) lines.push(`### Other Guidance\n${noEmDash(issueType.other_guidance_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
+  }
+
+  for (const tier of POLICY_TIER_ORDER) {
+    const tierPolicies = linkedPolicies.filter(p => p.policy_type === tier);
+    if (!tierPolicies.length) continue;
+    lines.push(`### ${POLICY_TIER_LABELS[tier]}`);
+    for (const p of tierPolicies) {
+      const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+      const keyTag = p.is_key_policy ? ' [KEY POLICY — quote verbatim in draft]' : '';
+      lines.push(`${ref}${p.policy_name}${keyTag}`);
+      if (p.policy_text?.trim())              lines.push(`Policy wording: "${p.policy_text.trim()}"`);
+      if (p.relevant_supporting_text?.trim()) lines.push(`Supporting context: ${p.relevant_supporting_text.trim().slice(0, 400)}`);
+    }
+  }
+
+  return lines.join('\n\n');
+}
+
+// sectionPromptTemplate may use {{ISSUE_LABEL}}, {{ISSUE_DISCIPLINE}}, and
+// {{ISSUE_CONTEXT}} (the linked-policy / issue-type snippet block above) in
+// addition to the variables generateAppealDraftFromPrompt already substitutes.
+export async function generateIssueOrderedSection({
+  sectionName, sectionPromptTemplate, projectName, issues,
+  linkedPoliciesByTrack = {}, issueTypesByTrack = {},
+  guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
+}) {
+  const parts = [`<h2>${sectionName}</h2>`];
+
+  for (const issue of issues) {
+    const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
+    const issueType = issueTypesByTrack[issue.id] ?? null;
+
+    if (!linkedPolicies.length && !issueType && !issue.argument_for?.trim() && !issue.argument_against?.trim()) {
+      parts.push(`<h3>${issue.label}</h3>`);
+      continue;
+    }
+
+    const issueContext = buildIssueSnippetContext(linkedPolicies, issueType);
+    const issuePrompt = sectionPromptTemplate
+      .replace(/\{\{ISSUE_LABEL\}\}/g, issue.label)
+      .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issue.discipline ? ` (${issue.discipline})` : '')
+      .replace(/\{\{ISSUE_CONTEXT\}\}/g, issueContext || '(no linked policies or policy snippets recorded for this issue)');
+
+    const html = await generateAppealDraftFromPrompt({
+      projectName,
+      draftTypeName: `${sectionName} — ${issue.label}`,
+      typePrompt: issuePrompt,
+      issues: [issue],
+      guidingBrief,
+      projectBrief,
+      startingDocs,
+      briefingNotes,
+    });
+    parts.push(html);
+  }
+
+  return parts.join('\n\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Amend working draft from an uploaded document (briefing note, specialist
 // report, expert evidence, etc.)
 // ─────────────────────────────────────────────────────────────────────────────

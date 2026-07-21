@@ -14,6 +14,10 @@ export async function listDocumentTypes(req, res) {
         UNION
         SELECT slug AS value, name AS label, 'Marketing' AS grp FROM marketing.draft_types
         UNION
+        -- Fixed entry so 'surveyor_briefing' is always selectable, even before any
+        -- guiding_briefs row exists for it (it has no backing draft_types table)
+        SELECT 'surveyor_briefing' AS value, 'Surveyor Briefing' AS label, 'Surveyor Management' AS grp
+        UNION
         -- Legacy values that exist in guiding briefs but have no draft type entry (e.g. 'hlpv' alias)
         SELECT document_type AS value, document_type AS label, 'Other' AS grp
         FROM admin_console.guiding_briefs
@@ -23,6 +27,8 @@ export async function listDocumentTypes(req, res) {
           SELECT slug FROM planning_applications.draft_types
           UNION ALL
           SELECT slug FROM marketing.draft_types
+          UNION ALL
+          SELECT 'surveyor_briefing'
         )
       ) t
       ORDER BY grp, label
@@ -30,6 +36,27 @@ export async function listDocumentTypes(req, res) {
     res.json(rows);
   } catch (err) {
     console.error('listDocumentTypes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// Distinct development types that already have a guiding brief for a given
+// document type — powers pickers that should reflect real data instead of a
+// hardcoded, drifting option list (e.g. the surveyor briefing draft-setup modal).
+export async function listDevelopmentTypes(req, res) {
+  const { document_type } = req.query;
+  if (!document_type?.trim()) return res.status(400).json({ error: 'document_type is required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT development_type
+       FROM admin_console.guiding_briefs
+       WHERE document_type = $1 AND development_type IS NOT NULL
+       ORDER BY development_type`,
+      [document_type.trim()]
+    );
+    res.json(rows.map(r => r.development_type));
+  } catch (err) {
+    console.error('listDevelopmentTypes error:', err);
     res.status(500).json({ error: err.message });
   }
 }

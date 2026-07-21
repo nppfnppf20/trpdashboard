@@ -900,7 +900,7 @@ async function fetchEvidenceByTrack(projectId) {
   return map;
 }
 
-async function fetchLinkedPoliciesByTrack(projectId) {
+export async function fetchLinkedPoliciesByTrack(projectId) {
   const { rows } = await pool.query(
     `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
             pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy,
@@ -919,7 +919,7 @@ async function fetchLinkedPoliciesByTrack(projectId) {
   return map;
 }
 
-async function fetchIssueTypesByTrack(projectId) {
+export async function fetchIssueTypesByTrack(projectId) {
   const { rows } = await pool.query(
     `SELECT pit.id AS track_id,
             it.id, it.label, it.development_type,

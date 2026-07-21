@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { analyseDisciplines, getTemplates, getSurveyorsForDiscipline } from '$lib/api/quoteRequests.js';
+  import { getLookupOptions } from '$lib/api/lookups.js';
   import SelectSurveyorModal from './SelectSurveyorModal.svelte';
 
   export let show = false;
@@ -12,8 +13,9 @@
 
   let loading = false;
   let error = null;
-  let suggestions = []; // [{ discipline, reasoning, template, surveyors, manual? }]
+  let suggestions = []; // [{ discipline, reasoning, template, hasSpecificTemplate, surveyors, manual? }]
   let allTemplates = [];
+  let allDisciplines = []; // master discipline list — not limited to disciplines with a template
 
   // Per-discipline: accepted/skipped + selected surveyor IDs
   let accepted = new Set();
@@ -30,9 +32,7 @@
   let addDisciplineLoading = false;
 
   $: suggestedDisciplines = new Set(suggestions.map(s => s.discipline));
-  $: availableToAdd = [...new Set(
-    allTemplates.map(t => t.discipline).filter(d => d && !suggestedDisciplines.has(d))
-  )];
+  $: availableToAdd = allDisciplines.filter(d => d && !suggestedDisciplines.has(d));
 
   $: acceptedWithSurveyors = suggestions.filter(s =>
     accepted.has(s.discipline) &&
@@ -46,11 +46,13 @@
     accepted = new Set();
     selectedSurveyors = {};
     try {
-      const [{ suggestions: result }, templates] = await Promise.all([
+      const [{ suggestions: result }, templates, disciplineOptions] = await Promise.all([
         analyseDisciplines(projectId, { briefingNoteId, developmentType }),
-        getTemplates()
+        getTemplates(),
+        getLookupOptions('surveyor_disciplines')
       ]);
       allTemplates = templates;
+      allDisciplines = disciplineOptions.map(d => d.label);
       suggestions = result;
       for (const s of suggestions) {
         accepted = new Set([...accepted, s.discipline]);
@@ -70,8 +72,11 @@
     addDisciplineLoading = true;
     try {
       const surveyors = await getSurveyorsForDiscipline(addDisciplineValue);
-      const template = allTemplates.find(t => t.discipline?.toLowerCase() === addDisciplineValue.toLowerCase()) ?? null;
-      const newEntry = { discipline: addDisciplineValue, reasoning: null, template, surveyors, manual: true };
+      const specificTemplate = allTemplates.find(t => t.discipline?.toLowerCase() === addDisciplineValue.toLowerCase()) ?? null;
+      const generalTemplate = allTemplates.find(t => t.discipline === null) ?? null;
+      const template = specificTemplate ?? generalTemplate;
+      const hasSpecificTemplate = !!specificTemplate;
+      const newEntry = { discipline: addDisciplineValue, reasoning: null, template, hasSpecificTemplate, surveyors, manual: true };
       suggestions = [...suggestions, newEntry];
       accepted = new Set([...accepted, addDisciplineValue]);
       selectedSurveyors[addDisciplineValue] = new Set();
@@ -240,10 +245,15 @@
                   </button>
                   <div class="discipline-info">
                     <h3>{suggestion.discipline}</h3>
-                    {#if suggestion.template}
+                    {#if suggestion.hasSpecificTemplate}
                       <span class="template-pill">
                         <i class="las la-file-alt"></i>
                         {suggestion.template.template_name}
+                      </span>
+                    {:else if suggestion.template}
+                      <span class="general-template-pill" title="No {suggestion.discipline}-specific template exists — using the general template instead. Review before sending.">
+                        <i class="las la-exclamation-triangle"></i>
+                        Using general template — review before sending
                       </span>
                     {:else}
                       <span class="no-template-pill">No template, email will need to be written manually</span>

@@ -21,6 +21,7 @@ const TEMPLATE_MAP = {
 const SLUG_TEMPLATE_MAP = {
   planning_statement:           CS_TEMPLATE,
   planning_statement_v2:        CS_TEMPLATE,
+  planning_statement_v3:        CS_TEMPLATE,
   planning_statement_solar:     CS_TEMPLATE,
   site_justification:           CS_TEMPLATE,
   eia_screening:                CS_TEMPLATE,

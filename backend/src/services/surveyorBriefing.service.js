@@ -8,8 +8,8 @@
 import { callClaude, parseJSON, noEmDash, MODEL_SONNET } from './llm.shared.js';
 
 const DISCIPLINE_SYSTEM = `You are a planning consultant reviewing a project briefing note.
-Your task is to identify which specialist surveyor disciplines are required based on the project description, site characteristics, and constraints mentioned.
-Only include disciplines that are clearly needed or strongly implied by the briefing — do not speculate.`;
+Your task is to identify which specialist surveyor disciplines are required based on the project description, site characteristics, and constraints mentioned, a project-specific briefing note, and a standing practice guide for this type of development, where one is provided.
+Only include disciplines that are clearly needed or strongly implied — do not speculate.`;
 
 /**
  * Analyse a briefing note and return which disciplines from the provided list are needed.
@@ -22,7 +22,14 @@ export async function analyseBriefingForDisciplines(briefingText, availableDisci
   const list = availableDisciplines.map(d => `- ${d}`).join('\n');
 
   const guidingBlock = guidingBrief?.guidance_content?.trim()
-    ? `\n\nStandard discipline requirements for this development type:\n${guidingBrief.guidance_content.trim()}\n\nUse this as a baseline — disciplines listed here should be included unless the briefing clearly indicates they are not relevant to this specific site.`
+    ? `\n\nStandard discipline requirements for this development type:
+${guidingBrief.guidance_content.trim()}
+
+This guide may distinguish two tiers of discipline, and you must apply them differently:
+- Essential / always-required disciplines: include these by default. Only drop one if the briefing note explicitly states it is not needed on this site (e.g. "no heritage assets nearby, heritage survey not required").
+- Conditional / situational disciplines (e.g. "only if X is present", "consider where Y applies"): include one of these ONLY if the briefing note specifically indicates the relevant site feature or need. Do not include a conditional discipline just because the guide mentions it as a possibility.
+
+If the guide is not split into these tiers, treat all disciplines it lists as essential under the same "include unless explicitly ruled out" rule.`
     : '';
 
   const user = `Review this project briefing note and identify which of the following surveyor disciplines are needed.${guidingBlock}
@@ -30,7 +37,7 @@ export async function analyseBriefingForDisciplines(briefingText, availableDisci
 Available disciplines:
 ${list}
 
-For each discipline needed, give a brief reason (1-2 sentences).
+For each discipline needed, give a brief reason (1-2 sentences). Where a guiding brief was provided above, say whether the discipline is included because it's a standard/essential requirement for this development type, or because the briefing note specifically indicates a need for it.
 Use the exact discipline name from the list above.
 
 Respond with JSON only — no explanation, no markdown:

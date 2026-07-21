@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import { analyseBriefingForDisciplines, suggestEmailEdits } from '../services/surveyorBriefing.service.js';
 import { sendEmail, sendBatch } from '../services/emailService.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
+import { getLookupOptions } from '../services/lookups.service.js';
 
 /**
  * GET /api/admin-console/quote-request-templates
@@ -212,17 +213,28 @@ export async function analyseDisciplines(req, res) {
     }
     const briefingText = noteRows[0].summary_html;
 
-    const [templates, guidingBrief] = await Promise.all([
+    const [templates, guidingBrief, disciplineOptions] = await Promise.all([
       quoteRequestsService.getTemplates({}),
-      getGuidingBrief('surveyor_briefing', developmentType)
+      getGuidingBrief('surveyor_briefing', developmentType),
+      getLookupOptions('surveyor_disciplines')
     ]);
-    const availableDisciplines = [...new Set(templates.filter(t => t.discipline).map(t => t.discipline))];
+    // Master discipline list (admin_console.surveyor_disciplines), plus any
+    // discipline used by a template that isn't in that list, as a safety net —
+    // no longer limited to only disciplines that already have a template.
+    const availableDisciplines = [...new Set([
+      ...disciplineOptions.map(d => d.label),
+      ...templates.filter(t => t.discipline).map(t => t.discipline)
+    ])];
 
     const disciplineSuggestions = await analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief);
 
+    const generalTemplate = templates.find(t => t.discipline === null) ?? null;
+
     const results = await Promise.all(
       disciplineSuggestions.map(async ({ discipline, reasoning }) => {
-        const template = templates.find(t => t.discipline?.toLowerCase() === discipline.toLowerCase()) ?? null;
+        const specificTemplate = templates.find(t => t.discipline?.toLowerCase() === discipline.toLowerCase()) ?? null;
+        const template = specificTemplate ?? generalTemplate;
+        const hasSpecificTemplate = !!specificTemplate;
 
         const { rows: surveyors } = await pool.query(
           `SELECT so.id, so.organisation, so.discipline, so.location,
@@ -243,7 +255,7 @@ export async function analyseDisciplines(req, res) {
           [discipline]
         );
 
-        return { discipline, reasoning, template, surveyors };
+        return { discipline, reasoning, template, hasSpecificTemplate, surveyors };
       })
     );
 

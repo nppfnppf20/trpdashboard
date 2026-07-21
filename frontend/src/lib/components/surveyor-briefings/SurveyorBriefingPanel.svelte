@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { getTemplates, getSentRequestsForProject, mergeTemplate, suggestEmailEditsForDiscipline } from '$lib/api/quoteRequests.js';
   import { getBriefingNotes } from '$lib/api/planningApplication.js';
+  import { listDevelopmentTypes } from '$lib/api/guidingBriefs.js';
   import BriefingEditor from './BriefingEditor.svelte';
   import SentBriefingsHistory from './SentBriefingsHistory.svelte';
   import EditEmailTemplate from './EditEmailTemplate.svelte';
@@ -33,6 +34,18 @@ export let selectedProject;
   // Setup modal state
   let setupBriefingNoteId = null;
   let setupDevType = null;
+
+  // Development types with a guiding brief already set up for surveyor briefings —
+  // drives the setup modal's dropdown instead of a hardcoded list
+  let devTypes = [];
+
+  onMount(async () => {
+    try {
+      devTypes = await listDevelopmentTypes('surveyor_briefing');
+    } catch {
+      devTypes = [];
+    }
+  });
 
   async function loadBriefingNotes(projectUniqueId) {
     try {
@@ -342,8 +355,9 @@ export let selectedProject;
           <label>Development type</label>
           <select bind:value={setupDevType}>
             <option value={null}>Other (no guiding brief)</option>
-            <option value="Renewables">Renewables</option>
-            <option value="Urban Site">Urban Site</option>
+            {#each devTypes as dt}
+              <option value={dt}>{dt}</option>
+            {/each}
           </select>
         </div>
       </div>

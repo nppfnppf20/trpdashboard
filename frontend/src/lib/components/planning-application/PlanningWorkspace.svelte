@@ -804,8 +804,9 @@
               {/if}
 
 
-              <!-- Sections toggle row — hidden for appeal and stage1 types (broad-prompt generation) -->
-              {#if type.tool !== 'appeal' && type.tool !== 'stage1'}
+              <!-- Sections toggle row — hidden for appeal and stage1 types (broad-prompt generation),
+                   except v3, which carves Policy/Assessment out into their own dedicated prompts -->
+              {#if type.tool !== 'stage1' && (type.tool !== 'appeal' || type.slug === 'planning_statement_v3')}
               <button class="draft-sections-toggle" on:click={() => toggleCardExpand(type.id)}>
                 <i class="las la-layer-group"></i>
                 Sections

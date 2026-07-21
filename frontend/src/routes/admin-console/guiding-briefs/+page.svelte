@@ -6,12 +6,12 @@
   let documentTypes = $state([]);
 
   const DEVELOPMENT_TYPES = [
-    'Residential', 'Co-Living', 'Commercial', 'Solar', 'Wind',
+    'Residential', 'Co-Living', 'Commercial', 'Solar', 'Wind', 'Renewables',
     'Mixed Use', 'Industrial', 'Change of Use', 'Agricultural', 'Urban Site', 'Other',
   ];
 
   // Ordered list of tool groups; 'All' is synthetic
-  const TOOL_GROUPS = ['Planning Application', 'Marketing'];
+  const TOOL_GROUPS = ['Planning Application', 'Marketing', 'Surveyor Management'];
 
   let briefs = $state([]);
   let loading = $state(true);
@@ -379,7 +379,9 @@
             <textarea
               class="text-area"
               bind:value={form.guidance_content}
-              placeholder="Describe how this document should be written. What sections are required? What should be emphasised?&#10;&#10;## Structure&#10;- Always open with a clear description of the proposed development&#10;- Address landscape and visual impact in a dedicated section&#10;&#10;## Key issues&#10;- For solar farms, always consider cumulative impact"
+              placeholder={form.document_type === 'surveyor_briefing'
+                ? 'List the surveyor disciplines needed for this development type, split into two tiers:&#10;&#10;Essential (always include unless the briefing note explicitly rules one out):&#10;- Heritage&#10;- Ecology&#10;- Landscape and Visual&#10;- Archaeology&#10;&#10;Conditional (include only if the briefing note specifically indicates a need):&#10;- Flood Risk, where the site is near a watercourse or in a flood zone&#10;- Noise, where there are nearby residential receptors&#10;- Arboriculture, where mature trees are present on or near the site'
+                : "Describe how this document should be written. What sections are required? What should be emphasised?&#10;&#10;## Structure&#10;- Always open with a clear description of the proposed development&#10;- Address landscape and visual impact in a dedicated section&#10;&#10;## Key issues&#10;- For solar farms, always consider cumulative impact"}
             ></textarea>
           {:else}
             <div class="preview-body md-body">

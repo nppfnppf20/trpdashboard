@@ -6,6 +6,12 @@ export async function listDocumentTypes() {
   return res.json();
 }
 
+export async function listDevelopmentTypes(documentType) {
+  const res = await authFetch(`/api/guiding-briefs/development-types?document_type=${encodeURIComponent(documentType)}`);
+  if (!res.ok) throw new Error('Failed to fetch development types');
+  return res.json();
+}
+
 export async function listGuidingBriefs() {
   const res = await authFetch('/api/guiding-briefs');
   if (!res.ok) throw new Error('Failed to fetch guiding briefs');
