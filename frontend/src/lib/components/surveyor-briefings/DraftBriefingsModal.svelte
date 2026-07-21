@@ -427,7 +427,7 @@
             {#if ds.template}
               <div class="detail-meta">
                 <i class="las la-file-alt"></i>
-                <span>Template: {ds.template.template_name}</span>
+                <span>Template: {ds.template.template_name}{#if !ds.hasSpecificTemplate} (general — no {ds.discipline}-specific template exists){/if}</span>
               </div>
             {/if}
 
@@ -678,6 +678,17 @@
   }
 
   .no-template-pill {
+    font-size: 0.75rem;
+    color: #92400e;
+    background: #fef3c7;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+  }
+
+  .general-template-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     font-size: 0.75rem;
     color: #92400e;
     background: #fef3c7;
