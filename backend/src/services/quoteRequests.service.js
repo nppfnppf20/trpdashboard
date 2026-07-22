@@ -1,6 +1,53 @@
 import { pool } from '../db.js';
 
 /**
+ * Resolve a list of briefing sources (briefing notes and/or meeting notes) into
+ * one combined text block for the discipline-analysis / scope-suggestion LLM
+ * calls. Each source picks its full transcript when requested (falling back to
+ * the summary if no transcript is stored), and unresolvable/foreign sources are
+ * silently skipped rather than erroring the whole batch.
+ * @param {Array<{type: 'briefing_note'|'meeting_note', id: number, full?: boolean}>} sources
+ * @param {string} projectUniqueId
+ * @returns {Promise<string>} Combined text, sections separated by a divider
+ */
+export async function resolveBriefingSourceTexts(sources, projectUniqueId) {
+  const parts = [];
+
+  for (const src of sources) {
+    if (src.type === 'meeting_note') {
+      const { rows } = await pool.query(
+        `SELECT mt.title, mt.meeting_date, ms.summary_html, mt.transcript_text
+         FROM planning_applications.meeting_transcripts mt
+         JOIN planning_applications.meeting_summaries ms ON ms.transcript_id = mt.id
+         JOIN public.projects p ON p.id = mt.project_id
+         WHERE mt.id = $1 AND p.unique_id = $2 AND mt.meeting_type = 'project'`,
+        [src.id, projectUniqueId]
+      );
+      const row = rows[0];
+      if (!row) continue;
+      const text = (src.full && row.transcript_text) ? row.transcript_text : row.summary_html;
+      if (text) parts.push(`## Meeting Note: ${row.title || 'Untitled'} (${row.meeting_date ?? 'undated'})\n${text}`);
+    } else {
+      // Default to briefing_note for backward compatibility with any caller
+      // that doesn't specify a type.
+      const { rows } = await pool.query(
+        `SELECT ds.title, ds.summary_html, ds.transcript_text
+         FROM planning_applications.document_summaries ds
+         JOIN public.projects p ON p.id = ds.project_id
+         WHERE ds.id = $1 AND p.unique_id = $2`,
+        [src.id, projectUniqueId]
+      );
+      const row = rows[0];
+      if (!row) continue;
+      const text = (src.full && row.transcript_text) ? row.transcript_text : row.summary_html;
+      if (text) parts.push(`## Briefing Note: ${row.title || 'Untitled'}\n${text}`);
+    }
+  }
+
+  return parts.join('\n\n---\n\n');
+}
+
+/**
  * Get all templates, optionally filter by discipline and is_active
  * @param {Object} filters - Optional filters { discipline, is_active }
  * @returns {Promise<Array>} Array of template objects

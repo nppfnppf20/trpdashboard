@@ -8,7 +8,7 @@
   export let projectId;
   export let preSelectedTemplate = null;
   export let preSelectedSurveyors = []; // [{ surveyorId, surveyorOrganisation, discipline, contactId, contactName, contactEmail }]
-  export let briefingNoteId = null;
+  export let sources = [];
   export let precomputedCheck = null; // { status: 'loading'|'ready'|'error', apiResult, error? }
   export let stepCurrent = 0;
   export let stepTotal = 0;

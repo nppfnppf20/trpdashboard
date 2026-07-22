@@ -4,6 +4,7 @@ import { analyseBriefingForDisciplines, suggestEmailEdits } from '../services/su
 import { sendEmail, sendBatch } from '../services/emailService.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getLookupOptions } from '../services/lookups.service.js';
+import { CONTEXT_BUDGET } from '../services/projectChat.service.js';
 
 /**
  * GET /api/admin-console/quote-request-templates
@@ -192,26 +193,32 @@ export async function deleteSentRequest(req, res) {
  */
 export async function analyseDisciplines(req, res) {
   const { projectId } = req.params;
-  const { briefing_note_id, development_type: developmentType = null } = req.body;
+  const { sources = [], development_type: developmentType = null } = req.body;
   try {
-    const noteQuery = briefing_note_id
-      ? `SELECT ds.summary_html
-         FROM planning_applications.document_summaries ds
-         JOIN public.projects p ON p.id = ds.project_id
-         WHERE ds.id = $1 AND p.unique_id = $2`
-      : `SELECT ds.summary_html
+    let briefingText;
+    if (sources.length > 0) {
+      briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
+    } else {
+      // Default entry point (nothing ticked in the picker): latest briefing note
+      const { rows: noteRows } = await pool.query(
+        `SELECT ds.summary_html
          FROM planning_applications.document_summaries ds
          JOIN public.projects p ON p.id = ds.project_id
          WHERE p.unique_id = $1
            AND ds.doc_type IN ('briefing_transcript', 'briefing_note')
-         ORDER BY ds.created_at DESC LIMIT 1`;
-    const noteParams = briefing_note_id ? [parseInt(briefing_note_id), projectId] : [projectId];
-    const { rows: noteRows } = await pool.query(noteQuery, noteParams);
+         ORDER BY ds.created_at DESC LIMIT 1`,
+        [projectId]
+      );
+      briefingText = noteRows[0]?.summary_html || null;
+    }
 
-    if (!noteRows.length || !noteRows[0].summary_html) {
+    if (!briefingText) {
       return res.status(404).json({ error: 'No briefing note found for this project. Upload a briefing note first.' });
     }
-    const briefingText = noteRows[0].summary_html;
+    if (briefingText.length > CONTEXT_BUDGET) {
+      const pct = Math.round(briefingText.length / CONTEXT_BUDGET * 100);
+      return res.status(400).json({ error: `Selected sources exceed the context budget (~${pct}%). Untick some sources or switch a full transcript to its summary and try again.` });
+    }
 
     const [templates, guidingBrief, disciplineOptions] = await Promise.all([
       quoteRequestsService.getTemplates({}),
@@ -267,6 +274,46 @@ export async function analyseDisciplines(req, res) {
 }
 
 /**
+ * GET /api/admin-console/quote-requests/projects/:projectId/briefing-sources
+ * List briefing notes and (project) meeting notes available as draft sources,
+ * with character counts so the frontend can show a context-budget meter
+ * without loading the full text of every note into the page.
+ */
+export async function listBriefingSources(req, res) {
+  const { projectId } = req.params;
+  try {
+    const [{ rows: briefingNotes }, { rows: meetingNotes }] = await Promise.all([
+      pool.query(
+        `SELECT ds.id, ds.title, ds.file_name, ds.created_at,
+                LENGTH(ds.summary_html) AS summary_chars,
+                LENGTH(ds.transcript_text) AS transcript_chars
+         FROM planning_applications.document_summaries ds
+         JOIN public.projects p ON p.id = ds.project_id
+         WHERE p.unique_id = $1
+           AND ds.doc_type IN ('briefing_transcript', 'briefing_note')
+         ORDER BY ds.created_at DESC`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT mt.id, mt.title, mt.meeting_date, mt.created_at,
+                LENGTH(ms.summary_html) AS summary_chars,
+                LENGTH(mt.transcript_text) AS transcript_chars
+         FROM planning_applications.meeting_transcripts mt
+         JOIN planning_applications.meeting_summaries ms ON ms.transcript_id = mt.id
+         JOIN public.projects p ON p.id = mt.project_id
+         WHERE p.unique_id = $1 AND mt.meeting_type = 'project'
+         ORDER BY mt.meeting_date DESC NULLS LAST, mt.created_at DESC`,
+        [projectId]
+      ),
+    ]);
+    res.json({ briefingNotes, meetingNotes, budget: CONTEXT_BUDGET });
+  } catch (err) {
+    console.error('listBriefingSources error:', err);
+    res.status(500).json({ error: 'Failed to fetch briefing sources', details: err.message });
+  }
+}
+
+/**
  * GET /api/admin-console/quote-requests/surveyors?discipline=X
  * Return 4★+ approved surveyors for a given discipline.
  */
@@ -304,32 +351,38 @@ export async function getSurveyorsForDiscipline(req, res) {
  */
 export async function suggestEmailEditsForDiscipline(req, res) {
   const { projectId } = req.params;
-  const { briefing_note_id, discipline, template_content } = req.body;
+  const { sources = [], discipline, template_content } = req.body;
 
   if (!discipline || !template_content) {
     return res.status(400).json({ error: 'discipline and template_content are required' });
   }
 
   try {
-    const noteQuery = briefing_note_id
-      ? `SELECT ds.summary_html
-         FROM planning_applications.document_summaries ds
-         JOIN public.projects p ON p.id = ds.project_id
-         WHERE ds.id = $1 AND p.unique_id = $2`
-      : `SELECT ds.summary_html
+    let briefingText;
+    if (sources.length > 0) {
+      briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
+    } else {
+      const { rows: noteRows } = await pool.query(
+        `SELECT ds.summary_html
          FROM planning_applications.document_summaries ds
          JOIN public.projects p ON p.id = ds.project_id
          WHERE p.unique_id = $1
            AND ds.doc_type IN ('briefing_transcript', 'briefing_note')
-         ORDER BY ds.created_at DESC LIMIT 1`;
-    const noteParams = briefing_note_id ? [parseInt(briefing_note_id), projectId] : [projectId];
-    const { rows: noteRows } = await pool.query(noteQuery, noteParams);
-
-    if (!noteRows.length || !noteRows[0].summary_html) {
-      return res.status(404).json({ error: 'No briefing note found for this project' });
+         ORDER BY ds.created_at DESC LIMIT 1`,
+        [projectId]
+      );
+      briefingText = noteRows[0]?.summary_html || null;
     }
 
-    const result = await suggestEmailEdits(noteRows[0].summary_html, discipline, template_content);
+    if (!briefingText) {
+      return res.status(404).json({ error: 'No briefing note found for this project' });
+    }
+    if (briefingText.length > CONTEXT_BUDGET) {
+      const pct = Math.round(briefingText.length / CONTEXT_BUDGET * 100);
+      return res.status(400).json({ error: `Selected sources exceed the context budget (~${pct}%). Untick some sources or switch a full transcript to its summary and try again.` });
+    }
+
+    const result = await suggestEmailEdits(briefingText, discipline, template_content);
     res.json(result);
   } catch (err) {
     console.error('suggestEmailEditsForDiscipline error:', err);

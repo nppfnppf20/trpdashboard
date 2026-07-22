@@ -7,7 +7,7 @@
   export let show = false;
   export let projectId;
   export let developmentType = null;
-  export let briefingNoteId = null;
+  export let sources = [];
 
   const dispatch = createEventDispatcher();
 
@@ -47,7 +47,7 @@
     selectedSurveyors = {};
     try {
       const [{ suggestions: result }, templates, disciplineOptions] = await Promise.all([
-        analyseDisciplines(projectId, { briefingNoteId, developmentType }),
+        analyseDisciplines(projectId, { sources, developmentType }),
         getTemplates(),
         getLookupOptions('surveyor_disciplines')
       ]);

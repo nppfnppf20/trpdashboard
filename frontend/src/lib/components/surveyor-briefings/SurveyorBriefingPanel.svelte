@@ -1,12 +1,12 @@
 <script>
   import { onMount } from 'svelte';
   import { getTemplates, getSentRequestsForProject, mergeTemplate, suggestEmailEditsForDiscipline } from '$lib/api/quoteRequests.js';
-  import { getBriefingNotes } from '$lib/api/planningApplication.js';
   import { listDevelopmentTypes } from '$lib/api/guidingBriefs.js';
   import BriefingEditor from './BriefingEditor.svelte';
   import SentBriefingsHistory from './SentBriefingsHistory.svelte';
   import EditEmailTemplate from './EditEmailTemplate.svelte';
   import EditMasterWarningModal from '$lib/components/shared/EditMasterWarningModal.svelte';
+  import NoteSourcePicker from '$lib/components/shared/NoteSourcePicker.svelte';
   import DraftBriefingsModal from './DraftBriefingsModal.svelte';
 
 export let selectedProject;
@@ -27,12 +27,14 @@ export let selectedProject;
   let draftDevelopmentType = null;
   let fromDraftFlow = false;
 
-  // Briefing note picker
-  let briefingNotes = [];
-  let selectedBriefingNoteId = null;
+  // Source picker — nothing ticked = fall back to the latest briefing note,
+  // matching the previous single-select default.
+  let sourcePicker; // bind:this — used to reset ticks when the setup modal reopens
+  let setupSources = []; // [{ type, id, full }] — bound from NoteSourcePicker
+  let setupOverBudget = false;
+  let selectedSources = []; // [{ type, id, full }] — confirmed selection, threaded to DraftBriefingsModal/BriefingEditor
 
   // Setup modal state
-  let setupBriefingNoteId = null;
   let setupDevType = null;
 
   // Development types with a guiding brief already set up for surveyor briefings —
@@ -47,22 +49,14 @@ export let selectedProject;
     }
   });
 
-  async function loadBriefingNotes(projectUniqueId) {
-    try {
-      briefingNotes = await getBriefingNotes(projectUniqueId);
-    } catch {
-      briefingNotes = [];
-    }
-  }
-
   function openDraftSetup() {
-    setupBriefingNoteId = null;
+    sourcePicker?.reset();
     setupDevType = null;
     showDraftSetupModal = true;
   }
 
   function confirmDraftSetup() {
-    selectedBriefingNoteId = setupBriefingNoteId;
+    selectedSources = setupSources;
     draftDevelopmentType = setupDevType;
     showDraftSetupModal = false;
     showDraftModal = true;
@@ -85,7 +79,7 @@ export let selectedProject;
     return children.slice(scopeIdx, end).map(n => n.nodeType === 3 ? n.textContent : n.outerHTML).join('');
   }
 
-  async function runBackgroundChecks(drafts, projectUniqueId, noteId) {
+  async function runBackgroundChecks(drafts, projectUniqueId, sources) {
     const initial = {};
     for (const d of drafts) initial[d.discipline] = { status: 'loading' };
     draftCheckResults = { ...initial };
@@ -104,7 +98,7 @@ export let selectedProject;
           return;
         }
         const apiResult = await suggestEmailEditsForDiscipline(projectUniqueId, {
-          briefingNoteId: noteId,
+          sources,
           discipline: draft.discipline,
           templateContent: scopeContent
         });
@@ -118,7 +112,6 @@ export let selectedProject;
 
   $: if (selectedProject) {
     loadData();
-    loadBriefingNotes(selectedProject.id);
   }
 
   async function loadData() {
@@ -169,7 +162,7 @@ export let selectedProject;
     showDraftModal = false;
     draftCheckResults = {};
     const uniqueDrafts = pendingDrafts.filter((d, i) => pendingDrafts.findIndex(x => x.discipline === d.discipline) === i);
-    runBackgroundChecks(uniqueDrafts, selectedProject.unique_id, selectedBriefingNoteId);
+    runBackgroundChecks(uniqueDrafts, selectedProject.unique_id, selectedSources);
     openDraft(0);
   }
 
@@ -318,7 +311,7 @@ export let selectedProject;
     projectId={selectedProject?.unique_id}
     preSelectedTemplate={selectedTemplate}
     preSelectedSurveyors={editorPreselectedSurveyors}
-    briefingNoteId={selectedBriefingNoteId}
+    sources={selectedSources}
     precomputedCheck={draftCheckResults[pendingDrafts[currentDraftIndex]?.discipline]}
     stepCurrent={currentDraftIndex + 1}
     stepTotal={pendingDrafts.length}
@@ -333,7 +326,7 @@ export let selectedProject;
 <!-- Draft Setup Modal -->
 {#if showDraftSetupModal}
   <div class="setup-overlay" on:click|self={() => showDraftSetupModal = false}>
-    <div class="setup-modal">
+    <div class="setup-modal setup-modal-wide">
       <div class="setup-header">
         <div class="setup-header-left">
           <i class="las la-magic"></i>
@@ -342,15 +335,14 @@ export let selectedProject;
         <button class="setup-close" on:click={() => showDraftSetupModal = false}><i class="las la-times"></i></button>
       </div>
       <div class="setup-body">
-        <div class="setup-field">
-          <label>Briefing note</label>
-          <select bind:value={setupBriefingNoteId}>
-            <option value={null}>Latest briefing note</option>
-            {#each briefingNotes as note}
-              <option value={note.id}>{note.title || note.file_name}, {new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</option>
-            {/each}
-          </select>
-        </div>
+        <NoteSourcePicker
+          bind:this={sourcePicker}
+          projectUniqueId={selectedProject?.unique_id}
+          hint="Tick any briefing notes and meeting notes to use as source material — leave everything unticked to use the latest briefing note automatically."
+          bind:selectedSources={setupSources}
+          bind:overBudget={setupOverBudget}
+        />
+
         <div class="setup-field">
           <label>Development type</label>
           <select bind:value={setupDevType}>
@@ -363,7 +355,7 @@ export let selectedProject;
       </div>
       <div class="setup-footer">
         <button class="btn btn-secondary" on:click={() => showDraftSetupModal = false}>Cancel</button>
-        <button class="btn btn-draft-go" on:click={confirmDraftSetup}>
+        <button class="btn btn-draft-go" on:click={confirmDraftSetup} disabled={setupOverBudget}>
           <i class="las la-magic"></i> Draft
         </button>
       </div>
@@ -376,7 +368,7 @@ export let selectedProject;
   show={showDraftModal}
   projectId={selectedProject?.unique_id}
   developmentType={draftDevelopmentType || null}
-  briefingNoteId={selectedBriefingNoteId}
+  sources={selectedSources}
   on:proceed={handleDraftProceed}
   on:close={() => showDraftModal = false}
 />
@@ -471,6 +463,15 @@ export let selectedProject;
     flex-direction: column;
   }
 
+  .setup-modal-wide {
+    max-width: 520px;
+    max-height: 85vh;
+  }
+
+  .setup-modal-wide .setup-body {
+    overflow-y: auto;
+  }
+
   .setup-header {
     display: flex;
     align-items: center;
@@ -562,7 +563,8 @@ export let selectedProject;
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-draft-go:hover { background: #6d28d9; }
+  .btn-draft-go:hover:not(:disabled) { background: #6d28d9; }
+  .btn-draft-go:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
   .briefing-dropdown-date {

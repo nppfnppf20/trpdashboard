@@ -123,16 +123,17 @@ export async function deleteSentRequest(requestId) {
 }
 
 /**
- * Analyse project briefing note and suggest disciplines + 4★+ surveyors.
+ * Analyse project briefing note(s)/meeting note(s) and suggest disciplines + 4★+ surveyors.
  * @param {string} projectId - Project UUID
- * @param {number|null} briefingNoteId - Optional specific briefing note ID (null = latest)
+ * @param {Object} params - { sources, developmentType }
+ * @param {Array<{type: 'briefing_note'|'meeting_note', id: number, full?: boolean}>} params.sources - Selected sources (empty = latest briefing note)
  * @returns {Promise<{suggestions: Array}>} suggestions: [{ discipline, reasoning, template, surveyors }]
  */
-export async function analyseDisciplines(projectId, { briefingNoteId = null, developmentType = null } = {}) {
+export async function analyseDisciplines(projectId, { sources = [], developmentType = null } = {}) {
   const response = await authFetch(`${API_BASE}/projects/${projectId}/analyse-disciplines`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ briefing_note_id: briefingNoteId, development_type: developmentType })
+    body: JSON.stringify({ sources, development_type: developmentType })
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -142,20 +143,35 @@ export async function analyseDisciplines(projectId, { briefingNoteId = null, dev
 }
 
 /**
- * Suggest scope-section edits to a briefing email from the project briefing note.
+ * Suggest scope-section edits to a briefing email from the selected source(s).
  * @param {string} projectId - Project UUID
- * @param {Object} params - { briefingNoteId, discipline, templateContent }
+ * @param {Object} params - { sources, discipline, templateContent }
  * @returns {Promise<{hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
  */
-export async function suggestEmailEditsForDiscipline(projectId, { briefingNoteId = null, discipline, templateContent }) {
+export async function suggestEmailEditsForDiscipline(projectId, { sources = [], discipline, templateContent }) {
   const response = await authFetch(`${API_BASE}/projects/${projectId}/suggest-email-edits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ briefing_note_id: briefingNoteId, discipline, template_content: templateContent })
+    body: JSON.stringify({ sources, discipline, template_content: templateContent })
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.details || error.error || 'Failed to suggest email edits');
+  }
+  return response.json();
+}
+
+/**
+ * List briefing notes and meeting notes available as draft sources, with
+ * character counts for the context-budget meter.
+ * @param {string} projectId - Project UUID
+ * @returns {Promise<{briefingNotes: Array, meetingNotes: Array, budget: number}>}
+ */
+export async function getBriefingSources(projectId) {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/briefing-sources`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.details || error.error || 'Failed to fetch briefing sources');
   }
   return response.json();
 }
