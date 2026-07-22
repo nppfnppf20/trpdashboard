@@ -19,6 +19,7 @@
     createCustomStage,
     reorderProjectStages
   } from '$lib/services/workflowApi.js';
+  import { listIssueTypes } from '$lib/api/issueTypes.js';
 
   function focusOnMount(node) { node.focus(); node.select(); }
 
@@ -44,6 +45,13 @@
   let addingTrack = false;
   let newTrackDiscipline = '';
   let newTrackLabel = '';
+  let issueTypes = [];
+  let issueTypePickerTrackId = null;
+
+  onMount(async () => {
+    try { issueTypes = await listIssueTypes(); }
+    catch (err) { console.error('Failed to load issue types', err); }
+  });
 
   // Stage columns visibility — set false to show simplified Key Issues view
   const showStageColumns = false;
@@ -265,6 +273,29 @@
       tracks = tracks.filter(t => t.id !== track.id);
       sortedTracks = sortedTracks.filter(t => t.id !== track.id);
     } catch {}
+  }
+
+  function toggleIssueTypePicker(track) {
+    issueTypePickerTrackId = issueTypePickerTrackId === track.id ? null : track.id;
+  }
+
+  async function assignIssueType(track, issueTypeIdRaw) {
+    const issueTypeId = issueTypeIdRaw ? parseInt(issueTypeIdRaw, 10) : null;
+    issueTypePickerTrackId = null;
+    if (issueTypeId === (track.issue_type_id ?? null)) return;
+    try {
+      await updateIssueTrack(track.id, { issue_type_id: issueTypeId });
+      const matched = issueTypeId ? issueTypes.find(t => t.id === issueTypeId) : null;
+      const patch = {
+        issue_type_id: issueTypeId,
+        issue_type_label: matched?.label ?? null,
+        issue_type_development_type: matched?.development_type ?? null,
+      };
+      tracks = tracks.map(t => t.id === track.id ? { ...t, ...patch } : t);
+      sortedTracks = sortedTracks.map(t => t.id === track.id ? { ...t, ...patch } : t);
+    } catch (err) {
+      console.error('Failed to assign issue type', err);
+    }
   }
 
   async function commitAddTrack() {
@@ -581,6 +612,7 @@
               <div class="discipline-inner">
                 <div class="track-actions">
                   <button class="action-btn edit-btn" title="Rename" on:click={() => startRename(track)}><i class="las la-pen"></i></button>
+                  <button class="action-btn tag-btn" title="Assign issue type (snippet template)" on:click={() => toggleIssueTypePicker(track)}><i class="las la-tag"></i></button>
                   <button class="action-btn delete-btn" title="Delete row" on:click={() => handleDeleteTrack(track)}><i class="las la-trash"></i></button>
                 </div>
                 <span>{track.discipline || '—'}</span>
@@ -598,6 +630,23 @@
                   />
                 {:else}
                   <span class:text-bold={track.is_key_issue}>{track.label || '—'}</span>
+                  {#if track.issue_type_label}
+                    <span class="issue-type-badge" title="Linked snippet template">{track.issue_type_label}{track.issue_type_development_type ? ` — ${track.issue_type_development_type}` : ''}</span>
+                  {/if}
+                {/if}
+                {#if issueTypePickerTrackId === track.id}
+                  <select
+                    class="issue-type-select"
+                    value={track.issue_type_id ?? ''}
+                    on:change={e => assignIssueType(track, e.target.value)}
+                    on:blur={() => issueTypePickerTrackId = null}
+                    use:focusOnMount
+                  >
+                    <option value="">No issue type</option>
+                    {#each issueTypes as it}
+                      <option value={it.id}>{it.label}{it.development_type ? ` — ${it.development_type}` : ''}</option>
+                    {/each}
+                  </select>
                 {/if}
               </div>
             </td>
@@ -742,8 +791,28 @@
   .complete-toggle:hover:not(:disabled) { color: #10b981; }
   .complete-toggle.is-done { color: #10b981; }
   .track-cell { position: sticky; left: 140px; background: white; z-index: 1; min-width: 160px; }
-  .track-inner { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
-  .track-inner > span:not(.risk-chip) { flex: 1; min-width: 0; }
+  .track-inner { display: flex; align-items: center; gap: 0.4rem; min-width: 0; flex-wrap: wrap; }
+  .track-inner > span:not(.risk-chip):not(.issue-type-badge) { flex: 1; min-width: 0; }
+  .issue-type-badge {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #7c3aed;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .issue-type-select {
+    width: 100%;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid #9333ea;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    outline: none;
+  }
   .track-actions { display: none; align-items: center; gap: 0.15rem; flex-shrink: 0; }
   .discipline-inner:hover .track-actions { display: flex; }
   .rename-input {

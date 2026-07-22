@@ -1061,6 +1061,7 @@ export async function generateDraftFromPaNotes(req, res) {
     // development-type-specific policy snippets (admin_console.issue_types).
     let linkedPoliciesByTrack = null;
     let issueTypesByTrack = null;
+    let allIssueTypes = null;
 
     for (const [sectionSlug, marker] of Object.entries(SECTION_SPLICE_MARKERS)) {
       const { rows: sectionRows } = await pool.query(
@@ -1083,12 +1084,21 @@ export async function generateDraftFromPaNotes(req, res) {
         continue;
       }
 
-      // Fetched once, lazily, and reused across both sections.
+      // Fetched once, lazily, and reused across both sections. allIssueTypes is
+      // the whole snippet-template library, offered to the model as candidates
+      // for any issue that isn't explicitly linked to one via issueTypesByTrack.
       if (!linkedPoliciesByTrack) {
-        [linkedPoliciesByTrack, issueTypesByTrack] = await Promise.all([
+        const [linkedRes, issueTypeRes, allTypesRes] = await Promise.all([
           fetchLinkedPoliciesByTrack(projectId),
           fetchIssueTypesByTrack(projectId),
+          pool.query(
+            `SELECT id, label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text
+             FROM admin_console.issue_types ORDER BY label`
+          ),
         ]);
+        linkedPoliciesByTrack = linkedRes;
+        issueTypesByTrack = issueTypeRes;
+        allIssueTypes = allTypesRes.rows;
       }
 
       const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
@@ -1104,6 +1114,7 @@ export async function generateDraftFromPaNotes(req, res) {
         issues,
         linkedPoliciesByTrack,
         issueTypesByTrack,
+        allIssueTypes,
         guidingBrief: sectionGuidingBrief,
         projectBrief,
         startingDocs,

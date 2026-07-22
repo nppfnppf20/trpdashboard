@@ -604,24 +604,38 @@ ${userNotesBlock}${paraBlock}`;
 // Briefing-driven argument drafting (planning app)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT = `You are a planning consultant reviewing a briefing note for a planning application. Based on the briefing, draft a brief position note for each key issue listed below.
+export const DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT = `You are a planning consultant reviewing a briefing note for a planning application. Based on the briefing, do two things:
+
+1. Draft a brief position note for each key issue listed below that the briefing actually discusses.
+2. Identify anything discussed in the briefing that is a genuine planning issue in its own right but is NOT in the list below.
 
 Each note should be 2-4 sentences capturing: the consultant's position on this issue, the key evidence or approach, and any sensitivities flagged in the briefing. Write as working notes for the consultant — concise and practical, not formal submission language.
 
+What counts as a planning issue worth flagging as new (part 2): a distinct topic that will need its own assessment in the Planning Policy and Planning Assessment sections of the statement — e.g. a technical discipline (heritage, ecology, drainage, noise), a specific site constraint, or a matter the LPA is known to weigh separately. Do NOT flag something as new if it is really part of an issue already in the list, a passing remark with no substance, or a project fact rather than an assessable issue (e.g. "the site is 2 hectares" is not an issue).
+
+A library of reusable issue-type templates is provided below (each has pre-written national policy snippets attached). If a new issue you identify in part 2 clearly corresponds to one of these templates — even if the wording differs, e.g. "Flood Risk and Drainage" matching a template called "Flood Risk" — include its id as "matched_issue_type_id" so it can be linked automatically. Only match when genuinely confident; a wrong match is worse than no match, so when in doubt omit it or set it to null.
+
 Respond ONLY with valid JSON — no markdown, no explanation:
 [
-  { "track_id": 42, "summary": "Our position is..." }
+  { "track_id": 42, "summary": "Our position is..." },
+  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "summary": "Our position is...", "matched_issue_type_id": 7 }
 ]
 
-Only include issues where the briefing contains relevant content. Omit issues entirely if the briefing has nothing relevant.`;
+Only include entries where the briefing contains relevant content. Omit an issue entirely if the briefing has nothing relevant to it, and omit part 2 entirely if nothing new comes up.`;
 
-export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues, customPrompt = null }) {
-  const issueList = issues.map(i =>
-    `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.summary?.trim() ? `\n  Existing note: ${i.summary.trim().slice(0, 150)}` : ''}`
-  ).join('\n');
+export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues, issueTypes = [], customPrompt = null }) {
+  const issueList = issues.length
+    ? issues.map(i =>
+        `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.summary?.trim() ? `\n  Existing note: ${i.summary.trim().slice(0, 150)}` : ''}`
+      ).join('\n')
+    : '(none tracked yet for this project — this is expected for an early-stage project. Skip part 1 entirely and go straight to part 2: identify any new issues discussed in the briefing.)';
+
+  const issueTypeList = issueTypes.length
+    ? issueTypes.map(t => `- id:${t.id} | ${t.label}${t.development_type ? ` (${t.development_type})` : ' (generic)'}`).join('\n')
+    : '(none available — omit matched_issue_type_id for every new issue.)';
 
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT;
-  const userMessage = `Briefing note:\n<briefing>\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}\n</briefing>\n\nKey issues:\n${issueList}`;
+  const userMessage = `Briefing note:\n<briefing>\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}\n</briefing>\n\nKey issues:\n${issueList}\n\nAvailable issue-type templates:\n${issueTypeList}`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,

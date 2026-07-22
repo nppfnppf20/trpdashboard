@@ -2233,7 +2233,7 @@ export async function populateFromBriefing(req, res) {
   const projectId = parseInt(req.params.projectId);
   const briefingId = req.body?.briefing_id ? parseInt(req.body.briefing_id) : null;
   try {
-    const [briefingResult, tracksResult] = await Promise.all([
+    const [briefingResult, tracksResult, projectResult] = await Promise.all([
       briefingId
         ? pool.query(
             `SELECT summary_html FROM planning_applications.document_summaries
@@ -2250,7 +2250,8 @@ export async function populateFromBriefing(req, res) {
         `SELECT id, label, discipline, summary FROM admin_console.project_issue_tracks
          WHERE project_id = $1 AND is_active = TRUE ORDER BY sort_order, id`,
         [projectId]
-      )
+      ),
+      pool.query(`SELECT development_type FROM public.projects WHERE id = $1`, [projectId])
     ]);
 
     if (!briefingResult.rows.length) {
@@ -2260,12 +2261,25 @@ export async function populateFromBriefing(req, res) {
     const briefingHtml = briefingResult.rows[0].summary_html;
     const briefingText = briefingHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const tracks = tracksResult.rows;
+    const developmentType = projectResult.rows[0]?.development_type || null;
 
+    // Reusable snippet-template library (admin_console.issue_types) — used so
+    // new-issue suggestions can be auto-linked to a matching template instead
+    // of always coming in unlinked. Scoped to this project's development type
+    // plus any generic (development_type IS NULL) templates.
+    const { rows: issueTypes } = await pool.query(
+      `SELECT id, label, development_type FROM admin_console.issue_types
+       WHERE development_type = $1 OR development_type IS NULL
+       ORDER BY label`,
+      [developmentType]
+    );
+    const issueTypesById = Object.fromEntries(issueTypes.map(t => [t.id, t]));
+
+    // Always run this — even with zero existing tracks, it can still surface
+    // new-issue suggestions (there's just nothing for it to match against).
     const [docSuggestions, issueSuggestions] = await Promise.all([
       suggestTranscriptUpdates(briefingText),
-      tracks.length > 0
-        ? draftKeyIssueSummariesFromBriefing({ briefingSummary: briefingHtml, issues: tracks })
-        : Promise.resolve([])
+      draftKeyIssueSummariesFromBriefing({ briefingSummary: briefingHtml, issues: tracks, issueTypes })
     ]);
 
     const DOC_LABELS = {
@@ -2285,13 +2299,31 @@ export async function populateFromBriefing(req, res) {
         suggested_content: s.suggested_content,
         reason: s.reason
       })),
-      ...issueSuggestions.map(s => ({
-        type: 'issue_summary',
-        track_id: s.track_id,
-        label: trackMap[s.track_id] ?? `Track ${s.track_id}`,
-        suggested_content: s.summary,
-        reason: 'Drafted from briefing note'
-      }))
+      ...issueSuggestions
+        .filter(s => !s.new_issue && trackMap[s.track_id])
+        .map(s => ({
+          type: 'issue_summary',
+          track_id: s.track_id,
+          label: trackMap[s.track_id],
+          suggested_content: s.summary,
+          reason: 'Drafted from briefing note'
+        })),
+      ...issueSuggestions
+        .filter(s => s.new_issue && s.suggested_label?.trim())
+        .map(s => {
+          const matchedType = s.matched_issue_type_id ? issueTypesById[s.matched_issue_type_id] : null;
+          return {
+            type: 'new_issue',
+            suggested_label: s.suggested_label.trim(),
+            suggested_discipline: s.suggested_discipline?.trim() || null,
+            matched_issue_type_id: matchedType?.id ?? null,
+            label: `${s.suggested_label.trim()}${s.suggested_discipline ? ` (${s.suggested_discipline.trim()})` : ''}`,
+            suggested_content: s.summary,
+            reason: matchedType
+              ? `New issue found in briefing note — will link to "${matchedType.label}" template`
+              : 'New issue found in briefing note'
+          };
+        })
     ];
 
     res.json({ suggestions });

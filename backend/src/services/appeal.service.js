@@ -353,16 +353,57 @@ The guiding brief describes how this type of document should be structured and a
 const POLICY_TIER_LABELS = { national: 'National Policy', local: 'Local Policy', neighbourhood: 'Neighbourhood Policy', supplementary: 'Supplementary Guidance', other: 'Other Policy' };
 const POLICY_TIER_ORDER = ['national', 'local', 'neighbourhood', 'supplementary', 'other'];
 
+function stripHtmlPlain(s) {
+  return s?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function appendSnippetFields(lines, row) {
+  if (row.nppf_text?.trim())           lines.push(`NPPF: ${noEmDash(stripHtmlPlain(row.nppf_text))}`);
+  if (row.nppg_text?.trim())           lines.push(`NPPG: ${noEmDash(stripHtmlPlain(row.nppg_text))}`);
+  if (row.other_national_text?.trim()) lines.push(`Other National Policy: ${noEmDash(stripHtmlPlain(row.other_national_text))}`);
+  if (row.other_guidance_text?.trim()) lines.push(`Other Guidance: ${noEmDash(stripHtmlPlain(row.other_guidance_text))}`);
+}
+
+function hasSnippetContent(row) {
+  return !!(row.nppf_text?.trim() || row.nppg_text?.trim() || row.other_national_text?.trim() || row.other_guidance_text?.trim());
+}
+
 // New context this adds beyond what generateAppealDraftFromPrompt already injects
 // (guiding brief, project brief, briefing notes, that issue's own argument notes).
-function buildIssueSnippetContext(linkedPolicies = [], issueType = null) {
+//
+// Snippet templates (admin_console.issue_types): if this issue is explicitly
+// linked to one (issueType set), only that one is offered — a confident,
+// deterministic match. Otherwise the whole library is offered and the model
+// is trusted to judge which templates (if any) fit this issue and this
+// project's actual development type, using the project context and briefing
+// notes it already has. Either way, the model is asked to mark verbatim
+// quotes with a <span data-snippet="id"> tag rather than just typing them,
+// so verifyAndCleanSnippetSpans() can check them against the real text
+// afterward — the model still writes the surrounding prose freely, only the
+// quoted words themselves are verified.
+function buildIssueSnippetContext(linkedPolicies = [], issueType = null, allIssueTypes = []) {
   const lines = [];
+  const candidateRowsById = {};
 
   if (issueType) {
-    if (issueType.nppf_text?.trim())           lines.push(`### NPPF\n${noEmDash(issueType.nppf_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
-    if (issueType.nppg_text?.trim())           lines.push(`### NPPG\n${noEmDash(issueType.nppg_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
-    if (issueType.other_national_text?.trim()) lines.push(`### Other National Policy\n${noEmDash(issueType.other_national_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
-    if (issueType.other_guidance_text?.trim()) lines.push(`### Other Guidance\n${noEmDash(issueType.other_guidance_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())}`);
+    candidateRowsById[issueType.id] = issueType;
+    lines.push(`### Policy Snippet Template — id:${issueType.id} (${issueType.label}${issueType.development_type ? `, ${issueType.development_type}` : ', generic'})`);
+    appendSnippetFields(lines, issueType);
+  } else if (allIssueTypes.length) {
+    const usableRows = allIssueTypes.filter(hasSnippetContent);
+    if (usableRows.length) {
+      lines.push(`### Available Policy Snippet Templates`);
+      lines.push(`Each template below may or may not apply to this issue — judge which, if any, fit both this issue's subject matter and this project's actual development type, using the project details and briefing notes already provided. Do not use a template for the wrong development type or an unrelated issue.`);
+      for (const t of usableRows) {
+        candidateRowsById[t.id] = t;
+        lines.push(`\n#### Template id:${t.id} — ${t.label}${t.development_type ? ` (${t.development_type})` : ' (generic)'}`);
+        appendSnippetFields(lines, t);
+      }
+    }
+  }
+
+  if (Object.keys(candidateRowsById).length) {
+    lines.push(`\nWhen you use wording from one of the templates above, quote it verbatim and wrap exactly the quoted portion — nothing more — like this: <span data-snippet="ID">the exact quoted text</span>, using that template's id. Only wrap text copied directly from a template, never your own analysis or paraphrasing. If none of the templates apply, ignore this instruction entirely.`);
   }
 
   for (const tier of POLICY_TIER_ORDER) {
@@ -378,7 +419,32 @@ function buildIssueSnippetContext(linkedPolicies = [], issueType = null) {
     }
   }
 
-  return lines.join('\n\n');
+  return { text: lines.join('\n\n'), candidateRowsById };
+}
+
+// Strips the <span data-snippet="id"> markers the model was asked to wrap
+// verbatim quotes in, verifying each against the real template text first.
+// A quote "verifies" if it appears (once normalised) as a substring of one
+// of that template's four text fields — the model is expected to quote a
+// sentence or two from within a longer field, not necessarily reproduce the
+// whole field. Unverified quotes are left as written (correcting them
+// without knowing the model's intent risks worse damage than a rare
+// unverified paraphrase) but logged so they can be spot-checked.
+function verifyAndCleanSnippetSpans(html, candidateRowsById, issueLabel) {
+  return html.replace(/<span data-snippet="(\d+)">([\s\S]*?)<\/span>/g, (match, idStr, inner) => {
+    const row = candidateRowsById[idStr];
+    const innerNorm = stripHtmlPlain(inner).toLowerCase();
+    const fieldTexts = row
+      ? [row.nppf_text, row.nppg_text, row.other_national_text, row.other_guidance_text]
+          .filter(Boolean)
+          .map(f => stripHtmlPlain(f).toLowerCase())
+      : [];
+    const verified = innerNorm.length > 0 && fieldTexts.some(f => f.includes(innerNorm));
+    if (!verified) {
+      console.warn(`[snippet-verify] Unverified quote for issue "${issueLabel}", template id ${idStr}: "${inner.slice(0, 150)}"`);
+    }
+    return inner;
+  });
 }
 
 // sectionPromptTemplate may use {{ISSUE_LABEL}}, {{ISSUE_DISCIPLINE}}, and
@@ -386,7 +452,7 @@ function buildIssueSnippetContext(linkedPolicies = [], issueType = null) {
 // addition to the variables generateAppealDraftFromPrompt already substitutes.
 export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
-  linkedPoliciesByTrack = {}, issueTypesByTrack = {},
+  linkedPoliciesByTrack = {}, issueTypesByTrack = {}, allIssueTypes = [],
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
 }) {
   const parts = [`<h2>${sectionName}</h2>`];
@@ -400,13 +466,13 @@ export async function generateIssueOrderedSection({
       continue;
     }
 
-    const issueContext = buildIssueSnippetContext(linkedPolicies, issueType);
+    const { text: issueContext, candidateRowsById } = buildIssueSnippetContext(linkedPolicies, issueType, allIssueTypes);
     const issuePrompt = sectionPromptTemplate
       .replace(/\{\{ISSUE_LABEL\}\}/g, issue.label)
       .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issue.discipline ? ` (${issue.discipline})` : '')
       .replace(/\{\{ISSUE_CONTEXT\}\}/g, issueContext || '(no linked policies or policy snippets recorded for this issue)');
 
-    const html = await generateAppealDraftFromPrompt({
+    let html = await generateAppealDraftFromPrompt({
       projectName,
       draftTypeName: `${sectionName} — ${issue.label}`,
       typePrompt: issuePrompt,
@@ -416,6 +482,7 @@ export async function generateIssueOrderedSection({
       startingDocs,
       briefingNotes,
     });
+    html = verifyAndCleanSnippetSpans(html, candidateRowsById, issue.label);
     parts.push(html);
   }
 

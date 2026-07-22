@@ -1,4 +1,5 @@
 import { authFetch } from './client.js';
+import { createIssueTrack } from '$lib/services/workflowApi.js';
 
 export async function getProjectCompleteness(projectId) {
   const res = await authFetch(`/api/planning-application/projects/${projectId}/completeness`);
@@ -49,6 +50,26 @@ export async function saveSuggestion(projectId, suggestion) {
     });
     if (!res.ok) throw new Error('Failed to save issue summary suggestion');
     return res.json();
+  }
+
+  if (suggestion.type === 'new_issue') {
+    const created = await createIssueTrack(projectId, {
+      label: suggestion.suggested_label,
+      discipline: suggestion.suggested_discipline,
+      issue_type_id: suggestion.matched_issue_type_id ?? null,
+      sortOrder: null,
+      riskLevel: null,
+      isKeyIssue: false,
+    });
+    if (suggestion.suggested_content?.trim()) {
+      const res = await authFetch(`/api/planning-application/key-issues/${created.id}/summary`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary: suggestion.suggested_content })
+      });
+      if (!res.ok) throw new Error('Issue was created but saving its summary failed');
+    }
+    return created;
   }
 
   throw new Error(`Unknown suggestion type: ${suggestion.type}`);

@@ -57,20 +57,24 @@ export async function getProjectStageBoard(projectId) {
     // Issue tracks for this project
     const tracksResult = await client.query(
       `SELECT
-        id,
-        project_id,
-        track_type,
-        source_key,
-        discipline,
-        label,
-        sort_order,
-        is_key_issue,
-        is_active,
-        created_from_hlpv,
-        last_known_risk_level
-      FROM admin_console.project_issue_tracks
-      WHERE project_id = $1 AND is_active = TRUE
-      ORDER BY sort_order, id`,
+        pit.id,
+        pit.project_id,
+        pit.track_type,
+        pit.source_key,
+        pit.discipline,
+        pit.label,
+        pit.sort_order,
+        pit.is_key_issue,
+        pit.is_active,
+        pit.created_from_hlpv,
+        pit.last_known_risk_level,
+        pit.issue_type_id,
+        it.label AS issue_type_label,
+        it.development_type AS issue_type_development_type
+      FROM admin_console.project_issue_tracks pit
+      LEFT JOIN admin_console.issue_types it ON it.id = pit.issue_type_id
+      WHERE pit.project_id = $1 AND pit.is_active = TRUE
+      ORDER BY pit.sort_order, pit.id`,
       [projectId]
     );
 

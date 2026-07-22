@@ -5,6 +5,8 @@
   export let suggestions;
   export let onAccept;
   export let onReject;
+  export let issueTypes = [];
+  export let onMatchChange;
 
   $: acceptedCount = suggestions.filter(s => s._state === 'accepted').length;
 </script>
@@ -17,8 +19,8 @@
     </div>
 
     <div class="group-cards">
-      {#each suggestions as suggestion (suggestion.type === 'document_summary' ? suggestion.doc_type : suggestion.track_id)}
-        <BriefingSuggestionCard {suggestion} {onAccept} {onReject} />
+      {#each suggestions as suggestion (suggestion.type === 'document_summary' ? suggestion.doc_type : suggestion.type === 'new_issue' ? suggestion.suggested_label : suggestion.track_id)}
+        <BriefingSuggestionCard {suggestion} {onAccept} {onReject} {issueTypes} {onMatchChange} />
       {/each}
     </div>
   </div>

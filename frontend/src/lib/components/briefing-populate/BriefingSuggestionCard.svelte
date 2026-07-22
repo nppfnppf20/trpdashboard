@@ -2,6 +2,8 @@
   export let suggestion;
   export let onAccept;
   export let onReject;
+  export let issueTypes = [];
+  export let onMatchChange;
 
   let expanded = false;
 
@@ -12,13 +14,19 @@
 
   $: preview = stripHtml(suggestion.suggested_content);
   $: previewShort = preview.length > 200 ? preview.slice(0, 200) + '…' : preview;
+
+  const TYPE_LABELS = {
+    document_summary: 'Document summary',
+    issue_summary:     'Issue working note',
+    new_issue:         'New issue',
+  };
 </script>
 
 <div class="card" class:card-accepted={suggestion._state === 'accepted'} class:card-skipped={suggestion._state === 'skipped'}>
   <div class="card-header">
     <div class="card-title">
       <span class="label">{suggestion.label}</span>
-      <span class="type-tag">{suggestion.type === 'document_summary' ? 'Document summary' : 'Issue working note'}</span>
+      <span class="type-tag">{TYPE_LABELS[suggestion.type] ?? suggestion.type}</span>
     </div>
     <div class="card-actions">
       {#if suggestion._state === 'accepted'}
@@ -36,6 +44,23 @@
 
   {#if suggestion.reason}
     <p class="reason"><i class="las la-info-circle"></i> {suggestion.reason}</p>
+  {/if}
+
+  {#if suggestion.type === 'new_issue' && onMatchChange}
+    <div class="match-row">
+      <i class="las la-tag"></i>
+      <span class="match-label">Link to template:</span>
+      <select
+        class="match-select"
+        value={suggestion.matched_issue_type_id ?? ''}
+        on:change={e => onMatchChange(suggestion, e.target.value)}
+      >
+        <option value="">No template</option>
+        {#each issueTypes as it}
+          <option value={it.id}>{it.label}{it.development_type ? ` — ${it.development_type}` : ' — generic'}</option>
+        {/each}
+      </select>
+    </div>
   {/if}
 
   <div class="preview">
@@ -146,6 +171,31 @@
   }
 
   .reason i { flex-shrink: 0; margin-top: 0.05rem; }
+
+  .match-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 1rem 0.625rem;
+    font-size: 0.775rem;
+    color: #64748b;
+  }
+
+  .match-row i { color: #7c3aed; }
+
+  .match-label { flex-shrink: 0; }
+
+  .match-select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    font-size: 0.775rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: white;
+  }
 
   .preview {
     padding: 0.5rem 1rem 0.875rem;

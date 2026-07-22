@@ -1,5 +1,6 @@
 <script>
   import { populateFromBriefing, getBriefingTranscripts, saveSuggestion } from '$lib/api/briefingPopulate.js';
+  import { listIssueTypes } from '$lib/api/issueTypes.js';
   import BriefingSuggestionGroup from './BriefingSuggestionGroup.svelte';
 
   export let show = false;
@@ -15,9 +16,11 @@
   let applying = false;
   let error = null;
   let suggestions = [];
+  let issueTypes = [];
 
   $: docSuggestions   = suggestions.filter(s => s.type === 'document_summary');
   $: issueSuggestions = suggestions.filter(s => s.type === 'issue_summary');
+  $: newIssueSuggestions = suggestions.filter(s => s.type === 'new_issue');
   $: acceptedCount    = suggestions.filter(s => s._state === 'accepted').length;
 
   $: if (show) init();
@@ -29,7 +32,10 @@
     selectedBriefingId = null;
     briefingsLoading = true;
     try {
-      briefings = await getBriefingTranscripts(projectId);
+      [briefings, issueTypes] = await Promise.all([
+        getBriefingTranscripts(projectId),
+        listIssueTypes().catch(() => [])
+      ]);
       if (briefings.length === 1) {
         selectedBriefingId = briefings[0].id;
         await loadSuggestions();
@@ -71,8 +77,22 @@
     );
   }
 
+  function handleMatchChange(suggestion, issueTypeIdRaw) {
+    const issueTypeId = issueTypeIdRaw ? parseInt(issueTypeIdRaw, 10) : null;
+    const matched = issueTypeId ? issueTypes.find(t => t.id === issueTypeId) : null;
+    suggestions = suggestions.map(s => key(s) === key(suggestion) ? {
+      ...s,
+      matched_issue_type_id: issueTypeId,
+      reason: matched
+        ? `New issue found in briefing note — will link to "${matched.label}" template`
+        : 'New issue found in briefing note'
+    } : s);
+  }
+
   function key(s) {
-    return s.type === 'document_summary' ? `doc_${s.doc_type}` : `issue_${s.track_id}`;
+    if (s.type === 'document_summary') return `doc_${s.doc_type}`;
+    if (s.type === 'new_issue') return `new_issue_${s.suggested_label}`;
+    return `issue_${s.track_id}`;
   }
 
   async function handleApply() {
@@ -158,6 +178,14 @@
               suggestions={issueSuggestions}
               onAccept={handleAccept}
               onReject={handleReject}
+            />
+            <BriefingSuggestionGroup
+              label="New issues found"
+              suggestions={newIssueSuggestions}
+              onAccept={handleAccept}
+              onReject={handleReject}
+              {issueTypes}
+              onMatchChange={handleMatchChange}
             />
           </div>
         {/if}
