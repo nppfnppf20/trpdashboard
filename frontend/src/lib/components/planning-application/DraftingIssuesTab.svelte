@@ -7,6 +7,7 @@
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { listIssueTypes } from '$lib/api/issueTypes.js';
   import DraftingIssuePolicyNotes from './DraftingIssuePolicyNotes.svelte';
+  import NoteSourcePicker from '$lib/components/shared/NoteSourcePicker.svelte';
 
   export let project = null;
 
@@ -15,9 +16,31 @@
   let projectPolicies = [];
   let issueTypes = [];
   let loading = true;
-  let importing = false;
   let newLabel = '';
   let newDiscipline = '';
+
+  // ── Draft from Briefing Note ────────────────────────────────────────────────
+  let showDraftModal = false;
+  let draftSources = [];   // bind:selectedSources from NoteSourcePicker
+  let draftOverBudget = false;
+  let notePicker;
+
+  function openDraftModal() {
+    notePicker?.reset();
+    draftSources = [];
+    showDraftModal = true;
+  }
+
+  function closeDraftModal() {
+    showDraftModal = false;
+  }
+
+  // Selection is wired up; the actual drafting behaviour (what to do with
+  // draftSources once confirmed) is still to be specified.
+  function handleDraftContinue() {
+    console.log('Draft from Briefing Note — selected sources:', draftSources);
+    closeDraftModal();
+  }
 
   $: if (project?.id) load();
 
@@ -48,18 +71,6 @@
       console.error('Failed to load drafting issues:', err);
     } finally {
       loading = false;
-    }
-  }
-
-  async function handleImport() {
-    importing = true;
-    try {
-      await importFromKeyIssues(project.id);
-      await load();
-    } catch (err) {
-      console.error('Failed to import from key issues:', err);
-    } finally {
-      importing = false;
     }
   }
 
@@ -134,9 +145,11 @@
       <h3>Drafting Issues</h3>
       <p>An independent issue list used for AI document generation (currently Planning Statement v3). Seeded from Key Issues, but editing here never changes the Stages board — and vice versa.</p>
     </div>
-    <button class="btn btn-secondary" on:click={handleImport} disabled={importing || !project}>
-      {#if importing}<div class="mini-spinner"></div> Importing...{:else}<i class="las la-download"></i> Import from Key Issues{/if}
-    </button>
+    <div class="di-header-actions">
+      <button class="btn btn-secondary" on:click={openDraftModal} disabled={!project}>
+        <i class="las la-magic"></i> Draft from Briefing Note
+      </button>
+    </div>
   </div>
 
   {#if loading}
@@ -192,14 +205,6 @@
                 onNoteChange={(tierKey, value) => handleFieldBlur(issue, tierKey, value)}
               />
 
-              <label class="di-field-label">Issue notes</label>
-              <textarea
-                class="di-textarea"
-                value={issue.summary ?? ''}
-                placeholder="Add notes on this issue: position, key evidence, approach..."
-                on:blur={e => handleFieldBlur(issue, 'summary', e.target.value)}
-              ></textarea>
-
               <label class="di-field-label">Argument notes</label>
               <textarea
                 class="di-textarea"
@@ -215,10 +220,61 @@
   {/if}
 </div>
 
+{#if showDraftModal}
+  <div class="di-modal-overlay" on:click|self={closeDraftModal}>
+    <div class="di-modal">
+      <div class="di-modal-header">
+        <span class="di-modal-title"><i class="las la-magic"></i> Draft from Briefing Note</span>
+        <button class="di-icon-btn" on:click={closeDraftModal}><i class="las la-times"></i></button>
+      </div>
+      <div class="di-modal-body">
+        <NoteSourcePicker
+          bind:this={notePicker}
+          projectUniqueId={project?.unique_id}
+          bind:selectedSources={draftSources}
+          bind:overBudget={draftOverBudget}
+          hint="Tick any briefing notes and meeting notes to draft drafting issues from."
+        />
+      </div>
+      <div class="di-modal-footer">
+        <button class="btn btn-secondary" on:click={closeDraftModal}>Cancel</button>
+        <button class="btn btn-primary" on:click={handleDraftContinue} disabled={draftSources.length === 0}>
+          Continue
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .drafting-issues-tab { display: flex; flex-direction: column; gap: 1rem; max-width: 800px; }
 
   .di-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+  .di-header-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+  .di-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1200;
+    display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+  }
+
+  .di-modal {
+    background: white; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    max-width: 560px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .di-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;
+  }
+
+  .di-modal-title { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; font-weight: 600; color: #1e293b; }
+
+  .di-modal-body { padding: 1.25rem; overflow-y: auto; }
+
+  .di-modal-footer {
+    display: flex; justify-content: flex-end; gap: 0.5rem;
+    padding: 1rem 1.25rem; border-top: 1px solid #e2e8f0; flex-shrink: 0;
+  }
   .di-header-text h3 { margin: 0 0 0.25rem; font-size: 1rem; color: #1e293b; }
   .di-header-text p { margin: 0; font-size: 0.8rem; color: #64748b; max-width: 46rem; line-height: 1.5; }
 
