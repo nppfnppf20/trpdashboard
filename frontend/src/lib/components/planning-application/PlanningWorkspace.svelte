@@ -94,6 +94,37 @@
     NATIONAL_POLICIES_CONTEXT: { label: 'National policies (context)', source: 'project_policies, national, refs + notes for LLM', programmatic: false },
     OTHER_POLICIES_CONTEXT:  { label: 'Other policies (context)',   source: 'project_policies, other, refs + notes for LLM',       programmatic: false },
     FULL_STATEMENT:          { label: 'Full statement',             source: 'Assembled HTML of all sections (runs_last only)',       programmatic: false },
+
+    // v2/v3 appeal-tool prompts (appeal.service.js / appeal.controller.js) —
+    // a separate substitution system from the planning statement one above.
+    // Everything here is substituted before the LLM call (no output-slot /
+    // post-generation swap pattern exists in this system), so "prog." vs
+    // "llm" instead tracks whether the value's own content was itself
+    // produced or interpreted by an LLM anywhere upstream (an AI-written
+    // document summary) vs a plain deterministic DB field or admin-authored
+    // text with no LLM involvement in its provenance.
+    NEIGHBOURHOOD_POLICIES: { label: 'Neighbourhood policies (HTML)', source: 'project_policies, neighbourhood, verbatim listing', programmatic: true },
+    SUPPLEMENTARY_POLICIES: { label: 'Supplementary policies (HTML)', source: 'project_policies, supplementary, verbatim listing', programmatic: true },
+    GUIDING_BRIEF:           { label: 'Guiding brief',                source: 'admin_console.guiding_briefs.guidance_content, matched by document_type + development_type', programmatic: true },
+    STYLE_GUIDE:              { label: 'Style example',                 source: 'admin_console.guiding_briefs.style_example', programmatic: true },
+    DOCUMENT_TYPE:            { label: 'Draft type name',               source: 'appeals.appeal_draft_types.name', programmatic: true },
+    PROJECT_BRIEF:            { label: 'Project brief',                 source: 'planning_applications.document_summaries, latest briefing_transcript (AI-generated summary)', programmatic: false },
+    BRIEFING_NOTES:           { label: 'Briefing notes (ticked selection)', source: 'planning_applications.document_summaries, briefing_transcript rows selected via Starting Docs (AI-generated summaries)', programmatic: false },
+    ISSUE_LABEL:              { label: 'Issue label',                   source: 'drafting_issues.label / project_issue_tracks.label', programmatic: true },
+    ISSUE_DISCIPLINE:         { label: 'Issue discipline',              source: 'drafting_issues.discipline / project_issue_tracks.discipline', programmatic: true },
+    ISSUE_LIST:               { label: 'Issue list (all issues)',       source: 'drafting_issues / project_issue_tracks, label + discipline, one per line', programmatic: true },
+    ISSUE_CONTEXT:            { label: 'Issue context (single issue)',  source: 'linked policies, snippet templates, and working notes (tier notes, argument notes, specialist report) for one issue', programmatic: true },
+    ISSUES_CONTEXT:           { label: 'Issues context (all issues)',   source: 'same as Issue context, for every issue in the section, clearly delimited', programmatic: true },
+    DECISION_NOTICE:          { label: 'Decision Notice',               source: 'appeals.pa_draft_starting_docs, slot: decision_notice', programmatic: true },
+    OFFICERS_REPORT:          { label: "Officer's Report",              source: 'appeals.pa_draft_starting_docs, slot: officers_report', programmatic: true },
+    PLANNING_STATEMENT:       { label: 'Planning Statement (uploaded)', source: 'appeals.pa_draft_starting_docs, slot: planning_statement', programmatic: true },
+    COMMITTEE_REPORT:         { label: 'Committee Report',              source: 'appeals.pa_draft_starting_docs, slot: committee_report', programmatic: true },
+    COMMITTEE_MINUTES:        { label: 'Committee Minutes',             source: 'appeals.pa_draft_starting_docs, slot: committee_minutes', programmatic: true },
+    STAGE1_REVIEW:            { label: 'Stage 1 Review',                source: 'appeals.pa_draft_starting_docs, slot: stage1_review', programmatic: true },
+    OTHER_DOCS:               { label: 'Other Documents',               source: 'appeals.pa_draft_starting_docs, slot: other', programmatic: true },
+    HLPV_DATA:                { label: 'HLPV Tool Data',                source: 'appeals.pa_draft_starting_docs, slot: hlpv_data', programmatic: true },
+    ADDITIONAL_DESIGNATIONS:  { label: 'Additional Designations & Site Notes', source: 'appeals.pa_draft_starting_docs, slot: additional_designations', programmatic: true },
+    SOCIO_DATA:               { label: 'Socio-economic Data',           source: 'appeals.pa_draft_starting_docs, slot: socio_data', programmatic: true },
   };
 
   $: detectedVars = [...new Set(($sectionPromptText || '').match(/\{\{([A-Z_]+)\}\}/g) || [])]
