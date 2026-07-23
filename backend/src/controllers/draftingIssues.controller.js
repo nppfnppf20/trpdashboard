@@ -23,6 +23,7 @@ export async function listDraftingIssues(req, res) {
     const { rows } = await pool.query(
       `SELECT di.id, di.project_id, di.label, di.discipline, di.issue_type_id,
               di.source_track_id, di.argument_for, di.argument_against, di.summary,
+              di.specialist_report,
               di.policy_national, di.policy_local, di.policy_neighbourhood,
               di.policy_supplementary, di.policy_other, di.sort_order,
               it.label AS issue_type_label, it.development_type AS issue_type_development_type
@@ -52,7 +53,7 @@ export async function createDraftingIssue(req, res) {
       `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, issue_type_id, sort_order)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, project_id, label, discipline, issue_type_id, source_track_id,
-                 argument_for, argument_against, summary,
+                 argument_for, argument_against, summary, specialist_report,
                  policy_national, policy_local, policy_neighbourhood, policy_supplementary, policy_other,
                  sort_order`,
       [projectId, label.trim(), discipline?.trim() || null, issue_type_id || null, maxRow[0].next]
@@ -67,7 +68,7 @@ export async function createDraftingIssue(req, res) {
 export async function updateDraftingIssue(req, res) {
   const { id } = req.params;
   const {
-    label, discipline, issue_type_id, argument_for, argument_against, summary,
+    label, discipline, issue_type_id, argument_for, argument_against, summary, specialist_report,
     policy_national, policy_local, policy_neighbourhood, policy_supplementary, policy_other,
   } = req.body;
   try {
@@ -83,16 +84,17 @@ export async function updateDraftingIssue(req, res) {
            policy_local          = CASE WHEN $8::text IS NOT NULL THEN $8 ELSE policy_local END,
            policy_neighbourhood  = CASE WHEN $9::text IS NOT NULL THEN $9 ELSE policy_neighbourhood END,
            policy_supplementary  = CASE WHEN $10::text IS NOT NULL THEN $10 ELSE policy_supplementary END,
-           policy_other          = CASE WHEN $11::text IS NOT NULL THEN $11 ELSE policy_other END
+           policy_other          = CASE WHEN $11::text IS NOT NULL THEN $11 ELSE policy_other END,
+           specialist_report     = CASE WHEN $13::text IS NOT NULL THEN $13 ELSE specialist_report END
        WHERE id = $12
        RETURNING id, project_id, label, discipline, issue_type_id, source_track_id,
-                 argument_for, argument_against, summary,
+                 argument_for, argument_against, summary, specialist_report,
                  policy_national, policy_local, policy_neighbourhood, policy_supplementary, policy_other,
                  sort_order`,
       [label?.trim() || null, discipline?.trim() ?? null, issue_type_id ?? null,
        argument_for ?? null, argument_against ?? null, summary ?? null,
        policy_national ?? null, policy_local ?? null, policy_neighbourhood ?? null,
-       policy_supplementary ?? null, policy_other ?? null, id]
+       policy_supplementary ?? null, policy_other ?? null, id, specialist_report ?? null]
     );
     if (!rows.length) return res.status(404).json({ error: 'Drafting issue not found' });
     res.json(rows[0]);
@@ -415,16 +417,23 @@ export async function draftIssuesFromBriefing(req, res) {
         if (r.new_issue) {
           if (!r.suggested_label?.trim()) continue;
           const { rows: inserted } = await client.query(
-            `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, sort_order)
-             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [projectId, r.suggested_label.trim(), r.suggested_discipline?.trim() || null, r.argument_for ?? null, nextOrder++]
+            `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, specialist_report, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [projectId, r.suggested_label.trim(), r.suggested_discipline?.trim() || null, r.argument_for ?? null, r.specialist_report ?? null, nextOrder++]
           );
           draftingIssueId = inserted[0].id;
         } else {
           if (!r.drafting_issue_id) continue;
+          // specialist_report only overwrites if the model actually returned
+          // something for it — unlike argument_for, not every briefing will
+          // touch on specialist report findings for an issue, and we don't
+          // want to blank out an existing entry just because this pass didn't.
           const { rows: updated } = await client.query(
-            `UPDATE admin_console.drafting_issues SET argument_for = $1 WHERE id = $2 AND project_id = $3 RETURNING id`,
-            [r.argument_for ?? null, r.drafting_issue_id, projectId]
+            `UPDATE admin_console.drafting_issues
+             SET argument_for = $1,
+                 specialist_report = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE specialist_report END
+             WHERE id = $3 AND project_id = $4 RETURNING id`,
+            [r.argument_for ?? null, r.specialist_report ?? null, r.drafting_issue_id, projectId]
           );
           if (!updated.length) continue;
           draftingIssueId = updated[0].id;

@@ -662,11 +662,12 @@ export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issu
 
 export const DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT = `You are a specialist planning consultant drafting the working argument notes for a Planning Statement, based on a project briefing meeting.
 
-In this meeting, the team discusses the project issue by issue — for each issue, what the relevant policy says, and what the project's argument will be in response to that policy. Your job is to read the briefing note(s) below and do three things:
+In this meeting, the team discusses the project issue by issue — for each issue, what the relevant policy says, and what the project's argument will be in response to that policy. Sometimes the team also discusses a specialist report commissioned for that issue. Your job is to read the briefing note(s) below and do four things:
 
 1. For each issue already listed below, extract and write up what was actually said about it — grounded specifically in the policies already linked to that issue.
 2. Identify any issue that the briefing explicitly names as an issue but which is not in the list below. Only include something here if it is explicitly identified as an issue in the briefing — not merely mentioned in passing, not inferred by you. If in doubt, leave it out. These will become subsections of the Planning Assessment (and potentially other sections) of the Planning Statement.
 3. For each issue (existing or new), identify any policies from the project's full policy library (provided below) that the briefing explicitly discusses or names in connection with that issue. This must come from what was actually said in the transcript — not from you judging that a policy's wording looks thematically relevant to the issue. If the briefing does not explicitly reference a policy for an issue, do not include it, even if you think it might apply.
+4. For each issue (existing or new), if the briefing discusses a specialist report relevant to it, write up the key information about that report: the organisation or consultant who completed it, when it was done, and what its key findings were that are relevant to the argument for this issue. Only include this if a specialist report is actually discussed for that issue in the briefing — leave it out entirely if none is mentioned, rather than guessing or leaving placeholder text.
 
 For each issue you are given:
 - Its label and discipline.
@@ -679,9 +680,9 @@ This is for drafting working notes, not a polished argument — do not try to cr
 
 For every issue (existing or new), also identify which specific fields of which snippet templates from the library plausibly apply, based on its topic and the project's development type. Match at the individual field level, not the whole template — a template's NPPF text might apply while its NPPG text does not, for example, and each listing below shows you which fields actually have content. This one works differently from the policy matching above: include every field that could reasonably apply — do not narrow it down to a single "best" one, and it is fine to include none if nothing fits. Only ever reference a field that the listing shows as present for that template.
 
-Respond ONLY with valid JSON — no markdown, no explanation:
+Respond ONLY with valid JSON — no markdown, no explanation. Omit "specialist_report" entirely for an issue if no specialist report was discussed for it:
 [
-  { "drafting_issue_id": 42, "argument_for": "Our position is...", "matched_snippet_fields": [{ "issue_type_id": 7, "field": "nppf_text" }, { "issue_type_id": 7, "field": "nppg_text" }, { "issue_type_id": 12, "field": "other_national_text" }], "matched_policy_ids": [3] },
+  { "drafting_issue_id": 42, "argument_for": "Our position is...", "specialist_report": "Ecology report prepared by Acme Ecology in March 2025, finding...", "matched_snippet_fields": [{ "issue_type_id": 7, "field": "nppf_text" }, { "issue_type_id": 7, "field": "nppg_text" }, { "issue_type_id": 12, "field": "other_national_text" }], "matched_policy_ids": [3] },
   { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_snippet_fields": [], "matched_policy_ids": [] }
 ]
 
@@ -743,7 +744,11 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
   try {
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) return [];
-    return parsed.map(r => ({ ...r, argument_for: r.argument_for ? noEmDash(r.argument_for) : r.argument_for }));
+    return parsed.map(r => ({
+      ...r,
+      argument_for: r.argument_for ? noEmDash(r.argument_for) : r.argument_for,
+      specialist_report: r.specialist_report ? noEmDash(r.specialist_report) : r.specialist_report,
+    }));
   } catch {
     console.error('[draftIssuesFromBriefingNote] Failed to parse JSON:', cleaned.slice(0, 300));
     return [];

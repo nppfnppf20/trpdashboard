@@ -232,6 +232,14 @@
                 placeholder="Outline the argument structure for this issue: how the proposals comply with policy, key evidence to cite..."
                 on:blur={e => handleFieldBlur(issue, 'argument_for', e.target.value)}
               ></textarea>
+
+              <label class="di-field-label">Specialist report</label>
+              <textarea
+                class="di-textarea"
+                value={issue.specialist_report ?? ''}
+                placeholder="Who prepared the specialist report for this issue, when, and its key findings relevant to the argument..."
+                on:blur={e => handleFieldBlur(issue, 'specialist_report', e.target.value)}
+              ></textarea>
             </div>
           </div>
         {/each}

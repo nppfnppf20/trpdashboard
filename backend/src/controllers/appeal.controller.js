@@ -973,7 +973,8 @@ const V3_SLUG = 'planning_statement_v3';
 async function fetchIssuesForDraftType(draftType, projectId) {
   if (draftType.slug === V3_SLUG) {
     const { rows } = await pool.query(
-      `SELECT id, label, discipline, issue_type_id, argument_for, argument_against
+      `SELECT id, label, discipline, issue_type_id, argument_for, argument_against, summary, specialist_report,
+              policy_national, policy_local, policy_neighbourhood, policy_supplementary, policy_other
        FROM admin_console.drafting_issues
        WHERE project_id = $1
        ORDER BY sort_order, id`,

@@ -445,6 +445,10 @@ function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allI
       lines.push(`### Issue Notes`);
       lines.push(issue.summary.trim());
     }
+    if (issue.specialist_report?.trim()) {
+      lines.push(`### Specialist Report`);
+      lines.push(issue.specialist_report.trim());
+    }
   }
 
   return { text: lines.join('\n\n'), candidateRowsById };
