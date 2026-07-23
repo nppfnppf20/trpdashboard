@@ -289,8 +289,12 @@ export async function saveDraft(projectId, typeId, contentHtml) {
   return res.json();
 }
 
-export async function generateDraft(projectId, typeId) {
-  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/generate`, { method: 'POST' });
+export async function generateDraft(projectId, typeId, opts = {}) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: opts.provider })
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to generate draft');

@@ -4,6 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -49,9 +50,12 @@ export const HOUSE_STYLE_BLOCK = `\n\nHOUSE STYLE — apply these rules consiste
 - Single space after full stops.`;
 
 export const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export const MODEL_FAST   = 'claude-haiku-4-5-20251001';
 export const MODEL_SONNET = 'claude-sonnet-4-6';
+
+export const MODEL_OPENAI_FLAGSHIP = 'gpt-5.6-sol';
 
 export const ANALYSE_CHUNKS = 20;
 export const REJECT_CHUNKS  = 35;
@@ -118,6 +122,29 @@ export async function callClaude(system, user, model = MODEL_SONNET, maxTokens =
       }
     }
   }
+}
+
+// Provider-agnostic single-turn call (system + one user message → text). Lets draft-generation
+// call sites switch between Claude and OpenAI without duplicating prompt-building logic.
+export async function callLLM({ provider = 'anthropic', model, system, prompt, maxTokens = 4096 }) {
+  if (provider === 'openai') {
+    const resp = await openaiClient.chat.completions.create({
+      model: model || MODEL_OPENAI_FLAGSHIP,
+      max_completion_tokens: maxTokens,
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        { role: 'user', content: prompt }
+      ]
+    });
+    return resp.choices[0].message.content;
+  }
+  const resp = await client.messages.create({
+    model: model || MODEL_SONNET,
+    max_tokens: maxTokens,
+    ...(system ? { system } : {}),
+    messages: [{ role: 'user', content: prompt }]
+  });
+  return resp.content[0].text;
 }
 
 // Escape literal newlines/tabs inside JSON string values (LLMs sometimes emit them unescaped)

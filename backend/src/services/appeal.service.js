@@ -4,7 +4,7 @@
  * briefing-driven argument drafting, and prose suggestion flows.
  */
 
-import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, HOUSE_STYLE_BLOCK } from './llm.shared.js';
+import { client, noEmDash, callClaude, callLLM, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, HOUSE_STYLE_BLOCK } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants
@@ -152,7 +152,7 @@ Respond ONLY with valid JSON in this exact shape (no markdown, no explanation):
 // Formal appeal draft document generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief = null, projectBrief = null, exampleDoc = null }) {
+export async function generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief = null, projectBrief = null, exampleDoc = null, provider = 'anthropic' }) {
   const instructions = section.generation_prompt?.trim() ||
     `Write the "${section.name}" section of a ${draftTypeName}. Use formal planning language suitable for submission to the Planning Inspectorate. Produce clean HTML: <h2> for the section heading, <p> for body text, <ol>/<li> for numbered lists. Do not add placeholder text — write the full section from the material provided.`;
 
@@ -184,15 +184,15 @@ FORMAT RULES (mandatory):
 - Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead
 - Do not number individual paragraphs — do not prefix paragraphs with numbers like 7.1, 7.2 etc.`;
 
-  const response = await client.messages.create({
+  const text = await callLLM({
+    provider,
     model: MODEL_SONNET,
-    max_tokens: 2000,
+    maxTokens: 2000,
     system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}`,
-    messages: [{ role: 'user', content: prompt }]
+    prompt
   });
 
-  const raw = response.content[0].text.trim();
-  return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+  return noEmDash(text.trim().replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
 export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {}, guidingBrief = null, projectBrief = null, exampleDoc = null }) {
@@ -479,46 +479,54 @@ function verifyAndCleanSnippetSpans(html, candidateRowsById, issueLabel) {
   });
 }
 
-// sectionPromptTemplate may use {{ISSUE_LABEL}}, {{ISSUE_DISCIPLINE}}, and
-// {{ISSUE_CONTEXT}} (the linked-policy / issue-type snippet block above) in
-// addition to the variables generateAppealDraftFromPrompt already substitutes.
+// sectionPromptTemplate may use {{ISSUE_LIST}} (one line per issue) and
+// {{ISSUES_CONTEXT}} (every issue's linked-policy / issue-type snippet block,
+// each clearly delimited) in addition to the variables
+// generateAppealDraftFromPrompt already substitutes.
+//
+// Generated as a single call covering every issue in the section together —
+// not one call per issue as originally built. Ten independent, mutually-blind
+// calls (one per issue) reliably re-introduced the same boilerplate in every
+// sub-section (e.g. restating the Section 38(6) statutory basis afresh each
+// time) because no call could see what any other call had already written.
+// A single call sees the whole section at once and can self-police that.
+// It's also cheaper: the guiding brief, style example, and policy library
+// blocks are sent once instead of once per issue.
 export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
   linkedPoliciesByTrack = {}, linkedSnippetsByTrack = {}, allIssueTypes = [],
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
 }) {
-  const parts = [`<h2>${sectionName}</h2>`];
+  if (!issues.length) return `<h2>${sectionName}</h2>`;
 
-  for (const issue of issues) {
+  const candidateRowsById = {};
+  const issuesContext = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
     const linkedSnippets = linkedSnippetsByTrack[issue.id] ?? [];
+    const { text, candidateRowsById: issueCandidates } = buildIssueSnippetContext(linkedPolicies, linkedSnippets, allIssueTypes, issue);
+    Object.assign(candidateRowsById, issueCandidates);
+    return `### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n\n${text || '(no linked policies, snippets, or notes recorded for this issue)'}`;
+  }).join('\n\n---\n\n');
 
-    if (!linkedPolicies.length && !linkedSnippets.length && !issue.argument_for?.trim() && !issue.argument_against?.trim()) {
-      parts.push(`<h3>${issue.label}</h3>`);
-      continue;
-    }
+  const issueList = issues.map(i => `- ${i.label}${i.discipline ? ` (${i.discipline})` : ''}`).join('\n');
 
-    const { text: issueContext, candidateRowsById } = buildIssueSnippetContext(linkedPolicies, linkedSnippets, allIssueTypes, issue);
-    const issuePrompt = sectionPromptTemplate
-      .replace(/\{\{ISSUE_LABEL\}\}/g, issue.label)
-      .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issue.discipline ? ` (${issue.discipline})` : '')
-      .replace(/\{\{ISSUE_CONTEXT\}\}/g, issueContext || '(no linked policies or policy snippets recorded for this issue)');
+  const sectionPrompt = sectionPromptTemplate
+    .replace(/\{\{ISSUE_LIST\}\}/g, issueList)
+    .replace(/\{\{ISSUES_CONTEXT\}\}/g, issuesContext);
 
-    let html = await generateAppealDraftFromPrompt({
-      projectName,
-      draftTypeName: `${sectionName} — ${issue.label}`,
-      typePrompt: issuePrompt,
-      issues: [issue],
-      guidingBrief,
-      projectBrief,
-      startingDocs,
-      briefingNotes,
-    });
-    html = verifyAndCleanSnippetSpans(html, candidateRowsById, issue.label);
-    parts.push(html);
-  }
+  let html = await generateAppealDraftFromPrompt({
+    projectName,
+    draftTypeName: sectionName,
+    typePrompt: sectionPrompt,
+    issues,
+    guidingBrief,
+    projectBrief,
+    startingDocs,
+    briefingNotes,
+  });
+  html = verifyAndCleanSnippetSpans(html, candidateRowsById, sectionName);
 
-  return parts.join('\n\n');
+  return `<h2>${sectionName}</h2>\n\n${html}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

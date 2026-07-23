@@ -1144,6 +1144,7 @@ ${history.map(h => {
 
 export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
+  const { provider } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
@@ -1198,14 +1199,14 @@ export async function generateDraft(req, res) {
         console.log(`[generateDraft] generating section: ${section.name}`);
         let html;
         if (section.template_html) {
-          html = await generateFromTemplate({ section, variables, briefingSummary, styleTemplate });
+          html = await generateFromTemplate({ section, variables, briefingSummary, styleTemplate, provider });
         } else if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary, guidingBrief, styleTemplate
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary, guidingBrief, styleTemplate, provider
           });
         } else if (section.generation_prompt?.includes('{{')) {
-          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate });
+          html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate, provider });
         } else {
           html = await generateDraftSection({
             section,
@@ -1214,6 +1215,7 @@ export async function generateDraft(req, res) {
             issueContext,
             guidingBrief,
             exampleDoc: styleTemplate ? { text: styleTemplate.style_text } : null,
+            provider,
           });
         }
         sectionHtmlMap.set(section.id, html);
@@ -1226,8 +1228,8 @@ export async function generateDraft(req, res) {
         for (const section of lastSections) {
           console.log(`[generateDraft] generating runs_last section: ${section.name}`);
           const html = section.template_html
-            ? await generateFromTemplate({ section, variables: runsLastVariables, briefingSummary, styleTemplate })
-            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate });
+            ? await generateFromTemplate({ section, variables: runsLastVariables, briefingSummary, styleTemplate, provider })
+            : await generatePlanningStatementSection({ section, variables: runsLastVariables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate, provider });
           sectionHtmlMap.set(section.id, html);
         }
       }
@@ -1248,7 +1250,7 @@ export async function generateDraft(req, res) {
         if (section.slug === 'planning_assessment') {
           html = await generatePlanningStatementAssessment({
             projectName: projectRows[0].project_name,
-            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary: fallbackBriefingSummary, guidingBrief, styleTemplate
+            section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack, briefingSummary: fallbackBriefingSummary, guidingBrief, styleTemplate, provider
           });
         } else {
           html = await generateDraftSection({
@@ -1258,6 +1260,7 @@ export async function generateDraft(req, res) {
             issueContext,
             guidingBrief,
             exampleDoc: styleTemplate ? { text: styleTemplate.style_text } : null,
+            provider,
           });
         }
         sectionParts.push(html);

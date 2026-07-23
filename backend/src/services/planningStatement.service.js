@@ -4,7 +4,7 @@
  * document summarisation, briefing transcript processing, and prose suggestion.
  */
 
-import { client, noEmDash, callClaude, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, HOUSE_STYLE_BLOCK } from './llm.shared.js';
+import { client, noEmDash, callClaude, callLLM, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, HOUSE_STYLE_BLOCK } from './llm.shared.js';
 import { BASE_SECTIONS, ISSUE_QUESTIONS, TAIL_SECTIONS } from './meetingGuideContent.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = [], issu
   return lines.join('\n');
 }
 
-async function generateLlmSlot({ instruction, variables, briefingSummary, styleTemplate = null }) {
+async function generateLlmSlot({ instruction, variables, briefingSummary, styleTemplate = null, provider = 'anthropic' }) {
   const contextLines = [
     variables.PROJECT_NAME            && `Project: ${variables.PROJECT_NAME}`,
     variables.APPLICANT_NAME          && `Applicant: ${variables.APPLICANT_NAME}`,
@@ -231,14 +231,15 @@ async function generateLlmSlot({ instruction, variables, briefingSummary, styleT
     ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${styleTemplate.style_text.trim().slice(0, 4000)}`
     : '';
 
-  const response = await client.messages.create({
+  const text = await callLLM({
+    provider,
     model: MODEL_SONNET,
-    max_tokens: 600,
+    maxTokens: 600,
     system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${TONE_EXAMPLE_BLOCK}${briefingBlock}${styleBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks\n- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead`,
-    messages: [{ role: 'user', content: instruction }]
+    prompt: instruction
   });
 
-  const html = noEmDash(response.content[0].text.trim()
+  const html = noEmDash(text.trim()
     .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
   return `<div class="llm-generated">${html}</div>`;
 }
@@ -247,7 +248,7 @@ async function generateLlmSlot({ instruction, variables, briefingSummary, styleT
 // Assessment generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack = {}, briefingSummary, guidingBrief = null, styleTemplate = null }) {
+export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack = {}, briefingSummary, guidingBrief = null, styleTemplate = null, provider = 'anthropic' }) {
   const parts = [`<h2>${section.name}</h2>`];
 
   for (const issue of issues) {
@@ -259,14 +260,14 @@ export async function generatePlanningStatementAssessment({ projectName, section
       continue;
     }
     console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
-    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType, briefingSummary, guidingBrief, styleTemplate });
+    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType, briefingSummary, guidingBrief, styleTemplate, provider });
     parts.push(html);
   }
 
   return parts.join('\n\n');
 }
 
-export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType = null, briefingSummary, guidingBrief = null, styleTemplate = null }) {
+export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType = null, briefingSummary, guidingBrief = null, styleTemplate = null, provider = 'anthropic' }) {
   const exampleBlock = section.example_text?.trim()
     ? `## Example Document\nThe following is a real example section from this type of document written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Most content is project-specific and must not be reproduced. The guiding brief takes precedence — do not follow the example more closely than the guiding brief.\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
     : '';
@@ -315,14 +316,15 @@ IMPORTANT: There are no planning policies linked to this issue. Do NOT reference
     .replace(/\{\{ISSUE_CONTEXT\}\}/g, issueContext)
     .replace(/\{\{EXAMPLE_BLOCK\}\}/g, exampleBlock);
 
-  const response = await client.messages.create({
+  const text = await callLLM({
+    provider,
     model: MODEL_SONNET,
-    max_tokens: 2000,
+    maxTokens: 2000,
     system: systemPrompt,
-    messages: [{ role: 'user', content: prompt }]
+    prompt
   });
 
-  const raw = noEmDash(response.content[0].text.trim()
+  const raw = noEmDash(text.trim()
     .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
   return `<div class="llm-generated">${raw}</div>`;
 }
@@ -331,7 +333,7 @@ IMPORTANT: There are no planning policies linked to this issue. Do NOT reference
 // Statement section generation (prompt-based)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generatePlanningStatementSection({ section, variables, sectionNumber, briefingSummary, guidingBrief = null, styleTemplate = null }) {
+export async function generatePlanningStatementSection({ section, variables, sectionNumber, briefingSummary, guidingBrief = null, styleTemplate = null, provider = 'anthropic' }) {
   let prompt = section.generation_prompt ?? '';
 
   for (const [key, value] of Object.entries(variables)) {
@@ -379,14 +381,15 @@ export async function generatePlanningStatementSection({ section, variables, sec
     ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${styleTemplate.style_text.trim().slice(0, 8000)}`
     : '';
 
-  const response = await client.messages.create({
+  const text = await callLLM({
+    provider,
     model: MODEL_SONNET,
-    max_tokens: 4096,
+    maxTokens: 4096,
     system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${HOUSE_STYLE_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`,
-    messages: [{ role: 'user', content: fullPrompt }]
+    prompt: fullPrompt
   });
 
-  let output = noEmDash(response.content[0].text.trim()
+  let output = noEmDash(text.trim()
     .replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 
   for (const key of PLANNING_STATEMENT_OUTPUT_VARS) {
@@ -405,7 +408,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
 // Template-based generation ({{LLM:slug}} slots)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generateFromTemplate({ section, variables, briefingSummary, styleTemplate = null }) {
+export async function generateFromTemplate({ section, variables, briefingSummary, styleTemplate = null, provider = 'anthropic' }) {
   let output = section.template_html;
 
   const llmSlotRegex = /\{\{LLM:([^}]+)\}\}([\s\S]*?)\{\{\/LLM\}\}/g;
@@ -417,7 +420,7 @@ export async function generateFromTemplate({ section, variables, briefingSummary
         instruction = instruction.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
       }
     }
-    const slotHtml = await generateLlmSlot({ instruction, variables, briefingSummary, styleTemplate });
+    const slotHtml = await generateLlmSlot({ instruction, variables, briefingSummary, styleTemplate, provider });
     output = output.replace(fullMatch, slotHtml);
   }
 

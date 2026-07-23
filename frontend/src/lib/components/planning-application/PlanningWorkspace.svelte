@@ -157,6 +157,9 @@
     }
   }
 
+  // Per-card AI provider choice for draft generation — defaults to Claude, not persisted.
+  let draftProviderByType = {};
+
   async function handleDevTypeChange(e) {
     const value = e.target.value;
     developmentType = value;
@@ -777,7 +780,11 @@
                       {/if}
                     </div>
                   {:else}
-                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, undefined, !!draft)}>
+                  <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft">
+                    <option value="anthropic">Claude</option>
+                    <option value="openai">GPT-5.6</option>
+                  </select>
+                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { provider: draftProviderByType[type.id] || 'anthropic' }, !!draft)}>
                     {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
                     {:else}

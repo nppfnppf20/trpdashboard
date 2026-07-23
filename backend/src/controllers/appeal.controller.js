@@ -521,22 +521,59 @@ export async function updateDocumentStatus(req, res) {
 
 export async function generateSection(req, res) {
   const { projectId, typeId, sectionId } = req.params;
+  const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
-      `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
+      `SELECT project_name, development_type, address, local_planning_authority, development_description
+       FROM public.projects WHERE id = $1`, [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+    const project = projectRows[0];
 
     const { rows: typeRows } = await pool.query(
       `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+    const draftType = typeRows[0];
 
     const { rows: sectionRows } = await pool.query(
       `SELECT * FROM appeals.appeal_draft_sections WHERE id = $1 AND draft_type_id = $2`,
       [sectionId, typeId]
     );
     if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
+    const sectionDef = sectionRows[0];
+
+    // Planning Statement v3's Planning Policy / Planning Assessment sections
+    // are spliced sections with their own issue-ordered generation pipeline
+    // (see generateDraftFromPaNotes) — this per-section "Generate" button
+    // must go through that same pipeline, not the generic one below, which
+    // has no concept of drafting_issues, per-issue policy/snippet context,
+    // or these sections' own dedicated guiding briefs.
+    if (draftType.slug === V3_SLUG && SECTION_SPLICE_MARKERS[sectionDef.slug]) {
+      const sectionPrompt = sectionDef.generation_prompt?.trim();
+      if (!sectionPrompt) return res.status(400).json({ error: 'No generation prompt configured for this section' });
+
+      const context = await buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId);
+      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      const sectionGuidingBriefSlug = SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug];
+      const sectionGuidingBrief = await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type);
+
+      const html = await generateIssueOrderedSection({
+        sectionName: sectionDef.name,
+        sectionPromptTemplate: substitutedSectionPrompt,
+        projectName: project.project_name,
+        issues: context.issues,
+        linkedPoliciesByTrack: context.linkedPoliciesByTrack,
+        linkedSnippetsByTrack: context.linkedSnippetsByTrack,
+        allIssueTypes: context.allIssueTypes,
+        guidingBrief: sectionGuidingBrief,
+        projectBrief: context.projectBrief,
+        startingDocs: context.startingDocs,
+        briefingNotes: context.briefingNotes,
+      });
+
+      return res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });
+    }
 
     const { rows: issues } = await pool.query(
       `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
@@ -556,17 +593,17 @@ export async function generateSection(req, res) {
       return lines.join('\n');
     }).join('\n\n---\n\n');
 
-    const guidingBrief = await getGuidingBrief(typeRows[0].slug, projectRows[0].development_type);
+    const guidingBrief = await getGuidingBrief(draftType.slug, project.development_type);
 
     const html = await generateDraftSection({
-      section: sectionRows[0],
-      projectName: projectRows[0].project_name,
-      draftTypeName: typeRows[0].name,
+      section: sectionDef,
+      projectName: project.project_name,
+      draftTypeName: draftType.name,
       issueContext,
       guidingBrief
     });
 
-    res.json({ html, section_id: sectionRows[0].id, section_name: sectionRows[0].name });
+    res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });
   } catch (err) {
     console.error('generateSection error:', err);
     res.status(500).json({ error: err.message });
@@ -918,7 +955,7 @@ async function substituteAppealPromptVariables(promptText, project, projectId) {
     .replace(/\{\{LPA_NAME\}\}/g, lpaName || '(not set)')
     .replace(/\{\{DEVELOPMENT_DESCRIPTION\}\}/g, project.development_description || '(not set)');
 
-  if (/\{\{(LOCAL_POLICIES|NATIONAL_POLICIES)\}\}/.test(text)) {
+  if (/\{\{(LOCAL_POLICIES|NATIONAL_POLICIES|NEIGHBOURHOOD_POLICIES|SUPPLEMENTARY_POLICIES|OTHER_POLICIES)\}\}/.test(text)) {
     const { rows: policyRows } = await pool.query(
       `SELECT policy_reference, policy_name, policy_text, policy_type
        FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, id`,
@@ -933,7 +970,10 @@ async function substituteAppealPromptVariables(promptText, project, projectId) {
       : '(none recorded)';
     text = text
       .replace(/\{\{LOCAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'local')))
-      .replace(/\{\{NATIONAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'national')));
+      .replace(/\{\{NATIONAL_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'national')))
+      .replace(/\{\{NEIGHBOURHOOD_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'neighbourhood')))
+      .replace(/\{\{SUPPLEMENTARY_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'supplementary')))
+      .replace(/\{\{OTHER_POLICIES\}\}/g, formatPolicies(policyRows.filter(p => p.policy_type === 'other')));
   }
 
   if (/\{\{PLANNING_HISTORY\}\}/.test(text)) {
@@ -1014,6 +1054,116 @@ async function fetchLinkedPoliciesForDraftType(draftType, projectId) {
     return map;
   }
   return fetchLinkedPoliciesByTrack(projectId);
+}
+
+// Fetches everything generateIssueOrderedSection needs for one spliced
+// section (Planning Policy / Planning Assessment), standalone. Used by the
+// per-section "Generate" button (generateSection below) so that button goes
+// through the same v3-aware pipeline as a full draft generation, instead of
+// silently falling back to the older, generic per-draft-type mechanism
+// (wrong issue source, wrong guiding brief, wrong style field) that has no
+// idea these sections exist.
+async function buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId) {
+  const issues = await fetchIssuesForDraftType(draftType, projectId);
+
+  let briefingNoteQuery;
+  if (briefingNoteId) {
+    briefingNoteQuery = pool.query(
+      `SELECT summary_html FROM planning_applications.document_summaries
+       WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
+      [briefingNoteId, projectId]
+    );
+  } else {
+    briefingNoteQuery = pool.query(
+      `SELECT summary_html FROM planning_applications.document_summaries
+       WHERE project_id = $1 AND doc_type = 'briefing_transcript'
+       ORDER BY created_at DESC LIMIT 1`,
+      [projectId]
+    );
+  }
+
+  const [{ rows: briefingRows }, { rows: startingDocRows }, linkedPoliciesByTrack, allTypesRes] = await Promise.all([
+    briefingNoteQuery,
+    pool.query(
+      `SELECT slot_slug, content_text FROM appeals.pa_draft_starting_docs
+       WHERE project_id = $1 AND draft_type_id = $2`,
+      [projectId, typeId]
+    ),
+    fetchLinkedPoliciesForDraftType(draftType, projectId),
+    pool.query(
+      `SELECT id, label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text
+       FROM admin_console.issue_types ORDER BY label`
+    ),
+  ]);
+
+  const projectBrief = briefingRows[0]?.summary_html ?? null;
+  const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
+  const allIssueTypes = allTypesRes.rows;
+
+  let briefingNotes = '';
+  const briefingSelectionJson = startingDocs['briefing_notes'];
+  if (briefingSelectionJson) {
+    try {
+      const ids = JSON.parse(briefingSelectionJson);
+      if (Array.isArray(ids) && ids.length > 0) {
+        const { rows: noteRows } = await pool.query(
+          `SELECT title, summary_html FROM planning_applications.document_summaries
+           WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
+           ORDER BY created_at DESC`,
+          [ids, projectId]
+        );
+        briefingNotes = noteRows
+          .map(r => `${r.title ? `[${r.title}]\n` : ''}${r.summary_html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? ''}`)
+          .join('\n\n---\n\n');
+      }
+    } catch { /* malformed JSON — ignore */ }
+  }
+
+  // Same shape-normalisation as the full-draft splice loop: v3 links snippet
+  // templates many-to-many per (issue, field); other draft types match a
+  // single template per issue via project_issue_tracks.issue_type_id.
+  let linkedSnippetsByTrack;
+  if (draftType.slug === V3_SLUG) {
+    const { rows: snippetRows } = await pool.query(
+      `SELECT disr.drafting_issue_id, disr.field, it.id, it.label, it.development_type,
+              it.nppf_text, it.nppg_text, it.other_national_text, it.other_guidance_text
+       FROM admin_console.drafting_issue_snippet_relevance disr
+       JOIN admin_console.issue_types it ON it.id = disr.issue_type_id
+       JOIN admin_console.drafting_issues di ON di.id = disr.drafting_issue_id
+       WHERE di.project_id = $1`,
+      [projectId]
+    );
+    const grouped = {};
+    for (const row of snippetRows) {
+      const { drafting_issue_id, field, ...issueType } = row;
+      const key = `${drafting_issue_id}:${issueType.id}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          drafting_issue_id,
+          id: issueType.id,
+          label: issueType.label,
+          development_type: issueType.development_type,
+          nppf_text: null,
+          nppg_text: null,
+          other_national_text: null,
+          other_guidance_text: null,
+        };
+      }
+      grouped[key][field] = issueType[field];
+    }
+    linkedSnippetsByTrack = {};
+    for (const { drafting_issue_id, ...issueType } of Object.values(grouped)) {
+      if (!linkedSnippetsByTrack[drafting_issue_id]) linkedSnippetsByTrack[drafting_issue_id] = [];
+      linkedSnippetsByTrack[drafting_issue_id].push(issueType);
+    }
+  } else {
+    const singleMatchByTrack = await fetchIssueTypesByTrack(projectId);
+    linkedSnippetsByTrack = Object.fromEntries(
+      Object.entries(singleMatchByTrack).map(([trackId, row]) => [trackId, row ? [row] : []])
+    );
+  }
+
+  return { issues, linkedPoliciesByTrack, linkedSnippetsByTrack, allIssueTypes, projectBrief, startingDocs, briefingNotes };
 }
 
 export async function generateDraftFromPaNotes(req, res) {
@@ -1338,23 +1488,62 @@ export async function resetAppealTypePrompt(req, res) {
 
 export async function generateSectionFromPaNotes(req, res) {
   const { projectId, typeId, sectionId } = req.params;
+  const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type, address, local_planning_authority, development_description
        FROM public.projects WHERE id = $1`, [projectId]
     );
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+    const project = projectRows[0];
 
     const { rows: typeRows } = await pool.query(
       `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
     if (!typeRows.length) return res.status(404).json({ error: 'Draft type not found' });
+    const draftType = typeRows[0];
 
     const { rows: sectionRows } = await pool.query(
       `SELECT * FROM appeals.appeal_draft_sections WHERE id = $1 AND draft_type_id = $2`,
       [sectionId, typeId]
     );
     if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
+    const sectionDef = sectionRows[0];
+
+    // Planning Statement v3's Planning Policy / Planning Assessment sections
+    // are spliced sections with their own issue-ordered generation pipeline
+    // (see generateDraftFromPaNotes) — this per-section "Generate" button
+    // (Configure sections modal) must go through that same pipeline, not the
+    // generic one below, which has no concept of drafting_issues, per-issue
+    // policy/snippet context, or these sections' own dedicated guiding briefs
+    // (it was resolving the main planning_statement_v3 brief instead of
+    // planning_policy_v3 / planning_assessment_v3, and pulling issues from
+    // the old project_issue_tracks table instead of drafting_issues).
+    if (draftType.slug === V3_SLUG && SECTION_SPLICE_MARKERS[sectionDef.slug]) {
+      const sectionPrompt = sectionDef.generation_prompt?.trim();
+      if (!sectionPrompt) return res.status(400).json({ error: 'No generation prompt configured for this section' });
+
+      const context = await buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId);
+      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      const sectionGuidingBriefSlug = SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug];
+      const sectionGuidingBrief = await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type);
+
+      const html = await generateIssueOrderedSection({
+        sectionName: sectionDef.name,
+        sectionPromptTemplate: substitutedSectionPrompt,
+        projectName: project.project_name,
+        issues: context.issues,
+        linkedPoliciesByTrack: context.linkedPoliciesByTrack,
+        linkedSnippetsByTrack: context.linkedSnippetsByTrack,
+        allIssueTypes: context.allIssueTypes,
+        guidingBrief: sectionGuidingBrief,
+        projectBrief: context.projectBrief,
+        startingDocs: context.startingDocs,
+        briefingNotes: context.briefingNotes,
+      });
+
+      return res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });
+    }
 
     const { rows: issues } = await pool.query(
       `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
@@ -1375,23 +1564,23 @@ export async function generateSectionFromPaNotes(req, res) {
     }).join('\n\n---\n\n');
 
     const guidingBrief = await getGuidingBrief(
-      GUIDING_BRIEF_SLUG_ALIAS[typeRows[0].slug] || typeRows[0].slug,
-      projectRows[0].development_type
+      GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug,
+      project.development_type
     );
 
     const substitutedPrompt = await substituteAppealPromptVariables(
-      sectionRows[0].generation_prompt, projectRows[0], projectId
+      sectionDef.generation_prompt, project, projectId
     );
 
     const html = await generateDraftSection({
-      section: { ...sectionRows[0], generation_prompt: substitutedPrompt },
-      projectName: projectRows[0].project_name,
-      draftTypeName: typeRows[0].name,
+      section: { ...sectionDef, generation_prompt: substitutedPrompt },
+      projectName: project.project_name,
+      draftTypeName: draftType.name,
       issueContext,
       guidingBrief
     });
 
-    res.json({ html, section_id: sectionRows[0].id, section_name: sectionRows[0].name });
+    res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });
   } catch (err) {
     console.error('generateSectionFromPaNotes error:', err);
     res.status(500).json({ error: err.message });
