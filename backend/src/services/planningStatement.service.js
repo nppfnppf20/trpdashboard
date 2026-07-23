@@ -233,7 +233,6 @@ async function generateLlmSlot({ instruction, variables, briefingSummary, styleT
 
   const text = await callLLM({
     provider,
-    model: MODEL_SONNET,
     maxTokens: 600,
     system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${TONE_EXAMPLE_BLOCK}${briefingBlock}${styleBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks\n- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead`,
     prompt: instruction
@@ -318,7 +317,6 @@ IMPORTANT: There are no planning policies linked to this issue. Do NOT reference
 
   const text = await callLLM({
     provider,
-    model: MODEL_SONNET,
     maxTokens: 2000,
     system: systemPrompt,
     prompt
@@ -383,7 +381,6 @@ export async function generatePlanningStatementSection({ section, variables, sec
 
   const text = await callLLM({
     provider,
-    model: MODEL_SONNET,
     maxTokens: 4096,
     system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${HOUSE_STYLE_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`,
     prompt: fullPrompt

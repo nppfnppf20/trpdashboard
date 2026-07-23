@@ -4,7 +4,7 @@
  * briefing-driven argument drafting, and prose suggestion flows.
  */
 
-import { client, noEmDash, callClaude, callLLM, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, HOUSE_STYLE_BLOCK } from './llm.shared.js';
+import { client, noEmDash, callClaude, callLLM, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, HOUSE_STYLE_BLOCK, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants
@@ -186,7 +186,6 @@ FORMAT RULES (mandatory):
 
   const text = await callLLM({
     provider,
-    model: MODEL_SONNET,
     maxTokens: 2000,
     system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}`,
     prompt
@@ -271,7 +270,7 @@ const STARTING_DOC_VARS = [
   { slug: 'socio_data',              variable: 'SOCIO_DATA',              label: 'Socio-economic Data' },
 ];
 
-export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '' }) {
+export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '', provider = 'anthropic' }) {
   const issueContext = buildIssueContext(issues, {});
 
   const cleanProjectBrief = projectBrief?.trim()
@@ -319,7 +318,7 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
   // Templates that reference {{STYLE_GUIDE}} (e.g. pre_application_request) carry the
   // style example inline via the substitution above — don't also auto-append this block.
   const styleExampleBlock = (!basePrompt.includes('{{STYLE_GUIDE}}') && guidingBrief?.style_example?.trim())
-    ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${guidingBrief.style_example.trim()}`
+    ? `\n\n## Example Document — THIS IS THE TONE YOU MUST WRITE IN\nThe following is a real document of this type written by this consultancy. This is not a loose reference — it is the exact tone, register, vocabulary, sentence structure, and paragraph rhythm you are to reproduce. Match it as closely as you can: how formal or plain the language is, how long sentences and paragraphs run, how directly claims are stated, how transitions between points are handled. Write as if the person who wrote this example is the one writing your output. Do NOT reproduce any content, facts, project names, site details, or policy references from it — every fact must come only from the material provided elsewhere in this prompt. The guiding brief takes precedence for structure and required content, but for tone and voice, this example is authoritative.\n\n${guidingBrief.style_example.trim()}`
     : '';
 
   const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}${briefingNotesBlock}${styleExampleBlock}
@@ -332,14 +331,16 @@ ${issueContext}
 
 Produce the complete ${draftTypeName} as HTML now.`;
 
-  const raw = (await client.messages.stream({
-    model: MODEL_SONNET,
-    max_tokens: 64000,
+  const text = await callLLM({
+    provider,
+    maxTokens: 64000,
+    stream: true,
     system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).
 
-The guiding brief describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it. Never fabricate facts, figures, policy references, site details, or project-specific claims.${HOUSE_STYLE_BLOCK}`,
-    messages: [{ role: 'user', content: prompt }]
-  }).finalText()).trim();
+The guiding brief describes how this type of document should be structured and approached — use it for format, framing, and emphasis. The project brief and other provided materials are your only source of project-specific content. If the guiding brief describes a section or topic for which nothing has been provided in the project materials, omit it — do not invent content to fill it. Never fabricate facts, figures, policy references, site details, or project-specific claims.${HOUSE_STYLE_BLOCK}${ANTI_AI_SLOP_BLOCK}`,
+    prompt
+  });
+  const raw = text.trim();
   return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
@@ -496,6 +497,7 @@ export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
   linkedPoliciesByTrack = {}, linkedSnippetsByTrack = {}, allIssueTypes = [],
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
+  provider = 'anthropic',
 }) {
   if (!issues.length) return `<h2>${sectionName}</h2>`;
 
@@ -523,6 +525,7 @@ export async function generateIssueOrderedSection({
     projectBrief,
     startingDocs,
     briefingNotes,
+    provider,
   });
   html = verifyAndCleanSnippetSpans(html, candidateRowsById, sectionName);
 

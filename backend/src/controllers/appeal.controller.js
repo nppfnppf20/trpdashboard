@@ -554,9 +554,21 @@ export async function generateSection(req, res) {
       if (!sectionPrompt) return res.status(400).json({ error: 'No generation prompt configured for this section' });
 
       const context = await buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId);
-      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
-      const sectionGuidingBriefSlug = SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug];
-      const sectionGuidingBrief = await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type);
+
+      // {{GUIDING_BRIEF}} carries this section's own dedicated brief;
+      // {{DOCUMENT_GUIDING_BRIEF}} carries the main document's brief, so a
+      // standalone "regenerate this section" call still knows what the whole
+      // document is and where this section fits within it — see the matching
+      // comment in generateDraftFromPaNotes's splice loop.
+      const [documentGuidingBrief, sectionGuidingBrief] = await Promise.all([
+        getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
+        getGuidingBrief(SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug], bodyDevType ?? project.development_type),
+      ]);
+      let substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      substitutedSectionPrompt = substitutedSectionPrompt.replace(
+        /\{\{DOCUMENT_GUIDING_BRIEF\}\}/g,
+        documentGuidingBrief?.guidance_content?.trim() || '(no document-level guiding brief set)'
+      );
 
       const html = await generateIssueOrderedSection({
         sectionName: sectionDef.name,
@@ -1168,7 +1180,7 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
 
 export async function generateDraftFromPaNotes(req, res) {
   const { projectId, typeId } = req.params;
-  const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
+  const { briefingNoteId, developmentType: bodyDevType, provider } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type, address, local_planning_authority, development_description
@@ -1244,6 +1256,7 @@ export async function generateDraftFromPaNotes(req, res) {
       projectBrief,
       startingDocs,
       briefingNotes,
+      provider,
     });
 
     // Splice in any sections the main prompt deliberately left as markers —
@@ -1341,7 +1354,17 @@ export async function generateDraftFromPaNotes(req, res) {
         }
       }
 
-      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      // The section prompt uses {{GUIDING_BRIEF}} for its own dedicated,
+      // narrow brief (sectionGuidingBrief below) — {{DOCUMENT_GUIDING_BRIEF}}
+      // additionally carries the main document's guiding brief, so the
+      // section knows what the whole document is, its purpose and tone, and
+      // where this section sits within it, rather than being drafted as if
+      // it were a standalone document in isolation.
+      let substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      substitutedSectionPrompt = substitutedSectionPrompt.replace(
+        /\{\{DOCUMENT_GUIDING_BRIEF\}\}/g,
+        guidingBrief?.guidance_content?.trim() || '(no document-level guiding brief set)'
+      );
       const sectionGuidingBriefSlug = SECTION_GUIDING_BRIEF_SLUGS[sectionSlug];
       const sectionGuidingBrief = sectionGuidingBriefSlug
         ? await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type)
@@ -1359,6 +1382,7 @@ export async function generateDraftFromPaNotes(req, res) {
         projectBrief,
         startingDocs,
         briefingNotes,
+        provider,
       });
       contentHtml = hasMarker
         ? contentHtml.split(marker).join(sectionHtml)
@@ -1524,9 +1548,21 @@ export async function generateSectionFromPaNotes(req, res) {
       if (!sectionPrompt) return res.status(400).json({ error: 'No generation prompt configured for this section' });
 
       const context = await buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId);
-      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
-      const sectionGuidingBriefSlug = SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug];
-      const sectionGuidingBrief = await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type);
+
+      // {{GUIDING_BRIEF}} carries this section's own dedicated brief;
+      // {{DOCUMENT_GUIDING_BRIEF}} carries the main document's brief, so a
+      // standalone "regenerate this section" call still knows what the whole
+      // document is and where this section fits within it — see the matching
+      // comment in generateDraftFromPaNotes's splice loop.
+      const [documentGuidingBrief, sectionGuidingBrief] = await Promise.all([
+        getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
+        getGuidingBrief(SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug], bodyDevType ?? project.development_type),
+      ]);
+      let substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      substitutedSectionPrompt = substitutedSectionPrompt.replace(
+        /\{\{DOCUMENT_GUIDING_BRIEF\}\}/g,
+        documentGuidingBrief?.guidance_content?.trim() || '(no document-level guiding brief set)'
+      );
 
       const html = await generateIssueOrderedSection({
         sectionName: sectionDef.name,

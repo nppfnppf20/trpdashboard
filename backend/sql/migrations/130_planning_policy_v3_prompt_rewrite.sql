@@ -9,10 +9,20 @@
 -- Also adds the three missing policy-tier variables ({{NEIGHBOURHOOD_POLICIES}},
 -- {{SUPPLEMENTARY_POLICIES}}, {{OTHER_POLICIES}}) alongside the existing
 -- Local/National ones, matching migration 129.
+--
+-- Also adds {{DOCUMENT_GUIDING_BRIEF}}, carrying the main planning_statement_v3
+-- guiding brief alongside this section's own (planning_policy_v3) — see the
+-- matching note in migration 129.
 
 UPDATE appeals.appeal_draft_sections
 SET generation_prompt = $policyprompt$You are writing the Planning Policy section of the Planning Statement for the project "{{PROJECT_NAME}}", covering every issue below in turn.
 
+## About This Document
+This section is one part of the larger Planning Statement — not a standalone document. Read this so you understand the document as a whole, its purpose, its tone, and how this section fits within it, before reading this section's own specific instructions below.
+
+{{DOCUMENT_GUIDING_BRIEF}}
+
+## This Section's Specific Instructions
 {{GUIDING_BRIEF}}
 
 ## Local Policy Context
@@ -32,8 +42,8 @@ The full list of local policies identified as relevant to this proposal. Not all
 ## Other Policy/Guidance Context
 {{OTHER_POLICIES}}
 
-## Style Example
-Here is an example of a document of this type we've previously written, so you can see the tone, language, and phrasing we use. It's from a different project — do not use any information, facts, figures, or policy references from it. It's there only so you understand the style, not the content.
+## Style Example — THIS IS THE TONE YOU MUST WRITE IN
+Here is a real document of this type we've previously written. This is not a loose reference — it is the exact tone, register, vocabulary, sentence structure, and paragraph rhythm you are to reproduce here. Match it as closely as you can: how formal or plain the language is, how long sentences and paragraphs run, how directly claims are stated, how transitions between points are handled. It's from a different project — do not use any information, facts, figures, or policy references from it. It's there only so you write exactly the way we write, not what we say.
 
 {{STYLE_GUIDE}}
 

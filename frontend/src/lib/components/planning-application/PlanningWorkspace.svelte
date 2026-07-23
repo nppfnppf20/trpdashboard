@@ -784,8 +784,12 @@
                         {/each}
                       </select>
                     {/if}
+                    <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft">
+                      <option value="anthropic">Claude</option>
+                      <option value="openai">GPT-5.6</option>
+                    </select>
                     <div class="briefing-btn-group" use:clickOutside={() => { if ($appealDropdownOpenId === type.id) appealDropdownOpenId.set(null); }}>
-                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null }, !!draft)}>
+                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || 'anthropic' }, !!draft)}>
                         {#if $draftGenerating === type.id}
                           <div class="mini-spinner"></div> Generating...
                         {:else}

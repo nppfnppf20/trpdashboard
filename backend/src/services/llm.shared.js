@@ -49,6 +49,18 @@ export const HOUSE_STYLE_BLOCK = `\n\nHOUSE STYLE — apply these rules consiste
 - Use commas in numbers of 1,000 or more: 1,000 not 1000.
 - Single space after full stops.`;
 
+// A real example document (where one is provided) is the authoritative
+// reference for tone — this block is the backstop for the model's own
+// default habits, which reassert themselves unless explicitly told not to,
+// even with a good example sitting right in front of it.
+export const ANTI_AI_SLOP_BLOCK = `\n\nAVOID AI-GENERATED-SOUNDING LANGUAGE — this is written by a human planning consultant and must read that way throughout:
+- Never use: "delve into", "underscores", "underpins", "robust", "seamless", "holistic", "testament to", "boasts", "leverage", "elevate", "vibrant", "tapestry", "landscape" used as a metaphor for a situation or field, "in today's [x]", "it is important to note that", "it should be noted that", "in conclusion", "overall, it is clear that", "plays a crucial/vital/pivotal role", "serves as a".
+- Do not open sentences with "Moreover,", "Furthermore," or "Additionally," — and never use more than one of these across a whole section.
+- Do not hedge or throat-clear before making a point ("It is worth considering that...", "It should be recognised that...") — state the point directly.
+- Do not fall into a repetitive rhythm of short declarative sentences of similar length and shape — vary sentence length and structure the way a human writer naturally does.
+- Do not restate or summarise what you just said at the end of a paragraph ("In summary, this demonstrates that...") — make the point once, clearly, and move on.
+- Do not manufacture false balance or symmetry for its own sake ("On the one hand... on the other hand...") unless the material genuinely presents two sides.`;
+
 export const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -126,7 +138,7 @@ export async function callClaude(system, user, model = MODEL_SONNET, maxTokens =
 
 // Provider-agnostic single-turn call (system + one user message → text). Lets draft-generation
 // call sites switch between Claude and OpenAI without duplicating prompt-building logic.
-export async function callLLM({ provider = 'anthropic', model, system, prompt, maxTokens = 4096 }) {
+export async function callLLM({ provider = 'anthropic', model, system, prompt, maxTokens = 4096, stream = false }) {
   if (provider === 'openai') {
     const resp = await openaiClient.chat.completions.create({
       model: model || MODEL_OPENAI_FLAGSHIP,
@@ -137,6 +149,16 @@ export async function callLLM({ provider = 'anthropic', model, system, prompt, m
       ]
     });
     return resp.choices[0].message.content;
+  }
+  // Anthropic requires streaming for calls likely to run long (large max_tokens) —
+  // the SDK errors on non-streamed requests it estimates would exceed ~10 minutes.
+  if (stream) {
+    return (await client.messages.stream({
+      model: model || MODEL_SONNET,
+      max_tokens: maxTokens,
+      ...(system ? { system } : {}),
+      messages: [{ role: 'user', content: prompt }]
+    }).finalText());
   }
   const resp = await client.messages.create({
     model: model || MODEL_SONNET,
