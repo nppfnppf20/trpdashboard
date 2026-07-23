@@ -60,22 +60,40 @@
 
   $: if (project?.id) load();
 
+  // Each piece loads independently — one failing request (e.g. a migration
+  // that hasn't been run yet) shouldn't blank out everything else that did
+  // load successfully. Failures keep whatever was already in state.
   async function load() {
     loading = true;
-    try {
-      [issues, policyRelevance, snippetRelevance, projectPolicies, issueTypes] = await Promise.all([
-        getDraftingIssues(project.id),
-        getDraftingIssuePolicyRelevance(project.id),
-        getDraftingIssueSnippetRelevance(project.id),
-        getPolicies(project.id),
-        listIssueTypes(),
-      ]);
 
-      // Auto-seed from Key Issues the first time this list is empty, so
-      // there's nothing to click before you see something useful here.
-      // Only fires when empty — once you've got issues (imported or
-      // manual), pulling in anything added later is the button's job.
-      if (issues.length === 0) {
+    const [issuesR, policyR, snippetR, policiesR, typesR] = await Promise.allSettled([
+      getDraftingIssues(project.id),
+      getDraftingIssuePolicyRelevance(project.id),
+      getDraftingIssueSnippetRelevance(project.id),
+      getPolicies(project.id),
+      listIssueTypes(),
+    ]);
+
+    for (const [label, r] of [
+      ['drafting issues', issuesR], ['policy relevance', policyR], ['snippet relevance', snippetR],
+      ['project policies', policiesR], ['issue types', typesR],
+    ]) {
+      if (r.status === 'rejected') console.error(`Failed to load ${label}:`, r.reason);
+    }
+
+    const issuesLoaded = issuesR.status === 'fulfilled';
+    if (issuesLoaded) issues = issuesR.value;
+    if (policyR.status === 'fulfilled') policyRelevance = policyR.value;
+    if (snippetR.status === 'fulfilled') snippetRelevance = snippetR.value;
+    if (policiesR.status === 'fulfilled') projectPolicies = policiesR.value;
+    if (typesR.status === 'fulfilled') issueTypes = typesR.value;
+
+    // Auto-seed from Key Issues the first time this list is empty, so
+    // there's nothing to click before you see something useful here. Only
+    // attempted if we actually know the list is empty (i.e. the fetch
+    // succeeded) — never treat a failed fetch as "genuinely empty".
+    if (issuesLoaded && issues.length === 0) {
+      try {
         const result = await importFromKeyIssues(project.id);
         if (result.imported > 0) {
           [issues, policyRelevance] = await Promise.all([
@@ -83,12 +101,12 @@
             getDraftingIssuePolicyRelevance(project.id),
           ]);
         }
+      } catch (err) {
+        console.error('Failed to import from key issues:', err);
       }
-    } catch (err) {
-      console.error('Failed to load drafting issues:', err);
-    } finally {
-      loading = false;
     }
+
+    loading = false;
   }
 
   async function handleAdd() {

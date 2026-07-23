@@ -662,30 +662,32 @@ export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issu
 
 export const DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT = `You are a specialist planning consultant drafting the working argument notes for a Planning Statement, based on a project briefing meeting.
 
-In this meeting, the team discusses the project issue by issue — for each issue, what the relevant policy says, and what the project's argument will be in response to that policy. Your job is to read the briefing note(s) below and do two things:
+In this meeting, the team discusses the project issue by issue — for each issue, what the relevant policy says, and what the project's argument will be in response to that policy. Your job is to read the briefing note(s) below and do three things:
 
 1. For each issue already listed below, extract and write up what was actually said about it — grounded specifically in the policies already linked to that issue.
 2. Identify any issue that the briefing explicitly names as an issue but which is not in the list below. Only include something here if it is explicitly identified as an issue in the briefing — not merely mentioned in passing, not inferred by you. If in doubt, leave it out. These will become subsections of the Planning Assessment (and potentially other sections) of the Planning Statement.
+3. For each issue (existing or new), identify any policies from the project's full policy library (provided below) that the briefing explicitly discusses or names in connection with that issue. This must come from what was actually said in the transcript — not from you judging that a policy's wording looks thematically relevant to the issue. If the briefing does not explicitly reference a policy for an issue, do not include it, even if you think it might apply.
 
 For each issue you are given:
 - Its label and discipline.
-- The policies already linked to it — exact, verbatim wording. Do not cite any policy not listed here, and do not invent policy references.
+- The policies already linked to it — exact, verbatim wording. Do not cite any policy not listed here or in the full policy library, and do not invent policy references.
 - The project's development type — from its recorded sub-sector, and/or however it comes up in the briefing itself. Use both to judge development type; where they conflict, prefer what the briefing actually says.
+- The project's full policy library, for identifying newly-discussed policy links (see point 3 above).
 - A library of national policy snippet templates, each with an id, a topic, and a development type.
 
 This is for drafting working notes, not a polished argument — do not try to craft the perfect argument or write persuasive prose. Your job is simply to capture, in full, the detail of what was actually said about each issue in the transcript: the policy points raised, the position taken, the evidence or approach mentioned, and any sensitivities or concerns flagged. Be thorough and specific rather than concise — do not compress or summarise away detail. Ground every claim in what the briefing note and the linked policies actually say. Do not invent facts, figures, or policy positions not present in the material provided.
 
-For every issue (existing or new), also identify which snippet templates from the library plausibly apply, based on its topic and the project's development type. Include every template that could reasonably apply — do not narrow it down to a single "best" one, and it is fine to include none if nothing fits.
+For every issue (existing or new), also identify which snippet templates from the library plausibly apply, based on its topic and the project's development type. This one works differently from the policy matching above: include every template that could reasonably apply — do not narrow it down to a single "best" one, and it is fine to include none if nothing fits.
 
 Respond ONLY with valid JSON — no markdown, no explanation:
 [
-  { "drafting_issue_id": 42, "argument_for": "Our position is...", "matched_issue_type_ids": [7, 12] },
-  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_issue_type_ids": [] }
+  { "drafting_issue_id": 42, "argument_for": "Our position is...", "matched_issue_type_ids": [7, 12], "matched_policy_ids": [3] },
+  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_issue_type_ids": [], "matched_policy_ids": [] }
 ]
 
 Only include an issue if the briefing note actually discusses it.`;
 
-export async function draftIssuesFromBriefingNote({ briefingText, issues, policiesByIssue = {}, subSectors = [], allIssueTypes = [], customPrompt = null }) {
+export async function draftIssuesFromBriefingNote({ briefingText, issues, policiesByIssue = {}, allPolicies = [], subSectors = [], allIssueTypes = [], customPrompt = null }) {
   const issueList = issues.length
     ? issues.map(i => {
         const policies = policiesByIssue[i.id] ?? [];
@@ -701,6 +703,13 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
       }).join('\n')
     : '(none tracked yet — go straight to identifying explicitly-named new issues.)';
 
+  const policyLibrary = allPolicies.length
+    ? allPolicies.map(p => {
+        const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+        return `- id:${p.id} | ${ref}${p.policy_name}${p.policy_type ? ` (${p.policy_type})` : ''}`;
+      }).join('\n')
+    : '(none recorded — omit matched_policy_ids for every issue.)';
+
   const snippetLibrary = allIssueTypes.length
     ? allIssueTypes.map(t => `- id:${t.id} | ${t.label}${t.development_type ? ` (${t.development_type})` : ' (generic)'}`).join('\n')
     : '(none available — omit matched_issue_type_ids for every issue.)';
@@ -708,7 +717,7 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
   const subSectorText = subSectors?.length ? subSectors.join(', ') : '(not recorded on the project)';
 
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT;
-  const userMessage = `Briefing note(s):\n<briefing>\n${briefingText.trim().slice(0, 60000)}\n</briefing>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nAvailable snippet template library:\n${snippetLibrary}`;
+  const userMessage = `Briefing note(s):\n<briefing>\n${briefingText.trim().slice(0, 60000)}\n</briefing>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}\n\nAvailable snippet template library:\n${snippetLibrary}`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,

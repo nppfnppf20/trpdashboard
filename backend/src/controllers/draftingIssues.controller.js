@@ -358,7 +358,7 @@ export async function draftIssuesFromBriefing(req, res) {
       return res.status(400).json({ error: 'No content found for the selected sources' });
     }
 
-    const [{ rows: issues }, { rows: policyRows }, { rows: allIssueTypes }, customPrompt] = await Promise.all([
+    const [{ rows: issues }, { rows: policyRows }, { rows: allPolicies }, { rows: allIssueTypes }, customPrompt] = await Promise.all([
       pool.query(
         `SELECT id, label, discipline FROM admin_console.drafting_issues WHERE project_id = $1 ORDER BY sort_order, id`,
         [projectId]
@@ -369,6 +369,10 @@ export async function draftIssuesFromBriefing(req, res) {
          JOIN public.project_policies pp ON pp.id = dipr.policy_id
          JOIN admin_console.drafting_issues di ON di.id = dipr.drafting_issue_id
          WHERE di.project_id = $1`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT id, policy_reference, policy_name, policy_type FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, policy_reference`,
         [projectId]
       ),
       pool.query(`SELECT id, label, development_type FROM admin_console.issue_types ORDER BY label`),
@@ -385,6 +389,7 @@ export async function draftIssuesFromBriefing(req, res) {
       briefingText,
       issues,
       policiesByIssue,
+      allPolicies,
       subSectors: project.sub_sectors ?? [],
       allIssueTypes,
       customPrompt,
@@ -427,6 +432,15 @@ export async function draftIssuesFromBriefing(req, res) {
             `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id)
              VALUES ($1, $2) ON CONFLICT DO NOTHING`,
             [draftingIssueId, issueTypeId]
+          );
+        }
+        // Additive only — never removes an existing link, only adds newly
+        // discussed ones on top of whatever's already there.
+        for (const policyId of (r.matched_policy_ids ?? [])) {
+          await client.query(
+            `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
+             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [draftingIssueId, policyId]
           );
         }
         applied++;

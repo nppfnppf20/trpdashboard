@@ -26,6 +26,7 @@
   let previewPolicy = null;
   let previewSnippet = null;
   let snippetToggling = {};
+  let editingSnippets = false;
 
   $: policiesByType = policies.reduce((acc, p) => {
     const t = (p.policy_type ?? '').toLowerCase();
@@ -100,33 +101,61 @@
         <label class="tier-label">{tier.label}</label>
 
         {#if tier.key === 'policy_national' && allSnippets.length}
-          <div class="policy-refs">
-            {#each allSnippets as snippet}
-              {@const linked = relevantSnippetIds.includes(snippet.id)}
-              <div class="policy-ref snippet-ref" class:linked>
-                <div class="policy-ref-header">
-                  <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
-                    {snippet.label}
-                  </button>
-                  <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
-                  <button
-                    class="policy-link-btn"
-                    class:linked
-                    disabled={snippetToggling[snippet.id]}
-                    on:click={() => handleSnippetToggle(snippet)}
-                    title={linked ? 'Remove from this issue' : 'Mark as relevant to this issue'}
-                  >
-                    {#if snippetToggling[snippet.id]}
-                      <span class="mini-spinner"></span>
-                    {:else if linked}
-                      <i class="las la-check"></i> Linked
-                    {:else}
-                      <i class="las la-plus"></i> Link
-                    {/if}
-                  </button>
+          {@const linkedSnippets = allSnippets.filter(s => relevantSnippetIds.includes(s.id))}
+          <div class="snippet-section">
+            {#if !editingSnippets}
+              {#if linkedSnippets.length}
+                <div class="policy-refs">
+                  {#each linkedSnippets as snippet}
+                    <div class="policy-ref snippet-ref linked">
+                      <div class="policy-ref-header">
+                        <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
+                          {snippet.label}
+                        </button>
+                        <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
+                      </div>
+                    </div>
+                  {/each}
                 </div>
+              {:else}
+                <p class="snippet-empty">No snippet templates linked yet.</p>
+              {/if}
+              <button class="snippet-edit-btn" on:click={() => editingSnippets = true}>
+                <i class="las la-pen"></i> Edit linked templates
+              </button>
+            {:else}
+              <div class="policy-refs">
+                {#each allSnippets as snippet}
+                  {@const linked = relevantSnippetIds.includes(snippet.id)}
+                  <div class="policy-ref snippet-ref" class:linked>
+                    <div class="policy-ref-header">
+                      <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
+                        {snippet.label}
+                      </button>
+                      <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
+                      <button
+                        class="policy-link-btn"
+                        class:linked
+                        disabled={snippetToggling[snippet.id]}
+                        on:click={() => handleSnippetToggle(snippet)}
+                        title={linked ? 'Remove from this issue' : 'Mark as relevant to this issue'}
+                      >
+                        {#if snippetToggling[snippet.id]}
+                          <span class="mini-spinner"></span>
+                        {:else if linked}
+                          <i class="las la-check"></i> Linked
+                        {:else}
+                          <i class="las la-plus"></i> Link
+                        {/if}
+                      </button>
+                    </div>
+                  </div>
+                {/each}
               </div>
-            {/each}
+              <button class="snippet-edit-btn" on:click={() => editingSnippets = false}>
+                <i class="las la-check"></i> Done
+              </button>
+            {/if}
           </div>
         {/if}
 
@@ -330,6 +359,17 @@
 
   .snippet-ref.linked { border-left-color: #16a34a; }
   .snippet-ref .policy-link-btn.linked { border-color: #16a34a; background: #16a34a; }
+
+  .snippet-section { margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
+
+  .snippet-empty { margin: 0; font-size: 0.8rem; color: #94a3b8; font-style: italic; }
+
+  .snippet-edit-btn {
+    align-self: flex-start; display: flex; align-items: center; gap: 0.3rem;
+    background: none; border: none; padding: 0.15rem 0; font-size: 0.75rem; font-weight: 500;
+    color: #7c3aed; cursor: pointer; font-family: inherit;
+  }
+  .snippet-edit-btn:hover { text-decoration: underline; }
 
   .policy-ref-name-btn {
     background: none; border: none; padding: 0; font-size: 0.8rem; font-weight: 600; color: #1e293b;
