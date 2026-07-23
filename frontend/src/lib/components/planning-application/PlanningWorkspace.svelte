@@ -14,6 +14,7 @@
   import { appealScopeIncorporation, appealIncorporateTargeted } from '$lib/api/appeal.js';
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
+  import DraftingIssuesTab from '$lib/components/planning-application/DraftingIssuesTab.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
   import { exportHtmlToWord, getExportConfigForSlug } from '$lib/services/planningDeliverablesExport.js';
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
@@ -446,6 +447,9 @@
     <button class="tab" class:active={activeTab === 'key-issues'} on:click={() => activeTab = 'key-issues'}>
       Planning Issues
     </button>
+    <button class="tab" class:active={activeTab === 'drafting-issues'} on:click={() => activeTab = 'drafting-issues'}>
+      Drafting Issues
+    </button>
     <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
       Draft Document
     </button>
@@ -566,6 +570,12 @@
           {/each}
         </div>
       {/if}
+    </div>
+
+  {:else if activeTab === 'drafting-issues'}
+    <!-- ── Tab: Drafting Issues (independent of Planning Issues / Stages board) ── -->
+    <div class="tab-body">
+      <DraftingIssuesTab {project} />
     </div>
 
   {:else if activeTab === 'draft'}

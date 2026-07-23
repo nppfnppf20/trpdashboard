@@ -381,7 +381,15 @@ function hasSnippetContent(row) {
 // so verifyAndCleanSnippetSpans() can check them against the real text
 // afterward — the model still writes the surrounding prose freely, only the
 // quoted words themselves are verified.
-function buildIssueSnippetContext(linkedPolicies = [], issueType = null, allIssueTypes = []) {
+const TIER_NOTE_FIELDS = [
+  { key: 'policy_national',      label: 'National Policy Notes' },
+  { key: 'policy_local',         label: 'Local Policy Notes' },
+  { key: 'policy_neighbourhood', label: 'Neighbourhood Policy Notes' },
+  { key: 'policy_supplementary', label: 'Supplementary Policy Notes' },
+  { key: 'policy_other',         label: 'Other Policy Notes' },
+];
+
+function buildIssueSnippetContext(linkedPolicies = [], issueType = null, allIssueTypes = [], issue = null) {
   const lines = [];
   const candidateRowsById = {};
 
@@ -416,6 +424,21 @@ function buildIssueSnippetContext(linkedPolicies = [], issueType = null, allIssu
       lines.push(`${ref}${p.policy_name}${keyTag}`);
       if (p.policy_text?.trim())              lines.push(`Policy wording: "${p.policy_text.trim()}"`);
       if (p.relevant_supporting_text?.trim()) lines.push(`Supporting context: ${p.relevant_supporting_text.trim().slice(0, 400)}`);
+    }
+  }
+
+  // Free-text notes from the Drafting Issues tab (only populated for issues
+  // sourced from admin_console.drafting_issues, e.g. Planning Statement v3).
+  if (issue) {
+    for (const f of TIER_NOTE_FIELDS) {
+      if (issue[f.key]?.trim()) {
+        lines.push(`### ${f.label}`);
+        lines.push(issue[f.key].trim());
+      }
+    }
+    if (issue.summary?.trim()) {
+      lines.push(`### Issue Notes`);
+      lines.push(issue.summary.trim());
     }
   }
 
@@ -466,7 +489,7 @@ export async function generateIssueOrderedSection({
       continue;
     }
 
-    const { text: issueContext, candidateRowsById } = buildIssueSnippetContext(linkedPolicies, issueType, allIssueTypes);
+    const { text: issueContext, candidateRowsById } = buildIssueSnippetContext(linkedPolicies, issueType, allIssueTypes, issue);
     const issuePrompt = sectionPromptTemplate
       .replace(/\{\{ISSUE_LABEL\}\}/g, issue.label)
       .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issue.discipline ? ` (${issue.discipline})` : '')

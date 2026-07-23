@@ -965,6 +965,56 @@ async function substituteAppealPromptVariables(promptText, project, projectId) {
   return text;
 }
 
+// Planning Statement v3 is the only draft type currently wired to the
+// independent admin_console.drafting_issues list rather than the shared
+// project_issue_tracks ("key issues") table — see draftingIssues.controller.js.
+const V3_SLUG = 'planning_statement_v3';
+
+async function fetchIssuesForDraftType(draftType, projectId) {
+  if (draftType.slug === V3_SLUG) {
+    const { rows } = await pool.query(
+      `SELECT id, label, discipline, issue_type_id, argument_for, argument_against
+       FROM admin_console.drafting_issues
+       WHERE project_id = $1
+       ORDER BY sort_order, id`,
+      [projectId]
+    );
+    return rows;
+  }
+  const { rows } = await pool.query(
+    `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
+     FROM admin_console.project_issue_tracks pit
+     LEFT JOIN planning_applications.issue_notes ain
+       ON ain.track_id = pit.id AND ain.project_id = $1
+     WHERE pit.project_id = $1 AND pit.is_active = TRUE
+     ORDER BY pit.sort_order, pit.id`,
+    [projectId]
+  );
+  return rows;
+}
+
+async function fetchLinkedPoliciesForDraftType(draftType, projectId) {
+  if (draftType.slug === V3_SLUG) {
+    const { rows } = await pool.query(
+      `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
+              pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy,
+              dipr.drafting_issue_id AS track_id
+       FROM public.project_policies pp
+       JOIN admin_console.drafting_issue_policy_relevance dipr ON dipr.policy_id = pp.id
+       WHERE pp.project_id = $1
+       ORDER BY dipr.drafting_issue_id, pp.policy_type, pp.policy_reference`,
+      [projectId]
+    );
+    const map = {};
+    for (const row of rows) {
+      if (!map[row.track_id]) map[row.track_id] = [];
+      map[row.track_id].push(row);
+    }
+    return map;
+  }
+  return fetchLinkedPoliciesByTrack(projectId);
+}
+
 export async function generateDraftFromPaNotes(req, res) {
   const { projectId, typeId } = req.params;
   const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
@@ -984,15 +1034,7 @@ export async function generateDraftFromPaNotes(req, res) {
 
     const typePrompt = await substituteAppealPromptVariables(draftType.generation_prompt, project, projectId);
 
-    const { rows: issues } = await pool.query(
-      `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN planning_applications.issue_notes ain
-         ON ain.track_id = pit.id AND ain.project_id = $1
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
+    const issues = await fetchIssuesForDraftType(draftType, projectId);
 
     // Fetch briefing note (specific by ID, or latest)
     let briefingNoteQuery;
@@ -1088,17 +1130,27 @@ export async function generateDraftFromPaNotes(req, res) {
       // the whole snippet-template library, offered to the model as candidates
       // for any issue that isn't explicitly linked to one via issueTypesByTrack.
       if (!linkedPoliciesByTrack) {
-        const [linkedRes, issueTypeRes, allTypesRes] = await Promise.all([
-          fetchLinkedPoliciesByTrack(projectId),
-          fetchIssueTypesByTrack(projectId),
+        const [linkedRes, allTypesRes] = await Promise.all([
+          fetchLinkedPoliciesForDraftType(draftType, projectId),
           pool.query(
             `SELECT id, label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text
              FROM admin_console.issue_types ORDER BY label`
           ),
         ]);
         linkedPoliciesByTrack = linkedRes;
-        issueTypesByTrack = issueTypeRes;
         allIssueTypes = allTypesRes.rows;
+
+        if (draftType.slug === V3_SLUG) {
+          // drafting_issues carries issue_type_id directly — no extra join needed.
+          issueTypesByTrack = {};
+          for (const issue of issues) {
+            if (!issue.issue_type_id) continue;
+            const match = allIssueTypes.find(t => t.id === issue.issue_type_id);
+            if (match) issueTypesByTrack[issue.id] = match;
+          }
+        } else {
+          issueTypesByTrack = await fetchIssueTypesByTrack(projectId);
+        }
       }
 
       const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);

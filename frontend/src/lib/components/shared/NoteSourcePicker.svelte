@@ -32,6 +32,17 @@
     meetingNotes = meetingNotes.map(n => ({ ...n, checked: false, full: false }));
   }
 
+  // Ticking "Full transcript" implies wanting the note included, so it also
+  // ticks the note itself rather than requiring two separate clicks.
+  function onBriefingFullToggle(note) {
+    if (note.full) note.checked = true;
+    briefingNotes = briefingNotes;
+  }
+  function onMeetingFullToggle(note) {
+    if (note.full) note.checked = true;
+    meetingNotes = meetingNotes;
+  }
+
   $: selectedSources = [
     ...briefingNotes.filter(n => n.checked).map(n => ({ type: 'briefing_note', id: n.id, full: n.full })),
     ...meetingNotes.filter(n => n.checked).map(n => ({ type: 'meeting_note', id: n.id, full: n.full })),
@@ -63,7 +74,7 @@
               <span class="source-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
             </label>
             <label class="source-full-toggle" class:disabled={!note.transcript_chars}>
-              <input type="checkbox" bind:checked={note.full} disabled={!note.checked || !note.transcript_chars} />
+              <input type="checkbox" bind:checked={note.full} disabled={!note.transcript_chars} on:change={() => onBriefingFullToggle(note)} />
               Full transcript
             </label>
           </div>
@@ -86,7 +97,7 @@
               <span class="source-date">{note.meeting_date ? new Date(note.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span>
             </label>
             <label class="source-full-toggle" class:disabled={!note.transcript_chars}>
-              <input type="checkbox" bind:checked={note.full} disabled={!note.checked || !note.transcript_chars} />
+              <input type="checkbox" bind:checked={note.full} disabled={!note.transcript_chars} on:change={() => onMeetingFullToggle(note)} />
               Full transcript
             </label>
           </div>
