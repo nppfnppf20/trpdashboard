@@ -19,7 +19,7 @@
 
   let issues = [];
   let policyRelevance = {};  // { [draftingIssueId]: [policyId, ...] }
-  let snippetRelevance = {}; // { [draftingIssueId]: [issueTypeId, ...] }
+  let snippetRelevance = {}; // { [draftingIssueId]: [{issue_type_id, field}, ...] }
   let projectPolicies = [];
   let issueTypes = [];
   let loading = true;
@@ -157,12 +157,14 @@
     return result;
   }
 
-  async function handleSnippetToggle(issueId, issueTypeId) {
-    const result = await toggleDraftingIssueSnippet(issueId, issueTypeId);
+  async function handleSnippetToggle(issueId, issueTypeId, field) {
+    const result = await toggleDraftingIssueSnippet(issueId, issueTypeId, field);
     const current = snippetRelevance[issueId] ?? [];
     snippetRelevance = {
       ...snippetRelevance,
-      [issueId]: result.linked ? [...current, issueTypeId] : current.filter(id => id !== issueTypeId),
+      [issueId]: result.linked
+        ? [...current, { issue_type_id: issueTypeId, field }]
+        : current.filter(f => !(f.issue_type_id === issueTypeId && f.field === field)),
     };
     return result;
   }
@@ -206,13 +208,6 @@
                 on:blur={e => handleFieldBlur(issue, 'label', e.target.value)}
                 on:keydown={e => e.key === 'Enter' && e.target.blur()}
               />
-              <input
-                class="di-discipline-input"
-                placeholder="Discipline"
-                value={issue.discipline ?? ''}
-                on:blur={e => handleFieldBlur(issue, 'discipline', e.target.value)}
-                on:keydown={e => e.key === 'Enter' && e.target.blur()}
-              />
               <button class="di-icon-btn di-delete-btn" title="Delete" on:click={() => handleDelete(issue)}>
                 <i class="las la-trash"></i>
               </button>
@@ -226,8 +221,8 @@
                 toggleFn={(policyId) => handlePolicyToggle(issue.id, policyId)}
                 onNoteChange={(tierKey, value) => handleFieldBlur(issue, tierKey, value)}
                 allSnippets={issueTypes}
-                relevantSnippetIds={snippetRelevance[issue.id] ?? []}
-                snippetToggleFn={(issueTypeId) => handleSnippetToggle(issue.id, issueTypeId)}
+                relevantSnippetFields={snippetRelevance[issue.id] ?? []}
+                snippetToggleFn={(issueTypeId, field) => handleSnippetToggle(issue.id, issueTypeId, field)}
               />
 
               <label class="di-field-label">Argument notes</label>
@@ -337,16 +332,10 @@
   .di-card-top { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 
   .di-label-input {
-    flex: 2; min-width: 10rem; font-weight: 600; font-size: 0.9rem; color: #1e293b;
+    flex: 1; min-width: 10rem; font-weight: 600; font-size: 0.9rem; color: #1e293b;
     border: 1px solid transparent; border-radius: 5px; padding: 0.3rem 0.5rem; font-family: inherit;
   }
   .di-label-input:hover, .di-label-input:focus { border-color: #cbd5e1; outline: none; }
-
-  .di-discipline-input {
-    flex: 1; min-width: 8rem; font-size: 0.8rem; color: #64748b;
-    border: 1px solid transparent; border-radius: 5px; padding: 0.3rem 0.5rem; font-family: inherit;
-  }
-  .di-discipline-input:hover, .di-discipline-input:focus { border-color: #cbd5e1; outline: none; }
 
   .di-icon-btn {
     background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0.3rem; border-radius: 4px; font-size: 0.95rem;

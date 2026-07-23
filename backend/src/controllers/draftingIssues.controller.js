@@ -286,21 +286,23 @@ export async function toggleDraftingIssuePolicy(req, res) {
 // linking. An issue can have several relevant templates.
 // ─────────────────────────────────────────────────────────────────────────────
 
+const SNIPPET_FIELDS = new Set(['nppf_text', 'nppg_text', 'other_national_text', 'other_guidance_text']);
+
 export async function getDraftingIssueSnippetRelevance(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT disr.drafting_issue_id, disr.issue_type_id
+      `SELECT disr.drafting_issue_id, disr.issue_type_id, disr.field
        FROM admin_console.drafting_issue_snippet_relevance disr
        JOIN admin_console.drafting_issues di ON di.id = disr.drafting_issue_id
        WHERE di.project_id = $1`,
       [projectId]
     );
-    // Return as { [drafting_issue_id]: [issue_type_id, ...] }
+    // Return as { [drafting_issue_id]: [{issue_type_id, field}, ...] }
     const map = {};
     for (const row of rows) {
       if (!map[row.drafting_issue_id]) map[row.drafting_issue_id] = [];
-      map[row.drafting_issue_id].push(row.issue_type_id);
+      map[row.drafting_issue_id].push({ issue_type_id: row.issue_type_id, field: row.field });
     }
     res.json(map);
   } catch (err) {
@@ -310,22 +312,23 @@ export async function getDraftingIssueSnippetRelevance(req, res) {
 }
 
 export async function toggleDraftingIssueSnippet(req, res) {
-  const { draftingIssueId, issueTypeId } = req.params;
+  const { draftingIssueId, issueTypeId, field } = req.params;
+  if (!SNIPPET_FIELDS.has(field)) return res.status(400).json({ error: 'Invalid field' });
   try {
     const { rows: existing } = await pool.query(
-      `SELECT 1 FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2`,
-      [draftingIssueId, issueTypeId]
+      `SELECT 1 FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2 AND field = $3`,
+      [draftingIssueId, issueTypeId, field]
     );
     if (existing.length) {
       await pool.query(
-        `DELETE FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2`,
-        [draftingIssueId, issueTypeId]
+        `DELETE FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2 AND field = $3`,
+        [draftingIssueId, issueTypeId, field]
       );
       res.json({ linked: false });
     } else {
       await pool.query(
-        `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id) VALUES ($1, $2)`,
-        [draftingIssueId, issueTypeId]
+        `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id, field) VALUES ($1, $2, $3)`,
+        [draftingIssueId, issueTypeId, field]
       );
       res.json({ linked: true });
     }
@@ -375,7 +378,7 @@ export async function draftIssuesFromBriefing(req, res) {
         `SELECT id, policy_reference, policy_name, policy_type FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, policy_reference`,
         [projectId]
       ),
-      pool.query(`SELECT id, label, development_type FROM admin_console.issue_types ORDER BY label`),
+      pool.query(`SELECT id, label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text FROM admin_console.issue_types ORDER BY label`),
       loadCustomActionPrompt('draft_issues_from_briefing'),
     ]);
 
@@ -427,11 +430,12 @@ export async function draftIssuesFromBriefing(req, res) {
           draftingIssueId = updated[0].id;
         }
 
-        for (const issueTypeId of (r.matched_issue_type_ids ?? [])) {
+        for (const m of (r.matched_snippet_fields ?? [])) {
+          if (!SNIPPET_FIELDS.has(m.field)) continue;
           await client.query(
-            `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id)
-             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [draftingIssueId, issueTypeId]
+            `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id, field)
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+            [draftingIssueId, m.issue_type_id, m.field]
           );
         }
         // Additive only — never removes an existing link, only adds newly

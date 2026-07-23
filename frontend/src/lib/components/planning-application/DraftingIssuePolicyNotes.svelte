@@ -10,8 +10,15 @@
   export let toggleFn; // async (policyId, issueId) => { linked }
   export let onNoteChange; // (tierKey, value) => void
   export let allSnippets = []; // full admin_console.issue_types library
-  export let relevantSnippetIds = [];
-  export let snippetToggleFn; // async (issueTypeId, issueId) => { linked }
+  export let relevantSnippetFields = []; // [{issue_type_id, field}]
+  export let snippetToggleFn; // async (issueTypeId, field) => { linked }
+
+  const SNIPPET_FIELDS = [
+    { key: 'nppf_text', label: 'NPPF' },
+    { key: 'nppg_text', label: 'NPPG' },
+    { key: 'other_national_text', label: 'Other National' },
+    { key: 'other_guidance_text', label: 'Other Guidance' },
+  ];
 
   const POLICY_TIERS = [
     { key: 'policy_national',      label: 'National Policy',      dbType: 'national',      placeholder: 'Key NPPF provisions and national guidance relevant to this issue...' },
@@ -35,6 +42,11 @@
     return acc;
   }, {});
 
+  $: linkedFieldKeySet = new Set(relevantSnippetFields.map(f => `${f.issue_type_id}:${f.field}`));
+  $: linkedSnippetsList = allSnippets
+    .map(snippet => ({ snippet, fields: SNIPPET_FIELDS.filter(f => linkedFieldKeySet.has(`${snippet.id}:${f.key}`)) }))
+    .filter(x => x.fields.length > 0);
+
   async function handleToggle(policy) {
     if (toggling[policy.id]) return;
     toggling = { ...toggling, [policy.id]: true };
@@ -47,15 +59,16 @@
     }
   }
 
-  async function handleSnippetToggle(snippet) {
-    if (snippetToggling[snippet.id]) return;
-    snippetToggling = { ...snippetToggling, [snippet.id]: true };
+  async function handleSnippetToggle(snippet, fieldKey) {
+    const toggleKey = `${snippet.id}:${fieldKey}`;
+    if (snippetToggling[toggleKey]) return;
+    snippetToggling = { ...snippetToggling, [toggleKey]: true };
     try {
-      await snippetToggleFn(snippet.id, issue.id);
+      await snippetToggleFn(snippet.id, fieldKey);
     } catch (e) {
-      console.error('Failed to toggle snippet:', e);
+      console.error('Failed to toggle snippet field:', e);
     } finally {
-      snippetToggling = { ...snippetToggling, [snippet.id]: false };
+      snippetToggling = { ...snippetToggling, [toggleKey]: false };
     }
   }
 
@@ -83,7 +96,7 @@
 
   <div class="tier-buttons">
     {#each POLICY_TIERS as tier}
-      {@const hasContent = !!issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetIds.length > 0)}
+      {@const hasContent = !!issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetFields.length > 0)}
       <button
         class="tier-btn"
         class:active={open[tier.key] || hasContent}
@@ -96,23 +109,27 @@
   </div>
 
   {#each POLICY_TIERS as tier}
-    {#if open[tier.key] || issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetIds.length > 0)}
+    {#if open[tier.key] || issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetFields.length > 0)}
       <div class="tier-field">
         <label class="tier-label">{tier.label}</label>
 
         {#if tier.key === 'policy_national' && allSnippets.length}
-          {@const linkedSnippets = allSnippets.filter(s => relevantSnippetIds.includes(s.id))}
           <div class="snippet-section">
             {#if !editingSnippets}
-              {#if linkedSnippets.length}
+              {#if linkedSnippetsList.length}
                 <div class="policy-refs">
-                  {#each linkedSnippets as snippet}
+                  {#each linkedSnippetsList as { snippet, fields }}
                     <div class="policy-ref snippet-ref linked">
                       <div class="policy-ref-header">
                         <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
                           {snippet.label}
                         </button>
                         <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
+                      </div>
+                      <div class="snippet-field-pills">
+                        {#each fields as f}
+                          <span class="snippet-field-pill">{f.label}</span>
+                        {/each}
                       </div>
                     </div>
                   {/each}
@@ -126,30 +143,38 @@
             {:else}
               <div class="policy-refs">
                 {#each allSnippets as snippet}
-                  {@const linked = relevantSnippetIds.includes(snippet.id)}
-                  <div class="policy-ref snippet-ref" class:linked>
-                    <div class="policy-ref-header">
-                      <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
-                        {snippet.label}
-                      </button>
-                      <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
-                      <button
-                        class="policy-link-btn"
-                        class:linked
-                        disabled={snippetToggling[snippet.id]}
-                        on:click={() => handleSnippetToggle(snippet)}
-                        title={linked ? 'Remove from this issue' : 'Mark as relevant to this issue'}
-                      >
-                        {#if snippetToggling[snippet.id]}
-                          <span class="mini-spinner"></span>
-                        {:else if linked}
-                          <i class="las la-check"></i> Linked
-                        {:else}
-                          <i class="las la-plus"></i> Link
-                        {/if}
-                      </button>
+                  {@const availableFields = SNIPPET_FIELDS.filter(f => snippet[f.key]?.trim())}
+                  {#if availableFields.length}
+                    <div class="policy-ref snippet-ref">
+                      <div class="policy-ref-header">
+                        <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
+                          {snippet.label}
+                        </button>
+                        <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
+                      </div>
+                      <div class="snippet-field-toggles">
+                        {#each availableFields as f}
+                          {@const toggleKey = `${snippet.id}:${f.key}`}
+                          {@const linked = linkedFieldKeySet.has(toggleKey)}
+                          <button
+                            class="policy-link-btn snippet-field-btn"
+                            class:linked
+                            disabled={snippetToggling[toggleKey]}
+                            on:click={() => handleSnippetToggle(snippet, f.key)}
+                            title={linked ? `Remove ${f.label} from this issue` : `Mark ${f.label} as relevant to this issue`}
+                          >
+                            {#if snippetToggling[toggleKey]}
+                              <span class="mini-spinner"></span>
+                            {:else if linked}
+                              <i class="las la-check"></i> {f.label}
+                            {:else}
+                              <i class="las la-plus"></i> {f.label}
+                            {/if}
+                          </button>
+                        {/each}
+                      </div>
                     </div>
-                  </div>
+                  {/if}
                 {/each}
               </div>
               <button class="snippet-edit-btn" on:click={() => editingSnippets = false}>
@@ -359,6 +384,18 @@
 
   .snippet-ref.linked { border-left-color: #16a34a; }
   .snippet-ref .policy-link-btn.linked { border-color: #16a34a; background: #16a34a; }
+
+  .snippet-field-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+
+  .snippet-field-pill {
+    font-size: 0.7rem; font-weight: 600; color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0;
+    padding: 0.1rem 0.4rem; border-radius: 999px;
+  }
+
+  .snippet-field-toggles { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+
+  .snippet-field-btn { margin-left: 0; }
+  .snippet-field-btn.linked { border-color: #16a34a; background: #16a34a; }
 
   .snippet-section { margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
 

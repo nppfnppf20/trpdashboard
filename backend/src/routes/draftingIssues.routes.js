@@ -29,6 +29,6 @@ router.put('/:id/issue-type', setDraftingIssueType);
 router.delete('/:id', deleteDraftingIssue);
 
 router.post('/:draftingIssueId/policies/:policyId/toggle', toggleDraftingIssuePolicy);
-router.post('/:draftingIssueId/snippets/:issueTypeId/toggle', toggleDraftingIssueSnippet);
+router.post('/:draftingIssueId/snippets/:issueTypeId/:field/toggle', toggleDraftingIssueSnippet);
 
 export default router;

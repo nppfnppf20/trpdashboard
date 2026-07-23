@@ -673,16 +673,16 @@ For each issue you are given:
 - The policies already linked to it — exact, verbatim wording. Do not cite any policy not listed here or in the full policy library, and do not invent policy references.
 - The project's development type — from its recorded sub-sector, and/or however it comes up in the briefing itself. Use both to judge development type; where they conflict, prefer what the briefing actually says.
 - The project's full policy library, for identifying newly-discussed policy links (see point 3 above).
-- A library of national policy snippet templates, each with an id, a topic, and a development type.
+- A library of national policy snippet templates, each with an id, a topic, a development type, and up to four separate fields of boilerplate text: NPPF, NPPG, Other National, and Other Guidance. Not every template has content in every field.
 
 This is for drafting working notes, not a polished argument — do not try to craft the perfect argument or write persuasive prose. Your job is simply to capture, in full, the detail of what was actually said about each issue in the transcript: the policy points raised, the position taken, the evidence or approach mentioned, and any sensitivities or concerns flagged. Be thorough and specific rather than concise — do not compress or summarise away detail. Ground every claim in what the briefing note and the linked policies actually say. Do not invent facts, figures, or policy positions not present in the material provided.
 
-For every issue (existing or new), also identify which snippet templates from the library plausibly apply, based on its topic and the project's development type. This one works differently from the policy matching above: include every template that could reasonably apply — do not narrow it down to a single "best" one, and it is fine to include none if nothing fits.
+For every issue (existing or new), also identify which specific fields of which snippet templates from the library plausibly apply, based on its topic and the project's development type. Match at the individual field level, not the whole template — a template's NPPF text might apply while its NPPG text does not, for example, and each listing below shows you which fields actually have content. This one works differently from the policy matching above: include every field that could reasonably apply — do not narrow it down to a single "best" one, and it is fine to include none if nothing fits. Only ever reference a field that the listing shows as present for that template.
 
 Respond ONLY with valid JSON — no markdown, no explanation:
 [
-  { "drafting_issue_id": 42, "argument_for": "Our position is...", "matched_issue_type_ids": [7, 12], "matched_policy_ids": [3] },
-  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_issue_type_ids": [], "matched_policy_ids": [] }
+  { "drafting_issue_id": 42, "argument_for": "Our position is...", "matched_snippet_fields": [{ "issue_type_id": 7, "field": "nppf_text" }, { "issue_type_id": 7, "field": "nppg_text" }, { "issue_type_id": 12, "field": "other_national_text" }], "matched_policy_ids": [3] },
+  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_snippet_fields": [], "matched_policy_ids": [] }
 ]
 
 Only include an issue if the briefing note actually discusses it.`;
@@ -710,9 +710,21 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
       }).join('\n')
     : '(none recorded — omit matched_policy_ids for every issue.)';
 
+  const SNIPPET_FIELD_LABELS = {
+    nppf_text: 'nppf_text (NPPF)',
+    nppg_text: 'nppg_text (NPPG)',
+    other_national_text: 'other_national_text (Other National)',
+    other_guidance_text: 'other_guidance_text (Other Guidance)',
+  };
   const snippetLibrary = allIssueTypes.length
-    ? allIssueTypes.map(t => `- id:${t.id} | ${t.label}${t.development_type ? ` (${t.development_type})` : ' (generic)'}`).join('\n')
-    : '(none available — omit matched_issue_type_ids for every issue.)';
+    ? allIssueTypes.map(t => {
+        const fields = Object.keys(SNIPPET_FIELD_LABELS).filter(f => t[f]?.trim());
+        const fieldText = fields.length
+          ? `available fields: ${fields.map(f => SNIPPET_FIELD_LABELS[f]).join(', ')}`
+          : 'no fields with content';
+        return `- id:${t.id} | ${t.label}${t.development_type ? ` (${t.development_type})` : ' (generic)'} — ${fieldText}`;
+      }).join('\n')
+    : '(none available — omit matched_snippet_fields for every issue.)';
 
   const subSectorText = subSectors?.length ? subSectors.join(', ') : '(not recorded on the project)';
 

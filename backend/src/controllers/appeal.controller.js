@@ -1145,7 +1145,7 @@ export async function generateDraftFromPaNotes(req, res) {
           // an issue can have several linked templates (manually toggled, or
           // matched by "Draft from Briefing Note").
           const { rows: snippetRows } = await pool.query(
-            `SELECT disr.drafting_issue_id, it.id, it.label, it.development_type,
+            `SELECT disr.drafting_issue_id, disr.field, it.id, it.label, it.development_type,
                     it.nppf_text, it.nppg_text, it.other_national_text, it.other_guidance_text
              FROM admin_console.drafting_issue_snippet_relevance disr
              JOIN admin_console.issue_types it ON it.id = disr.issue_type_id
@@ -1153,9 +1153,30 @@ export async function generateDraftFromPaNotes(req, res) {
              WHERE di.project_id = $1`,
             [projectId]
           );
-          linkedSnippetsByTrack = {};
+          // Each row is one (issue, template, field) link. Group into one
+          // object per (issue, template) pair, populating only the fields
+          // that are actually linked — a template's NPPF text can be linked
+          // to an issue while its NPPG text is not, for example.
+          const grouped = {};
           for (const row of snippetRows) {
-            const { drafting_issue_id, ...issueType } = row;
+            const { drafting_issue_id, field, ...issueType } = row;
+            const key = `${drafting_issue_id}:${issueType.id}`;
+            if (!grouped[key]) {
+              grouped[key] = {
+                drafting_issue_id,
+                id: issueType.id,
+                label: issueType.label,
+                development_type: issueType.development_type,
+                nppf_text: null,
+                nppg_text: null,
+                other_national_text: null,
+                other_guidance_text: null,
+              };
+            }
+            grouped[key][field] = issueType[field];
+          }
+          linkedSnippetsByTrack = {};
+          for (const { drafting_issue_id, ...issueType } of Object.values(grouped)) {
             if (!linkedSnippetsByTrack[drafting_issue_id]) linkedSnippetsByTrack[drafting_issue_id] = [];
             linkedSnippetsByTrack[drafting_issue_id].push(issueType);
           }

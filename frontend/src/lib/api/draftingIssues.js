@@ -82,8 +82,8 @@ export async function getDraftingIssueSnippetRelevance(projectId) {
   return res.json();
 }
 
-export async function toggleDraftingIssueSnippet(draftingIssueId, issueTypeId) {
-  const res = await authFetch(`${BASE}/${draftingIssueId}/snippets/${issueTypeId}/toggle`, {
+export async function toggleDraftingIssueSnippet(draftingIssueId, issueTypeId, field) {
+  const res = await authFetch(`${BASE}/${draftingIssueId}/snippets/${issueTypeId}/${field}/toggle`, {
     method: 'POST'
   });
   if (!res.ok) throw new Error('Failed to toggle snippet relevance');
