@@ -7,6 +7,15 @@
  */
 
 import { pool } from '../db.js';
+import { resolveBriefingSourceTexts } from '../services/quoteRequests.service.js';
+import { draftIssuesFromBriefingNote } from '../services/planningStatement.service.js';
+
+async function loadCustomActionPrompt(key) {
+  const { rows } = await pool.query(
+    `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = $1`, [key]
+  );
+  return rows[0]?.prompt_text ?? null;
+}
 
 export async function listDraftingIssues(req, res) {
   const { projectId } = req.params;
@@ -268,5 +277,171 @@ export async function toggleDraftingIssuePolicy(req, res) {
   } catch (err) {
     console.error('draftingIssues.togglePolicy error:', err);
     res.status(500).json({ error: 'Failed to toggle policy relevance' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Snippet template relevance (admin_console.issue_types) — many-to-many,
+// replacing the old single-select drafting_issues.issue_type_id for new
+// linking. An issue can have several relevant templates.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getDraftingIssueSnippetRelevance(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT disr.drafting_issue_id, disr.issue_type_id
+       FROM admin_console.drafting_issue_snippet_relevance disr
+       JOIN admin_console.drafting_issues di ON di.id = disr.drafting_issue_id
+       WHERE di.project_id = $1`,
+      [projectId]
+    );
+    // Return as { [drafting_issue_id]: [issue_type_id, ...] }
+    const map = {};
+    for (const row of rows) {
+      if (!map[row.drafting_issue_id]) map[row.drafting_issue_id] = [];
+      map[row.drafting_issue_id].push(row.issue_type_id);
+    }
+    res.json(map);
+  } catch (err) {
+    console.error('draftingIssues.getSnippetRelevance error:', err);
+    res.status(500).json({ error: 'Failed to fetch snippet relevance' });
+  }
+}
+
+export async function toggleDraftingIssueSnippet(req, res) {
+  const { draftingIssueId, issueTypeId } = req.params;
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT 1 FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2`,
+      [draftingIssueId, issueTypeId]
+    );
+    if (existing.length) {
+      await pool.query(
+        `DELETE FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2`,
+        [draftingIssueId, issueTypeId]
+      );
+      res.json({ linked: false });
+    } else {
+      await pool.query(
+        `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id) VALUES ($1, $2)`,
+        [draftingIssueId, issueTypeId]
+      );
+      res.json({ linked: true });
+    }
+  } catch (err) {
+    console.error('draftingIssues.toggleSnippet error:', err);
+    res.status(500).json({ error: 'Failed to toggle snippet relevance' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Draft from Briefing Note
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function draftIssuesFromBriefing(req, res) {
+  const { projectId } = req.params;
+  const { sources } = req.body ?? {};
+  if (!Array.isArray(sources) || !sources.length) {
+    return res.status(400).json({ error: 'sources is required' });
+  }
+
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT id, unique_id, sub_sectors FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+    const project = projectRows[0];
+
+    const briefingText = await resolveBriefingSourceTexts(sources, project.unique_id);
+    if (!briefingText?.trim()) {
+      return res.status(400).json({ error: 'No content found for the selected sources' });
+    }
+
+    const [{ rows: issues }, { rows: policyRows }, { rows: allIssueTypes }, customPrompt] = await Promise.all([
+      pool.query(
+        `SELECT id, label, discipline FROM admin_console.drafting_issues WHERE project_id = $1 ORDER BY sort_order, id`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT dipr.drafting_issue_id, pp.policy_reference, pp.policy_name, pp.policy_text, pp.is_key_policy
+         FROM admin_console.drafting_issue_policy_relevance dipr
+         JOIN public.project_policies pp ON pp.id = dipr.policy_id
+         JOIN admin_console.drafting_issues di ON di.id = dipr.drafting_issue_id
+         WHERE di.project_id = $1`,
+        [projectId]
+      ),
+      pool.query(`SELECT id, label, development_type FROM admin_console.issue_types ORDER BY label`),
+      loadCustomActionPrompt('draft_issues_from_briefing'),
+    ]);
+
+    const policiesByIssue = {};
+    for (const r of policyRows) {
+      if (!policiesByIssue[r.drafting_issue_id]) policiesByIssue[r.drafting_issue_id] = [];
+      policiesByIssue[r.drafting_issue_id].push(r);
+    }
+
+    const results = await draftIssuesFromBriefingNote({
+      briefingText,
+      issues,
+      policiesByIssue,
+      subSectors: project.sub_sectors ?? [],
+      allIssueTypes,
+      customPrompt,
+    });
+
+    const client = await pool.connect();
+    let applied = 0;
+    try {
+      await client.query('BEGIN');
+
+      const { rows: maxRow } = await client.query(
+        `SELECT COALESCE(MAX(sort_order), -1) AS max FROM admin_console.drafting_issues WHERE project_id = $1`,
+        [projectId]
+      );
+      let nextOrder = maxRow[0].max + 1;
+
+      for (const r of results) {
+        let draftingIssueId;
+
+        if (r.new_issue) {
+          if (!r.suggested_label?.trim()) continue;
+          const { rows: inserted } = await client.query(
+            `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, sort_order)
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [projectId, r.suggested_label.trim(), r.suggested_discipline?.trim() || null, r.argument_for ?? null, nextOrder++]
+          );
+          draftingIssueId = inserted[0].id;
+        } else {
+          if (!r.drafting_issue_id) continue;
+          const { rows: updated } = await client.query(
+            `UPDATE admin_console.drafting_issues SET argument_for = $1 WHERE id = $2 AND project_id = $3 RETURNING id`,
+            [r.argument_for ?? null, r.drafting_issue_id, projectId]
+          );
+          if (!updated.length) continue;
+          draftingIssueId = updated[0].id;
+        }
+
+        for (const issueTypeId of (r.matched_issue_type_ids ?? [])) {
+          await client.query(
+            `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id)
+             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [draftingIssueId, issueTypeId]
+          );
+        }
+        applied++;
+      }
+
+      await client.query('COMMIT');
+      res.json({ applied });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('draftingIssues.draftFromBriefing error:', err);
+    res.status(500).json({ error: 'Failed to draft issues from briefing' });
   }
 }

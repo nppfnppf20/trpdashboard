@@ -1102,7 +1102,7 @@ export async function generateDraftFromPaNotes(req, res) {
     // project issue) so each can draw on that issue's linked policies and any
     // development-type-specific policy snippets (admin_console.issue_types).
     let linkedPoliciesByTrack = null;
-    let issueTypesByTrack = null;
+    let linkedSnippetsByTrack = null;
     let allIssueTypes = null;
 
     for (const [sectionSlug, marker] of Object.entries(SECTION_SPLICE_MARKERS)) {
@@ -1128,7 +1128,7 @@ export async function generateDraftFromPaNotes(req, res) {
 
       // Fetched once, lazily, and reused across both sections. allIssueTypes is
       // the whole snippet-template library, offered to the model as candidates
-      // for any issue that isn't explicitly linked to one via issueTypesByTrack.
+      // for any issue that isn't explicitly linked to any via linkedSnippetsByTrack.
       if (!linkedPoliciesByTrack) {
         const [linkedRes, allTypesRes] = await Promise.all([
           fetchLinkedPoliciesForDraftType(draftType, projectId),
@@ -1141,15 +1141,31 @@ export async function generateDraftFromPaNotes(req, res) {
         allIssueTypes = allTypesRes.rows;
 
         if (draftType.slug === V3_SLUG) {
-          // drafting_issues carries issue_type_id directly — no extra join needed.
-          issueTypesByTrack = {};
-          for (const issue of issues) {
-            if (!issue.issue_type_id) continue;
-            const match = allIssueTypes.find(t => t.id === issue.issue_type_id);
-            if (match) issueTypesByTrack[issue.id] = match;
+          // Many-to-many via admin_console.drafting_issue_snippet_relevance —
+          // an issue can have several linked templates (manually toggled, or
+          // matched by "Draft from Briefing Note").
+          const { rows: snippetRows } = await pool.query(
+            `SELECT disr.drafting_issue_id, it.id, it.label, it.development_type,
+                    it.nppf_text, it.nppg_text, it.other_national_text, it.other_guidance_text
+             FROM admin_console.drafting_issue_snippet_relevance disr
+             JOIN admin_console.issue_types it ON it.id = disr.issue_type_id
+             JOIN admin_console.drafting_issues di ON di.id = disr.drafting_issue_id
+             WHERE di.project_id = $1`,
+            [projectId]
+          );
+          linkedSnippetsByTrack = {};
+          for (const row of snippetRows) {
+            const { drafting_issue_id, ...issueType } = row;
+            if (!linkedSnippetsByTrack[drafting_issue_id]) linkedSnippetsByTrack[drafting_issue_id] = [];
+            linkedSnippetsByTrack[drafting_issue_id].push(issueType);
           }
         } else {
-          issueTypesByTrack = await fetchIssueTypesByTrack(projectId);
+          // Single-match via project_issue_tracks.issue_type_id (unchanged),
+          // normalised to the same array-per-issue shape.
+          const singleMatchByTrack = await fetchIssueTypesByTrack(projectId);
+          linkedSnippetsByTrack = Object.fromEntries(
+            Object.entries(singleMatchByTrack).map(([trackId, row]) => [trackId, row ? [row] : []])
+          );
         }
       }
 
@@ -1165,7 +1181,7 @@ export async function generateDraftFromPaNotes(req, res) {
         projectName: project.project_name,
         issues,
         linkedPoliciesByTrack,
-        issueTypesByTrack,
+        linkedSnippetsByTrack,
         allIssueTypes,
         guidingBrief: sectionGuidingBrief,
         projectBrief,

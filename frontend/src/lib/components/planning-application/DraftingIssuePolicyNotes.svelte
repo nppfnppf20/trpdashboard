@@ -9,6 +9,9 @@
   export let relevantPolicyIds = [];
   export let toggleFn; // async (policyId, issueId) => { linked }
   export let onNoteChange; // (tierKey, value) => void
+  export let allSnippets = []; // full admin_console.issue_types library
+  export let relevantSnippetIds = [];
+  export let snippetToggleFn; // async (issueTypeId, issueId) => { linked }
 
   const POLICY_TIERS = [
     { key: 'policy_national',      label: 'National Policy',      dbType: 'national',      placeholder: 'Key NPPF provisions and national guidance relevant to this issue...' },
@@ -21,6 +24,8 @@
   let open = {};
   let toggling = {};
   let previewPolicy = null;
+  let previewSnippet = null;
+  let snippetToggling = {};
 
   $: policiesByType = policies.reduce((acc, p) => {
     const t = (p.policy_type ?? '').toLowerCase();
@@ -38,6 +43,18 @@
       console.error('Failed to toggle policy:', e);
     } finally {
       toggling = { ...toggling, [policy.id]: false };
+    }
+  }
+
+  async function handleSnippetToggle(snippet) {
+    if (snippetToggling[snippet.id]) return;
+    snippetToggling = { ...snippetToggling, [snippet.id]: true };
+    try {
+      await snippetToggleFn(snippet.id, issue.id);
+    } catch (e) {
+      console.error('Failed to toggle snippet:', e);
+    } finally {
+      snippetToggling = { ...snippetToggling, [snippet.id]: false };
     }
   }
 
@@ -65,7 +82,7 @@
 
   <div class="tier-buttons">
     {#each POLICY_TIERS as tier}
-      {@const hasContent = !!issue[tier.key]?.trim()}
+      {@const hasContent = !!issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetIds.length > 0)}
       <button
         class="tier-btn"
         class:active={open[tier.key] || hasContent}
@@ -78,9 +95,40 @@
   </div>
 
   {#each POLICY_TIERS as tier}
-    {#if open[tier.key] || issue[tier.key]?.trim()}
+    {#if open[tier.key] || issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetIds.length > 0)}
       <div class="tier-field">
         <label class="tier-label">{tier.label}</label>
+
+        {#if tier.key === 'policy_national' && allSnippets.length}
+          <div class="policy-refs">
+            {#each allSnippets as snippet}
+              {@const linked = relevantSnippetIds.includes(snippet.id)}
+              <div class="policy-ref snippet-ref" class:linked>
+                <div class="policy-ref-header">
+                  <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
+                    {snippet.label}
+                  </button>
+                  <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
+                  <button
+                    class="policy-link-btn"
+                    class:linked
+                    disabled={snippetToggling[snippet.id]}
+                    on:click={() => handleSnippetToggle(snippet)}
+                    title={linked ? 'Remove from this issue' : 'Mark as relevant to this issue'}
+                  >
+                    {#if snippetToggling[snippet.id]}
+                      <span class="mini-spinner"></span>
+                    {:else if linked}
+                      <i class="las la-check"></i> Linked
+                    {:else}
+                      <i class="las la-plus"></i> Link
+                    {/if}
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
 
         {#if policiesByType[tier.dbType]?.length}
           <div class="policy-refs">
@@ -165,6 +213,49 @@
   </div>
 {/if}
 
+{#if previewSnippet}
+  <div class="policy-modal-backdrop" on:click={() => previewSnippet = null}>
+    <div class="policy-modal" on:click|stopPropagation>
+      <div class="policy-modal-header">
+        <div class="policy-modal-title">
+          <span>{previewSnippet.label}</span>
+          <span class="policy-modal-type">{previewSnippet.development_type || 'generic'}</span>
+        </div>
+        <button class="policy-modal-close" on:click={() => previewSnippet = null}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+      {#if previewSnippet.nppf_text}
+        <div class="policy-modal-section">
+          <p class="policy-modal-label">NPPF</p>
+          <p class="policy-modal-body">{@html previewSnippet.nppf_text}</p>
+        </div>
+      {/if}
+      {#if previewSnippet.nppg_text}
+        <div class="policy-modal-section">
+          <p class="policy-modal-label">NPPG</p>
+          <p class="policy-modal-body">{@html previewSnippet.nppg_text}</p>
+        </div>
+      {/if}
+      {#if previewSnippet.other_national_text}
+        <div class="policy-modal-section">
+          <p class="policy-modal-label">Other National Policy</p>
+          <p class="policy-modal-body">{@html previewSnippet.other_national_text}</p>
+        </div>
+      {/if}
+      {#if previewSnippet.other_guidance_text}
+        <div class="policy-modal-section">
+          <p class="policy-modal-label">Other Guidance</p>
+          <p class="policy-modal-body">{@html previewSnippet.other_guidance_text}</p>
+        </div>
+      {/if}
+      {#if !previewSnippet.nppf_text && !previewSnippet.nppg_text && !previewSnippet.other_national_text && !previewSnippet.other_guidance_text}
+        <p class="policy-modal-empty">No text recorded for this template.</p>
+      {/if}
+    </div>
+  </div>
+{/if}
+
 <style>
   .policy-notes { display: flex; flex-direction: column; gap: 0.625rem; }
 
@@ -232,6 +323,13 @@
   .policy-ref-key {
     font-size: 0.7rem; font-weight: 600; color: #b45309; background: #fef3c7; padding: 0.1rem 0.35rem; border-radius: 3px;
   }
+
+  .snippet-dev-type {
+    font-size: 0.7rem; font-weight: 500; color: #64748b; background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px;
+  }
+
+  .snippet-ref.linked { border-left-color: #16a34a; }
+  .snippet-ref .policy-link-btn.linked { border-color: #16a34a; background: #16a34a; }
 
   .policy-ref-name-btn {
     background: none; border: none; padding: 0; font-size: 0.8rem; font-weight: 600; color: #1e293b;

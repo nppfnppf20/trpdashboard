@@ -1,28 +1,38 @@
 <script>
   import {
-    getDraftingIssues, createDraftingIssue, updateDraftingIssue, setDraftingIssueType,
-    deleteDraftingIssue, importFromKeyIssues,
+    getDraftingIssues, createDraftingIssue, updateDraftingIssue,
+    deleteDraftingIssue, importFromKeyIssues, draftIssuesFromBriefing,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
+    getDraftingIssueSnippetRelevance, toggleDraftingIssueSnippet,
   } from '$lib/api/draftingIssues.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { listIssueTypes } from '$lib/api/issueTypes.js';
   import DraftingIssuePolicyNotes from './DraftingIssuePolicyNotes.svelte';
   import NoteSourcePicker from '$lib/components/shared/NoteSourcePicker.svelte';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import {
+    actionPromptState, openActionPrompt, closeActionPrompt,
+    saveActionPromptStore, resetActionPromptStore, setPromptText,
+  } from '$lib/stores/actionPrompts.js';
 
   export let project = null;
 
   let issues = [];
-  let policyRelevance = {}; // { [draftingIssueId]: [policyId, ...] }
+  let policyRelevance = {};  // { [draftingIssueId]: [policyId, ...] }
+  let snippetRelevance = {}; // { [draftingIssueId]: [issueTypeId, ...] }
   let projectPolicies = [];
   let issueTypes = [];
   let loading = true;
   let newLabel = '';
   let newDiscipline = '';
 
+  const draftPromptState = actionPromptState('draft_issues_from_briefing');
+
   // ── Draft from Briefing Note ────────────────────────────────────────────────
   let showDraftModal = false;
   let draftSources = [];   // bind:selectedSources from NoteSourcePicker
   let draftOverBudget = false;
+  let drafting = false;
   let notePicker;
 
   function openDraftModal() {
@@ -35,11 +45,17 @@
     showDraftModal = false;
   }
 
-  // Selection is wired up; the actual drafting behaviour (what to do with
-  // draftSources once confirmed) is still to be specified.
-  function handleDraftContinue() {
-    console.log('Draft from Briefing Note — selected sources:', draftSources);
-    closeDraftModal();
+  async function handleDraftContinue() {
+    drafting = true;
+    try {
+      await draftIssuesFromBriefing(project.id, draftSources);
+      closeDraftModal();
+      await load();
+    } catch (err) {
+      console.error('Failed to draft issues from briefing:', err);
+    } finally {
+      drafting = false;
+    }
   }
 
   $: if (project?.id) load();
@@ -47,9 +63,10 @@
   async function load() {
     loading = true;
     try {
-      [issues, policyRelevance, projectPolicies, issueTypes] = await Promise.all([
+      [issues, policyRelevance, snippetRelevance, projectPolicies, issueTypes] = await Promise.all([
         getDraftingIssues(project.id),
         getDraftingIssuePolicyRelevance(project.id),
+        getDraftingIssueSnippetRelevance(project.id),
         getPolicies(project.id),
         listIssueTypes(),
       ]);
@@ -112,28 +129,22 @@
     }
   }
 
-  async function handleIssueTypeChange(issue, e) {
-    const val = e.target.value ? parseInt(e.target.value, 10) : null;
-    try {
-      await setDraftingIssueType(issue.id, val);
-      const matched = val ? issueTypes.find(t => t.id === val) : null;
-      issues = issues.map(i => i.id === issue.id ? {
-        ...i,
-        issue_type_id: val,
-        issue_type_label: matched?.label ?? null,
-        issue_type_development_type: matched?.development_type ?? null,
-      } : i);
-    } catch (err) {
-      console.error('Failed to set issue type:', err);
-    }
-  }
-
   async function handlePolicyToggle(issueId, policyId) {
     const result = await toggleDraftingIssuePolicy(issueId, policyId);
     const current = policyRelevance[issueId] ?? [];
     policyRelevance = {
       ...policyRelevance,
       [issueId]: result.linked ? [...current, policyId] : current.filter(id => id !== policyId),
+    };
+    return result;
+  }
+
+  async function handleSnippetToggle(issueId, issueTypeId) {
+    const result = await toggleDraftingIssueSnippet(issueId, issueTypeId);
+    const current = snippetRelevance[issueId] ?? [];
+    snippetRelevance = {
+      ...snippetRelevance,
+      [issueId]: result.linked ? [...current, issueTypeId] : current.filter(id => id !== issueTypeId),
     };
     return result;
   }
@@ -148,6 +159,9 @@
     <div class="di-header-actions">
       <button class="btn btn-secondary" on:click={openDraftModal} disabled={!project}>
         <i class="las la-magic"></i> Draft from Briefing Note
+      </button>
+      <button class="di-icon-btn" title="Edit generation prompt" on:click={() => openActionPrompt('draft_issues_from_briefing')}>
+        <i class="las la-sliders-h"></i>
       </button>
     </div>
   </div>
@@ -181,20 +195,10 @@
                 on:blur={e => handleFieldBlur(issue, 'discipline', e.target.value)}
                 on:keydown={e => e.key === 'Enter' && e.target.blur()}
               />
-              <select class="di-type-select" value={issue.issue_type_id ?? ''} on:change={e => handleIssueTypeChange(issue, e)} title="Snippet template">
-                <option value="">No template</option>
-                {#each issueTypes as it}
-                  <option value={it.id}>{it.label}{it.development_type ? ` — ${it.development_type}` : ' — generic'}</option>
-                {/each}
-              </select>
               <button class="di-icon-btn di-delete-btn" title="Delete" on:click={() => handleDelete(issue)}>
                 <i class="las la-trash"></i>
               </button>
             </div>
-
-            {#if issue.issue_type_label}
-              <span class="di-type-badge">{issue.issue_type_label}{issue.issue_type_development_type ? ` — ${issue.issue_type_development_type}` : ''}</span>
-            {/if}
 
             <div class="di-card-body">
               <DraftingIssuePolicyNotes
@@ -203,6 +207,9 @@
                 relevantPolicyIds={policyRelevance[issue.id] ?? []}
                 toggleFn={(policyId) => handlePolicyToggle(issue.id, policyId)}
                 onNoteChange={(tierKey, value) => handleFieldBlur(issue, tierKey, value)}
+                allSnippets={issueTypes}
+                relevantSnippetIds={snippetRelevance[issue.id] ?? []}
+                snippetToggleFn={(issueTypeId) => handleSnippetToggle(issue.id, issueTypeId)}
               />
 
               <label class="di-field-label">Argument notes</label>
@@ -237,14 +244,28 @@
         />
       </div>
       <div class="di-modal-footer">
-        <button class="btn btn-secondary" on:click={closeDraftModal}>Cancel</button>
-        <button class="btn btn-primary" on:click={handleDraftContinue} disabled={draftSources.length === 0}>
-          Continue
+        <button class="btn btn-secondary" on:click={closeDraftModal} disabled={drafting}>Cancel</button>
+        <button class="btn btn-primary" on:click={handleDraftContinue} disabled={draftSources.length === 0 || drafting}>
+          {#if drafting}<div class="mini-spinner"></div> Drafting...{:else}Continue{/if}
         </button>
       </div>
     </div>
   </div>
 {/if}
+
+<PromptEditModal
+  open={$draftPromptState.open}
+  title="Edit Prompt: Draft Issues from Briefing Note"
+  promptText={$draftPromptState.text}
+  contextTemplate={$draftPromptState.contextTemplate}
+  loading={$draftPromptState.loading}
+  saving={$draftPromptState.saving}
+  saved={$draftPromptState.saved}
+  on:close={() => closeActionPrompt('draft_issues_from_briefing')}
+  on:change={(e) => setPromptText('draft_issues_from_briefing', e.detail)}
+  on:save={() => saveActionPromptStore('draft_issues_from_briefing')}
+  on:reset={() => resetActionPromptStore('draft_issues_from_briefing')}
+/>
 
 <style>
   .drafting-issues-tab { display: flex; flex-direction: column; gap: 1rem; max-width: 800px; }
@@ -309,21 +330,11 @@
   }
   .di-discipline-input:hover, .di-discipline-input:focus { border-color: #cbd5e1; outline: none; }
 
-  .di-type-select {
-    font-size: 0.775rem; padding: 0.3rem 0.4rem; border: 1px solid #cbd5e1; border-radius: 5px;
-    color: #1e293b; background: white; max-width: 14rem;
-  }
-
   .di-icon-btn {
     background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0.3rem; border-radius: 4px; font-size: 0.95rem;
   }
   .di-icon-btn:hover { background: #f1f5f9; color: #475569; }
   .di-delete-btn:hover { background: #fef2f2; color: #dc2626; }
-
-  .di-type-badge {
-    display: inline-block; margin-top: 0.4rem; font-size: 0.6875rem; font-weight: 500; color: #7c3aed;
-    background: #f5f3ff; border: 1px solid #ddd6fe; padding: 0.05rem 0.4rem; border-radius: 999px;
-  }
 
   .di-card-body { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 0.4rem; }
 

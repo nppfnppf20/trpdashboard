@@ -75,3 +75,30 @@ export async function toggleDraftingIssuePolicy(draftingIssueId, policyId) {
   if (!res.ok) throw new Error('Failed to toggle policy relevance');
   return res.json();
 }
+
+export async function getDraftingIssueSnippetRelevance(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/snippet-relevance`);
+  if (!res.ok) throw new Error('Failed to fetch snippet relevance');
+  return res.json();
+}
+
+export async function toggleDraftingIssueSnippet(draftingIssueId, issueTypeId) {
+  const res = await authFetch(`${BASE}/${draftingIssueId}/snippets/${issueTypeId}/toggle`, {
+    method: 'POST'
+  });
+  if (!res.ok) throw new Error('Failed to toggle snippet relevance');
+  return res.json();
+}
+
+export async function draftIssuesFromBriefing(projectId, sources) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-from-briefing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sources })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to draft issues from briefing');
+  }
+  return res.json();
+}

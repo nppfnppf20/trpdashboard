@@ -389,14 +389,19 @@ const TIER_NOTE_FIELDS = [
   { key: 'policy_other',         label: 'Other Policy Notes' },
 ];
 
-function buildIssueSnippetContext(linkedPolicies = [], issueType = null, allIssueTypes = [], issue = null) {
+function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allIssueTypes = [], issue = null) {
   const lines = [];
   const candidateRowsById = {};
 
-  if (issueType) {
-    candidateRowsById[issueType.id] = issueType;
-    lines.push(`### Policy Snippet Template — id:${issueType.id} (${issueType.label}${issueType.development_type ? `, ${issueType.development_type}` : ', generic'})`);
-    appendSnippetFields(lines, issueType);
+  if (linkedSnippets.length) {
+    // Explicitly linked (manually, or matched by "Draft from Briefing Note") —
+    // an issue can have several; list them all as confident candidates rather
+    // than falling back to the whole library.
+    for (const row of linkedSnippets) {
+      candidateRowsById[row.id] = row;
+      lines.push(`### Policy Snippet Template — id:${row.id} (${row.label}${row.development_type ? `, ${row.development_type}` : ', generic'})`);
+      appendSnippetFields(lines, row);
+    }
   } else if (allIssueTypes.length) {
     const usableRows = allIssueTypes.filter(hasSnippetContent);
     if (usableRows.length) {
@@ -475,21 +480,21 @@ function verifyAndCleanSnippetSpans(html, candidateRowsById, issueLabel) {
 // addition to the variables generateAppealDraftFromPrompt already substitutes.
 export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
-  linkedPoliciesByTrack = {}, issueTypesByTrack = {}, allIssueTypes = [],
+  linkedPoliciesByTrack = {}, linkedSnippetsByTrack = {}, allIssueTypes = [],
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
 }) {
   const parts = [`<h2>${sectionName}</h2>`];
 
   for (const issue of issues) {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
-    const issueType = issueTypesByTrack[issue.id] ?? null;
+    const linkedSnippets = linkedSnippetsByTrack[issue.id] ?? [];
 
-    if (!linkedPolicies.length && !issueType && !issue.argument_for?.trim() && !issue.argument_against?.trim()) {
+    if (!linkedPolicies.length && !linkedSnippets.length && !issue.argument_for?.trim() && !issue.argument_against?.trim()) {
       parts.push(`<h3>${issue.label}</h3>`);
       continue;
     }
 
-    const { text: issueContext, candidateRowsById } = buildIssueSnippetContext(linkedPolicies, issueType, allIssueTypes, issue);
+    const { text: issueContext, candidateRowsById } = buildIssueSnippetContext(linkedPolicies, linkedSnippets, allIssueTypes, issue);
     const issuePrompt = sectionPromptTemplate
       .replace(/\{\{ISSUE_LABEL\}\}/g, issue.label)
       .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issue.discipline ? ` (${issue.discipline})` : '')
