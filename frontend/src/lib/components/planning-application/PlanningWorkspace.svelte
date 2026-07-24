@@ -30,6 +30,7 @@
   const draftArgsState    = actionPromptState('draft_arguments_from_briefing');
   const stage1PromptState   = actionPromptState('stage1_review');
   const stage1v2PromptState = actionPromptState('stage1_review_v2');
+  const stage1v3PromptState = actionPromptState('stage1_review_v3');
 
   $: appealPromptTitle = $draftTypes.find(t => t.id === $appealPromptTypeId)?.name ?? 'Appeal Document';
 
@@ -1643,6 +1644,20 @@
   on:change={(e) => setPromptText('stage1_review_v2', e.detail)}
   on:save={() => saveActionPromptStore('stage1_review_v2')}
   on:reset={() => resetActionPromptStore('stage1_review_v2')}
+/>
+
+<PromptEditModal
+  open={$stage1v3PromptState.open}
+  title="Edit Prompt: Generate Stage 1 Review v3"
+  promptText={$stage1v3PromptState.text}
+  contextTemplate={$stage1v3PromptState.contextTemplate}
+  loading={$stage1v3PromptState.loading}
+  saving={$stage1v3PromptState.saving}
+  saved={$stage1v3PromptState.saved}
+  on:close={() => closeActionPrompt('stage1_review_v3')}
+  on:change={(e) => setPromptText('stage1_review_v3', e.detail)}
+  on:save={() => saveActionPromptStore('stage1_review_v3')}
+  on:reset={() => resetActionPromptStore('stage1_review_v3')}
 />
 
 {#if startingDocsType}

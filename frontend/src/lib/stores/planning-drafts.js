@@ -151,7 +151,7 @@ export async function loadDraftTypes() {
     ]);
 
     const tagged = [
-      ...paTypes.map(t => ({ ...t, tool: t.slug === 'stage1_review' || t.slug === 'stage1_review_v2' ? 'stage1' : 'pa' })),
+      ...paTypes.map(t => ({ ...t, tool: ['stage1_review', 'stage1_review_v2', 'stage1_review_v3'].includes(t.slug) ? 'stage1' : 'pa' })),
       ...appealTypesRaw.map(t => ({
         ...t,
         id: `appeal_${t.id}`,

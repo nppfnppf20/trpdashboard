@@ -39,7 +39,7 @@ import {
   DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
 } from '../services/llm.service.js';
 import { BASE_SECTIONS, ISSUE_QUESTIONS, TAIL_SECTIONS } from '../services/meetingGuideContent.js';
-import { DEFAULT_STAGE1_REVIEW_PROMPT } from './stage1Review.controller.js';
+import { DEFAULT_STAGE1_REVIEW_PROMPT, DEFAULT_STAGE1_REVIEW_V3_TEMPLATE } from './stage1Review.controller.js';
 import { DEFAULT_BRIEF_CHECK_TEMPLATE, DEFAULT_CONSISTENCY_CHECK_TEMPLATE, DEFAULT_GRAMMAR_CHECK_TEMPLATE } from './draftCheck.controller.js';
 
 const ACTION_PROMPT_DEFAULTS = {
@@ -50,6 +50,7 @@ const ACTION_PROMPT_DEFAULTS = {
   incorporate_assessment:        DEFAULT_INCORPORATE_ASSESSMENT_PROMPT,
   stage1_review:                 DEFAULT_STAGE1_REVIEW_PROMPT,
   stage1_review_v2:              DEFAULT_STAGE1_REVIEW_PROMPT,
+  stage1_review_v3:              DEFAULT_STAGE1_REVIEW_V3_TEMPLATE,
   incorporate_appeal:            DEFAULT_INCORPORATE_APPEAL_PROMPT,
   generate_appeal_argument:      DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
   draft_check_brief:             DEFAULT_BRIEF_CHECK_TEMPLATE,
@@ -163,6 +164,22 @@ You are completing a Stage 1 Planning Appraisal table. For each row below, extra
 
 Rows to complete:
 {{ROW_LABELS: JSON array of the appraisal table row labels}}`,
+
+  stage1_review_v3: `\
+↑ YOUR INSTRUCTIONS (editable above — self-contained: no {{GUIDING_BRIEF}}, no {{STYLE_GUIDE}})
+━━━ Dynamic tokens substituted wherever they appear in your instructions ━━━
+
+{{BRIEFING_NOTES}} — full plain text of the selected briefing note, no character limit
+{{HIGH_LEVEL_PLANNING_REVIEW}} — starting-doc high-level planning review, or "(not provided)"
+{{DRAFTING_ISSUE_NOTES}} — this project's admin_console.drafting_issues rows (same
+  mechanism as Planning Statement's Planning Assessment): label, discipline, linked
+  policies, policy tier notes, argument for/against, summary, specialist report
+  evidence — or "(not provided)" if none recorded
+{{PLANNING_HISTORY}} — on-site and nearby planning history, formatted
+{{LOCAL_POLICIES}} / {{NATIONAL_POLICIES}} — project policies grouped by type
+{{OTHER_PROJECT_DOCUMENTS}} / {{EMERGING_POLICIES}} / {{REPORTS_REQUIRED_FOR_APPLICATION}} /
+  {{ADDITIONAL_DRAFTING_INSTRUCTIONS}} — no data source exists yet; always
+  substituted as "(not provided)"`,
 
   generate_appeal_argument: `\
 ↑ YOUR INSTRUCTIONS (used as system prompt - editable above)
