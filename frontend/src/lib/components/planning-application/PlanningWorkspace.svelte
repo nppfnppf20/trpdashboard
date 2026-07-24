@@ -152,6 +152,24 @@
     proposed_development: 'Proposed Development',
   };
 
+  // Planning Statement v3 is the one we actually use day to day — the
+  // original (planning_statement) and v2 (planning_statement_v2) stay out of
+  // the main card list by default, tucked behind a small picker instead of
+  // cluttering the list with three versions of the same document. Purely a
+  // display filter — nothing about how any of the three actually work
+  // changes here.
+  const LEGACY_PLANNING_STATEMENT_SLUGS = ['planning_statement', 'planning_statement_v2'];
+  const LEGACY_PLANNING_STATEMENT_LABELS = {
+    planning_statement:    'Original',
+    planning_statement_v2: 'v2',
+  };
+  let visibleLegacyPlanningStatementSlug = '';
+
+  $: legacyPlanningStatementTypes = ($draftTypes ?? []).filter(t => LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug));
+  $: visibleDraftTypes = ($draftTypes ?? []).filter(t =>
+    !LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug) || t.slug === visibleLegacyPlanningStatementSlug
+  );
+
   function injectSummaryIntoDraft(docType, summaryHtml) {
     const label = PROJ_DOC_PLACEHOLDER_LABELS[docType];
     if (!label || !$draftEditorHtml) return;
@@ -741,8 +759,20 @@
       <div class="tab-body">
         <div class="draft-types-list">
 
+          {#if legacyPlanningStatementTypes.length}
+            <div class="legacy-ps-picker">
+              <label for="legacy-ps-select">Older Planning Statement versions</label>
+              <select id="legacy-ps-select" bind:value={visibleLegacyPlanningStatementSlug}>
+                <option value="">Hidden</option>
+                {#each legacyPlanningStatementTypes as t (t.id)}
+                  <option value={t.slug}>{LEGACY_PLANNING_STATEMENT_LABELS[t.slug] ?? t.name}</option>
+                {/each}
+              </select>
+            </div>
+          {/if}
+
           <!-- ── Planning statement + other draft type cards ── -->
-          {#each $draftTypes as type (type.id)}
+          {#each visibleDraftTypes as type (type.id)}
             {@const draft = $drafts[type.id]}
             {@const isExpanded = $cardExpandedTypeId === type.id}
             {@const typeSections = $cardSections[type.id] ?? []}
@@ -2419,6 +2449,30 @@
     background: white;
     cursor: pointer;
     max-width: 130px;
+  }
+
+  .legacy-ps-picker {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .legacy-ps-picker label {
+    font-size: 0.75rem;
+    color: #94a3b8;
+  }
+
+  .legacy-ps-picker select {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: #374151;
+    background: white;
+    cursor: pointer;
   }
   .card-dev-type-select:focus { outline: none; border-color: #7c3aed; }
 
