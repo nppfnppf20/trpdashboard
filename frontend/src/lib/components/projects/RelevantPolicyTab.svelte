@@ -1,6 +1,7 @@
 <script>
   import { onMount, createEventDispatcher } from 'svelte';
   import { getPolicies, createPolicy, updatePolicy, deletePolicy } from '$lib/api/lpaAnalysis.js';
+  import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
 
   const dispatch = createEventDispatcher();
 
@@ -8,6 +9,7 @@
   $: projectId = project?.id;
 
   let policies = [];
+  let planDocs = [];
   let loading = true;
   let error = null;
 
@@ -24,7 +26,8 @@
     policy_text: '',
     relevant_supporting_text: '',
     notes: '',
-    is_key_policy: false
+    is_key_policy: false,
+    plan_id: ''
   });
 
   let form = emptyForm();
@@ -35,12 +38,20 @@
     loading = true;
     error = null;
     try {
-      policies = await getPolicies(projectId);
+      [policies, planDocs] = await Promise.all([
+        getPolicies(projectId),
+        getPolicyDocuments(projectId)
+      ]);
     } catch (err) {
       error = err.message;
     } finally {
       loading = false;
     }
+  }
+
+  function planLabel(doc) {
+    const typeTag = doc.plan_type === 'neighbourhood' ? 'Neighbourhood Plan' : doc.plan_type === 'local' ? 'Local Plan' : null;
+    return typeTag ? `${doc.plan_name} (${typeTag})` : doc.plan_name;
   }
 
   function openAdd() {
@@ -60,7 +71,8 @@
       policy_text: policy.policy_text || '',
       relevant_supporting_text: policy.relevant_supporting_text || '',
       notes: policy.notes || '',
-      is_key_policy: policy.is_key_policy || false
+      is_key_policy: policy.is_key_policy || false,
+      plan_id: policy.plan_id ?? ''
     };
     formError = null;
     showForm = true;
@@ -87,7 +99,8 @@
         policy_text: form.policy_text.trim() || null,
         relevant_supporting_text: form.relevant_supporting_text.trim() || null,
         notes: form.notes.trim() || null,
-        is_key_policy: form.is_key_policy
+        is_key_policy: form.is_key_policy,
+        plan_id: form.plan_id || null
       };
       if (editingId) {
         await updatePolicy(editingId, payload);
@@ -235,6 +248,18 @@
 
         <div class="form-row">
           <div class="field">
+            <label>Parent Plan <span class="optional">(optional)</span></label>
+            <select bind:value={form.plan_id}>
+              <option value="">None</option>
+              {#each planDocs as doc (doc.id)}
+                <option value={doc.id}>{planLabel(doc)}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
             <label>Relevant Policy Text</label>
             <textarea bind:value={form.policy_text} rows="5" placeholder="Paste the relevant policy wording here…"></textarea>
           </div>
@@ -288,6 +313,9 @@
                 </span>
                 {#if policy.policy_reference}
                   <span class="ref-chip">{policy.policy_reference}</span>
+                {/if}
+                {#if policy.plan_name}
+                  <span class="ref-chip">{policy.plan_name}</span>
                 {/if}
               </div>
               <div class="policy-actions">
@@ -516,6 +544,7 @@
     color: #475569;
   }
   .required { color: #ef4444; }
+  .optional { color: #94a3b8; font-weight: 400; }
   input[type="text"], select, textarea {
     padding: 0.5rem 0.65rem;
     border: 1px solid #d1d5db;

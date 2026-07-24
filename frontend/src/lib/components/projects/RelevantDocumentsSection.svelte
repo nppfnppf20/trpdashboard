@@ -20,7 +20,7 @@
   let saving = false;
   let formError = null;
 
-  const emptyForm = () => ({ plan_name: '', year_adopted: '', summary: '', relevance: '' });
+  const emptyForm = () => ({ plan_name: '', plan_type: 'local', year_adopted: '', month_adopted: '', summary: '', relevance: '' });
   let form = emptyForm();
 
   onMount(() => { if (projectId) load(); });
@@ -54,7 +54,9 @@
     editingId = doc.id;
     form = {
       plan_name: doc.plan_name || '',
+      plan_type: doc.plan_type || 'local',
       year_adopted: doc.year_adopted ?? '',
+      month_adopted: doc.month_adopted ?? '',
       summary: doc.summary || '',
       relevance: doc.relevance || ''
     };
@@ -75,10 +77,13 @@
     formError = null;
     try {
       const richSection = formSection === 'supplementary' || formSection === 'other';
+      const isPlanSection = formSection === 'adopted' || formSection === 'emerging';
       const payload = {
         section: formSection,
         plan_name: form.plan_name.trim(),
+        plan_type: isPlanSection ? form.plan_type : null,
         year_adopted: formSection === 'adopted' && form.year_adopted ? parseInt(form.year_adopted) : null,
+        month_adopted: formSection === 'adopted' && form.month_adopted ? parseInt(form.month_adopted) : null,
         summary: richSection ? (form.summary.trim() || null) : null,
         relevance: richSection ? (form.relevance.trim() || null) : null
       };
@@ -106,6 +111,8 @@
       alert(err.message);
     }
   }
+
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   const SECTIONS = [
     { key: 'adopted',       label: 'Development Plan Adopted' },
@@ -148,11 +155,27 @@
             </div>
           </div>
 
-          {#if sec.key === 'adopted'}
+          {#if sec.key === 'adopted' || sec.key === 'emerging'}
             <div class="form-row">
+              <div class="field">
+                <label>Plan Type</label>
+                <select bind:value={form.plan_type}>
+                  <option value="local">Local Plan</option>
+                  <option value="neighbourhood">Neighbourhood Plan</option>
+                </select>
+              </div>
+            </div>
+          {/if}
+
+          {#if sec.key === 'adopted'}
+            <div class="form-row two-col">
               <div class="field">
                 <label>Year Adopted</label>
                 <input type="number" bind:value={form.year_adopted} placeholder="e.g. 2021" min="1900" max="2100" />
+              </div>
+              <div class="field">
+                <label>Month Adopted <span class="optional">(optional)</span></label>
+                <input type="number" bind:value={form.month_adopted} placeholder="e.g. 9 for September" min="1" max="12" />
               </div>
             </div>
           {/if}
@@ -196,11 +219,13 @@
           <div class="rd-empty">No entries yet.</div>
         {:else}
           {@const rich = sec.key === 'supplementary' || sec.key === 'other'}
+          {@const isPlanSection = sec.key === 'adopted' || sec.key === 'emerging'}
           <table class="rd-table">
             <thead>
               <tr>
                 <th>{rich ? 'Name' : 'Plan Name'}</th>
-                {#if sec.key === 'adopted'}<th>Year Adopted</th>{/if}
+                {#if isPlanSection}<th>Plan Type</th>{/if}
+                {#if sec.key === 'adopted'}<th>Adopted</th>{/if}
                 {#if rich}<th>Summary</th><th>Relevance to Project</th>{/if}
                 <th></th>
               </tr>
@@ -209,8 +234,11 @@
               {#each docsForSection(sec.key) as doc (doc.id)}
                 <tr>
                   <td class="cell-name">{doc.plan_name}</td>
+                  {#if isPlanSection}
+                    <td class="cell-year">{doc.plan_type === 'neighbourhood' ? 'Neighbourhood Plan' : 'Local Plan'}</td>
+                  {/if}
                   {#if sec.key === 'adopted'}
-                    <td class="cell-year">{doc.year_adopted ?? '—'}</td>
+                    <td class="cell-year">{doc.year_adopted ? (doc.month_adopted ? `${MONTH_NAMES[doc.month_adopted - 1]} ${doc.year_adopted}` : doc.year_adopted) : '—'}</td>
                   {/if}
                   {#if rich}
                     <td class="cell-text">{doc.summary ?? '—'}</td>
@@ -301,7 +329,18 @@
     letter-spacing: 0.04em;
   }
   .form-row { display: flex; flex-direction: column; gap: 0.3rem; }
+  .form-row.two-col { flex-direction: row; gap: 0.75rem; }
+  .form-row.two-col .field { flex: 1; }
   .field { display: flex; flex-direction: column; gap: 0.25rem; }
+  select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: white;
+  }
   label { font-size: 0.75rem; font-weight: 600; color: #475569; }
   .required { color: #ef4444; }
   .optional { color: #94a3b8; font-weight: 400; }

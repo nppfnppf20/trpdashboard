@@ -321,13 +321,14 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     ? `\n\n## Example Document — THIS IS THE TONE YOU MUST WRITE IN\nThe following is a real document of this type written by this consultancy. This is not a loose reference — it is the exact tone, register, vocabulary, sentence structure, and paragraph rhythm you are to reproduce. Match it as closely as you can: how formal or plain the language is, how long sentences and paragraphs run, how directly claims are stated, how transitions between points are handled. Write as if the person who wrote this example is the one writing your output. Do NOT reproduce any content, facts, project names, site details, or policy references from it — every fact must come only from the material provided elsewhere in this prompt. The guiding brief takes precedence for structure and required content, but for tone and voice, this example is authoritative.\n\n${guidingBrief.style_example.trim()}`
     : '';
 
+  const issueContextBlock = issueContext
+    ? `\n\nWorking argument notes by issue:\n${issueContext}`
+    : '';
+
   const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}${briefingNotesBlock}${styleExampleBlock}
 
 Project: ${projectName}
-Document type: ${draftTypeName}
-
-Working argument notes by issue:
-${issueContext}
+Document type: ${draftTypeName}${issueContextBlock}
 
 Produce the complete ${draftTypeName} as HTML now.`;
 
@@ -342,6 +343,38 @@ The guiding brief describes how this type of document should be structured and a
   });
   const raw = text.trim();
   return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Planning Policy section generation — unlike the other v3 spliced section
+// (Planning Assessment), this one is organised by policy document/plan
+// hierarchy rather than by project issue, so it's a single flat call (no
+// per-issue loop) using plan/policy-document context built by
+// buildPolicyDocumentContext in appeal.controller.js.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function generatePlanningPolicySection({
+  sectionName, sectionPromptTemplate, policyContext, projectName,
+  projectBrief = null, startingDocs = {}, briefingNotes = '', provider = 'anthropic',
+}) {
+  let prompt = sectionPromptTemplate;
+  for (const [key, value] of Object.entries(policyContext)) {
+    prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+  }
+
+  const bodyHtml = await generateAppealDraftFromPrompt({
+    projectName,
+    draftTypeName: sectionName,
+    typePrompt: prompt,
+    issues: [],
+    guidingBrief: null,
+    projectBrief,
+    startingDocs,
+    briefingNotes,
+    provider,
+  });
+
+  return `<h2>${sectionName}</h2>\n\n${bodyHtml}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs, DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT, DEFAULT_INCORPORATE_APPEAL_PROMPT, DEFAULT_DRAFT_ARGUMENTS_PROMPT, DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT, DEFAULT_SCOPE_INCORPORATION_PROMPT } from '../services/llm.service.js';
-import { generateAppealDraftFromPrompt, generateIssueOrderedSection, amendDraftFromBriefing as amendDraftFromBriefingService, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
+import { generateAppealDraftFromPrompt, generateIssueOrderedSection, generatePlanningPolicySection, amendDraftFromBriefing as amendDraftFromBriefingService, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
 import { fetchLinkedPoliciesByTrack, fetchIssueTypesByTrack } from './planningApplication.controller.js';
 
 // Keys that this controller reads from admin_console.llm_prompts
@@ -561,19 +561,32 @@ export async function generateSection(req, res) {
       // generateDraftFromPaNotes's splice loop.
       const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
 
-      const html = await generateIssueOrderedSection({
-        sectionName: sectionDef.name,
-        sectionPromptTemplate: substitutedSectionPrompt,
-        projectName: project.project_name,
-        issues: context.issues,
-        linkedPoliciesByTrack: context.linkedPoliciesByTrack,
-        linkedSnippetsByTrack: context.linkedSnippetsByTrack,
-        allIssueTypes: context.allIssueTypes,
-        guidingBrief: null,
-        projectBrief: context.projectBrief,
-        startingDocs: context.startingDocs,
-        briefingNotes: context.briefingNotes,
-      });
+      // Planning Policy is organised by plan/policy-document hierarchy, not
+      // by issue — flat single call, same as the splice loop in
+      // generateDraftFromPaNotes, instead of the issue-ordered pipeline.
+      const html = sectionDef.slug === 'planning_policy'
+        ? await generatePlanningPolicySection({
+            sectionName: sectionDef.name,
+            sectionPromptTemplate: substitutedSectionPrompt,
+            policyContext: await buildPolicyDocumentContext(projectId),
+            projectName: project.project_name,
+            projectBrief: context.projectBrief,
+            startingDocs: context.startingDocs,
+            briefingNotes: context.briefingNotes,
+          })
+        : await generateIssueOrderedSection({
+            sectionName: sectionDef.name,
+            sectionPromptTemplate: substitutedSectionPrompt,
+            projectName: project.project_name,
+            issues: context.issues,
+            linkedPoliciesByTrack: context.linkedPoliciesByTrack,
+            linkedSnippetsByTrack: context.linkedSnippetsByTrack,
+            allIssueTypes: context.allIssueTypes,
+            guidingBrief: null,
+            projectBrief: context.projectBrief,
+            startingDocs: context.startingDocs,
+            briefingNotes: context.briefingNotes,
+          });
 
       return res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });
     }
@@ -1013,6 +1026,104 @@ async function substituteAppealPromptVariables(promptText, project, projectId) {
 // project_issue_tracks ("key issues") table — see draftingIssues.controller.js.
 const V3_SLUG = 'planning_statement_v3';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Planning Policy section context — organised by plan/policy-document
+// hierarchy (public.policy_documents + public.project_policies.plan_id),
+// not by project issue. Used only by the v3 Planning Policy section, which
+// generates as a single flat call (see generatePlanningPolicySection in
+// appeal.service.js) rather than the issue-ordered pipeline.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function formatPlanDate(doc) {
+  if (!doc.year_adopted) return doc.section === 'adopted' ? '[STATUS OR DATE REQUIRED]' : 'emerging';
+  const monthPart = doc.month_adopted ? `${MONTH_NAMES[doc.month_adopted - 1]} ` : '';
+  const verb = doc.section === 'adopted' ? 'adopted' : 'emerging';
+  return `${verb} ${monthPart}${doc.year_adopted}`;
+}
+
+function formatPlanDocumentsList(docs) {
+  if (!docs.length) return '(none recorded)';
+  return docs.map(d => `▪ ${d.plan_name} (${formatPlanDate(d)})`).join('\n');
+}
+
+function formatPolicyGroup(policies) {
+  const lines = [];
+  for (const p of policies) {
+    const ref = p.policy_reference ? `Policy ${p.policy_reference}: ` : '';
+    const label = `${ref}${p.policy_name}`;
+    lines.push(`▪ ${label}`);
+    if (p.is_key_policy) {
+      lines.push(p.relevant_supporting_text?.trim() || `[ADD RELEVANCE NOTE FOR ${label}]`);
+    }
+  }
+  return lines;
+}
+
+function formatPlanPolicies(policies, docs) {
+  if (!policies.length) return '(none recorded)';
+  const byPlan = {};
+  const unassigned = [];
+  for (const p of policies) {
+    if (p.plan_id) {
+      (byPlan[p.plan_id] ??= []).push(p);
+    } else {
+      unassigned.push(p);
+    }
+  }
+  const lines = [];
+  for (const [planId, ps] of Object.entries(byPlan)) {
+    const plan = docs.find(d => d.id === Number(planId));
+    lines.push(`### ${plan?.plan_name ?? 'Plan'}`, ...formatPolicyGroup(ps));
+  }
+  if (unassigned.length) {
+    lines.push(`### (Not yet linked to a specific plan)`, ...formatPolicyGroup(unassigned));
+  }
+  return lines.join('\n');
+}
+
+function formatDocGroup(docs) {
+  if (!docs.length) return '(none recorded)';
+  return docs.map(d => {
+    const dateStr = d.year_adopted ? ` (${formatPlanDate(d)})` : '';
+    const header = `▪ ${d.plan_name}${dateStr}`;
+    return d.relevance?.trim() ? `${header}\n${d.relevance.trim()}` : header;
+  }).join('\n\n');
+}
+
+async function buildPolicyDocumentContext(projectId) {
+  const [{ rows: docs }, { rows: policies }] = await Promise.all([
+    pool.query(
+      `SELECT id, section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance
+       FROM policy_documents WHERE project_id = $1 ORDER BY section, id`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT id, policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, is_key_policy, plan_id
+       FROM project_policies WHERE project_id = $1 ORDER BY is_key_policy DESC, id`,
+      [projectId]
+    ),
+  ]);
+
+  const localDocs = docs.filter(d => d.section === 'adopted' && d.plan_type !== 'neighbourhood');
+  const neighbourhoodDocs = docs.filter(d => d.section === 'adopted' && d.plan_type === 'neighbourhood');
+  const supplementaryDocs = docs.filter(d => d.section === 'supplementary');
+  const otherDocs = docs.filter(d => d.section === 'other');
+
+  const localPolicies = policies.filter(p => p.policy_type === 'local');
+  const neighbourhoodPolicies = policies.filter(p => p.policy_type === 'neighbourhood');
+
+  return {
+    DEVELOPMENT_PLAN_DOCUMENTS: formatPlanDocumentsList(localDocs),
+    DEVELOPMENT_PLAN_POLICIES: formatPlanPolicies(localPolicies, docs),
+    NEIGHBOURHOOD_PLAN_DOCUMENTS: formatPlanDocumentsList(neighbourhoodDocs),
+    NEIGHBOURHOOD_PLAN_POLICIES: formatPlanPolicies(neighbourhoodPolicies, docs),
+    SUPPLEMENTARY_PLANNING_DOCUMENTS: formatDocGroup(supplementaryDocs),
+    OTHER_POLICY_AND_GUIDANCE: formatDocGroup(otherDocs),
+  };
+}
+
 async function fetchIssuesForDraftType(draftType, projectId) {
   if (draftType.slug === V3_SLUG) {
     const { rows } = await pool.query(
@@ -1363,20 +1474,34 @@ export async function generateDraftFromPaNotes(req, res) {
           ? await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type)
           : guidingBrief;
 
-      const sectionHtml = await generateIssueOrderedSection({
-        sectionName: sectionDef.name,
-        sectionPromptTemplate: substitutedSectionPrompt,
-        projectName: project.project_name,
-        issues,
-        linkedPoliciesByTrack,
-        linkedSnippetsByTrack,
-        allIssueTypes,
-        guidingBrief: sectionGuidingBrief,
-        projectBrief,
-        startingDocs,
-        briefingNotes,
-        provider,
-      });
+      // Planning Policy is organised by plan/policy-document hierarchy, not
+      // by issue — it gets a flat single call instead of the issue-ordered
+      // pipeline the other spliced section (Planning Assessment) uses.
+      const sectionHtml = sectionSlug === 'planning_policy'
+        ? await generatePlanningPolicySection({
+            sectionName: sectionDef.name,
+            sectionPromptTemplate: substitutedSectionPrompt,
+            policyContext: await buildPolicyDocumentContext(projectId),
+            projectName: project.project_name,
+            projectBrief,
+            startingDocs,
+            briefingNotes,
+            provider,
+          })
+        : await generateIssueOrderedSection({
+            sectionName: sectionDef.name,
+            sectionPromptTemplate: substitutedSectionPrompt,
+            projectName: project.project_name,
+            issues,
+            linkedPoliciesByTrack,
+            linkedSnippetsByTrack,
+            allIssueTypes,
+            guidingBrief: sectionGuidingBrief,
+            projectBrief,
+            startingDocs,
+            briefingNotes,
+            provider,
+          });
       contentHtml = hasMarker
         ? contentHtml.split(marker).join(sectionHtml)
         : contentHtml.replace(headingPattern, sectionHtml + '\n\n');
@@ -1548,19 +1673,32 @@ export async function generateSectionFromPaNotes(req, res) {
       // generateDraftFromPaNotes's splice loop.
       const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
 
-      const html = await generateIssueOrderedSection({
-        sectionName: sectionDef.name,
-        sectionPromptTemplate: substitutedSectionPrompt,
-        projectName: project.project_name,
-        issues: context.issues,
-        linkedPoliciesByTrack: context.linkedPoliciesByTrack,
-        linkedSnippetsByTrack: context.linkedSnippetsByTrack,
-        allIssueTypes: context.allIssueTypes,
-        guidingBrief: null,
-        projectBrief: context.projectBrief,
-        startingDocs: context.startingDocs,
-        briefingNotes: context.briefingNotes,
-      });
+      // Planning Policy is organised by plan/policy-document hierarchy, not
+      // by issue — flat single call, same as the splice loop in
+      // generateDraftFromPaNotes, instead of the issue-ordered pipeline.
+      const html = sectionDef.slug === 'planning_policy'
+        ? await generatePlanningPolicySection({
+            sectionName: sectionDef.name,
+            sectionPromptTemplate: substitutedSectionPrompt,
+            policyContext: await buildPolicyDocumentContext(projectId),
+            projectName: project.project_name,
+            projectBrief: context.projectBrief,
+            startingDocs: context.startingDocs,
+            briefingNotes: context.briefingNotes,
+          })
+        : await generateIssueOrderedSection({
+            sectionName: sectionDef.name,
+            sectionPromptTemplate: substitutedSectionPrompt,
+            projectName: project.project_name,
+            issues: context.issues,
+            linkedPoliciesByTrack: context.linkedPoliciesByTrack,
+            linkedSnippetsByTrack: context.linkedSnippetsByTrack,
+            allIssueTypes: context.allIssueTypes,
+            guidingBrief: null,
+            projectBrief: context.projectBrief,
+            startingDocs: context.startingDocs,
+            briefingNotes: context.briefingNotes,
+          });
 
       return res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });
     }
