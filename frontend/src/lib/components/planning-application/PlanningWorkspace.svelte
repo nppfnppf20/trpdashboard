@@ -3154,8 +3154,9 @@
 
   .section-prompt {
     min-height: 80px;
+    max-height: 70vh;
     resize: none;
-    overflow: hidden;
+    overflow-y: auto;
   }
 
   .prompt-custom-badge {

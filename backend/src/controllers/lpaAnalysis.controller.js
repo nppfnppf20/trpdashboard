@@ -53,11 +53,13 @@ export async function listPolicies(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, policy_reference, policy_name, policy_type, policy_text,
-              relevant_supporting_text, notes, is_key_policy, created_at
-       FROM project_policies
-       WHERE project_id = $1
-       ORDER BY is_key_policy DESC, policy_type, id`,
+      `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type, pp.policy_text,
+              pp.relevant_supporting_text, pp.notes, pp.is_key_policy, pp.created_at,
+              pp.plan_id, pd.plan_name
+       FROM project_policies pp
+       LEFT JOIN policy_documents pd ON pd.id = pp.plan_id
+       WHERE pp.project_id = $1
+       ORDER BY pp.is_key_policy DESC, pp.policy_type, pp.id`,
       [projectId]
     );
     res.json(rows);
@@ -69,7 +71,7 @@ export async function listPolicies(req, res) {
 
 export async function createPolicy(req, res) {
   const { projectId } = req.params;
-  const { policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, notes, is_key_policy } = req.body;
+  const { policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, notes, is_key_policy, plan_id } = req.body;
 
   if (!policy_name?.trim()) return res.status(400).json({ error: 'policy_name is required' });
   if (!policy_type) return res.status(400).json({ error: 'policy_type is required' });
@@ -77,8 +79,8 @@ export async function createPolicy(req, res) {
   try {
     const { rows } = await pool.query(
       `INSERT INTO project_policies
-         (project_id, policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, notes, is_key_policy)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (project_id, policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, notes, is_key_policy, plan_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         projectId,
@@ -88,7 +90,8 @@ export async function createPolicy(req, res) {
         policy_text?.trim() || null,
         relevant_supporting_text?.trim() || null,
         notes?.trim() || null,
-        is_key_policy ?? false
+        is_key_policy ?? false,
+        plan_id || null
       ]
     );
     res.status(201).json(rows[0]);
@@ -100,7 +103,7 @@ export async function createPolicy(req, res) {
 
 export async function updatePolicy(req, res) {
   const { policyId } = req.params;
-  const { policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, notes, is_key_policy } = req.body;
+  const { policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, notes, is_key_policy, plan_id } = req.body;
 
   try {
     const { rows } = await pool.query(
@@ -111,7 +114,8 @@ export async function updatePolicy(req, res) {
          policy_text = $4,
          relevant_supporting_text = $5,
          notes = $6,
-         is_key_policy = COALESCE($7, is_key_policy)
+         is_key_policy = COALESCE($7, is_key_policy),
+         plan_id = $9
        WHERE id = $8
        RETURNING *`,
       [
@@ -122,7 +126,8 @@ export async function updatePolicy(req, res) {
         relevant_supporting_text ?? null,
         notes ?? null,
         is_key_policy ?? null,
-        policyId
+        policyId,
+        plan_id || null
       ]
     );
     if (!rows.length) return res.status(404).json({ error: 'Policy not found' });

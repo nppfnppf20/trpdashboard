@@ -555,20 +555,11 @@ export async function generateSection(req, res) {
 
       const context = await buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId);
 
-      // {{GUIDING_BRIEF}} carries this section's own dedicated brief;
-      // {{DOCUMENT_GUIDING_BRIEF}} carries the main document's brief, so a
-      // standalone "regenerate this section" call still knows what the whole
-      // document is and where this section fits within it — see the matching
-      // comment in generateDraftFromPaNotes's splice loop.
-      const [documentGuidingBrief, sectionGuidingBrief] = await Promise.all([
-        getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
-        getGuidingBrief(SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug], bodyDevType ?? project.development_type),
-      ]);
-      let substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
-      substitutedSectionPrompt = substitutedSectionPrompt.replace(
-        /\{\{DOCUMENT_GUIDING_BRIEF\}\}/g,
-        documentGuidingBrief?.guidance_content?.trim() || '(no document-level guiding brief set)'
-      );
+      // planning_statement_v3's section prompts have their guidance and
+      // style inlined directly (migrations 132/133) and run without a
+      // guiding brief, as a test — see the matching comment in
+      // generateDraftFromPaNotes's splice loop.
+      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
 
       const html = await generateIssueOrderedSection({
         sectionName: sectionDef.name,
@@ -578,7 +569,7 @@ export async function generateSection(req, res) {
         linkedPoliciesByTrack: context.linkedPoliciesByTrack,
         linkedSnippetsByTrack: context.linkedSnippetsByTrack,
         allIssueTypes: context.allIssueTypes,
-        guidingBrief: sectionGuidingBrief,
+        guidingBrief: null,
         projectBrief: context.projectBrief,
         startingDocs: context.startingDocs,
         briefingNotes: context.briefingNotes,
@@ -1215,9 +1206,16 @@ export async function generateDraftFromPaNotes(req, res) {
         [projectId]
       );
     }
+    // planning_statement_v3 is running without any guiding brief as a test —
+    // its prompts (top-level and both spliced sections) have their guidance
+    // and style example inlined directly as prose instead (see migrations
+    // 131-133), so fetching one here would only risk the style example
+    // being auto-appended a second time by generateAppealDraftFromPrompt.
     const [{ rows: briefingRows }, guidingBrief, { rows: startingDocRows }] = await Promise.all([
       briefingNoteQuery,
-      getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
+      draftType.slug === V3_SLUG
+        ? null
+        : getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
       pool.query(
         `SELECT slot_slug, content_text FROM appeals.pa_draft_starting_docs
          WHERE project_id = $1 AND draft_type_id = $2`,
@@ -1354,21 +1352,16 @@ export async function generateDraftFromPaNotes(req, res) {
         }
       }
 
-      // The section prompt uses {{GUIDING_BRIEF}} for its own dedicated,
-      // narrow brief (sectionGuidingBrief below) — {{DOCUMENT_GUIDING_BRIEF}}
-      // additionally carries the main document's guiding brief, so the
-      // section knows what the whole document is, its purpose and tone, and
-      // where this section sits within it, rather than being drafted as if
-      // it were a standalone document in isolation.
-      let substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
-      substitutedSectionPrompt = substitutedSectionPrompt.replace(
-        /\{\{DOCUMENT_GUIDING_BRIEF\}\}/g,
-        guidingBrief?.guidance_content?.trim() || '(no document-level guiding brief set)'
-      );
+      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
+      // planning_statement_v3's section prompts have their guidance and
+      // style inlined directly (migrations 132/133) and run without a
+      // guiding brief, as a test — see the matching comment above.
       const sectionGuidingBriefSlug = SECTION_GUIDING_BRIEF_SLUGS[sectionSlug];
-      const sectionGuidingBrief = sectionGuidingBriefSlug
-        ? await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type)
-        : guidingBrief;
+      const sectionGuidingBrief = draftType.slug === V3_SLUG
+        ? null
+        : sectionGuidingBriefSlug
+          ? await getGuidingBrief(sectionGuidingBriefSlug, bodyDevType ?? project.development_type)
+          : guidingBrief;
 
       const sectionHtml = await generateIssueOrderedSection({
         sectionName: sectionDef.name,
@@ -1549,20 +1542,11 @@ export async function generateSectionFromPaNotes(req, res) {
 
       const context = await buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId);
 
-      // {{GUIDING_BRIEF}} carries this section's own dedicated brief;
-      // {{DOCUMENT_GUIDING_BRIEF}} carries the main document's brief, so a
-      // standalone "regenerate this section" call still knows what the whole
-      // document is and where this section fits within it — see the matching
-      // comment in generateDraftFromPaNotes's splice loop.
-      const [documentGuidingBrief, sectionGuidingBrief] = await Promise.all([
-        getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
-        getGuidingBrief(SECTION_GUIDING_BRIEF_SLUGS[sectionDef.slug], bodyDevType ?? project.development_type),
-      ]);
-      let substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
-      substitutedSectionPrompt = substitutedSectionPrompt.replace(
-        /\{\{DOCUMENT_GUIDING_BRIEF\}\}/g,
-        documentGuidingBrief?.guidance_content?.trim() || '(no document-level guiding brief set)'
-      );
+      // planning_statement_v3's section prompts have their guidance and
+      // style inlined directly (migrations 132/133) and run without a
+      // guiding brief, as a test — see the matching comment in
+      // generateDraftFromPaNotes's splice loop.
+      const substitutedSectionPrompt = await substituteAppealPromptVariables(sectionPrompt, project, projectId);
 
       const html = await generateIssueOrderedSection({
         sectionName: sectionDef.name,
@@ -1572,7 +1556,7 @@ export async function generateSectionFromPaNotes(req, res) {
         linkedPoliciesByTrack: context.linkedPoliciesByTrack,
         linkedSnippetsByTrack: context.linkedSnippetsByTrack,
         allIssueTypes: context.allIssueTypes,
-        guidingBrief: sectionGuidingBrief,
+        guidingBrief: null,
         projectBrief: context.projectBrief,
         startingDocs: context.startingDocs,
         briefingNotes: context.briefingNotes,

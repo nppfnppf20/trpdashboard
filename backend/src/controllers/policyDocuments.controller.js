@@ -4,7 +4,7 @@ export async function listPolicyDocuments(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, section, plan_name, year_adopted, summary, relevance, created_at
+      `SELECT id, section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance, created_at
        FROM policy_documents
        WHERE project_id = $1
        ORDER BY section, id`,
@@ -19,7 +19,7 @@ export async function listPolicyDocuments(req, res) {
 
 export async function createPolicyDocument(req, res) {
   const { projectId } = req.params;
-  const { section, plan_name, year_adopted, summary, relevance } = req.body;
+  const { section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance } = req.body;
 
   if (!section || !['adopted', 'emerging', 'other', 'supplementary'].includes(section)) {
     return res.status(400).json({ error: 'section must be adopted, emerging, other or supplementary' });
@@ -27,13 +27,19 @@ export async function createPolicyDocument(req, res) {
   if (!plan_name?.trim()) {
     return res.status(400).json({ error: 'plan_name is required' });
   }
+  if (plan_type && !['local', 'neighbourhood'].includes(plan_type)) {
+    return res.status(400).json({ error: 'plan_type must be local or neighbourhood' });
+  }
+  if (month_adopted && (month_adopted < 1 || month_adopted > 12)) {
+    return res.status(400).json({ error: 'month_adopted must be between 1 and 12' });
+  }
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO policy_documents (project_id, section, plan_name, year_adopted, summary, relevance)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, section, plan_name, year_adopted, summary, relevance, created_at`,
-      [projectId, section, plan_name.trim(), year_adopted || null, summary?.trim() || null, relevance?.trim() || null]
+      `INSERT INTO policy_documents (project_id, section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance, created_at`,
+      [projectId, section, plan_name.trim(), plan_type || null, year_adopted || null, month_adopted || null, summary?.trim() || null, relevance?.trim() || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -44,19 +50,25 @@ export async function createPolicyDocument(req, res) {
 
 export async function updatePolicyDocument(req, res) {
   const { id } = req.params;
-  const { plan_name, year_adopted, summary, relevance } = req.body;
+  const { plan_name, plan_type, year_adopted, month_adopted, summary, relevance } = req.body;
 
   if (!plan_name?.trim()) {
     return res.status(400).json({ error: 'plan_name is required' });
+  }
+  if (plan_type && !['local', 'neighbourhood'].includes(plan_type)) {
+    return res.status(400).json({ error: 'plan_type must be local or neighbourhood' });
+  }
+  if (month_adopted && (month_adopted < 1 || month_adopted > 12)) {
+    return res.status(400).json({ error: 'month_adopted must be between 1 and 12' });
   }
 
   try {
     const { rows } = await pool.query(
       `UPDATE policy_documents
-       SET plan_name = $1, year_adopted = $2, summary = $3, relevance = $4, updated_at = NOW()
-       WHERE id = $5
-       RETURNING id, section, plan_name, year_adopted, summary, relevance, created_at`,
-      [plan_name.trim(), year_adopted || null, summary?.trim() || null, relevance?.trim() || null, id]
+       SET plan_name = $1, plan_type = $2, year_adopted = $3, month_adopted = $4, summary = $5, relevance = $6, updated_at = NOW()
+       WHERE id = $7
+       RETURNING id, section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance, created_at`,
+      [plan_name.trim(), plan_type || null, year_adopted || null, month_adopted || null, summary?.trim() || null, relevance?.trim() || null, id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Entry not found' });
     res.json(rows[0]);
