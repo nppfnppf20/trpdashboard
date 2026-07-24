@@ -35,10 +35,11 @@ import {
   resetAppealTypePrompt as resetAppealTypePromptApi,
 } from '$lib/api/appeal.js';
 import { getStage1Context, generateStage1Review as generateStage1ReviewApi } from '$lib/api/stage1Review.js';
+import { generateHlpvV3 as generateHlpvV3Api } from '$lib/api/hlpvV3.js';
 
 // ── Routing helpers ────────────────────────────────────────────────────────────
 // Appeal types get id: 'appeal_N' to avoid collision with PA numeric IDs.
-// Stage 1 has tool:'stage1' and a plain numeric PA type ID.
+// Stage 1 and HLPV v3 have tool:'stage1' / tool:'hlpv' and a plain numeric PA type ID.
 
 function isAppeal(typeId) {
   return typeof typeId === 'string' && typeId.startsWith('appeal_');
@@ -46,6 +47,10 @@ function isAppeal(typeId) {
 
 function isStage1(typeId) {
   return get(draftTypes).find(t => t.id === typeId)?.tool === 'stage1';
+}
+
+function isHlpv(typeId) {
+  return get(draftTypes).find(t => t.id === typeId)?.tool === 'hlpv';
 }
 
 function rawId(typeId) {
@@ -75,6 +80,19 @@ function api(typeId) {
       deleteSection:   () => Promise.resolve(null),
       reorderSections: () => Promise.resolve(null),
       generateDraft:   (pid, _id, opts) => generateStage1ReviewApi(pid, { ...opts, draftTypeSlug: slug }),
+      generateSection: () => Promise.resolve(null),
+    };
+  }
+  if (isHlpv(typeId)) {
+    return {
+      getDraft:        paGetDraft,
+      saveDraft:       paSaveDraft,
+      getSections:     () => Promise.resolve([]),
+      createSection:   () => Promise.resolve(null),
+      updateSection:   () => Promise.resolve(null),
+      deleteSection:   () => Promise.resolve(null),
+      reorderSections: () => Promise.resolve(null),
+      generateDraft:   (pid, _id, opts) => generateHlpvV3Api(pid, opts),
       generateSection: () => Promise.resolve(null),
     };
   }
@@ -151,7 +169,14 @@ export async function loadDraftTypes() {
     ]);
 
     const tagged = [
-      ...paTypes.map(t => ({ ...t, tool: ['stage1_review', 'stage1_review_v2', 'stage1_review_v3'].includes(t.slug) ? 'stage1' : 'pa' })),
+      ...paTypes.map(t => ({
+        ...t,
+        tool: ['stage1_review', 'stage1_review_v2', 'stage1_review_v3'].includes(t.slug)
+          ? 'stage1'
+          : t.slug === 'hlpv_v3'
+            ? 'hlpv'
+            : 'pa',
+      })),
       ...appealTypesRaw.map(t => ({
         ...t,
         id: `appeal_${t.id}`,

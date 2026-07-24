@@ -40,6 +40,7 @@ import {
 } from '../services/llm.service.js';
 import { BASE_SECTIONS, ISSUE_QUESTIONS, TAIL_SECTIONS } from '../services/meetingGuideContent.js';
 import { DEFAULT_STAGE1_REVIEW_PROMPT, DEFAULT_STAGE1_REVIEW_V3_TEMPLATE } from './stage1Review.controller.js';
+import { DEFAULT_HLPV_V3_TEMPLATE } from './hlpvV3.controller.js';
 import { DEFAULT_BRIEF_CHECK_TEMPLATE, DEFAULT_CONSISTENCY_CHECK_TEMPLATE, DEFAULT_GRAMMAR_CHECK_TEMPLATE } from './draftCheck.controller.js';
 
 const ACTION_PROMPT_DEFAULTS = {
@@ -51,6 +52,7 @@ const ACTION_PROMPT_DEFAULTS = {
   stage1_review:                 DEFAULT_STAGE1_REVIEW_PROMPT,
   stage1_review_v2:              DEFAULT_STAGE1_REVIEW_PROMPT,
   stage1_review_v3:              DEFAULT_STAGE1_REVIEW_V3_TEMPLATE,
+  hlpv_v3:                       DEFAULT_HLPV_V3_TEMPLATE,
   incorporate_appeal:            DEFAULT_INCORPORATE_APPEAL_PROMPT,
   generate_appeal_argument:      DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
   draft_check_brief:             DEFAULT_BRIEF_CHECK_TEMPLATE,
@@ -180,6 +182,25 @@ Rows to complete:
 {{OTHER_PROJECT_DOCUMENTS}} / {{EMERGING_POLICIES}} / {{REPORTS_REQUIRED_FOR_APPLICATION}} /
   {{ADDITIONAL_DRAFTING_INSTRUCTIONS}} — no data source exists yet; always
   substituted as "(not provided)"`,
+
+  hlpv_v3: `\
+↑ YOUR INSTRUCTIONS (editable above — self-contained: no {{GUIDING_BRIEF}}, no {{STYLE_GUIDE}})
+━━━ Dynamic tokens substituted wherever they appear in your instructions ━━━
+
+{{BRIEFING_NOTES}} — explicit briefing_note_id, or most recent briefing_transcript
+  document_summary for the project
+{{DRAFTING_ISSUE_NOTES}} — this project's admin_console.drafting_issues rows (same
+  mechanism as Stage 1 Review v3 / Planning Statement): label, discipline, linked
+  policies, policy tier notes, argument for/against, summary, specialist report
+  evidence — or "(not provided)" if none recorded
+{{SITE_AND_PROPOSAL_INFORMATION}} — public.projects fields (name, address,
+  development type, LPA, sub-sectors)
+{{PLANNING_CONTEXT}} — local/neighbourhood/national project policies, formatted
+  together; emerging policy always "(not provided)"
+{{PLANNING_HISTORY}} — on-site and nearby planning history, formatted
+{{DESIGNATIONS_AND_CONSTRAINTS}} / {{FIGURES_AND_CAPTIONS}} / {{OTHER_PROJECT_DOCUMENTS}} /
+  {{CORRESPONDENCE_DETAILS}} / {{ADDITIONAL_DRAFTING_INSTRUCTIONS}} — no data source
+  exists yet; always substituted as "(not provided)"`,
 
   generate_appeal_argument: `\
 ↑ YOUR INSTRUCTIONS (used as system prompt - editable above)

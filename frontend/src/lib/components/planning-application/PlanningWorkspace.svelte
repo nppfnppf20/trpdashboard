@@ -31,6 +31,7 @@
   const stage1PromptState   = actionPromptState('stage1_review');
   const stage1v2PromptState = actionPromptState('stage1_review_v2');
   const stage1v3PromptState = actionPromptState('stage1_review_v3');
+  const hlpvV3PromptState   = actionPromptState('hlpv_v3');
 
   $: appealPromptTitle = $draftTypes.find(t => t.id === $appealPromptTypeId)?.name ?? 'Appeal Document';
 
@@ -645,7 +646,7 @@
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
           {/if}
-          {#if activeType?.tool !== 'stage1' && $activeDraftTypeId !== 'blank'}
+          {#if activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv' && $activeDraftTypeId !== 'blank'}
             <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { checkPanelOpen = false; } }} title="Chat with a document to draft a section">
               <i class="las la-comments"></i> Doc Chat
             </button>
@@ -721,7 +722,7 @@
                 incorporateReviewMode = false;
               }}
             />
-          {:else if activeType?.tool !== 'stage1'}
+          {:else if activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv'}
             <PlanningDocIncorporatePanel
               {project}
               typeId={$activeDraftTypeId}
@@ -788,7 +789,7 @@
                   {/if}
                 </div>
                 <div class="draft-type-actions">
-                  {#if type.tool !== 'appeal' && type.tool !== 'stage1'}
+                  {#if type.tool !== 'appeal' && type.tool !== 'stage1' && type.tool !== 'hlpv'}
                   <select class="card-dev-type-select" value={developmentType} on:change={handleDevTypeChange} disabled={devTypeSaving} title="Development type">
                     <option value="">Dev type...</option>
                     {#each DEV_TYPES as dt}
@@ -799,7 +800,7 @@
                   {#if draft}
                     <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
-                  {#if type.tool === 'appeal' || type.tool === 'stage1'}
+                  {#if type.tool === 'appeal' || type.tool === 'stage1' || type.tool === 'hlpv'}
                     {@const selectedNoteId = $appealSelectedNoteIds[type.id] ?? null}
                     {@const selectedNote = selectedNoteId ? $briefingNotes.find(n => n.id === selectedNoteId) : null}
                     {#if type.slug === 'hlpv_narrative'}
@@ -868,6 +869,8 @@
                       <i class="las la-file-import"></i> Starting docs
                     </button>
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
+                  {:else if type.tool === 'hlpv'}
+                    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
                   {:else}
                     <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
                   {/if}
@@ -887,9 +890,10 @@
               {/if}
 
 
-              <!-- Sections toggle row — hidden for appeal and stage1 types (broad-prompt generation),
-                   except v3, which carves Policy/Assessment out into their own dedicated prompts -->
-              {#if type.tool !== 'stage1' && (type.tool !== 'appeal' || type.slug === 'planning_statement_v3')}
+              <!-- Sections toggle row — hidden for appeal, stage1 and hlpv types (broad-prompt
+                   generation), except v3, which carves Policy/Assessment out into their own
+                   dedicated prompts -->
+              {#if type.tool !== 'stage1' && type.tool !== 'hlpv' && (type.tool !== 'appeal' || type.slug === 'planning_statement_v3')}
               <button class="draft-sections-toggle" on:click={() => toggleCardExpand(type.id)}>
                 <i class="las la-layer-group"></i>
                 Sections
@@ -1658,6 +1662,20 @@
   on:change={(e) => setPromptText('stage1_review_v3', e.detail)}
   on:save={() => saveActionPromptStore('stage1_review_v3')}
   on:reset={() => resetActionPromptStore('stage1_review_v3')}
+/>
+
+<PromptEditModal
+  open={$hlpvV3PromptState.open}
+  title="Edit Prompt: Generate High-Level Planning View v3"
+  promptText={$hlpvV3PromptState.text}
+  contextTemplate={$hlpvV3PromptState.contextTemplate}
+  loading={$hlpvV3PromptState.loading}
+  saving={$hlpvV3PromptState.saving}
+  saved={$hlpvV3PromptState.saved}
+  on:close={() => closeActionPrompt('hlpv_v3')}
+  on:change={(e) => setPromptText('hlpv_v3', e.detail)}
+  on:save={() => saveActionPromptStore('hlpv_v3')}
+  on:reset={() => resetActionPromptStore('hlpv_v3')}
 />
 
 {#if startingDocsType}
