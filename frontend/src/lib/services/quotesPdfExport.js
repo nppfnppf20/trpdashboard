@@ -63,14 +63,14 @@ export function exportQuotesPdf(project, quotes, sentRequests) {
 
   let cursorY = 26;
 
-  // ── Table 1: Quote requests sent ────────────────────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(30, 41, 59);
-  doc.text('Quote Requests Sent', margin, cursorY);
-  cursorY += 4;
-
+  // ── Table 1: Quote requests sent — section omitted entirely if none ────────
   if (sentRequests && sentRequests.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(30, 41, 59);
+    doc.text('Quote Requests Sent', margin, cursorY);
+    cursorY += 4;
+
     autoTable(doc, {
       head: [['Sent Date', 'Discipline', 'Recipients']],
       body: sentRequests.map(r => [
@@ -96,12 +96,6 @@ export function exportQuotesPdf(project, quotes, sentRequests) {
       },
     });
     cursorY = doc.lastAutoTable.finalY + 10;
-  } else {
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(9);
-    doc.setTextColor(148, 163, 184);
-    doc.text('No quote requests have been sent for this project.', margin, cursorY + 4);
-    cursorY += 14;
   }
 
   // ── Table 2: Quotes received, grouped with line items ───────────────────

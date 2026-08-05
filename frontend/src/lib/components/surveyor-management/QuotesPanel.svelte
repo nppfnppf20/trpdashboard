@@ -445,11 +445,11 @@
 
     return `<h2>Surveyor Quotes Summary</h2>
 <p>Project: ${projectLine} | Exported: ${exportedDate}</p>
-<h3>Quote Requests Sent</h3>
-${sentRequests.length ? `<table style="border-collapse:collapse;width:100%;">
+${sentRequests.length ? `<h3>Quote Requests Sent</h3>
+<table style="border-collapse:collapse;width:100%;">
   <thead><tr>${th('Sent Date')}${th('Discipline')}${th('Recipients')}</tr></thead>
   <tbody>${requestRows}</tbody>
-</table>` : '<p>No quote requests have been sent for this project.</p>'}
+</table>` : ''}
 <h3>Quotes Received</h3>
 ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
   <thead><tr>${th('Discipline')}${th('Organisation')}${th('Contact')}${th('Status')}${th('Item')}${th('Cost (excl. VAT)')}${th('VAT')}${th('Line Total')}${th('Quote Total (incl. VAT)')}</tr></thead>
