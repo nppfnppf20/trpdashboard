@@ -5,8 +5,10 @@
   import LineItemsModal from '$lib/components/admin-console/LineItemsModal.svelte';
   import AddActionModal from './AddActionModal.svelte';
   import SurveyActionsDrawer from './SurveyActionsDrawer.svelte';
+  import ExportInstructedModal from './ExportInstructedModal.svelte';
   import { updateQuoteDependencies } from '$lib/api/quotes.js';
   import { getQuoteActions } from '$lib/api/quoteActions.js';
+  import { exportInstructedPdf } from '$lib/services/instructedPdfExport.js';
   import '$lib/styles/tables.css';
   import '$lib/styles/badges.css';
   import '$lib/styles/buttons.css';
@@ -14,6 +16,9 @@
   export let quotes = [];
   export let loading = false;
   export let projectId = null;
+  export let project = null;
+  export let programmeEvents = [];
+  export let quoteKeyDates = [];
 
   const dispatch = createEventDispatcher();
 
@@ -36,6 +41,14 @@
   let showAddAction = false;
   let addActionPreselectId = null;
   let actionsQuote = null;      // quote whose timeline drawer is open
+
+  // PDF export
+  let showExportModal = false;
+
+  function handleExport(event) {
+    exportInstructedPdf(project, sortedQuotes, actionsByQuote, programmeEvents, quoteKeyDates, event.detail);
+    showExportModal = false;
+  }
 
   $: if (projectId) loadActions(projectId);
 
@@ -155,9 +168,14 @@
 <div class="content-panel">
   <div class="panel-header">
     <h2>Instructed Surveyors</h2>
-    <button class="btn-add-action" on:click={() => openAddAction()} disabled={!quotes.length || !projectId}>
-      <i class="las la-history"></i> Add Progress
-    </button>
+    <div class="panel-header-actions">
+      <button class="btn-add-action" on:click={() => openAddAction()} disabled={!quotes.length || !projectId}>
+        <i class="las la-history"></i> Add Progress
+      </button>
+      <button class="btn-export" on:click={() => showExportModal = true} disabled={!quotes.length} title="Export a PDF of the instructed table, progress and programme">
+        <i class="las la-file-pdf"></i> Export
+      </button>
+    </div>
   </div>
   {#if loading}
     <div class="loading">
@@ -267,6 +285,13 @@
   {/if}
 </div>
 
+<!-- Export Modal -->
+<ExportInstructedModal
+  show={showExportModal}
+  on:export={handleExport}
+  on:close={() => showExportModal = false}
+/>
+
 <!-- Dependencies Modal -->
 <NotesModal
   show={showDependenciesModal}
@@ -342,6 +367,30 @@
     font-weight: 600;
     color: #1e293b;
   }
+
+  .panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .btn-export {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem;
+    background: white;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-export:hover:not(:disabled) { background: #f8fafc; border-color: #94a3b8; color: #1e293b; }
+  .btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .table-wrapper {
     flex: 1;

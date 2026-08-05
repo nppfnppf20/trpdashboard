@@ -289,6 +289,9 @@
           quotes={instructedQuotes}
           {loading}
           projectId={selectedProject?.unique_id}
+          project={selectedProject}
+          {quoteKeyDates}
+          {programmeEvents}
           on:workStatusChange={handleWorkStatusChange}
         />
 
