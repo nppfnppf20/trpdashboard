@@ -4,7 +4,7 @@
  * briefing-driven argument drafting, and prose suggestion flows.
  */
 
-import { client, noEmDash, callClaude, callLLM, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, HOUSE_STYLE_BLOCK, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
+import { client, noEmDash, callClaude, callLLM, resolveProvider, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, HOUSE_STYLE_BLOCK, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants
@@ -270,7 +270,7 @@ const STARTING_DOC_VARS = [
   { slug: 'socio_data',              variable: 'SOCIO_DATA',              label: 'Socio-economic Data' },
 ];
 
-export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '', provider = 'anthropic' }) {
+export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '', provider = null }) {
   const issueContext = buildIssueContext(issues, {});
 
   const cleanProjectBrief = projectBrief?.trim()
@@ -332,8 +332,9 @@ Document type: ${draftTypeName}${issueContextBlock}
 
 Produce the complete ${draftTypeName} as HTML now.`;
 
+  const resolvedProvider = await resolveProvider('appeal_draft_pa_notes', provider);
   const text = await callLLM({
-    provider,
+    provider: resolvedProvider,
     maxTokens: 64000,
     stream: true,
     system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. Never use em dashes (—).
@@ -355,7 +356,7 @@ The guiding brief describes how this type of document should be structured and a
 
 export async function generatePlanningPolicySection({
   sectionName, sectionPromptTemplate, policyContext, projectName,
-  projectBrief = null, startingDocs = {}, briefingNotes = '', provider = 'anthropic',
+  projectBrief = null, startingDocs = {}, briefingNotes = '', provider = null,
 }) {
   let prompt = sectionPromptTemplate;
   for (const [key, value] of Object.entries(policyContext)) {
@@ -530,7 +531,7 @@ export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
   linkedPoliciesByTrack = {}, linkedSnippetsByTrack = {}, allIssueTypes = [],
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
-  provider = 'anthropic',
+  provider = null,
 }) {
   if (!issues.length) return `<h2>${sectionName}</h2>`;
 

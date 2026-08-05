@@ -19,10 +19,12 @@ export async function getQuotes(filters = {}) {
   return await response.json();
 }
 
-export async function extractQuoteFromDocument(file, provider = 'anthropic') {
+// provider: 'anthropic' | 'openai' | null — null means "no override", letting
+// the backend fall back to the central AI Providers admin setting.
+export async function extractQuoteFromDocument(file, provider = null) {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('provider', provider);
+  if (provider) formData.append('provider', provider);
   const response = await authFetch(`${API_BASE_URL}/quotes/extract-from-document`, {
     method: 'POST',
     body: formData,
@@ -34,11 +36,11 @@ export async function extractQuoteFromDocument(file, provider = 'anthropic') {
   return await response.json(); // { extraction, warning }
 }
 
-export async function extractQuoteFromPastedText(text, provider = 'anthropic') {
+export async function extractQuoteFromPastedText(text, provider = null) {
   const response = await authFetch(`${API_BASE_URL}/quotes/extract-from-document`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, provider }),
+    body: JSON.stringify({ text, provider: provider || null }),
   });
   if (!response.ok) {
     const e = await response.json().catch(() => ({}));

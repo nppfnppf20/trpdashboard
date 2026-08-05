@@ -33,7 +33,10 @@ export async function extractFromDocument(req, res) {
       return res.status(422).json({ error: 'Could not read any text from this document. Scanned PDFs are not supported.' });
     }
 
-    const provider = req.body.provider === 'openai' ? 'openai' : 'anthropic';
+    // null (rather than a forced default) lets extractQuoteFromText fall back
+    // to the central admin-console setting when the caller didn't explicitly
+    // choose a provider for this request.
+    const provider = req.body.provider === 'openai' || req.body.provider === 'anthropic' ? req.body.provider : null;
     const extraction = await extractQuoteFromText(text, sourceName, provider);
     if (!extraction) {
       return res.status(422).json({ error: 'Could not extract quote details from this text.' });

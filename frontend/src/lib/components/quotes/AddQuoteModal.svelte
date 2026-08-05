@@ -27,7 +27,11 @@
 
   let dragOver = false;
   let fileInput;
-  let extractionProvider = 'anthropic'; // 'anthropic' | 'openai' — which LLM reads the uploaded quote document
+  // '' | 'anthropic' | 'openai' — which LLM reads the uploaded quote document.
+  // '' means "use the default set on the AI Providers admin page"; this is a
+  // session-only override that resets on refresh and wins over that default
+  // for as long as it's set.
+  let extractionProvider = '';
 
   // ── Paste-text upload — for quotes copied out of an email rather than
   // attached as a file. Reuses the same extraction/review/save pipeline. ──
@@ -474,6 +478,10 @@
         <div class="extract-provider-toggle">
           <span>Read documents with:</span>
           <div class="provider-options">
+            <label class:selected={extractionProvider === ''}>
+              <input type="radio" bind:group={extractionProvider} value="" />
+              Default
+            </label>
             <label class:selected={extractionProvider === 'anthropic'}>
               <input type="radio" bind:group={extractionProvider} value="anthropic" />
               Claude

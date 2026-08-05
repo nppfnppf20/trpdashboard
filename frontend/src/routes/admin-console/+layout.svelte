@@ -7,7 +7,8 @@
     { path: '/admin-console/planning-templates', label: 'Policy Templates', icon: 'la-clipboard-list' },
     { path: '/admin-console/issue-templates', label: 'Per Issue Planning Assessment Templates', icon: 'la-tags' },
     { path: '/admin-console/guiding-briefs', label: 'Guiding Briefs', icon: 'la-book-open' },
-    { path: '/admin-console/prompt-map', label: 'Prompt Map', icon: 'la-project-diagram' }
+    { path: '/admin-console/prompt-map', label: 'Prompt Map', icon: 'la-project-diagram' },
+    { path: '/admin-console/llm-settings', label: 'AI Providers', icon: 'la-robot' }
   ];
 </script>
 

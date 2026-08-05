@@ -9,6 +9,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { chunkText } from './parser.service.js';
+import { pool } from '../db.js';
 
 export function noEmDash(str) {
   if (!str) return str;
@@ -168,6 +169,34 @@ export async function callLLM({ provider = 'anthropic', model, system, prompt, m
     messages: [{ role: 'user', content: prompt }]
   });
   return resp.content[0].text;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Central provider settings (admin_console.llm_process_settings)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const providerCache = new Map(); // processKey -> { provider, expiresAt }
+const PROVIDER_CACHE_TTL_MS = 30_000;
+
+/**
+ * Resolves which provider a call should use: an explicit per-request choice
+ * (the caller's own local toggle, session-only) wins if given; otherwise
+ * falls back to the process's central admin-console setting; otherwise
+ * defaults to Claude.
+ */
+export async function resolveProvider(processKey, explicitProvider) {
+  if (explicitProvider === 'anthropic' || explicitProvider === 'openai') return explicitProvider;
+
+  const cached = providerCache.get(processKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.provider;
+
+  const { rows } = await pool.query(
+    'SELECT provider FROM admin_console.llm_process_settings WHERE process_key = $1',
+    [processKey]
+  );
+  const provider = rows[0]?.provider ?? 'anthropic';
+  providerCache.set(processKey, { provider, expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS });
+  return provider;
 }
 
 // Escape literal newlines/tabs inside JSON string values (LLMs sometimes emit them unescaped)

@@ -208,7 +208,8 @@
     }
   }
 
-  // Per-card AI provider choice for draft generation — defaults to Claude, not persisted.
+  // Per-card AI provider choice for draft generation — session-only override,
+  // not persisted. Empty/unset means "use the AI Providers admin default".
   let draftProviderByType = {};
 
   async function handleDevTypeChange(e) {
@@ -816,12 +817,13 @@
                         {/each}
                       </select>
                     {/if}
-                    <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft">
+                    <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft — Default uses the AI Providers admin setting">
+                      <option value="">Default</option>
                       <option value="anthropic">Claude</option>
                       <option value="openai">GPT-5.6</option>
                     </select>
                     <div class="briefing-btn-group" use:clickOutside={() => { if ($appealDropdownOpenId === type.id) appealDropdownOpenId.set(null); }}>
-                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || 'anthropic' }, !!draft)}>
+                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || '' }, !!draft)}>
                         {#if $draftGenerating === type.id}
                           <div class="mini-spinner"></div> Generating...
                         {:else}
@@ -847,11 +849,12 @@
                       {/if}
                     </div>
                   {:else}
-                  <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft">
+                  <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft — Default uses the AI Providers admin setting">
+                    <option value="">Default</option>
                     <option value="anthropic">Claude</option>
                     <option value="openai">GPT-5.6</option>
                   </select>
-                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { provider: draftProviderByType[type.id] || 'anthropic' }, !!draft)}>
+                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { provider: draftProviderByType[type.id] || '' }, !!draft)}>
                     {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
                     {:else}

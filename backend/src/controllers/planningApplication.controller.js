@@ -4,6 +4,7 @@
  */
 
 import { pool } from '../db.js';
+import { resolveProvider } from '../services/llm.shared.js';
 import { parseFile, chunkText } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
@@ -1182,8 +1183,14 @@ ${history.map(h => {
 
 export async function generateDraft(req, res) {
   const { projectId, typeId } = req.params;
-  const { provider } = req.body ?? {};
+  const { provider: requestedProvider } = req.body ?? {};
   try {
+    // Resolved once here (rather than left to each service function's own
+    // default) so the generateDraftSection fallback branch below — which is
+    // shared with the legacy appeal flow and always defaults to Claude on
+    // its own — also respects the central "Planning Statement Draft
+    // Generation" setting when this endpoint didn't get an explicit override.
+    const provider = await resolveProvider('planning_statement_draft', requestedProvider);
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
     );
