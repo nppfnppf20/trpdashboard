@@ -26,6 +26,7 @@
 
   let dragOver = false;
   let fileInput;
+  let extractionProvider = 'anthropic'; // 'anthropic' | 'openai' — which LLM reads the uploaded quote document
 
   // Transform organisations to SearchableDropdown format
   $: organisationOptions = organisations.map(org => ({
@@ -146,7 +147,8 @@
       status: 'queued',
       error: null,
       extractNotice: null,
-      form: blankForm()
+      form: blankForm(),
+      provider: extractionProvider
     }));
     queue = [...queue, ...items];
     pumpQueue();
@@ -202,7 +204,7 @@
       if (!/\.(pdf|docx?|txt)$/i.test(item.file.name)) {
         throw new Error('Please upload a PDF or Word document.');
       }
-      const { extraction, warning } = await extractQuoteFromDocument(item.file);
+      const { extraction, warning } = await extractQuoteFromDocument(item.file, item.provider);
       const form = blankForm();
 
       // Discipline: only set if it matches an existing option
@@ -375,6 +377,19 @@
 
       <div class="modal-body">
         <!-- Prefill from document(s) -->
+        <div class="extract-provider-toggle">
+          <span>Read documents with:</span>
+          <div class="provider-options">
+            <label class:selected={extractionProvider === 'anthropic'}>
+              <input type="radio" bind:group={extractionProvider} value="anthropic" />
+              Claude
+            </label>
+            <label class:selected={extractionProvider === 'openai'}>
+              <input type="radio" bind:group={extractionProvider} value="openai" />
+              OpenAI
+            </label>
+          </div>
+        </div>
         {#if queue.length === 0}
           <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
           <div
@@ -997,6 +1012,49 @@
     .cost-field {
       width: 100%;
     }
+  }
+
+  /* Extraction provider toggle */
+  .extract-provider-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  .provider-options {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .provider-options label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    cursor: pointer;
+    color: #475569;
+    transition: all 0.15s;
+  }
+
+  .provider-options label:hover {
+    border-color: #93c5fd;
+  }
+
+  .provider-options label.selected {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 600;
+  }
+
+  .provider-options input[type="radio"] {
+    width: auto;
+    margin: 0;
+    accent-color: #3b82f6;
   }
 
   /* Prefill-from-document drop zone */

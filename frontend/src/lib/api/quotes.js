@@ -19,9 +19,10 @@ export async function getQuotes(filters = {}) {
   return await response.json();
 }
 
-export async function extractQuoteFromDocument(file) {
+export async function extractQuoteFromDocument(file, provider = 'anthropic') {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('provider', provider);
   const response = await authFetch(`${API_BASE_URL}/quotes/extract-from-document`, {
     method: 'POST',
     body: formData,

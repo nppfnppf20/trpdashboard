@@ -138,11 +138,12 @@ export async function callClaude(system, user, model = MODEL_SONNET, maxTokens =
 
 // Provider-agnostic single-turn call (system + one user message → text). Lets draft-generation
 // call sites switch between Claude and OpenAI without duplicating prompt-building logic.
-export async function callLLM({ provider = 'anthropic', model, system, prompt, maxTokens = 4096, stream = false }) {
+export async function callLLM({ provider = 'anthropic', model, system, prompt, maxTokens = 4096, stream = false, jsonMode = false }) {
   if (provider === 'openai') {
     const resp = await openaiClient.chat.completions.create({
       model: model || MODEL_OPENAI_FLAGSHIP,
       max_completion_tokens: maxTokens,
+      ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
       messages: [
         ...(system ? [{ role: 'system', content: system }] : []),
         { role: 'user', content: prompt }

@@ -22,7 +22,8 @@ export async function extractFromDocument(req, res) {
       return res.status(422).json({ error: 'Could not read any text from this document. Scanned PDFs are not supported.' });
     }
 
-    const extraction = await extractQuoteFromText(text, req.file.originalname);
+    const provider = req.body.provider === 'openai' ? 'openai' : 'anthropic';
+    const extraction = await extractQuoteFromText(text, req.file.originalname, provider);
     if (!extraction) {
       return res.status(422).json({ error: 'Could not extract quote details from this document.' });
     }

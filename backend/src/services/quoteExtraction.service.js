@@ -1,4 +1,4 @@
-import { callClaude, parseJSON } from './llm.shared.js';
+import { callLLM, parseJSON } from './llm.shared.js';
 
 // Extracts a structured fee quote from an uploaded surveyor quote document
 // (PDF/Word) to prefill the Add Quote modal. The user reviews everything
@@ -39,14 +39,15 @@ Respond with JSON only — no markdown, no explanation:
  * Extract quote fields from parsed document text.
  * @param {string} text - Parsed document text
  * @param {string|null} fileName - Original file name, for context
+ * @param {string} provider - 'anthropic' or 'openai'
  * @returns {Promise<object|null>} extraction JSON, or null if unparseable
  */
-export async function extractQuoteFromText(text, fileName = null) {
+export async function extractQuoteFromText(text, fileName = null, provider = 'anthropic') {
   const user = `Fee quote document${fileName ? ` (${fileName})` : ''}:
 
 ${(text || '').slice(0, 60000)}`;
 
-  const raw = await callClaude(SYSTEM, user, undefined, 4096);
+  const raw = await callLLM({ provider, system: SYSTEM, prompt: user, maxTokens: 4096, jsonMode: true });
   const parsed = parseJSON(raw);
   if (!parsed || !Array.isArray(parsed.line_items)) return null;
 
