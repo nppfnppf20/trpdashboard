@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { drawTitleBlock, drawPageFooter, projectLineFor } from './pdfExportShared.js';
 
 // A4 landscape export of the Surveyor Quotes page: quote requests sent,
 // followed by quotes received with their line items (mirrors the Conditions
@@ -34,34 +35,14 @@ function lineTotal(item) {
   return item.vat_included ? cost * 1.2 : cost;
 }
 
-export function exportQuotesPdf(project, quotes, sentRequests) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 10;
-  const totalPagesExp = '{total_pages_count_string}';
-
-  const projectLine = [project?.project_code || project?.project_reference, project?.site_name || project?.project_name]
-    .filter(Boolean).join(' - ');
-
-  // ── Title block ──────────────────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(30, 41, 59);
-  doc.text('Surveyor Quotes Summary', margin, 13);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  if (projectLine) doc.text(projectLine, margin, 19);
-
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    `Exported ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-    pageWidth - margin, 19, { align: 'right' }
-  );
-
-  let cursorY = 26;
+/**
+ * Draws the Surveyor Quotes title + sent-requests table + quotes-received
+ * table onto the given doc, starting at the top of whatever page it's
+ * currently on.
+ */
+export function drawQuotesSection(doc, { project, quotes, sentRequests, margin, pageWidth, pageHeight, totalPagesExp }) {
+  const projectLine = projectLineFor(project);
+  let cursorY = drawTitleBlock(doc, { title: 'Surveyor Quotes Summary', projectLine, margin, pageWidth });
 
   // ── Table 1: Quote requests sent — section omitted entirely if none ────────
   if (sentRequests && sentRequests.length > 0) {
@@ -170,11 +151,7 @@ export function exportQuotesPdf(project, quotes, sentRequests) {
         8: { cellWidth: 28 },
       },
       didDrawPage: (data) => {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(148, 163, 184);
-        doc.text(`Page ${data.pageNumber} of ${totalPagesExp}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
-        if (projectLine) doc.text(projectLine, margin, pageHeight - 5);
+        drawPageFooter(doc, { pageWidth, pageHeight, margin, projectLine, pageNumber: data.pageNumber, totalPagesExp });
       },
     });
   } else {
@@ -183,6 +160,18 @@ export function exportQuotesPdf(project, quotes, sentRequests) {
     doc.setTextColor(148, 163, 184);
     doc.text('No quotes received for this project.', margin, cursorY + 4);
   }
+
+  return doc.lastAutoTable?.finalY ?? cursorY;
+}
+
+export function exportQuotesPdf(project, quotes, sentRequests) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  const totalPagesExp = '{total_pages_count_string}';
+
+  drawQuotesSection(doc, { project, quotes, sentRequests, margin, pageWidth, pageHeight, totalPagesExp });
 
   if (typeof doc.putTotalPages === 'function') {
     doc.putTotalPages(totalPagesExp);

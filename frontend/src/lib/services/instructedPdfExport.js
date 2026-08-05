@@ -1,12 +1,15 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { drawTitleBlock, drawPageFooter, projectLineFor } from './pdfExportShared.js';
 
 // A4 landscape export of the Instructed Surveyors page: the instructed
-// table (optionally with a Progress column mirroring the Conditions
-// Tracker's advancement history), followed by a weekly programme timeline
-// page (optionally) — one row per instructed quote plus a Key Project
-// Dates row, spanning from today to the latest date recorded anywhere in
-// the programme.
+// table (optionally with Key Dates / Progress columns mirroring the
+// Conditions Tracker's advancement history), and a weekly programme
+// timeline section — one row per instructed quote plus a Key Project Dates
+// row, spanning from today to the latest date recorded anywhere in the
+// programme. Both sections are reusable (drawInstructedTable /
+// drawProgrammeTimeline) so the Conditions Tracker export can bundle them
+// into the same combined PDF (see conditionsPdfExport.js).
 
 const SLATE = [51, 65, 85];
 const HEADER_FILL = [241, 245, 249];
@@ -123,14 +126,106 @@ function weekCellStyles(events) {
   return { fillColor: hexToRgb(events[0].color), textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' };
 }
 
-function drawProgrammeTimeline(doc, { quotes, programmeEvents, quoteKeyDates, projectLine, margin, pageWidth, pageHeight, startY }) {
-  const weeks = buildProgrammeWeeks(quotes, programmeEvents, quoteKeyDates);
+/**
+ * Draws the Instructed table (+ optional Key Dates / Progress columns)
+ * onto the given doc, starting at the top of whatever page it's currently
+ * on. Returns the Y position after the table, or null if nothing was drawn
+ * (all three options false).
+ */
+export function drawInstructedTable(doc, { project, quotes, actionsByQuote, quoteKeyDates, margin, pageWidth, pageHeight, totalPagesExp, options }) {
+  const { includeTable = true, includeProgress = true, includeKeyDates = true } = options || {};
+  if (!includeTable && !includeProgress && !includeKeyDates) return null;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(30, 41, 59);
-  doc.text('Programme Timeline', margin, startY);
-  let cursorY = startY + 4;
+  const projectLine = projectLineFor(project);
+  const cursorY = drawTitleBlock(doc, { title: 'Instructed Surveyors', projectLine, margin, pageWidth });
+
+  // Column descriptors, in display order — width omitted means the column
+  // stretches to fill remaining page width (used for the free-text columns).
+  const columns = [
+    { header: 'Discipline', width: 26, cell: q => ({ content: q.discipline || '', styles: { fontStyle: 'bold' } }) },
+    { header: 'Organisation', width: 40, cell: q => ({ content: q.surveyor_organisation || '' }) },
+    { header: 'Contact', width: 28, cell: q => ({ content: q.contact_name || '' }) },
+  ];
+
+  if (includeTable) {
+    columns.push(
+      {
+        header: 'Instructed Total', width: 26,
+        cell: q => ({
+          content: q.instruction_status === 'partially instructed'
+            ? `${formatCurrency(q.partially_instructed_total)} (partial)`
+            : formatCurrency(q.total),
+          styles: { halign: 'right', fontStyle: 'bold' },
+        }),
+      },
+      { header: 'Work Status', width: 24, cell: q => ({ content: q.work_status || 'In progress' }) },
+      { header: 'Dependencies', width: 32, cell: q => ({ content: q.dependencies || '' }) },
+    );
+  }
+
+  if (includeKeyDates) {
+    columns.push({
+      header: 'Key Dates',
+      width: 50,
+      cell: q => {
+        const dates = (quoteKeyDates || [])
+          .filter(kd => kd.quote_id === q.id)
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        return { content: dates.map(kd => `${formatDate(kd.date)} - ${kd.title || ''}`).join('\n') };
+      },
+    });
+  }
+
+  if (includeProgress) {
+    columns.push({
+      header: 'Progress',
+      cell: q => {
+        const progress = (actionsByQuote?.[q.id] || [])
+          .map(a => `${formatDate(a.action_date)} - ${a.summary}`)
+          .join('\n\n');
+        return { content: progress };
+      },
+    });
+  }
+
+  const head = [columns.map(c => c.header)];
+  const body = quotes.map(q => columns.map(c => c.cell(q)));
+  const columnStyles = Object.fromEntries(
+    columns.map((c, i) => [i, c.width ? { cellWidth: c.width } : {}])
+  );
+
+  autoTable(doc, {
+    head,
+    body,
+    startY: cursorY,
+    margin: { left: margin, right: margin, top: 13, bottom: 11 },
+    theme: 'grid',
+    styles: {
+      font: 'helvetica', fontSize: 7, cellPadding: 1.8, textColor: SLATE,
+      lineColor: [226, 232, 240], lineWidth: 0.15, valign: 'top', overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: HEADER_FILL, textColor: [51, 65, 85], fontSize: 7.5,
+      fontStyle: 'bold', valign: 'middle', lineColor: [203, 213, 225],
+    },
+    columnStyles,
+    didDrawPage: (data) => {
+      drawPageFooter(doc, { pageWidth, pageHeight, margin, projectLine, pageNumber: data.pageNumber, totalPagesExp });
+    },
+  });
+
+  return doc.lastAutoTable.finalY;
+}
+
+/**
+ * Draws the Programme Timeline title + weekly band tables onto the given
+ * doc, starting at the top of whatever page it's currently on.
+ */
+export function drawProgrammeTimeline(doc, { project, quotes, programmeEvents, quoteKeyDates, margin, pageWidth, pageHeight, totalPagesExp }) {
+  const projectLine = projectLineFor(project);
+  let cursorY = drawTitleBlock(doc, { title: 'Programme Timeline', projectLine, margin, pageWidth });
+
+  const weeks = buildProgrammeWeeks(quotes, programmeEvents, quoteKeyDates);
 
   if (weeks.length === 0) {
     doc.setFont('helvetica', 'italic');
@@ -230,11 +325,7 @@ function drawProgrammeTimeline(doc, { quotes, programmeEvents, quoteKeyDates, pr
         ...Object.fromEntries(bandWeeks.map((_, i) => [labelColumns.length + i, { cellWidth: weekColWidth }])),
       },
       didDrawPage: (data) => {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(148, 163, 184);
-        doc.text(`Page ${data.pageNumber}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
-        if (projectLine) doc.text(projectLine, margin, pageHeight - 5);
+        drawPageFooter(doc, { pageWidth, pageHeight, margin, projectLine, pageNumber: data.pageNumber, totalPagesExp });
       },
     });
 
@@ -251,123 +342,16 @@ export function exportInstructedPdf(project, quotes, actionsByQuote, programmeEv
   const margin = 10;
   const totalPagesExp = '{total_pages_count_string}';
 
-  const projectLine = [project?.project_code || project?.project_reference, project?.site_name || project?.project_name]
-    .filter(Boolean).join(' - ');
+  const sectionDrawn = drawInstructedTable(doc, {
+    project, quotes, actionsByQuote, quoteKeyDates, margin, pageWidth, pageHeight, totalPagesExp,
+    options: { includeTable, includeProgress, includeKeyDates },
+  }) !== null;
 
-  // ── Title block ──────────────────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(30, 41, 59);
-  doc.text('Instructed Surveyors', margin, 13);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  if (projectLine) doc.text(projectLine, margin, 19);
-
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    `Exported ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-    pageWidth - margin, 19, { align: 'right' }
-  );
-
-  let cursorY = 26;
-  let sectionDrawn = false;
-
-  // ── Instructed table (+ optional Key Dates / Progress columns) ─────────────
-  if (includeTable || includeProgress || includeKeyDates) {
-    // Column descriptors, in display order — width omitted means the column
-    // stretches to fill remaining page width (used for the free-text columns).
-    const columns = [
-      { header: 'Discipline', width: 26, cell: q => ({ content: q.discipline || '', styles: { fontStyle: 'bold' } }) },
-      { header: 'Organisation', width: 40, cell: q => ({ content: q.surveyor_organisation || '' }) },
-      { header: 'Contact', width: 28, cell: q => ({ content: q.contact_name || '' }) },
-    ];
-
-    if (includeTable) {
-      columns.push(
-        {
-          header: 'Instructed Total', width: 26,
-          cell: q => ({
-            content: q.instruction_status === 'partially instructed'
-              ? `${formatCurrency(q.partially_instructed_total)} (partial)`
-              : formatCurrency(q.total),
-            styles: { halign: 'right', fontStyle: 'bold' },
-          }),
-        },
-        { header: 'Work Status', width: 24, cell: q => ({ content: q.work_status || 'In progress' }) },
-        { header: 'Dependencies', width: 32, cell: q => ({ content: q.dependencies || '' }) },
-      );
-    }
-
-    if (includeKeyDates) {
-      columns.push({
-        header: 'Key Dates',
-        width: 50,
-        cell: q => {
-          const dates = (quoteKeyDates || [])
-            .filter(kd => kd.quote_id === q.id)
-            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-          return { content: dates.map(kd => `${formatDate(kd.date)} - ${kd.title || ''}`).join('\n') };
-        },
-      });
-    }
-
-    if (includeProgress) {
-      columns.push({
-        header: 'Progress',
-        cell: q => {
-          const progress = (actionsByQuote?.[q.id] || [])
-            .map(a => `${formatDate(a.action_date)} - ${a.summary}`)
-            .join('\n\n');
-          return { content: progress };
-        },
-      });
-    }
-
-    const head = [columns.map(c => c.header)];
-    const body = quotes.map(q => columns.map(c => c.cell(q)));
-    const columnStyles = Object.fromEntries(
-      columns.map((c, i) => [i, c.width ? { cellWidth: c.width } : {}])
-    );
-
-    autoTable(doc, {
-      head,
-      body,
-      startY: cursorY,
-      margin: { left: margin, right: margin, top: 13, bottom: 11 },
-      theme: 'grid',
-      styles: {
-        font: 'helvetica', fontSize: 7, cellPadding: 1.8, textColor: SLATE,
-        lineColor: [226, 232, 240], lineWidth: 0.15, valign: 'top', overflow: 'linebreak',
-      },
-      headStyles: {
-        fillColor: HEADER_FILL, textColor: [51, 65, 85], fontSize: 7.5,
-        fontStyle: 'bold', valign: 'middle', lineColor: [203, 213, 225],
-      },
-      columnStyles,
-      didDrawPage: (data) => {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(148, 163, 184);
-        doc.text(`Page ${data.pageNumber} of ${totalPagesExp}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
-        if (projectLine) doc.text(projectLine, margin, pageHeight - 5);
-      },
-    });
-
-    cursorY = doc.lastAutoTable.finalY + 10;
-    sectionDrawn = true;
-  }
-
-  // ── Programme timeline (its own page) ───────────────────────────────────
   if (includeProgramme) {
-    if (sectionDrawn) {
-      doc.addPage();
-      cursorY = 13;
-    }
+    if (sectionDrawn) doc.addPage();
     drawProgrammeTimeline(doc, {
-      quotes, programmeEvents: programmeEvents || [], quoteKeyDates: quoteKeyDates || [],
-      projectLine, margin, pageWidth, pageHeight, startY: cursorY,
+      project, quotes, programmeEvents: programmeEvents || [], quoteKeyDates: quoteKeyDates || [],
+      margin, pageWidth, pageHeight, totalPagesExp,
     });
   }
 

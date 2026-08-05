@@ -2,14 +2,18 @@
   import { onMount } from 'svelte';
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
-  import { exportConditionsPdf } from '$lib/services/conditionsPdfExport.js';
+  import { exportConditionsPdf, exportConditionsWithExtras } from '$lib/services/conditionsPdfExport.js';
   import AddConditionsModal from '$lib/components/projects/AddConditionsModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import ConditionEmailModal from '$lib/components/projects/ConditionEmailModal.svelte';
   import SummaryEmailModal from '$lib/components/projects/SummaryEmailModal.svelte';
   import BulkFeeQuoteModal from '$lib/components/projects/BulkFeeQuoteModal.svelte';
+  import ExportConditionsModal from '$lib/components/projects/ExportConditionsModal.svelte';
   import SelectSurveyorModal from '$lib/components/surveyor-briefings/SelectSurveyorModal.svelte';
   import { cleanPastedText } from '$lib/utils/pdfText.js';
+  import { getQuotes, getProgrammeEvents, getQuoteKeyDates } from '$lib/api/quotes.js';
+  import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
+  import { getQuoteActions } from '$lib/api/quoteActions.js';
   import {
     getConditionsData,
     updateCondition,
@@ -755,6 +759,56 @@
     } catch { /* non-fatal */ }
   }
 
+  // ── PDF export options modal (Conditions Tracker + optional surveyor
+  // management sections bundled into the same document) ─────────────────────
+  let showExportModal = false;
+
+  async function handleExportModalSubmit(event) {
+    const { includeQuotes, includeInstructed, includeProgramme } = event.detail;
+    showExportModal = false;
+    if (!conditions.length) { alert('No conditions to export.'); return; }
+
+    const conditionsWithProgress = sortedConditions.map(c => ({ ...c, advancements: mergedTimeline(c) }));
+
+    if (!includeQuotes && !includeInstructed && !includeProgramme) {
+      exportConditionsPdf(project, conditionsWithProgress);
+    } else {
+      const pid = project?.unique_id;
+      const needsQuotes = includeQuotes || includeInstructed || includeProgramme;
+      try {
+        const [quotesData, sentRequestsData, actionsData, programmeEventsData, quoteKeyDatesData] = await Promise.all([
+          needsQuotes ? getQuotes({ projectId: pid }) : Promise.resolve([]),
+          includeQuotes ? getSentRequestsForProject(pid) : Promise.resolve([]),
+          includeInstructed ? getQuoteActions(pid) : Promise.resolve([]),
+          includeProgramme ? getProgrammeEvents(pid) : Promise.resolve([]),
+          (includeInstructed || includeProgramme) ? getQuoteKeyDates(pid) : Promise.resolve([]),
+        ]);
+
+        const instructedQuotes = quotesData.filter(
+          q => q.instruction_status === 'instructed' || q.instruction_status === 'partially instructed'
+        );
+        const actionsByQuote = {};
+        for (const a of actionsData) (actionsByQuote[a.quote_id] ||= []).push(a);
+
+        exportConditionsWithExtras(
+          project,
+          conditionsWithProgress,
+          { quotes: quotesData, sentRequests: sentRequestsData, instructedQuotes, actionsByQuote, programmeEvents: programmeEventsData, quoteKeyDates: quoteKeyDatesData },
+          { includeQuotes, includeInstructed, includeProgramme }
+        );
+      } catch (err) {
+        console.error('Failed to export combined PDF:', err);
+        alert('Failed to export PDF: ' + err.message);
+        return;
+      }
+    }
+
+    try {
+      const updated = await markConditionsExported(projectId);
+      meta = { ...meta, ...updated };
+    } catch { /* non-fatal */ }
+  }
+
   async function handleExport() {
     if (!conditions.length) { alert('No conditions to export.'); return; }
     const html = buildExportHtml();
@@ -807,6 +861,12 @@
     }
   }
 </script>
+
+<ExportConditionsModal
+  show={showExportModal}
+  on:export={handleExportModalSubmit}
+  on:close={() => showExportModal = false}
+/>
 
 <AddConditionsModal
   bind:show={showAddConditions}
@@ -1080,7 +1140,7 @@
       <button class="btn btn-secondary btn-sm" on:click={handleExport} disabled={!conditions.length}>
         <i class="las la-file-word"></i> Word
       </button>
-      <button class="btn btn-secondary btn-sm" on:click={handleExportPdf} disabled={!conditions.length}>
+      <button class="btn btn-secondary btn-sm" on:click={() => showExportModal = true} disabled={!conditions.length}>
         <i class="las la-file-pdf"></i> PDF
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => isFullscreen = !isFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Open the tracker full screen'}>

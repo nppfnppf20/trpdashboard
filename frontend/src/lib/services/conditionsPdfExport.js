@@ -1,9 +1,14 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { drawTitleBlock, drawPageFooter, projectLineFor } from './pdfExportShared.js';
+import { drawQuotesSection } from './quotesPdfExport.js';
+import { drawInstructedTable, drawProgrammeTimeline } from './instructedPdfExport.js';
 
 // A4 landscape export of the Conditions Tracker: one merged block per
 // condition (like the on-screen table), one row slice per requirement,
-// full advancement history in the Progress column.
+// full advancement history in the Progress column. Can optionally bundle
+// that same project's Surveyor Quotes / Instructed / Programme sections
+// into the same document (see exportConditionsWithExtras).
 
 // Cell box fills (same scheme as the Excel copy): wording cell coloured by
 // condition type, req. type cell by requirement type, text stays dark.
@@ -16,7 +21,6 @@ const TYPE_FILLS = {
   'Informative': [146, 208, 80],
 };
 
-const SLATE = [51, 65, 85];
 const DONE_FILL = [240, 253, 244];
 
 function formatDate(d) {
@@ -24,30 +28,13 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
 }
 
-export function exportConditionsPdf(project, conditions) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 10;
-  const totalPagesExp = '{total_pages_count_string}';
-
-  // ── Title block (first page) ──────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(30, 41, 59);
-  doc.text('Conditions Tracker', margin, 13);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  const projectLine = [project?.project_id, project?.site_name || project?.project_name].filter(Boolean).join(' - ');
-  if (projectLine) doc.text(projectLine, margin, 19);
-
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    `Exported ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-    pageWidth - margin, 19, { align: 'right' }
-  );
+/**
+ * Draws the Conditions Tracker title + colour key + table onto the given
+ * doc, starting at the top of whatever page it's currently on.
+ */
+export function drawConditionsSection(doc, { project, conditions, margin, pageWidth, pageHeight, totalPagesExp }) {
+  const projectLine = projectLineFor(project);
+  let cursorY = drawTitleBlock(doc, { title: 'Conditions Tracker', projectLine, margin, pageWidth });
 
   // ── Colour key (replaces the Type column: box fills carry the type) ───────
   const legend = [
@@ -60,7 +47,7 @@ export function exportConditionsPdf(project, conditions) {
   doc.setFontSize(7);
   doc.setTextColor(51, 65, 85);
   let lx = margin;
-  const ly = 24.5;
+  const ly = cursorY - 1.5;
   for (const [label, fill] of legend) {
     doc.setFillColor(fill[0], fill[1], fill[2]);
     doc.setDrawColor(148, 163, 184);
@@ -122,14 +109,14 @@ export function exportConditionsPdf(project, conditions) {
   autoTable(doc, {
     head,
     body,
-    startY: 28,
+    startY: cursorY,
     margin: { left: margin, right: margin, top: 13, bottom: 11 },
     theme: 'grid',
     styles: {
       font: 'helvetica',
       fontSize: 6.8,
       cellPadding: 1.6,
-      textColor: SLATE,
+      textColor: [51, 65, 85],
       lineColor: [226, 232, 240],
       lineWidth: 0.15,
       valign: 'top',
@@ -153,13 +140,73 @@ export function exportConditionsPdf(project, conditions) {
       6: { cellWidth: 56 },
     },
     didDrawPage: (data) => {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(148, 163, 184);
-      doc.text(`Page ${data.pageNumber} of ${totalPagesExp}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
-      if (projectLine) doc.text(projectLine, margin, pageHeight - 5);
+      drawPageFooter(doc, { pageWidth, pageHeight, margin, projectLine, pageNumber: data.pageNumber, totalPagesExp });
     },
   });
+
+  return doc.lastAutoTable.finalY;
+}
+
+export function exportConditionsPdf(project, conditions) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  const totalPagesExp = '{total_pages_count_string}';
+
+  drawConditionsSection(doc, { project, conditions, margin, pageWidth, pageHeight, totalPagesExp });
+
+  if (typeof doc.putTotalPages === 'function') {
+    doc.putTotalPages(totalPagesExp);
+  }
+
+  const projectRef = project?.project_reference || project?.site_name || 'Project';
+  doc.save(`${projectRef} Conditions Tracker.pdf`);
+}
+
+/**
+ * Conditions Tracker plus, optionally, that project's Surveyor Quotes,
+ * Instructed Surveyors and Programme Timeline sections in the same PDF —
+ * each ticked section starts on its own fresh page.
+ * @param {object} extras - { quotes, sentRequests, instructedQuotes, actionsByQuote, programmeEvents, quoteKeyDates }
+ * @param {object} options - { includeQuotes, includeInstructed, includeProgramme }
+ */
+export function exportConditionsWithExtras(project, conditions, extras, options) {
+  const { includeQuotes = false, includeInstructed = false, includeProgramme = false } = options || {};
+  const {
+    quotes = [], sentRequests = [], instructedQuotes = [],
+    actionsByQuote = {}, programmeEvents = [], quoteKeyDates = [],
+  } = extras || {};
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  const totalPagesExp = '{total_pages_count_string}';
+
+  drawConditionsSection(doc, { project, conditions, margin, pageWidth, pageHeight, totalPagesExp });
+
+  if (includeQuotes) {
+    doc.addPage();
+    drawQuotesSection(doc, { project, quotes, sentRequests, margin, pageWidth, pageHeight, totalPagesExp });
+  }
+
+  if (includeInstructed) {
+    doc.addPage();
+    drawInstructedTable(doc, {
+      project, quotes: instructedQuotes, actionsByQuote, quoteKeyDates,
+      margin, pageWidth, pageHeight, totalPagesExp,
+      options: { includeTable: true, includeProgress: true, includeKeyDates: true },
+    });
+  }
+
+  if (includeProgramme) {
+    doc.addPage();
+    drawProgrammeTimeline(doc, {
+      quotes: instructedQuotes, programmeEvents, quoteKeyDates,
+      project, margin, pageWidth, pageHeight,
+    });
+  }
 
   if (typeof doc.putTotalPages === 'function') {
     doc.putTotalPages(totalPagesExp);
