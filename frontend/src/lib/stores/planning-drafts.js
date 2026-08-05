@@ -67,7 +67,7 @@ function api(typeId) {
     deleteSection:   (sid) => appealDeleteSection(sid),
     reorderSections: (_id, order) => appealReorderSections(rawId(typeId), order),
     generateDraft:   (pid, _id, opts) => generateDraftFromPaNotes(pid, rawId(typeId), opts),
-    generateSection: (pid, _id, sid) => generateSectionFromPaNotes(pid, rawId(typeId), sid),
+    generateSection: (pid, _id, sid, provider) => generateSectionFromPaNotes(pid, rawId(typeId), sid, provider),
   };
   if (isStage1(typeId)) {
     const slug = get(draftTypes).find(t => t.id === typeId)?.slug ?? 'stage1_review';
@@ -541,12 +541,12 @@ export async function handleGenerateAssessmentIssue(typeId, sectionId, trackId, 
   }
 }
 
-export async function handleGenerateSection(sectionId, explicitTypeId = null) {
+export async function handleGenerateSection(sectionId, explicitTypeId = null, provider = '') {
   sectionGenerating.set(sectionId);
   try {
     const typeId = explicitTypeId ?? get(sectionsTypeId);
     const a = api(typeId);
-    const result = await a.generateSection(_projectId, rawId(typeId), sectionId);
+    const result = await a.generateSection(_projectId, rawId(typeId), sectionId, provider);
     const currentHtml = get(drafts)[typeId]?.content_html ?? '';
     const section = get(sections).find(s => s.id === sectionId)
       ?? Object.values(get(cardSections)).flat().find(s => s.id === sectionId);

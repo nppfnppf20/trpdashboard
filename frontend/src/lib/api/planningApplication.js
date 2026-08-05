@@ -302,8 +302,12 @@ export async function generateDraft(projectId, typeId, opts = {}) {
   return res.json();
 }
 
-export async function generateDraftSection(projectId, typeId, sectionId) {
-  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/sections/${sectionId}/generate`, { method: 'POST' });
+export async function generateDraftSection(projectId, typeId, sectionId, provider) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/drafts/${typeId}/sections/${sectionId}/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider })
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to generate section');

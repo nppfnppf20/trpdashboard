@@ -308,9 +308,11 @@ export async function generateDraftFromPaNotes(projectId, typeId, { briefingNote
   return res.json();
 }
 
-export async function generateSectionFromPaNotes(projectId, typeId, sectionId) {
+export async function generateSectionFromPaNotes(projectId, typeId, sectionId, provider) {
   const res = await authFetch(`/api/appeal/projects/${projectId}/drafts/${typeId}/sections/${sectionId}/generate-from-pa`, {
-    method: 'POST'
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to generate section'); }
   return res.json();

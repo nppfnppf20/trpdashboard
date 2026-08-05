@@ -6,7 +6,7 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
-import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs, DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT, DEFAULT_INCORPORATE_APPEAL_PROMPT, DEFAULT_DRAFT_ARGUMENTS_PROMPT, DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT, DEFAULT_SCOPE_INCORPORATION_PROMPT } from '../services/llm.service.js';
+import { generateAppealArgument, reviewDocumentAgainstArgument, extractPointsFromDocument, buildExtractPointsPrompt, buildExtractPointsTemplate, generateAppealDraft, generateDraftSection, suggestArgumentAddition, buildArgumentSuggestionTemplate, draftIssueArgumentsFromBriefing, draftArgumentsFromIssueSummaries, draftKeyIssueSummariesFromBriefing, evolveArgumentFromBriefing, chatArgumentWithBriefing, summariseDocument, incorporateDocument, buildIssueContext, scopeDocumentIncorporation, incorporateTargetedParagraphs, resolveProvider, DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT, DEFAULT_INCORPORATE_APPEAL_PROMPT, DEFAULT_DRAFT_ARGUMENTS_PROMPT, DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT, DEFAULT_SCOPE_INCORPORATION_PROMPT } from '../services/llm.service.js';
 import { generateAppealDraftFromPrompt, generateIssueOrderedSection, generatePlanningPolicySection, amendDraftFromBriefing as amendDraftFromBriefingService, DEFAULT_DRAFT_PROMPT, DEFAULT_PA_APPEAL_DRAFT_PROMPT } from '../services/appeal.service.js';
 import { fetchLinkedPoliciesByTrack, fetchIssueTypesByTrack } from './planningApplication.controller.js';
 
@@ -1630,8 +1630,9 @@ export async function resetAppealTypePrompt(req, res) {
 
 export async function generateSectionFromPaNotes(req, res) {
   const { projectId, typeId, sectionId } = req.params;
-  const { briefingNoteId, developmentType: bodyDevType } = req.body ?? {};
+  const { briefingNoteId, developmentType: bodyDevType, provider: requestedProvider } = req.body ?? {};
   try {
+    const provider = await resolveProvider('appeal_draft_pa_notes', requestedProvider);
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type, address, local_planning_authority, development_description
        FROM public.projects WHERE id = $1`, [projectId]
@@ -1685,6 +1686,7 @@ export async function generateSectionFromPaNotes(req, res) {
             projectBrief: context.projectBrief,
             startingDocs: context.startingDocs,
             briefingNotes: context.briefingNotes,
+            provider,
           })
         : await generateIssueOrderedSection({
             sectionName: sectionDef.name,
@@ -1698,6 +1700,7 @@ export async function generateSectionFromPaNotes(req, res) {
             projectBrief: context.projectBrief,
             startingDocs: context.startingDocs,
             briefingNotes: context.briefingNotes,
+            provider,
           });
 
       return res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });
@@ -1735,7 +1738,8 @@ export async function generateSectionFromPaNotes(req, res) {
       projectName: project.project_name,
       draftTypeName: draftType.name,
       issueContext,
-      guidingBrief
+      guidingBrief,
+      provider,
     });
 
     res.json({ html, section_id: sectionDef.id, section_name: sectionDef.name });

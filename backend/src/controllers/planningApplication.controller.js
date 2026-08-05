@@ -1538,7 +1538,9 @@ export async function deleteDocTypePrompt(req, res) {
 
 export async function generateSection(req, res) {
   const { projectId, typeId, sectionId } = req.params;
+  const { provider: requestedProvider } = req.body ?? {};
   try {
+    const provider = await resolveProvider('planning_statement_draft', requestedProvider);
     const [{ rows: projectRows }, { rows: typeRows }] = await Promise.all([
       pool.query(`SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]),
       pool.query(`SELECT name, slug FROM planning_applications.draft_types WHERE id = $1`, [typeId]),
@@ -1562,7 +1564,7 @@ export async function generateSection(req, res) {
 
     if (section.template_html) {
       const { variables, briefingSummary } = await resolvePlanningStatementVariables(projectId);
-      html = await generateFromTemplate({ section, variables, briefingSummary, styleTemplate });
+      html = await generateFromTemplate({ section, variables, briefingSummary, styleTemplate, provider });
 
     } else if (section.slug === 'planning_assessment') {
       const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, { rows: bsRows }] = await Promise.all([
@@ -1591,7 +1593,7 @@ export async function generateSection(req, res) {
         projectName: projectRows[0].project_name,
         section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack,
         briefingSummary: bsRows[0]?.summary_html ?? null,
-        guidingBrief, styleTemplate
+        guidingBrief, styleTemplate, provider
       });
 
     } else if (section.generation_prompt?.includes('{{')) {
@@ -1604,7 +1606,7 @@ export async function generateSection(req, res) {
         );
         variables.FULL_STATEMENT = stripHtml(draftRows[0]?.content_html ?? '');
       }
-      html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate });
+      html = await generatePlanningStatementSection({ section, variables, sectionNumber: section.slug === 'conclusion' ? 0 : section.sort_order, briefingSummary, guidingBrief, styleTemplate, provider });
 
     } else {
       const [{ rows: issues }, evidenceByTrack] = await Promise.all([
@@ -1630,6 +1632,7 @@ export async function generateSection(req, res) {
         issueContext,
         guidingBrief,
         exampleDoc: styleTemplate ? { text: styleTemplate.style_text } : null,
+        provider,
       });
     }
 
