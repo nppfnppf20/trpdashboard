@@ -10,6 +10,8 @@ import helmet from 'helmet';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
+import { requestLogger } from './middleware/requestLogger.js';
+import { log, LOG_FILE_PATH } from './utils/logger.js';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -57,6 +59,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// 2b. Request logging — every request's start/finish + DB pool stats,
+// written to backend/logs/app.log for diagnosing intermittent issues after
+// the fact (see requestLogger.js for how to read it).
+app.use(requestLogger);
 
 // 3. Body parsing with size limits
 app.use(express.json({
@@ -112,11 +119,19 @@ app.listen(port, () => {
   console.log(`🔒 CORS enabled for: ${allowedOrigins.join(', ')}`);
   console.log(`🔑 Trust proxy: ENABLED`);
   console.log(`⏱️  Rate limiting: ${process.env.NODE_ENV === 'production' ? 'ENABLED (user-based)' : 'DISABLED (dev mode)'}`);
+  console.log(`🪵 Request/error log: ${LOG_FILE_PATH}`);
+  log('info', 'server started', { port });
 });
 
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections — these can otherwise fail silently:
+// the request that triggered one just hangs forever (its DB client, if any,
+// never gets released), which is invisible unless it's logged here.
 process.on('unhandledRejection', (err) => {
-  console.error('⚠️  Unhandled Promise Rejection:', err);
+  log('error', 'Unhandled Promise Rejection', { message: err?.message, stack: err?.stack });
   // In production, you might want to exit the process
   // process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  log('error', 'Uncaught Exception', { message: err?.message, stack: err?.stack });
 });
