@@ -38,10 +38,6 @@
     goto('/admin-console');
   }
 
-  function navigateToAppeal() {
-    goto('/appeal');
-  }
-
   function navigateToPlanning() {
     goto('/planning-application');
   }
@@ -584,28 +580,6 @@
         </div>
       </div>
 
-      <!-- Appeal Drafting Card — hidden from home page
-      <div class="tool-card" on:click={navigateToAppeal} on:keydown={(e) => e.key === 'Enter' && navigateToAppeal()} role="button" tabindex="0">
-        <div class="card-content">
-          <div class="card-icon card-icon-violet">
-            <i class="las la-balance-scale"></i>
-          </div>
-          <h2 class="card-title">Appeal Drafting</h2>
-          <p class="card-description">
-            Generate a structured working argument from refusal reasons and key issues, then iteratively strengthen it by uploading documents one at a time for AI-powered review.
-          </p>
-          <div class="features-list">
-            <div class="feature-item"><i class="las la-magic feature-icon-violet"></i><span>AI-Generated Starting Argument</span></div>
-            <div class="feature-item"><i class="las la-file-upload feature-icon-violet"></i><span>Document-by-Document Review</span></div>
-            <div class="feature-item"><i class="las la-edit feature-icon-violet"></i><span>Live Editable Working Draft</span></div>
-            <div class="feature-item"><i class="las la-layer-group feature-icon-violet"></i><span>Seeded from Key Issues</span></div>
-          </div>
-          <button class="tool-button tool-button-violet" on:click|stopPropagation={navigateToAppeal}>
-            Open Appeal Drafting <i class="las la-arrow-right"></i>
-          </button>
-        </div>
-      </div>
-      -->
 
     </div>
 
