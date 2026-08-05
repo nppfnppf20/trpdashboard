@@ -182,6 +182,7 @@
     {value}
     {placeholder}
     {disabled}
+    title={value}
     on:input={handleInput}
     on:focus={handleFocus}
     on:blur={handleBlur}

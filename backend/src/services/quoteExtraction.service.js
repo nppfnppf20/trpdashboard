@@ -11,6 +11,8 @@ VERBATIM RULE — this is the most important instruction: the "item" and "descri
 Field rules:
 - discipline: the surveying discipline this quote covers (e.g. "Ecology", "Heritage", "Landscape and Visual", "Noise", "Transport"). Use your judgement from the document content. Null if unclear.
 - organisation_name: the name of the organisation issuing the quote, exactly as written. This is shown to the user as a hint only.
+- contact_name: the name of the person to contact about this quote, if stated (e.g. in a signature block, letterhead, or "Prepared by" line), verbatim. Null if not stated.
+- contact_email: the email address of that contact, if stated, verbatim. Null if not stated.
 - quote_date: the date of the quote as YYYY-MM-DD, or null.
 - line_items: one entry per priced line in the fee schedule, in document order:
   - stage: the stage/phase heading the line sits under, verbatim, or null if the document has no stage grouping.
@@ -28,6 +30,8 @@ Respond with JSON only — no markdown, no explanation:
 {
   "discipline": string | null,
   "organisation_name": string | null,
+  "contact_name": string | null,
+  "contact_email": string | null,
   "quote_date": "YYYY-MM-DD" | null,
   "line_items": [
     { "stage": string | null, "item": string, "description": string | null, "cost": number | null, "vat_included": boolean, "is_optional": boolean, "is_tbc": boolean }

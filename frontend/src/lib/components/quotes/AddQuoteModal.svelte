@@ -1,10 +1,11 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
-  import { createQuote, extractQuoteFromDocument } from '$lib/api/quotes.js';
+  import { createQuote, extractQuoteFromDocument, extractQuoteFromPastedText } from '$lib/api/quotes.js';
   import { getAllSurveyorOrganisations } from '$lib/api/surveyorOrganisations.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
   import AutocompleteInput from '$lib/components/shared/AutocompleteInput.svelte';
+  import AddEditSurveyorModal from '$lib/components/admin-console/AddEditSurveyorModal.svelte';
 
   export let show = false;
   export let projectId = null;
@@ -27,6 +28,19 @@
   let dragOver = false;
   let fileInput;
   let extractionProvider = 'anthropic'; // 'anthropic' | 'openai' — which LLM reads the uploaded quote document
+
+  // ── Paste-text upload — for quotes copied out of an email rather than
+  // attached as a file. Reuses the same extraction/review/save pipeline. ──
+  let showPasteBox = false;
+  let pasteText = '';
+  let pastedCount = 0;
+
+  // ── Add-surveyor-from-extraction ────────────────────────────────────────
+  // When the extracted organisation doesn't match anything in the surveyor
+  // list, offer to create it (and its contact, if one was found in the
+  // document) without leaving the modal or losing queue progress.
+  let showAddSurveyorModal = false;
+  let addSurveyorPrefill = null;
 
   // Transform organisations to SearchableDropdown format
   $: organisationOptions = organisations.map(org => ({
@@ -72,6 +86,22 @@
 
   // Reactive total calculation - updates automatically when lineItems change (optional items excluded)
   $: total = lineItems.reduce((sum, item) => sum + (item.optional ? 0 : lineTotal(item)), 0);
+
+  // Auto-grows a textarea to fit its content instead of scrolling internally.
+  // Re-runs on both user typing (input event) and programmatic value changes
+  // (queue navigation, extraction prefill) via the action's `update` hook.
+  function autoGrow(node) {
+    function resize() {
+      node.style.height = 'auto';
+      node.style.height = `${node.scrollHeight}px`;
+    }
+    resize();
+    node.addEventListener('input', resize);
+    return {
+      update: resize,
+      destroy() { node.removeEventListener('input', resize); }
+    };
+  }
 
   function blankLineItem() {
     return { stage: '', item: '', description: '', cost: '', vatIncluded: true, optional: false, tbc: false };
@@ -143,6 +173,7 @@
     const items = files.map(file => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       file,
+      pastedText: null,
       name: file.name,
       status: 'queued',
       error: null,
@@ -152,6 +183,31 @@
     }));
     queue = [...queue, ...items];
     pumpQueue();
+  }
+
+  function enqueuePastedText(text) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return;
+    pastedCount++;
+    const item = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      file: null,
+      pastedText: trimmed,
+      name: `Pasted quote ${pastedCount}`,
+      status: 'queued',
+      error: null,
+      extractNotice: null,
+      form: blankForm(),
+      provider: extractionProvider
+    };
+    queue = [...queue, item];
+    pumpQueue();
+  }
+
+  function submitPastedText() {
+    enqueuePastedText(pasteText);
+    pasteText = '';
+    showPasteBox = false;
   }
 
   function pumpQueue() {
@@ -196,15 +252,45 @@
     return candidates[0];
   }
 
+  function openAddSurveyorModal() {
+    addSurveyorPrefill = {
+      organisation: currentItem?.extractNotice?.organisation || '',
+      discipline: discipline || currentItem?.extractedDiscipline || '',
+      contacts: currentItem?.extractedContact?.name
+        ? [{ name: currentItem.extractedContact.name, email: currentItem.extractedContact.email || '', is_primary: true }]
+        : []
+    };
+    showAddSurveyorModal = true;
+  }
+
+  // New org (and its contact, if any) just created — select it in the active
+  // form in place, no reload, so the batch queue and other fields survive.
+  function handleSurveyorSaved(event) {
+    const newOrg = event.detail;
+    organisations = [...organisations, newOrg];
+    organisation = newOrg.id;
+    contact = newOrg.contacts?.[0]?.id || '';
+    if (currentItem?.extractNotice) {
+      currentItem.extractNotice.organisation = null;
+      queue = queue; // currentItem is a queue entry — reassign to trigger Svelte reactivity
+    }
+    showAddSurveyorModal = false;
+  }
+
   async function startExtraction(item) {
     activeCount++;
     item.status = 'extracting';
     queue = queue;
     try {
-      if (!/\.(pdf|docx?|txt)$/i.test(item.file.name)) {
-        throw new Error('Please upload a PDF or Word document.');
+      let extraction, warning;
+      if (item.file) {
+        if (!/\.(pdf|docx?|txt)$/i.test(item.file.name)) {
+          throw new Error('Please upload a PDF or Word document.');
+        }
+        ({ extraction, warning } = await extractQuoteFromDocument(item.file, item.provider));
+      } else {
+        ({ extraction, warning } = await extractQuoteFromPastedText(item.pastedText, item.provider));
       }
-      const { extraction, warning } = await extractQuoteFromDocument(item.file, item.provider);
       const form = blankForm();
 
       // Discipline: only set if it matches an existing option
@@ -241,6 +327,11 @@
       item.extractNotice = {
         organisation: matchedOrg ? null : (extraction.organisation_name || null),
         warning: warning || null
+      };
+      item.extractedDiscipline = extraction.discipline || null;
+      item.extractedContact = {
+        name: extraction.contact_name || null,
+        email: extraction.contact_email || null
       };
       item.error = null;
     } catch (err) {
@@ -349,6 +440,8 @@
     queue = [];
     currentIndex = null;
     activeCount = 0;
+    showPasteBox = false;
+    pasteText = '';
     loadFormFrom(null);
   }
 
@@ -391,18 +484,39 @@
           </div>
         </div>
         {#if queue.length === 0}
-          <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
-          <div
-            class="extract-dropzone"
-            class:drag-over={dragOver}
-            on:click={() => fileInput.click()}
-            on:dragover|preventDefault={() => dragOver = true}
-            on:dragleave={() => dragOver = false}
-            on:drop|preventDefault={handleDrop}
-          >
-            <i class="las la-file-upload"></i>
-            Drag &amp; drop one or more quote PDFs here to prefill the form, or click to browse
-          </div>
+          {#if !showPasteBox}
+            <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
+            <div
+              class="extract-dropzone"
+              class:drag-over={dragOver}
+              on:click={() => fileInput.click()}
+              on:dragover|preventDefault={() => dragOver = true}
+              on:dragleave={() => dragOver = false}
+              on:drop|preventDefault={handleDrop}
+            >
+              <i class="las la-file-upload"></i>
+              Drag &amp; drop one or more quote PDFs here to prefill the form, or click to browse
+            </div>
+            <button type="button" class="paste-text-toggle-btn" on:click={() => showPasteBox = true}>
+              <i class="las la-paste"></i> Or paste quote text (e.g. from an email)
+            </button>
+          {:else}
+            <div class="paste-text-box">
+              <textarea
+                rows="8"
+                bind:value={pasteText}
+                placeholder="Paste the quote text here, including the surveyor's name, fees, and any line items…"
+              ></textarea>
+              <div class="paste-text-actions">
+                <button type="button" class="btn btn-secondary" on:click={() => { showPasteBox = false; pasteText = ''; }}>
+                  Cancel
+                </button>
+                <button type="button" class="btn btn-primary" on:click={submitPastedText} disabled={!pasteText.trim()}>
+                  <i class="las la-magic"></i> Process text
+                </button>
+              </div>
+            </div>
+          {/if}
         {:else}
           <div class="batch-strip">
             <div class="batch-dots">
@@ -431,8 +545,28 @@
               <button type="button" class="batch-add-btn" on:click={() => fileInput.click()}>
                 <i class="las la-plus"></i> Add more
               </button>
+              <button type="button" class="batch-add-btn" on:click={() => showPasteBox = true}>
+                <i class="las la-paste"></i> Paste text
+              </button>
             </div>
           </div>
+          {#if showPasteBox}
+            <div class="paste-text-box">
+              <textarea
+                rows="8"
+                bind:value={pasteText}
+                placeholder="Paste the quote text here, including the surveyor's name, fees, and any line items…"
+              ></textarea>
+              <div class="paste-text-actions">
+                <button type="button" class="btn btn-secondary" on:click={() => { showPasteBox = false; pasteText = ''; }}>
+                  Cancel
+                </button>
+                <button type="button" class="btn btn-primary" on:click={submitPastedText} disabled={!pasteText.trim()}>
+                  <i class="las la-magic"></i> Process text
+                </button>
+              </div>
+            </div>
+          {/if}
         {/if}
         <input
           type="file"
@@ -455,7 +589,7 @@
           {#if currentItem?.extractNotice}
             <div class="extract-notice">
               <i class="las la-magic"></i>
-              Fields suggested from the document — review everything before saving.
+              Fields suggested from {currentItem?.file ? 'the document' : 'the pasted text'} — review everything before saving.
               {#if currentItem.extractNotice.organisation}
                 Quote appears to be from <strong>{currentItem.extractNotice.organisation}</strong>; select the organisation and contact below.
               {/if}
@@ -463,6 +597,13 @@
                 <div class="extract-warning">{currentItem.extractNotice.warning}</div>
               {/if}
             </div>
+          {/if}
+
+          {#if currentItem?.extractNotice?.organisation && !organisation}
+            <button type="button" class="add-surveyor-btn" on:click={openAddSurveyorModal}>
+              <i class="las la-user-plus"></i>
+              Add "{currentItem.extractNotice.organisation}" as a new surveyor
+            </button>
           {/if}
 
           <!-- Discipline Field -->
@@ -536,11 +677,12 @@
                     />
                   </td>
                   <td>
-                    <input
-                      type="text"
+                    <textarea
+                      rows="1"
+                      use:autoGrow={lineItem.description}
                       bind:value={lineItem.description}
                       placeholder="Detailed description..."
-                    />
+                    ></textarea>
                   </td>
                   <td>
                     <input
@@ -672,6 +814,13 @@
       </div>
     </div>
   </div>
+
+  <AddEditSurveyorModal
+    show={showAddSurveyorModal}
+    prefill={addSurveyorPrefill}
+    on:saved={handleSurveyorSaved}
+    on:close={() => showAddSurveyorModal = false}
+  />
 {/if}
 
 <style>
@@ -693,7 +842,7 @@
     background: white;
     border-radius: 12px;
     width: 100%;
-    max-width: 800px;
+    max-width: 1120px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -835,7 +984,8 @@
     vertical-align: middle;
   }
 
-  .line-items-table input {
+  .line-items-table input,
+  .line-items-table textarea {
     width: 100%;
     padding: 0.625rem;
     border: 1px solid #cbd5e1;
@@ -848,7 +998,15 @@
     margin: 0;
   }
 
-  .line-items-table input:focus {
+  .line-items-table textarea {
+    resize: none;
+    overflow: hidden;
+    min-height: 2.5rem;
+    line-height: 1.4;
+  }
+
+  .line-items-table input:focus,
+  .line-items-table textarea:focus {
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
@@ -1077,6 +1235,51 @@
   .extract-dropzone:hover { border-color: #93c5fd; background: #eff6ff; color: #2563eb; }
   .extract-dropzone.drag-over { border-color: #3b82f6; background: #dbeafe; color: #1d4ed8; }
 
+  .paste-text-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0;
+    background: none;
+    border: none;
+    color: #3b82f6;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    align-self: flex-start;
+  }
+  .paste-text-toggle-btn:hover { text-decoration: underline; }
+
+  .paste-text-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .paste-text-box textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: #1e293b;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+
+  .paste-text-box textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  .paste-text-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+  }
+
   .extract-notice {
     padding: 0.6rem 0.85rem;
     border: 1px solid #bfdbfe;
@@ -1099,6 +1302,23 @@
     color: #dc2626;
     font-size: 0.8rem;
   }
+
+  .add-surveyor-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.85rem;
+    background: white;
+    color: #3b82f6;
+    border: 1px dashed #93c5fd;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    align-self: flex-start;
+  }
+  .add-surveyor-btn:hover { background: #eff6ff; border-color: #3b82f6; }
 
   /* Batch upload progress strip */
   .batch-strip {

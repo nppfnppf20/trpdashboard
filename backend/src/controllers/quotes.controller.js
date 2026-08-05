@@ -9,26 +9,37 @@ import { extractQuoteFromText } from '../services/quoteExtraction.service.js';
 
 /**
  * POST /api/admin-console/quotes/extract-from-document
- * Parse an uploaded fee quote (PDF/Word) and extract fields to prefill the
- * Add Quote form. Nothing is saved; the user reviews the suggestion.
+ * Parse an uploaded fee quote (PDF/Word) — or pasted quote text, e.g. copied
+ * from an email — and extract fields to prefill the Add Quote form. Nothing
+ * is saved; the user reviews the suggestion.
  */
 export async function extractFromDocument(req, res) {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    let text, sourceName, warning = null;
 
-    const result = await parseFile(req.file.buffer, req.file.originalname);
-    const text = (typeof result === 'string' ? result : result.text) || '';
+    if (req.file) {
+      const result = await parseFile(req.file.buffer, req.file.originalname);
+      text = (typeof result === 'string' ? result : result.text) || '';
+      sourceName = req.file.originalname;
+      warning = typeof result === 'object' ? result.warning ?? null : null;
+    } else if (typeof req.body?.text === 'string' && req.body.text.trim()) {
+      text = req.body.text;
+      sourceName = 'Pasted text';
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
     if (!text.trim()) {
       return res.status(422).json({ error: 'Could not read any text from this document. Scanned PDFs are not supported.' });
     }
 
     const provider = req.body.provider === 'openai' ? 'openai' : 'anthropic';
-    const extraction = await extractQuoteFromText(text, req.file.originalname, provider);
+    const extraction = await extractQuoteFromText(text, sourceName, provider);
     if (!extraction) {
-      return res.status(422).json({ error: 'Could not extract quote details from this document.' });
+      return res.status(422).json({ error: 'Could not extract quote details from this text.' });
     }
 
-    res.json({ extraction, warning: typeof result === 'object' ? result.warning ?? null : null });
+    res.json({ extraction, warning });
   } catch (error) {
     console.error('Error extracting quote from document:', error);
     res.status(500).json({ error: 'Failed to extract quote from document', details: error.message });

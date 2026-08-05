@@ -4,6 +4,7 @@
 
   export let show = false;
   export let surveyor = null; // null for add, object for edit
+  export let prefill = null; // optional seed values for add mode only — { organisation, discipline, contacts }
 
   const dispatch = createEventDispatcher();
 
@@ -44,6 +45,14 @@
       approval_status = surveyor.approval_status || 'approved';
       small_business = surveyor.small_business || '';
       contacts = (surveyor.contacts || []).map(c => ({ ...c }));
+    } else if (prefill) {
+      organisation = prefill.organisation || '';
+      discipline = prefill.discipline || '';
+      location = '';
+      notes = '';
+      approval_status = 'approved';
+      small_business = '';
+      contacts = (prefill.contacts || []).map(c => ({ ...c }));
     } else {
       organisation = '';
       discipline = '';
@@ -115,13 +124,11 @@
     };
 
     try {
-      if (isEditMode) {
-        await updateSurveyorOrganisation(surveyor.id, data);
-      } else {
-        await createSurveyorOrganisation(data);
-      }
+      const saved = isEditMode
+        ? await updateSurveyorOrganisation(surveyor.id, data)
+        : await createSurveyorOrganisation(data);
       show = false;
-      dispatch('saved');
+      dispatch('saved', saved);
     } catch (err) {
       error = err.message;
     } finally {

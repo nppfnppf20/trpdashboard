@@ -34,6 +34,19 @@ export async function extractQuoteFromDocument(file, provider = 'anthropic') {
   return await response.json(); // { extraction, warning }
 }
 
+export async function extractQuoteFromPastedText(text, provider = 'anthropic') {
+  const response = await authFetch(`${API_BASE_URL}/quotes/extract-from-document`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, provider }),
+  });
+  if (!response.ok) {
+    const e = await response.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to extract quote from pasted text');
+  }
+  return await response.json(); // { extraction, warning }
+}
+
 export async function getQuoteById(id) {
   const response = await authFetch(`${API_BASE_URL}/quotes/${id}`);
   if (!response.ok) throw new Error('Failed to fetch quote');
