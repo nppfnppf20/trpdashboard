@@ -156,6 +156,32 @@
     e.target.value = '';
   }
 
+  // Loose match: strip common suffixes/punctuation so "Acme Ecology Ltd" matches "Acme Ecology"
+  function normaliseOrgName(name) {
+    return (name || '')
+      .toLowerCase()
+      .replace(/[.,]/g, '')
+      .replace(/\b(ltd|limited|llp|plc|consultants?|consulting|associates?)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function findMatchingOrganisation(name, disciplineLabel) {
+    const target = normaliseOrgName(name);
+    if (!target) return null;
+    const candidates = organisations.filter(org => {
+      const orgName = normaliseOrgName(org.organisation);
+      return orgName && (orgName === target || orgName.includes(target) || target.includes(orgName));
+    });
+    if (candidates.length <= 1) return candidates[0] || null;
+    // Same organisation name can appear once per discipline — prefer the row matching the extracted discipline
+    if (disciplineLabel) {
+      const disciplineMatch = candidates.find(o => (o.discipline || '').toLowerCase() === disciplineLabel.toLowerCase());
+      if (disciplineMatch) return disciplineMatch;
+    }
+    return candidates[0];
+  }
+
   async function runExtraction(file) {
     if (!/\.(pdf|docx?|txt)$/i.test(file.name)) {
       extractError = 'Please upload a PDF or Word document.';
@@ -173,6 +199,13 @@
           o => o.label.toLowerCase() === extraction.discipline.toLowerCase()
         );
         if (match) discipline = match.label;
+      }
+
+      // Organisation: auto-select on a confident match; contact is always left for the user
+      let matchedOrg = null;
+      if (extraction.organisation_name) {
+        matchedOrg = findMatchingOrganisation(extraction.organisation_name, discipline);
+        if (matchedOrg) organisation = matchedOrg.id;
       }
 
       if (extraction.line_items?.length) {
@@ -193,7 +226,10 @@
           : extraction.notes;
       }
 
-      extractNotice = { organisation: extraction.organisation_name || null, warning: warning || null };
+      extractNotice = {
+        organisation: matchedOrg ? null : (extraction.organisation_name || null),
+        warning: warning || null
+      };
     } catch (err) {
       extractError = err.message;
     } finally {
