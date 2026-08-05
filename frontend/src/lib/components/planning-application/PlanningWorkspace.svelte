@@ -154,12 +154,12 @@
     proposed_development: 'Proposed Development',
   };
 
-  // Planning Statement v3 is the one we actually use day to day — the
-  // original (planning_statement) and v2 (planning_statement_v2) stay out of
-  // the main card list by default, tucked behind a small picker instead of
-  // cluttering the list with three versions of the same document. Purely a
-  // display filter — nothing about how any of the three actually work
-  // changes here.
+  // Planning Statement v3 and Stage 1 Review v3 are the ones we actually use
+  // day to day — their older versions stay out of the main card list by
+  // default, tucked behind a small picker on the v3 card instead of
+  // cluttering the list with multiple versions of the same document. Purely
+  // a display filter — nothing about how any version actually works changes
+  // here.
   const LEGACY_PLANNING_STATEMENT_SLUGS = ['planning_statement', 'planning_statement_v2'];
   const LEGACY_PLANNING_STATEMENT_LABELS = {
     planning_statement:    'Original',
@@ -167,10 +167,53 @@
   };
   let visibleLegacyPlanningStatementSlug = '';
 
+  const LEGACY_STAGE1_SLUGS = ['stage1_review', 'stage1_review_v2'];
+  const LEGACY_STAGE1_LABELS = {
+    stage1_review:    'Original',
+    stage1_review_v2: 'v2',
+  };
+  let visibleLegacyStage1Slug = '';
+
+  const LEGACY_HLPV_SLUGS = ['hlpv_narrative'];
+  const LEGACY_HLPV_LABELS = {
+    hlpv_narrative: 'Original',
+  };
+  let visibleLegacyHlpvSlug = '';
+
+  // Draft types not in this list keep their relative order and are appended
+  // after all of these — Array.prototype.sort is stable, so this is purely
+  // a "pull these to the front, in this order" list.
+  const CARD_ORDER_PRIORITY = [
+    'hlpv_v3',
+    'stage1_review_v3',
+    'pre_application_request',
+    'planning_statement_v3',
+    'statement_of_common_ground',
+    'statement_of_case',
+  ];
+
+  // Not yet ready to generate — shown as a static "Coming Soon" card instead
+  // of a live draft-type card.
+  const COMING_SOON_SLUGS = ['socio_economic_baseline'];
+
   $: legacyPlanningStatementTypes = ($draftTypes ?? []).filter(t => LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug));
-  $: visibleDraftTypes = ($draftTypes ?? []).filter(t =>
-    !LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug) || t.slug === visibleLegacyPlanningStatementSlug
-  );
+  $: legacyStage1Types = ($draftTypes ?? []).filter(t => LEGACY_STAGE1_SLUGS.includes(t.slug));
+  $: legacyHlpvTypes = ($draftTypes ?? []).filter(t => LEGACY_HLPV_SLUGS.includes(t.slug));
+  $: visibleDraftTypes = ($draftTypes ?? [])
+    .filter(t =>
+      (!LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug) || t.slug === visibleLegacyPlanningStatementSlug) &&
+      (!LEGACY_STAGE1_SLUGS.includes(t.slug) || t.slug === visibleLegacyStage1Slug) &&
+      (!LEGACY_HLPV_SLUGS.includes(t.slug) || t.slug === visibleLegacyHlpvSlug) &&
+      !COMING_SOON_SLUGS.includes(t.slug)
+    )
+    .sort((a, b) => {
+      const ai = CARD_ORDER_PRIORITY.indexOf(a.slug);
+      const bi = CARD_ORDER_PRIORITY.indexOf(b.slug);
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
 
   function injectSummaryIntoDraft(docType, summaryHtml) {
     const label = PROJ_DOC_PLACEHOLDER_LABELS[docType];
@@ -225,7 +268,7 @@
     }
   }
 
-  let activeTab = 'key-issues';
+  let activeTab = 'draft';
 
   let keyIssues = [];
   let issueNotes = {};
@@ -499,14 +542,14 @@
 
   <!-- Tabs -->
   <div class="tabs">
+    <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
+      Draft Document
+    </button>
     <button class="tab" class:active={activeTab === 'key-issues'} on:click={() => activeTab = 'key-issues'}>
       Planning Issues
     </button>
     <button class="tab" class:active={activeTab === 'drafting-issues'} on:click={() => activeTab = 'drafting-issues'}>
       Drafting Issues
-    </button>
-    <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
-      Draft Document
     </button>
 
   </div>
@@ -762,18 +805,6 @@
       <div class="tab-body">
         <div class="draft-types-list">
 
-          {#if legacyPlanningStatementTypes.length}
-            <div class="legacy-ps-picker">
-              <label for="legacy-ps-select">Older Planning Statement versions</label>
-              <select id="legacy-ps-select" bind:value={visibleLegacyPlanningStatementSlug}>
-                <option value="">Hidden</option>
-                {#each legacyPlanningStatementTypes as t (t.id)}
-                  <option value={t.slug}>{LEGACY_PLANNING_STATEMENT_LABELS[t.slug] ?? t.name}</option>
-                {/each}
-              </select>
-            </div>
-          {/if}
-
           <!-- ── Planning statement + other draft type cards ── -->
           {#each visibleDraftTypes as type (type.id)}
             {@const draft = $drafts[type.id]}
@@ -877,6 +908,28 @@
                   {:else}
                     <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
                   {/if}
+                  {#if type.slug === 'planning_statement_v3' && legacyPlanningStatementTypes.length}
+                    <select class="card-dev-type-select" bind:value={visibleLegacyPlanningStatementSlug} title="Show an older Planning Statement version as its own card">
+                      <option value="">v3 only</option>
+                      {#each legacyPlanningStatementTypes as t (t.id)}
+                        <option value={t.slug}>{LEGACY_PLANNING_STATEMENT_LABELS[t.slug] ?? t.name}</option>
+                      {/each}
+                    </select>
+                  {:else if type.slug === 'stage1_review_v3' && legacyStage1Types.length}
+                    <select class="card-dev-type-select" bind:value={visibleLegacyStage1Slug} title="Show an older Stage 1 Review version as its own card">
+                      <option value="">v3 only</option>
+                      {#each legacyStage1Types as t (t.id)}
+                        <option value={t.slug}>{LEGACY_STAGE1_LABELS[t.slug] ?? t.name}</option>
+                      {/each}
+                    </select>
+                  {:else if type.slug === 'hlpv_v3' && legacyHlpvTypes.length}
+                    <select class="card-dev-type-select" bind:value={visibleLegacyHlpvSlug} title="Show an older HLPV version as its own card">
+                      <option value="">v3 only</option>
+                      {#each legacyHlpvTypes as t (t.id)}
+                        <option value={t.slug}>{LEGACY_HLPV_LABELS[t.slug] ?? t.name}</option>
+                      {/each}
+                    </select>
+                  {/if}
                 </div>
               </div>
 
@@ -955,6 +1008,16 @@
               {/if}
             </div>
           {/each}
+
+          <!-- ── Socio-economic Baseline Assessment — Coming Soon ── -->
+          <div class="draft-type-card draft-type-card--coming-soon">
+            <div class="draft-type-main">
+              <div class="draft-type-info">
+                <span class="draft-type-name">Socio-economic Baseline Assessment <span class="coming-soon-badge">Coming Soon</span></span>
+                <span class="draft-type-desc">Baseline assessment of the socio-economic conditions relevant to the proposed development.</span>
+              </div>
+            </div>
+          </div>
 
           <!-- ── Certificate B Notice — Coming Soon ── -->
           <div class="draft-type-card draft-type-card--coming-soon">
@@ -2487,29 +2550,6 @@
     max-width: 130px;
   }
 
-  .legacy-ps-picker {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    justify-content: flex-end;
-  }
-
-  .legacy-ps-picker label {
-    font-size: 0.75rem;
-    color: #94a3b8;
-  }
-
-  .legacy-ps-picker select {
-    padding: 0.3rem 0.5rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-family: inherit;
-    color: #374151;
-    background: white;
-    cursor: pointer;
-  }
   .card-dev-type-select:focus { outline: none; border-color: #7c3aed; }
 
   .draft-open-btn {
