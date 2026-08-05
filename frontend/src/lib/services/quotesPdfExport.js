@@ -7,6 +7,18 @@ import autoTable from 'jspdf-autotable';
 
 const SLATE = [51, 65, 85];
 
+// Mirrors the status pill colours from badges.css (badge-select-*)
+const STATUS_COLORS = {
+  'pending': { fill: [254, 243, 199], text: [146, 64, 14] },
+  'instructed': { fill: [209, 250, 229], text: [6, 95, 70] },
+  'partially instructed': { fill: [209, 250, 229], text: [6, 95, 70] },
+  'will not be instructed': { fill: [254, 226, 226], text: [153, 27, 27] },
+};
+
+function statusColors(status) {
+  return STATUS_COLORS[(status || 'pending').toLowerCase()] || STATUS_COLORS.pending;
+}
+
 function formatDate(d) {
   if (!d) return '';
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
@@ -113,11 +125,13 @@ export function exportQuotesPdf(project, quotes, sentRequests) {
     items.forEach((item, i) => {
       const row = [];
       if (i === 0) {
+        const statusText = q.instruction_status || 'pending';
+        const sc = statusColors(statusText);
         row.push(
           { content: q.discipline || '', rowSpan: span, styles: { fontStyle: 'bold' } },
           { content: q.surveyor_organisation || '', rowSpan: span },
           { content: q.contact_name || '', rowSpan: span },
-          { content: q.instruction_status || 'pending', rowSpan: span },
+          { content: statusText, rowSpan: span, styles: { fillColor: sc.fill, textColor: sc.text, fontStyle: 'bold' } },
         );
       }
       row.push(

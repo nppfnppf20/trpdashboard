@@ -157,6 +157,28 @@ function elementToOOXML(el, styles = DEF_STYLES) {
   }
 }
 
+// Reads background/color/font-weight off a table cell's inline style attribute
+// (e.g. status pills coloured to match their on-screen badge) so they survive
+// into the OOXML table instead of being silently dropped.
+function parseCellStyle(cell) {
+  const style = cell.getAttribute('style') || '';
+  const result = {};
+  style.split(';').forEach(decl => {
+    const [prop, val] = decl.split(':').map(s => s && s.trim());
+    if (!prop || !val) return;
+    if (prop === 'background' || prop === 'background-color') result.bg = val;
+    else if (prop === 'color') result.color = val;
+    else if (prop === 'font-weight' && (val === 'bold' || parseInt(val, 10) >= 600)) result.bold = true;
+  });
+  return result;
+}
+
+function hexToOoxml(hex) {
+  if (!hex) return null;
+  const h = hex.replace('#', '');
+  return (h.length === 3 ? h.split('').map(c => c + c).join('') : h).toUpperCase();
+}
+
 function generalTableToOOXML(tableEl) {
   const rows = Array.from(tableEl.querySelectorAll('tr'));
   if (!rows.length) return '';
@@ -183,10 +205,13 @@ function generalTableToOOXML(tableEl) {
     const isHeader = cells.some(c => c.tagName.toLowerCase() === 'th');
     const cellsXml = cells.map(cell => {
       const text = escapeXml(cell.textContent.trim());
-      const runs = isHeader || cell.tagName.toLowerCase() === 'th'
-        ? `<w:r><w:rPr><w:b/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`
-        : `<w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
-      return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/></w:tcPr><w:p>${runs}</w:p></w:tc>`;
+      const isHeaderCell = isHeader || cell.tagName.toLowerCase() === 'th';
+      const { bg, color, bold } = parseCellStyle(cell);
+      const boldTag = (isHeaderCell || bold) ? '<w:b/>' : '';
+      const colorTag = color ? `<w:color w:val="${hexToOoxml(color)}"/>` : '';
+      const runs = `<w:r><w:rPr>${boldTag}<w:sz w:val="18"/><w:szCs w:val="18"/>${colorTag}</w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      const shdTag = bg ? `<w:shd w:val="clear" w:color="auto" w:fill="${hexToOoxml(bg)}"/>` : '';
+      return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/>${shdTag}</w:tcPr><w:p>${runs}</w:p></w:tc>`;
     }).join('');
     const trPr = isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
     return `<w:tr>${trPr}${cellsXml}</w:tr>`;

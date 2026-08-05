@@ -390,9 +390,26 @@
     }
   }
 
+  // Mirrors the status pill colours from badges.css (badge-select-*)
+  const STATUS_COLORS = {
+    'pending': { bg: '#fef3c7', text: '#92400e' },
+    'instructed': { bg: '#d1fae5', text: '#065f46' },
+    'partially instructed': { bg: '#d1fae5', text: '#065f46' },
+    'will not be instructed': { bg: '#fee2e2', text: '#991b1b' },
+  };
+
+  function statusColors(status) {
+    return STATUS_COLORS[(status || 'pending').toLowerCase()] || STATUS_COLORS.pending;
+  }
+
   function buildExportHtml() {
     const th = (t) => `<th style="text-align:left;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;font-size:11px;font-weight:600;">${t}</th>`;
     const td = (t) => `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;">${t ?? ''}</td>`;
+    const statusTd = (status) => {
+      const text = status || 'pending';
+      const { bg, text: color } = statusColors(text);
+      return `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;background:${bg};color:${color};font-weight:600;">${text}</td>`;
+    };
 
     const requestRows = sentRequests.map(r => {
       const recipients = (r.recipients || [])
@@ -414,7 +431,7 @@
         ${td(q.discipline || '')}
         ${td(q.surveyor_organisation || '')}
         ${td(q.contact_name || '')}
-        ${td(q.instruction_status || 'pending')}
+        ${statusTd(q.instruction_status)}
         ${td(item ? (item.item || '') : 'No line items')}
         ${td(item ? formatCurrency(item.cost) : '')}
         ${td(item ? (item.vat_included ? 'Y' : 'N') : '')}
