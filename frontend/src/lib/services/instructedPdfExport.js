@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { drawTitleBlock, drawPageFooter, projectLineFor } from './pdfExportShared.js';
+import { drawTitleBlock, drawPageFooter, projectLineFor, sortQuotesByDiscipline } from './pdfExportShared.js';
 
 // A4 landscape export of the Instructed Surveyors page: the instructed
 // table (optionally with Key Dates / Progress columns mirroring the
@@ -136,6 +136,7 @@ export function drawInstructedTable(doc, { project, quotes, actionsByQuote, quot
   const { includeTable = true, includeProgress = true, includeKeyDates = true } = options || {};
   if (!includeTable && !includeProgress && !includeKeyDates) return null;
 
+  quotes = sortQuotesByDiscipline(quotes);
   const projectLine = projectLineFor(project);
   const cursorY = drawTitleBlock(doc, { title: 'Instructed Surveyors', projectLine, margin, pageWidth });
 
@@ -222,6 +223,7 @@ export function drawInstructedTable(doc, { project, quotes, actionsByQuote, quot
  * doc, starting at the top of whatever page it's currently on.
  */
 export function drawProgrammeTimeline(doc, { project, quotes, programmeEvents, quoteKeyDates, margin, pageWidth, pageHeight, totalPagesExp }) {
+  quotes = sortQuotesByDiscipline(quotes);
   const projectLine = projectLineFor(project);
   let cursorY = drawTitleBlock(doc, { title: 'Programme Timeline', projectLine, margin, pageWidth });
 

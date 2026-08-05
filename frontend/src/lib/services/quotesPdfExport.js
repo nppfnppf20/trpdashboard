@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { drawTitleBlock, drawPageFooter, projectLineFor } from './pdfExportShared.js';
+import { drawTitleBlock, drawPageFooter, projectLineFor, sortQuotesByDiscipline } from './pdfExportShared.js';
 
 // A4 landscape export of the Surveyor Quotes page: quote requests sent,
 // followed by quotes received with their line items (mirrors the Conditions
@@ -41,6 +41,7 @@ function lineTotal(item) {
  * currently on.
  */
 export function drawQuotesSection(doc, { project, quotes, sentRequests, margin, pageWidth, pageHeight, totalPagesExp }) {
+  quotes = sortQuotesByDiscipline(quotes);
   const projectLine = projectLineFor(project);
   let cursorY = drawTitleBlock(doc, { title: 'Surveyor Quotes Summary', projectLine, margin, pageWidth });
 

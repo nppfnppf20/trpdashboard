@@ -86,6 +86,7 @@
 
   // Reactive total calculation - updates automatically when lineItems change (optional items excluded)
   $: total = lineItems.reduce((sum, item) => sum + (item.optional ? 0 : lineTotal(item)), 0);
+  $: subtotal = lineItems.reduce((sum, item) => sum + (item.optional ? 0 : (parseFloat(item.cost) || 0)), 0);
 
   // Auto-grows a textarea to fit its content instead of scrolling internally.
   // Re-runs on both user typing (input event) and programmatic value changes
@@ -752,8 +753,14 @@
 
           <!-- Total Display -->
           <div class="total-display">
-            <span class="total-label">Total:</span>
-            <span class="total-amount">£{total.toFixed(2)}</span>
+            <div class="subtotal-row">
+              <span class="subtotal-label">Subtotal (excl. VAT):</span>
+              <span class="subtotal-amount">£{subtotal.toFixed(2)}</span>
+            </div>
+            <div class="total-row">
+              <span class="total-label">Total:</span>
+              <span class="total-amount">£{total.toFixed(2)}</span>
+            </div>
           </div>
 
           <!-- Additional Notes Section -->
@@ -1085,13 +1092,32 @@
 
   .total-display {
     display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 1rem;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
     padding: 1rem;
     background: #f0f9ff;
     border: 1px solid #bfdbfe;
     border-radius: 6px;
+  }
+
+  .subtotal-row,
+  .total-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .subtotal-label {
+    font-weight: 500;
+    color: #475569;
+    font-size: 0.8rem;
+  }
+
+  .subtotal-amount {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #475569;
   }
 
   .total-label {

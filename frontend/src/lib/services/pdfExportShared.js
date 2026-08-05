@@ -45,3 +45,21 @@ export function projectLineFor(project) {
   return [project?.project_code || project?.project_reference || project?.project_id, project?.site_name || project?.project_name]
     .filter(Boolean).join(' - ');
 }
+
+/**
+ * Returns a new array of quotes sorted by discipline (A-Z, blanks last),
+ * then by organisation name as a tiebreaker within the same discipline.
+ * Used by every surveyor-management PDF export so the printed order is
+ * consistent regardless of the order quotes were added/instructed in.
+ */
+export function sortQuotesByDiscipline(quotes) {
+  return [...(quotes || [])].sort((a, b) => {
+    const da = a.discipline || '';
+    const db = b.discipline || '';
+    if (!da && db) return 1;
+    if (da && !db) return -1;
+    const d = da.localeCompare(db);
+    if (d !== 0) return d;
+    return (a.surveyor_organisation || '').localeCompare(b.surveyor_organisation || '');
+  });
+}
