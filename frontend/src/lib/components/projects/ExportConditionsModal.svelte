@@ -80,7 +80,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1100;
+    z-index: 2000;
     padding: 1rem;
   }
 
