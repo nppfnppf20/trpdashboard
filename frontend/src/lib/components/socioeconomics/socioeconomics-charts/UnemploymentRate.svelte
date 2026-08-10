@@ -60,7 +60,8 @@
       { label: 'Jul 2021 - Jun 2022', column: 'jul21_jun22_uep' },
       { label: 'Jul 2022 - Jun 2023', column: 'jul22_jun23_uep' },
       { label: 'Jul 2023 - Jun 2024', column: 'jul23_jun24_uep' },
-      { label: 'Jul 2024 - Jun 2025', column: 'jul24_jun25_uep' }
+      { label: 'Jul 2024 - Jun 2025', column: 'jul24_jun25_uep' },
+      { label: 'Apr 2025 - Mar 2026', column: 'apr25_26_uep' }
     ];
 
     const yearLabels = years.map(y => y.label);

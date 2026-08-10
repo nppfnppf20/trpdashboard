@@ -31,38 +31,38 @@ export const LLM_PROCESS_REGISTRY = [
     description: 'Generates planning statement assessments, sections, and template slots.',
     status: 'configurable',
   },
-
-  // ── claude_only ───────────────────────────────────────────────────────
   {
-    key: 'appeal_draft_legacy',
-    label: 'Appeal Draft Generation (legacy/manual)',
-    description: 'Manual appeal draft generation, not driven by PA briefing notes.',
-    status: 'claude_only',
+    key: 'hlpv_v3_generate',
+    label: 'HLPV v3 Generation',
+    description: 'Generates the High-Level Planning View narrative (v3).',
+    status: 'configurable',
   },
   {
-    key: 'appeal_section_generate',
-    label: 'Appeal Section Generation (manual)',
-    description: 'Manual per-section appeal draft generation.',
-    status: 'claude_only',
+    key: 'stage1_review',
+    label: 'Stage 1 Review Generation',
+    description: 'Generates the Stage 1 review document (all versions).',
+    status: 'configurable',
   },
   {
     key: 'appeal_argument_building',
-    label: 'Appeal Argument Building / Chat / Incorporation',
-    description: 'Argument drafting, document incorporation, and briefing chat within the appeal workspace.',
-    status: 'claude_only',
+    label: 'Draft Document Incorporation',
+    description: 'Scoping and applying source-document incorporation into a draft (used by the Incorporate panel on planning-application draft-type cards).',
+    status: 'configurable',
   },
   {
     key: 'planning_statement_helpers',
     label: 'Planning Statement Helper Functions',
     description: 'Summarisation, transcript suggestions, and issue/argument drafting helpers in the planning statement workspace.',
-    status: 'claude_only',
+    status: 'configurable',
   },
   {
     key: 'draft_check',
     label: 'Draft Check',
     description: 'Brief coverage, consistency, and grammar checks on a draft.',
-    status: 'claude_only',
+    status: 'configurable',
   },
+
+  // ── claude_only ───────────────────────────────────────────────────────
   {
     key: 'scraper_filter',
     label: 'Scraper Result Filtering',

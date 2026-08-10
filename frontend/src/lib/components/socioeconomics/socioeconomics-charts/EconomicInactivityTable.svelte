@@ -82,7 +82,7 @@
 
 <div class="table-wrapper">
   <div class="table-header">
-    <h3>Economic Inactivity by Reason, Annual Population Survey, Jul 2024 - Jun 2025</h3>
+    <h3>Economic Inactivity by Reason, Annual Population Survey, Apr 2025 - Mar 2026</h3>
   </div>
 
   {#if warnings.length > 0}

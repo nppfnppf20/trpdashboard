@@ -7,10 +7,7 @@
  */
 
 import { pool } from '../db.js';
-import Anthropic from '@anthropic-ai/sdk';
-import { MODEL_SONNET } from '../services/llm.shared.js';
-
-const client = new Anthropic();
+import { MODEL_SONNET, callLLM, resolveProvider } from '../services/llm.shared.js';
 
 const HLPV_V3_SYSTEM_PROMPT = `You are a specialist planning consultant preparing a High-Level Planning View (HLPV) for a proposed development in England. This is an early-stage, desk-based preliminary appraisal, not a submission document — your entries must be proportionate, cautious, and draw only from the material provided. Write in the third person in clear, professional UK planning language. This document is client-facing: never reference the briefing transcript, the drafting issue notes, or any internal documents in your output — present all information as established fact as if you are the author of the appraisal.`;
 
@@ -993,10 +990,11 @@ After completing these checks, output only the completed High-Level Planning Vie
 
 export async function generateHlpvV3(req, res) {
   const { projectId } = req.params;
-  const { briefing_note_id } = req.body ?? {};
+  const { briefing_note_id, provider: requestedProvider } = req.body ?? {};
   const promptKey = 'hlpv_v3';
 
   try {
+    const provider = await resolveProvider('hlpv_v3_generate', requestedProvider);
     // ── 1. Project data ───────────────────────────────────────────
     const { rows: projectRows } = await pool.query(
       `SELECT p.project_name, p.address, p.development_type,
@@ -1171,12 +1169,14 @@ export async function generateHlpvV3(req, res) {
       .replace(/\{\{ADDITIONAL_DRAFTING_INSTRUCTIONS\}\}/g, '(not provided)');
 
     // ── 9. Call LLM — expect HTML output directly ──────────────────────
-    const bodyHtml = (await client.messages.stream({
+    const bodyHtml = (await callLLM({
+      provider,
       model: MODEL_SONNET,
-      max_tokens: 32000,
+      maxTokens: 32000,
       system: HLPV_V3_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }]
-    }).finalText()).trim().replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+      prompt: userPrompt,
+      stream: true,
+    })).trim().replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
 
     // ── 10. Save to drafts table ──────────────────────────────
     const { rows: typeRows } = await pool.query(

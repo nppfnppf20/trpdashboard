@@ -460,25 +460,23 @@ export function getDefaultSummaryPrompt(docType) {
   return DEFAULT_SUMMARY_PROMPTS[docType] ?? DEFAULT_SUMMARY_PROMPTS.other;
 }
 
-export async function summariseDocument(text, fileName, docType, customPrompt = null) {
+export async function summariseDocument(text, fileName, docType, customPrompt = null, provider = null) {
   const systemPrompt = customPrompt ?? getDefaultSummaryPrompt(docType);
   const userPrompt = `Document: ${fileName || 'Untitled'}\n\n${text.slice(0, 80000)}`;
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const text_ = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 16000,
+    maxTokens: 16000,
     system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }]
+    prompt: userPrompt,
   });
 
-  if (response.stop_reason === 'max_tokens') {
-    console.warn(`[summariseDocument] Output truncated at max_tokens for docType=${docType}`);
-  }
-
-  return noEmDash(response.content[0].text.trim()).replace(/\s*–\s*/g, ' to ');
+  return noEmDash(text_.trim()).replace(/\s*–\s*/g, ' to ');
 }
 
-export async function suggestTranscriptUpdates(text) {
+export async function suggestTranscriptUpdates(text, provider = null) {
   const systemPrompt = `You are a planning consultant analysing a briefing transcript to identify content that should update specific project data fields.
 
 For each field listed below, assess whether the transcript contains clear, explicit content that belongs in that field. Only suggest an update if the content is clearly and explicitly present — do not infer, fabricate, or pad. If the transcript does not clearly address a field, omit it from your response.
@@ -501,14 +499,16 @@ For each field where clear content exists, return a JSON object with:
 
 Return ONLY a valid JSON array with no preamble, explanation, or code fences. If no fields have clear content, return [].`;
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 4000,
+    maxTokens: 4000,
     system: systemPrompt,
-    messages: [{ role: 'user', content: `Transcript:\n\n${text.slice(0, 80000)}` }]
+    prompt: `Transcript:\n\n${text.slice(0, 80000)}`,
   });
 
-  const raw = response.content[0].text.trim();
+  const raw = responseText.trim();
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     const parsed = JSON.parse(cleaned);
@@ -548,7 +548,7 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   {"id": "INSERT_AFTER_p3", "html": "<p>New compliance paragraph constructed from report...</p>"}
 ]`;
 
-export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null, customPrompt = null }) {
+export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null, customPrompt = null, provider = null }) {
   // Build rich per-issue context (policies + argument notes) for each issue
   const issueContextParts = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
@@ -590,13 +590,15 @@ ${documentText}
 ## In-Scope Paragraphs
 ${userNotesBlock}${paraBlock}`;
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }]
+    maxTokens: 4000,
+    prompt,
   });
 
-  const raw = noEmDash(response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+  const raw = noEmDash(responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
   return JSON.parse(raw);
 }
 
@@ -623,7 +625,7 @@ Respond ONLY with valid JSON — no markdown, no explanation:
 
 Only include entries where the briefing contains relevant content. Omit an issue entirely if the briefing has nothing relevant to it, and omit part 2 entirely if nothing new comes up.`;
 
-export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues, issueTypes = [], customPrompt = null }) {
+export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issues, issueTypes = [], customPrompt = null, provider = null }) {
   const issueList = issues.length
     ? issues.map(i =>
         `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.summary?.trim() ? `\n  Existing note: ${i.summary.trim().slice(0, 150)}` : ''}`
@@ -637,14 +639,16 @@ export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issu
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT;
   const userMessage = `Briefing note:\n<briefing>\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}\n</briefing>\n\nKey issues:\n${issueList}\n\nAvailable issue-type templates:\n${issueTypeList}`;
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 2000,
+    maxTokens: 2000,
     system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }]
+    prompt: userMessage,
   });
 
-  const raw = response.content[0].text.trim();
+  const raw = responseText.trim();
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     const parsed = JSON.parse(cleaned);
@@ -688,7 +692,7 @@ Respond ONLY with valid JSON — no markdown, no explanation. Omit "specialist_r
 
 Only include an issue if the briefing note actually discusses it.`;
 
-export async function draftIssuesFromBriefingNote({ briefingText, issues, policiesByIssue = {}, allPolicies = [], subSectors = [], allIssueTypes = [], customPrompt = null }) {
+export async function draftIssuesFromBriefingNote({ briefingText, issues, policiesByIssue = {}, allPolicies = [], subSectors = [], allIssueTypes = [], customPrompt = null, provider = null }) {
   const issueList = issues.length
     ? issues.map(i => {
         const policies = policiesByIssue[i.id] ?? [];
@@ -732,14 +736,16 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT;
   const userMessage = `Briefing note(s):\n<briefing>\n${briefingText.trim().slice(0, 60000)}\n</briefing>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}\n\nAvailable snippet template library:\n${snippetLibrary}`;
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 8000,
+    maxTokens: 8000,
     system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }]
+    prompt: userMessage,
   });
 
-  const raw = response.content[0].text.trim();
+  const raw = responseText.trim();
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     const parsed = JSON.parse(cleaned);
@@ -755,7 +761,7 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
   }
 }
 
-export async function draftArgumentsFromIssueSummaries({ issues, policiesByTrack }) {
+export async function draftArgumentsFromIssueSummaries({ issues, policiesByTrack, provider = null }) {
   const issueList = issues
     .filter(i => i.summary?.trim())
     .map(i => {
@@ -798,13 +804,15 @@ Respond ONLY with valid JSON — no markdown, no explanation:
 
 Only include issues where the position note gives you enough to work with.`;
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 3000,
-    messages: [{ role: 'user', content: prompt }]
+    maxTokens: 3000,
+    prompt,
   });
 
-  const raw = response.content[0].text.trim();
+  const raw = responseText.trim();
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     const parsed = JSON.parse(cleaned);
@@ -901,7 +909,7 @@ export function buildPlanningArgumentSuggestionTemplate({ documentType, document
   return buildPlanningArgumentSuggestionPrompt({ documentBlock: '{{DOCUMENT}}', documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes });
 }
 
-export async function suggestPlanningArgumentAddition({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes, conversation = [], customPrompt }) {
+export async function suggestPlanningArgumentAddition({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes, conversation = [], customPrompt, provider = null }) {
   const initialPrompt = customPrompt ?? buildPlanningArgumentSuggestionPrompt({ text, documentType, documentTitle, issues, briefingNote, policiesByTrack, userNotes });
 
   const messages = [
@@ -911,11 +919,13 @@ export async function suggestPlanningArgumentAddition({ text, documentType, docu
 
   console.log('[suggestPlanningArgumentAddition] turns:', messages.length, 'doc chunks approx:', Math.ceil((text?.length ?? 0) / 6000));
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 3000,
-    messages
+    maxTokens: 3000,
+    messages,
   });
 
-  return noEmDash(response.content[0].text.trim());
+  return noEmDash(responseText.trim());
 }

@@ -1318,7 +1318,8 @@ export async function generateDraft(req, res) {
         draftTypeName: typeRows[0].name,
         sections,
         issues,
-        evidenceByTrack
+        evidenceByTrack,
+        provider
       });
     }
 
@@ -1383,7 +1384,7 @@ export async function generateDocumentSummary(req, res) {
     );
     const customPrompt = promptRows[0]?.prompt_template ?? null;
 
-    const summaryHtml = await summariseDocument(text, fileName, docType, customPrompt);
+    const summaryHtml = await summariseDocument(text, fileName, docType, customPrompt, req.body.provider ?? null);
     res.json({ summary_html: summaryHtml, file_name: fileName, transcript_text: text });
   } catch (err) {
     console.error('pa.generateDocumentSummary error:', err);
@@ -1681,7 +1682,7 @@ export async function uploadBriefingNote(req, res) {
     );
     const customPrompt = promptRows[0]?.prompt_template ?? null;
 
-    const summaryHtml = await summariseDocument(text, fileName, 'briefing_transcript', customPrompt);
+    const summaryHtml = await summariseDocument(text, fileName, 'briefing_transcript', customPrompt, req.body.provider ?? null);
 
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.document_summaries
@@ -1727,7 +1728,7 @@ export async function draftArgumentsFromBriefing(req, res) {
     const { rows: promptRows } = await pool.query(
       `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'draft_arguments_from_briefing'`
     );
-    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null });
+    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null, provider: req.body.provider ?? null });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1765,7 +1766,7 @@ export async function draftArgumentsFromIssueNotes(req, res) {
       policiesByTrack[row.track_id].push(row);
     }
 
-    const suggestions = await draftArgumentsFromIssueSummaries({ issues, policiesByTrack });
+    const suggestions = await draftArgumentsFromIssueSummaries({ issues, policiesByTrack, provider: req.body.provider ?? null });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1803,7 +1804,7 @@ export async function draftKeySummariesFromBriefing(req, res) {
     const { rows: promptRows } = await pool.query(
       `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'draft_key_summaries'`
     );
-    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null });
+    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null, provider: req.body.provider ?? null });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1836,7 +1837,8 @@ export async function evolveArgument(req, res) {
       issueLabel,
       existingArgument,
       newInformation: new_information,
-      conversation: conversation ?? []
+      conversation: conversation ?? [],
+      provider: req.body.provider ?? null,
     });
     res.json({ evolved });
   } catch (err) {
@@ -1945,9 +1947,9 @@ export async function resetSectionPrompt(req, res) {
 
 export async function suggestDocumentUpdates(req, res) {
   try {
-    const { text } = req.body;
+    const { text, provider } = req.body;
     if (!text?.trim()) return res.status(400).json({ error: 'text is required' });
-    const suggestions = await suggestTranscriptUpdates(text);
+    const suggestions = await suggestTranscriptUpdates(text, provider ?? null);
     res.json({ suggestions });
   } catch (err) {
     console.error('pa.suggestDocumentUpdates error:', err);
@@ -2066,7 +2068,8 @@ export async function suggestArgument(req, res) {
       policiesByTrack,
       userNotes,
       conversation,
-      customPrompt: resolvedCustomPrompt
+      customPrompt: resolvedCustomPrompt,
+      provider: req.body.provider ?? null,
     });
 
     res.json({ suggestion });
@@ -2488,13 +2491,15 @@ export async function paScopeIncorporation(req, res) {
       `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'scope_incorporation'`
     );
 
+    const provider = await resolveProvider('appeal_argument_building', req.body.provider ?? null);
     const result = await scopeDocumentIncorporation({
       paragraphs,
       documentText,
       filename,
       issues: issueRows.rows,
       guidingBrief,
-      customPrompt: promptRows[0]?.prompt_text ?? null
+      customPrompt: promptRows[0]?.prompt_text ?? null,
+      provider,
     });
     res.json({ ...result, filename });
   } catch (err) {
@@ -2574,7 +2579,8 @@ export async function paIncorporateTargeted(req, res) {
       guidingBrief,
       projectBrief: briefRows.rows[0]?.summary_html ?? null,
       exampleText: sectionRows.rows[0]?.example_text ?? null,
-      customPrompt: promptRows[0]?.prompt_text ?? null
+      customPrompt: promptRows[0]?.prompt_text ?? null,
+      provider: req.body.provider ?? null,
     });
     res.json({ updated });
   } catch (err) {

@@ -2,11 +2,11 @@ import { authFetch } from '$lib/api/client.js';
 
 const BASE = '/api/stage1-review';
 
-export async function generateStage1Review(projectId, { briefingNoteId, draftTypeSlug } = {}) {
+export async function generateStage1Review(projectId, { briefingNoteId, draftTypeSlug, provider } = {}) {
   const res = await authFetch(`${BASE}/projects/${projectId}/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ briefing_note_id: briefingNoteId ?? null, draft_type_slug: draftTypeSlug ?? null })
+    body: JSON.stringify({ briefing_note_id: briefingNoteId ?? null, draft_type_slug: draftTypeSlug ?? null, provider: provider ?? null })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

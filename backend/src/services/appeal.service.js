@@ -194,9 +194,10 @@ FORMAT RULES (mandatory):
   return noEmDash(text.trim().replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
-export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {}, guidingBrief = null, projectBrief = null, exampleDoc = null }) {
+export async function generateAppealDraft({ projectName, draftTypeName, sections, issues, evidenceByTrack = {}, guidingBrief = null, projectBrief = null, exampleDoc = null, provider = null }) {
   const issueContext = buildIssueContext(issues, evidenceByTrack);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
+  const resolvedProvider = await resolveProvider('planning_statement_draft', provider);
 
   if (!sections || sections.length === 0) {
     const contextSection = contextBlocks ? `\n\n${contextBlocks}` : '';
@@ -211,19 +212,20 @@ ${issueContext}
 
 Produce the complete ${draftTypeName} as HTML now.`;
 
-    const response = await client.messages.create({
+    const responseText = await callLLM({
+      provider: resolvedProvider,
       model: MODEL_SONNET,
-      max_tokens: 6000,
-      messages: [{ role: 'user', content: prompt }]
+      maxTokens: 6000,
+      prompt,
     });
-    const raw = response.content[0].text.trim();
+    const raw = responseText.trim();
     return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
   }
 
   const parts = [];
   for (const section of sections) {
     console.log(`[generateAppealDraft] generating section: ${section.name}`);
-    const html = await generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief, projectBrief, exampleDoc });
+    const html = await generateDraftSection({ section, projectName, draftTypeName, issueContext, guidingBrief, projectBrief, exampleDoc, provider: resolvedProvider });
     parts.push(html);
   }
 
@@ -675,7 +677,7 @@ Respond ONLY with valid JSON, no markdown:
   "summary": "One sentence explaining what this document addresses and which sections are affected."
 }`;
 
-export async function scopeDocumentIncorporation({ paragraphs, documentText, filename, issues, guidingBrief = null, customPrompt = null }) {
+export async function scopeDocumentIncorporation({ paragraphs, documentText, filename, issues, guidingBrief = null, customPrompt = null, provider = 'anthropic' }) {
   const issueLabels = issues.map(i => i.label).join(', ') || 'none listed';
 
   const guidingBlock = guidingBrief?.guidance_content?.trim()
@@ -697,14 +699,15 @@ ${paraList}
 Document content:
 ${documentText}`;
 
-  const response = await client.messages.create({
+  const text = await callLLM({
+    provider,
     model: MODEL_SONNET,
-    max_tokens: 500,
+    maxTokens: 500,
     system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }]
+    prompt: userMessage,
   });
 
-  const raw = response.content[0].text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const raw = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   return JSON.parse(raw);
 }
 
@@ -726,7 +729,7 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
   {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, provider = 'anthropic' }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
 
@@ -761,12 +764,14 @@ Write in formal planning language — no em dashes, no paragraph numbers.
 Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you did not change:
 [{"id": "p2", "html": "<p>...</p>"}, {"id": "INSERT_AFTER_p2", "html": "<p>...</p>"}]`;
 
-  const raw = (await client.messages.stream({
+  const raw = (await callLLM({
+    provider,
     model: MODEL_SONNET,
-    max_tokens: 16000,
+    maxTokens: 16000,
     system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.',
-    messages: [{ role: 'user', content: prompt }],
-  }).finalText()).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    prompt,
+    stream: true,
+  })).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   return JSON.parse(raw);
 }
 
@@ -852,7 +857,7 @@ Only include issues where you have substantive argument content to contribute. O
 
 Do not use em dashes (—) anywhere in your output; use a comma, colon, or rewrite the sentence instead.`;
 
-export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues, customPrompt = null }) {
+export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues, customPrompt = null, provider = null }) {
   const issueList = issues.map(i =>
     `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}${i.argument_for?.trim() ? `\n  Existing notes: ${i.argument_for.trim().slice(0, 200)}` : ''}`
   ).join('\n');
@@ -860,14 +865,16 @@ export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues,
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ARGUMENTS_PROMPT;
   const userMessage = `Briefing summary:\n${briefingSummary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000)}\n\nIssues:\n${issueList}`;
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
-    max_tokens: 4000,
+    maxTokens: 4000,
     system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }]
+    prompt: userMessage,
   });
 
-  const raw = response.content[0].text.trim();
+  const raw = responseText.trim();
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     const parsed = JSON.parse(cleaned);
@@ -879,7 +886,7 @@ export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues,
   }
 }
 
-export async function evolveArgumentFromBriefing({ issueLabel, existingArgument, newInformation, conversation = [] }) {
+export async function evolveArgumentFromBriefing({ issueLabel, existingArgument, newInformation, conversation = [], provider = null }) {
   const hasExisting = existingArgument?.trim();
 
   const systemPrompt = `You are a planning consultant helping to evolve a planning argument for a specific issue. Your job is to produce a revised, coherent argument that incorporates new strategic information from a briefing note. Be direct and write in formal planning language. Do not use em dashes.`;
@@ -905,14 +912,16 @@ Write only the revised argument text. No preamble, no explanation of what change
     ...conversation
   ];
 
-  const response = await client.messages.create({
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
     model: MODEL_SONNET,
     system: systemPrompt,
-    max_tokens: 2000,
-    messages
+    maxTokens: 2000,
+    messages,
   });
 
-  return noEmDash(response.content[0].text.trim());
+  return noEmDash(responseText.trim());
 }
 
 export async function chatArgumentWithBriefing({ issueLabel, existingArgument, briefingContent, conversation }) {

@@ -4,16 +4,14 @@
  */
 
 import { pool } from '../db.js';
-import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { MODEL_SONNET } from '../services/llm.shared.js';
+import { MODEL_SONNET, callLLM, resolveProvider } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 import { parseFile } from '../services/parser.service.js';
 
-const client = new Anthropic();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load tone example at startup — used two ways below:
@@ -1371,11 +1369,12 @@ After completing these checks, output only the final Stage 1 Planning Appraisal 
 
 export async function generateStage1Review(req, res) {
   const { projectId } = req.params;
-  const { briefing_note_id, draft_type_slug } = req.body;
+  const { briefing_note_id, draft_type_slug, provider: requestedProvider } = req.body;
   const promptKey = draft_type_slug ?? 'stage1_review';
   const draftSlug = draft_type_slug ?? 'stage1_review';
 
   try {
+    const provider = await resolveProvider('stage1_review', requestedProvider);
     // ── 1. Project data ───────────────────────────────────────────────────────
     const { rows: projectRows } = await pool.query(
       `SELECT p.project_name, p.address, p.development_type,
@@ -1595,12 +1594,14 @@ export async function generateStage1Review(req, res) {
       : DEFAULT_STAGE1_SYSTEM_PROMPT + TONE_EXAMPLE_BLOCK;
 
     // ── 7. Call LLM — expect HTML output directly ─────────────────────────────
-    const bodyHtml = (await client.messages.stream({
+    const bodyHtml = (await callLLM({
+      provider,
       model: MODEL_SONNET,
-      max_tokens: 64000,
+      maxTokens: 64000,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
-    }).finalText()).trim().replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+      prompt: userPrompt,
+      stream: true,
+    })).trim().replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
 
     // ── 8. Build document HTML ────────────────────────────────────────────────
     const now = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });

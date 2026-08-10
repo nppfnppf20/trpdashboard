@@ -10,7 +10,7 @@
  */
 
 import { pool } from '../db.js';
-import { callClaude, parseJSON, MODEL_FAST } from '../services/llm.shared.js';
+import { callLLM, parseJSON, MODEL_FAST, resolveProvider } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 

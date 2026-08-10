@@ -137,9 +137,14 @@ export async function callClaude(system, user, model = MODEL_SONNET, maxTokens =
   }
 }
 
-// Provider-agnostic single-turn call (system + one user message → text). Lets draft-generation
-// call sites switch between Claude and OpenAI without duplicating prompt-building logic.
-export async function callLLM({ provider = 'anthropic', model, system, prompt, maxTokens = 4096, stream = false, jsonMode = false }) {
+// Provider-agnostic call (system + either one prompt or a multi-turn messages
+// array → text). Lets draft-generation and chat call sites switch between
+// Claude and OpenAI without duplicating prompt-building logic. Pass either
+// `prompt` (single user turn) or `messages` (full conversation, e.g. for
+// chat-style features) — not both.
+export async function callLLM({ provider = 'anthropic', model, system, prompt, messages, maxTokens = 4096, stream = false, jsonMode = false }) {
+  const turns = messages ?? [{ role: 'user', content: prompt }];
+
   if (provider === 'openai') {
     const resp = await openaiClient.chat.completions.create({
       model: model || MODEL_OPENAI_FLAGSHIP,
@@ -147,7 +152,7 @@ export async function callLLM({ provider = 'anthropic', model, system, prompt, m
       ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
       messages: [
         ...(system ? [{ role: 'system', content: system }] : []),
-        { role: 'user', content: prompt }
+        ...turns
       ]
     });
     return resp.choices[0].message.content;
@@ -159,14 +164,14 @@ export async function callLLM({ provider = 'anthropic', model, system, prompt, m
       model: model || MODEL_SONNET,
       max_tokens: maxTokens,
       ...(system ? { system } : {}),
-      messages: [{ role: 'user', content: prompt }]
+      messages: turns
     }).finalText());
   }
   const resp = await client.messages.create({
     model: model || MODEL_SONNET,
     max_tokens: maxTokens,
     ...(system ? { system } : {}),
-    messages: [{ role: 'user', content: prompt }]
+    messages: turns
   });
   return resp.content[0].text;
 }

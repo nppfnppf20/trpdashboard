@@ -398,6 +398,7 @@ export async function draftIssuesFromBriefing(req, res) {
       subSectors: project.sub_sectors ?? [],
       allIssueTypes,
       customPrompt,
+      provider: req.body.provider ?? null,
     });
 
     const client = await pool.connect();

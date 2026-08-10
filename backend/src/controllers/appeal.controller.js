@@ -1186,13 +1186,14 @@ export async function uploadBriefingNote(req, res) {
 
 export async function scopeIncorporation(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title } = req.body ?? {};
+  const { document_id, document_text, document_title, provider: requestedProvider } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
   if (!document_id && !document_text && !req.file) return res.status(400).json({ error: 'document_id, document_text, or file required' });
 
   try {
+    const provider = await resolveProvider('appeal_argument_building', requestedProvider);
     const { rows: projectRows } = await pool.query(
       `SELECT development_type FROM public.projects WHERE id = $1`, [projectId]
     );
@@ -1237,7 +1238,8 @@ export async function scopeIncorporation(req, res) {
       filename,
       issues: issueRows.rows,
       guidingBrief,
-      customPrompt: await loadGlobalPrompt('scope_incorporation')
+      customPrompt: await loadGlobalPrompt('scope_incorporation'),
+      provider,
     });
     res.json({ ...result, filename });
   } catch (err) {
@@ -1252,13 +1254,14 @@ export async function scopeIncorporation(req, res) {
 
 export async function incorporateTargeted(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title, user_notes = null } = req.body ?? {};
+  const { document_id, document_text, document_title, user_notes = null, provider: requestedProvider } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
   if (!document_id && !document_text && !req.file) return res.status(400).json({ error: 'document_id, document_text, or file required' });
 
   try {
+    const provider = await resolveProvider('appeal_argument_building', requestedProvider);
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
     );
@@ -1309,7 +1312,8 @@ export async function incorporateTargeted(req, res) {
       guidingBrief,
       projectBrief,
       exampleDoc,
-      customPrompt: await loadGlobalPrompt('incorporate_appeal')
+      customPrompt: await loadGlobalPrompt('incorporate_appeal'),
+      provider,
     });
     res.json({ updated });
   } catch (err) {
