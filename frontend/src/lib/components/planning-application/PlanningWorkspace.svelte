@@ -194,7 +194,7 @@
 
   // Not yet ready to generate — shown as a static "Coming Soon" card instead
   // of a live draft-type card.
-  const COMING_SOON_SLUGS = ['socio_economic_baseline'];
+  const COMING_SOON_SLUGS = [];
 
   $: legacyPlanningStatementTypes = ($draftTypes ?? []).filter(t => LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug));
   $: legacyStage1Types = ($draftTypes ?? []).filter(t => LEGACY_STAGE1_SLUGS.includes(t.slug));
@@ -1008,16 +1008,6 @@
               {/if}
             </div>
           {/each}
-
-          <!-- ── Socio-economic Baseline Assessment — Coming Soon ── -->
-          <div class="draft-type-card draft-type-card--coming-soon">
-            <div class="draft-type-main">
-              <div class="draft-type-info">
-                <span class="draft-type-name">Socio-economic Baseline Assessment <span class="coming-soon-badge">Coming Soon</span></span>
-                <span class="draft-type-desc">Baseline assessment of the socio-economic conditions relevant to the proposed development.</span>
-              </div>
-            </div>
-          </div>
 
           <!-- ── Certificate B Notice — Coming Soon ── -->
           <div class="draft-type-card draft-type-card--coming-soon">
