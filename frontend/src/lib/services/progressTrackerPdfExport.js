@@ -27,7 +27,15 @@ export function drawProgressSection(doc, { project, issues, margin, pageWidth, p
   const projectLine = projectLineFor(project);
   const cursorY = drawTitleBlock(doc, { title: 'Issues Tracker', projectLine, margin, pageWidth });
 
-  const head = [['Discipline', 'Issue', 'Sub-issue', 'Sub-issue Progress', 'Main Issue Progress', 'Status']];
+  // Sub-issue Progress only earns a column once something in the tracker
+  // actually uses sub-issues — many projects won't.
+  const hasAnySubIssues = issues.some(iss => iss.sub_issues?.length > 0);
+
+  const head = [[
+    'Discipline', 'Issue', 'Sub-issue',
+    ...(hasAnySubIssues ? ['Sub-issue Progress'] : []),
+    'Main Issue Progress', 'Status',
+  ]];
 
   const body = [];
   for (const iss of issues) {
@@ -46,10 +54,10 @@ export function drawProgressSection(doc, { project, issues, margin, pageWidth, p
           { content: iss.title || '', rowSpan: span, styles: base },
         );
       }
-      row.push(
-        { content: s ? s.sub_issue_text : '', styles: base },
-        { content: s ? progressText((iss.actions || []).filter(a => a.sub_issue_ids?.includes(s.id))) : '', styles: base },
-      );
+      row.push({ content: s ? s.sub_issue_text : '', styles: base });
+      if (hasAnySubIssues) {
+        row.push({ content: s ? progressText((iss.actions || []).filter(a => a.sub_issue_ids?.includes(s.id))) : '', styles: base });
+      }
       if (i === 0) {
         row.push(
           { content: mainProgress, rowSpan: span, styles: base },
@@ -84,14 +92,9 @@ export function drawProgressSection(doc, { project, issues, margin, pageWidth, p
       valign: 'middle',
       lineColor: [203, 213, 225],
     },
-    columnStyles: {
-      0: { cellWidth: 28 },
-      1: { cellWidth: 45 },
-      2: { cellWidth: 50 },
-      3: { cellWidth: 65 },
-      4: { cellWidth: 65 },
-      5: { cellWidth: 24 },
-    },
+    columnStyles: hasAnySubIssues
+      ? { 0: { cellWidth: 28 }, 1: { cellWidth: 45 }, 2: { cellWidth: 50 }, 3: { cellWidth: 65 }, 4: { cellWidth: 65 }, 5: { cellWidth: 24 } }
+      : { 0: { cellWidth: 30 }, 1: { cellWidth: 55 }, 2: { cellWidth: 60 }, 3: { cellWidth: 90 }, 4: { cellWidth: 26 } },
     didDrawPage: (data) => {
       drawPageFooter(doc, { pageWidth, pageHeight, margin, projectLine, pageNumber: data.pageNumber, totalPagesExp });
     },

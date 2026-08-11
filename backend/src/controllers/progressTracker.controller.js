@@ -448,7 +448,7 @@ export async function draftFromMeetingNotes(req, res) {
     return res.status(400).json({ error: 'At least one meeting note is required' });
   }
   try {
-    const [{ rows: transcripts }, { rows: issues }, { rows: actions }] = await Promise.all([
+    const [{ rows: transcripts }, { rows: issues }, { rows: subIssues }, { rows: actions }] = await Promise.all([
       pool.query(
         `SELECT id, title, meeting_date::text, transcript_text, user_notes
          FROM planning_applications.meeting_transcripts
@@ -460,6 +460,14 @@ export async function draftFromMeetingNotes(req, res) {
          FROM planning_applications.progress_issues
          WHERE project_id = $1
          ORDER BY sort_order ASC, id ASC`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT si.issue_id, si.sub_issue_text
+         FROM planning_applications.progress_sub_issues si
+         JOIN planning_applications.progress_issues i ON i.id = si.issue_id
+         WHERE i.project_id = $1
+         ORDER BY si.sort_order ASC, si.id ASC`,
         [projectId]
       ),
       pool.query(
@@ -477,7 +485,15 @@ export async function draftFromMeetingNotes(req, res) {
     for (const a of actions) {
       (actionsByIssue[a.issue_id] ||= []).push(a);
     }
-    const enrichedIssues = issues.map(iss => ({ ...iss, actions: actionsByIssue[iss.id] || [] }));
+    const subIssuesByIssue = {};
+    for (const s of subIssues) {
+      (subIssuesByIssue[s.issue_id] ||= []).push(s);
+    }
+    const enrichedIssues = issues.map(iss => ({
+      ...iss,
+      actions: actionsByIssue[iss.id] || [],
+      sub_issues: subIssuesByIssue[iss.id] || [],
+    }));
 
     const proposals = await draftActionsFromMeetingNotes(transcripts, enrichedIssues);
     res.json({ proposals });
@@ -488,8 +504,9 @@ export async function draftFromMeetingNotes(req, res) {
 }
 
 // Commits the user-reviewed/accepted subset of proposals from the draft step
-// above. Creates any accepted new issues first, then inserts the actions,
-// tagging provenance (source_type='meeting', meeting_transcript_id).
+// above. Creates any accepted new issues and new sub-issues first, then
+// inserts the actions, tagging provenance (source_type='meeting',
+// meeting_transcript_id) and linking new_sub_issue actions to their sub-issue.
 export async function commitDraftedActions(req, res) {
   const { projectId } = req.params;
   const { accepted, stage_instance_id } = req.body;
@@ -501,10 +518,12 @@ export async function commitDraftedActions(req, res) {
   try {
     await client.query('BEGIN');
     const createdIssues = [];
+    const createdSubIssues = [];
     const createdActions = [];
 
     for (const p of accepted) {
       let issueId = p.issue_id;
+      let subIssueId = null;
 
       if (p.kind === 'new_issue') {
         if (!p.title?.trim()) throw new Error('A new issue proposal is missing a title');
@@ -516,6 +535,23 @@ export async function commitDraftedActions(req, res) {
         );
         createdIssues.push(issue);
         issueId = issue.id;
+      }
+
+      if (p.kind === 'new_sub_issue') {
+        if (!issueId || !p.sub_issue_title?.trim()) throw new Error('A new sub-issue proposal is missing its parent issue or title');
+        const { rows: [subIssue] } = await client.query(
+          `INSERT INTO planning_applications.progress_sub_issues (issue_id, sub_issue_text, sort_order)
+           SELECT $1, $2, COALESCE((SELECT MAX(sort_order) + 1 FROM planning_applications.progress_sub_issues WHERE issue_id = $1), 0)
+           WHERE EXISTS (
+             SELECT 1 FROM planning_applications.progress_issues i
+             WHERE i.id = $1 AND i.project_id = $3
+           )
+           RETURNING *`,
+          [issueId, p.sub_issue_title.trim(), projectId]
+        );
+        if (!subIssue) throw new Error(`Issue ${issueId} does not belong to this project`);
+        createdSubIssues.push(subIssue);
+        subIssueId = subIssue.id;
       }
 
       if (!issueId || !p.summary?.trim() || !p.action_date) continue;
@@ -531,11 +567,21 @@ export async function commitDraftedActions(req, res) {
          RETURNING *`,
         [issueId, p.action_date, p.summary.trim(), stage_instance_id || null, p.source_note_id || null, projectId]
       );
-      if (rows[0]) createdActions.push({ ...rows[0], sub_issue_ids: [] });
+      if (!rows[0]) continue;
+
+      let subIssueIds = [];
+      if (subIssueId) {
+        await client.query(
+          `INSERT INTO planning_applications.progress_action_sub_issues (action_id, sub_issue_id) VALUES ($1, $2)`,
+          [rows[0].id, subIssueId]
+        );
+        subIssueIds = [subIssueId];
+      }
+      createdActions.push({ ...rows[0], sub_issue_ids: subIssueIds });
     }
 
     await client.query('COMMIT');
-    res.status(201).json({ issues: createdIssues, actions: createdActions });
+    res.status(201).json({ issues: createdIssues, sub_issues: createdSubIssues, actions: createdActions });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('progressTracker.commitDraftedActions error:', err);

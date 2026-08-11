@@ -89,27 +89,38 @@ ${issueBlocks}`;
 // commits the accepted subset.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MEETING_DRAFT_SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a pre-decision planning issues tracker. The user will provide one or more MEETING NOTES (transcripts/summaries from meetings with the LPA, client or consultants) and the current list of tracked ISSUES, each with its discipline and previous logged actions.
+const MEETING_DRAFT_SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a pre-decision planning issues tracker. The user will provide one or more MEETING NOTES (transcripts/summaries from meetings with the LPA, client or consultants) and the current list of tracked ISSUES, each with its discipline, existing sub-issues, and previous logged actions.
 
-For every issue whose situation has genuinely moved on according to the meeting notes, propose the next dated action for its log. For anything the notes raise that is NOT already a tracked issue, propose a brand new issue instead (with a sensible discipline guess).
+For every issue whose situation has genuinely moved on according to the meeting notes, propose the next dated action for its log.
 
-Relevance — decide per issue:
-- Only propose an action for an issue if a meeting note contains relevant NEW information for it, beyond what its previous actions already record.
-- Never propose an action for an issue a note doesn't actually discuss.
-- If a note raises a genuinely new topic that doesn't match any tracked issue, propose a NEW_ISSUE instead of forcing it onto an unrelated existing issue.
-- If nothing in the notes is relevant to any issue and nothing new is raised, return exactly:
+Deciding where a topic belongs — this is the part that matters most:
+- First, check whether the topic fits an EXISTING issue in the same discipline (or an obviously related discipline). Discipline match is a strong signal — treat it as the same broad concern unless the topic is clearly unrelated.
+- If it's simply more detail on what that issue already covers, propose an EXISTING_ISSUE action.
+- If it's a genuinely distinct facet of that same broad concern — a sub-topic worth tracking as its own line, not just folded into the parent's general notes — propose a NEW_SUB_ISSUE attached to that existing issue, rather than a whole new top-level issue. Example: an existing "Heritage" issue, and the notes raise archaeology — archaeology is a distinct facet of heritage, so it becomes a sub-issue of the existing Heritage issue, never a new standalone "Heritage/Archaeology" issue.
+- Check the existing issue's sub-issues first so you never propose a NEW_SUB_ISSUE that duplicates one already there — if it already exists, propose an EXISTING_ISSUE action against the parent issue instead (or reference the existing sub-issue's own history) rather than re-creating it.
+- Only propose a brand new top-level NEW_ISSUE when the topic doesn't reasonably belong under any tracked issue's discipline at all, even as a sub-issue. New top-level issues should be rare — reach for NEW_SUB_ISSUE first whenever a same- or related-discipline issue already exists.
+- Never propose anything for an issue or topic a note doesn't actually discuss.
+- If nothing in the notes is relevant to anything tracked and nothing new is raised, return exactly:
 <NONE/>
 
 Tone and voice:
 - Write in the team's own voice, first person plural, e.g. "Agreed massing tweak with conservation officer at design review", "LPA raised concern on roofline". Plain text only, one or two brisk sentences, 35 words maximum per action.
 - This is an internal tracker log entry, not meeting minutes — do not restate the whole discussion, just what moved on.
 
-Return your response using EXACTLY this XML structure — one <PROPOSAL> block per proposed action or new issue, nothing before the first <PROPOSAL> and nothing after the last </PROPOSAL>:
+Return your response using EXACTLY this XML structure — one <PROPOSAL> block per proposed action, new sub-issue or new issue, nothing before the first <PROPOSAL> and nothing after the last </PROPOSAL>:
 
 <PROPOSAL>
 <KIND>existing_issue</KIND>
 <ISSUE_ID>the numeric id of the existing issue this relates to</ISSUE_ID>
 <SUMMARY>the 1-2 sentence action summary</SUMMARY>
+<SOURCE_NOTE_ID>the numeric id of the meeting note this came from</SOURCE_NOTE_ID>
+</PROPOSAL>
+
+<PROPOSAL>
+<KIND>new_sub_issue</KIND>
+<ISSUE_ID>the numeric id of the EXISTING issue to attach this new sub-issue under</ISSUE_ID>
+<SUB_ISSUE_TITLE>a short title for the new sub-issue, e.g. "Archaeological impact"</SUB_ISSUE_TITLE>
+<SUMMARY>the 1-2 sentence action summary for its first logged action</SUMMARY>
 <SOURCE_NOTE_ID>the numeric id of the meeting note this came from</SOURCE_NOTE_ID>
 </PROPOSAL>
 
@@ -134,9 +145,14 @@ ${t.user_notes ? `User notes: ${t.user_notes}` : ''}`).join('\n\n');
         const history = (iss.actions || []).length
           ? iss.actions.slice(0, 5).map(a => `  - ${a.action_date}: ${a.summary}`).join('\n')
           : '  (none yet)';
+        const subIssues = (iss.sub_issues || []).length
+          ? iss.sub_issues.map(s => `  - ${s.sub_issue_text}`).join('\n')
+          : '  (none)';
         return `ISSUE (id: ${iss.id})
 Title: ${iss.title}
 Discipline: ${iss.discipline || 'n/a'}
+Existing sub-issues:
+${subIssues}
 Recent actions (newest first):
 ${history}`;
       }).join('\n\n')
@@ -184,11 +200,24 @@ ${issueBlocks}`;
         };
       }
       const issueId = parseInt(extractTag(block, 'ISSUE_ID'), 10);
+      if (kind === 'new_sub_issue') {
+        return {
+          ...base,
+          kind: 'new_sub_issue',
+          issue_id: Number.isFinite(issueId) ? issueId : null,
+          sub_issue_title: extractTag(block, 'SUB_ISSUE_TITLE'),
+        };
+      }
       return {
         ...base,
         kind: 'existing_issue',
         issue_id: Number.isFinite(issueId) ? issueId : null,
       };
     })
-    .filter(p => p.summary && (p.kind === 'new_issue' ? p.title : p.issue_id));
+    .filter(p => {
+      if (!p.summary) return false;
+      if (p.kind === 'new_issue') return !!p.title;
+      if (p.kind === 'new_sub_issue') return !!(p.issue_id && p.sub_issue_title);
+      return !!p.issue_id;
+    });
 }

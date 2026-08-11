@@ -53,7 +53,6 @@
 
   // ── Manual mode: type/paste + generate summary (mirrors AddAdvancementModal) ─
   let actionDate = '';
-  let sourceType = 'note';
   let fullText = '';
   let selections = {};   // issue_id -> { checked, summary, subIds }
   let saving = false;
@@ -66,7 +65,6 @@
 
   $: if (show && !seeded) {
     actionDate = new Date().toISOString().slice(0, 10);
-    sourceType = 'note';
     fullText = '';
     error = null;
     generatedNotice = false;
@@ -152,7 +150,7 @@
       const rows = await createActions(projectId, {
         action_date: actionDate,
         full_text: fullText.trim() || null,
-        source_type: sourceType,
+        source_type: 'note',
         stage_instance_id: stageInstanceId || null,
         items,
       });
@@ -228,11 +226,13 @@
     try {
       const result = await commitDraftedActions(projectId, {
         stage_instance_id: stageInstanceId || null,
-        accepted: accepted.map(p => p.kind === 'new_issue'
-          ? { kind: 'new_issue', title: p.title, discipline: p.discipline, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id }
-          : { kind: 'existing_issue', issue_id: p.issue_id, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id }),
+        accepted: accepted.map(p => {
+          if (p.kind === 'new_issue') return { kind: 'new_issue', title: p.title, discipline: p.discipline, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
+          if (p.kind === 'new_sub_issue') return { kind: 'new_sub_issue', issue_id: p.issue_id, sub_issue_title: p.sub_issue_title, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
+          return { kind: 'existing_issue', issue_id: p.issue_id, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
+        }),
       });
-      dispatch('done', { issues: result.issues, rows: result.actions });
+      dispatch('done', { issues: result.issues, subIssues: result.sub_issues, rows: result.actions });
       close();
     } catch (err) {
       draftError = err.message;
@@ -256,16 +256,17 @@
   <div class="adv-backdrop" on:click|self={close} role="presentation">
     <div class="adv-modal">
       <div class="adv-header">
-        <h3>Add Action</h3>
-        <div class="mode-toggle">
-          <button class="mode-btn" class:active={mode === 'manual'} on:click={() => mode = 'manual'}>
-            <i class="las la-pen"></i> Manual
-          </button>
-          <button class="mode-btn" class:active={mode === 'meeting-notes'} on:click={enterMeetingNotesMode}>
-            <i class="las la-magic"></i> Draft from Meeting Notes
-          </button>
-        </div>
+        <h3>Add Advancement</h3>
         <button class="adv-close-btn" on:click={close}>&times;</button>
+      </div>
+
+      <div class="mode-tabs">
+        <button class="mode-tab" class:active={mode === 'manual'} on:click={() => mode = 'manual'}>
+          <i class="las la-pen"></i> Manual
+        </button>
+        <button class="mode-tab" class:active={mode === 'meeting-notes'} on:click={enterMeetingNotesMode}>
+          <i class="las la-magic"></i> Draft from Meeting Notes
+        </button>
       </div>
 
       <!-- Stage picker — shared across both modes, tags new actions -->
@@ -293,33 +294,17 @@
 
       {#if mode === 'manual'}
         <div class="adv-body">
-          <div class="adv-row two-col">
-            <div class="field field--date">
-              <label>Date</label>
-              <input type="date" bind:value={actionDate} />
-            </div>
-            <div class="field field--source">
-              <label>Source</label>
-              <div class="adv-source-toggle">
-                <button class="adv-source-btn" class:active={sourceType === 'note'} on:click={() => sourceType = 'note'}>
-                  <i class="las la-sticky-note"></i> Note
-                </button>
-                <button class="adv-source-btn" class:active={sourceType === 'email'} on:click={() => sourceType = 'email'}>
-                  <i class="las la-envelope"></i> Email trail
-                </button>
-              </div>
-            </div>
+          <div class="field field--date">
+            <label>Date</label>
+            <input type="date" bind:value={actionDate} />
           </div>
 
           <div class="field">
-            <label>
-              {sourceType === 'email' ? 'Email trail' : 'What happened'}
-              <span class="label-hint">{sourceType === 'email' ? 'paste the full trail — kept as the source record' : 'optional fuller detail behind the summaries'}</span>
-            </label>
+            <label>What happened <span class="label-hint">optional fuller detail behind the summaries — paste an email trail, notes, whatever you've got</span></label>
             <textarea
               rows="7"
               bind:value={fullText}
-              placeholder={sourceType === 'email' ? 'Paste the email trail here…' : 'Type the full detail of what happened (optional)…'}
+              placeholder="Type or paste the detail here…"
             ></textarea>
           </div>
 
@@ -380,7 +365,7 @@
           <div class="adv-footer-actions">
             <button class="btn-cancel" on:click={close} disabled={saving || generating}>Cancel</button>
             <button class="btn-save" on:click={save} disabled={saving || generating}>
-              {#if generating}Summarising…{:else if saving}Saving…{:else if generatedNotice}Confirm & Save{:else}Save Action{/if}
+              {#if generating}Summarising…{:else if saving}Saving…{:else if generatedNotice}Confirm & Save{:else}Save Advancement{/if}
             </button>
           </div>
         </div>
@@ -419,6 +404,9 @@
                         <span class="proposal-badge new-issue-badge">New issue</span>
                         <input class="proposal-title-input" bind:value={p.title} placeholder="Issue title" />
                         <input class="proposal-discipline-input" bind:value={p.discipline} placeholder="Discipline" />
+                      {:else if p.kind === 'new_sub_issue'}
+                        <span class="proposal-badge new-sub-issue-badge">New sub-issue of {issueTitleById(p.issue_id)}</span>
+                        <input class="proposal-title-input" bind:value={p.sub_issue_title} placeholder="Sub-issue title" />
                       {:else}
                         <span class="proposal-badge">{issueTitleById(p.issue_id)}</span>
                       {/if}
@@ -497,29 +485,32 @@
     color: #1e293b;
     flex-shrink: 0;
   }
-  .mode-toggle {
+  .mode-tabs {
     display: flex;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-    flex: 1;
-    justify-content: center;
+    gap: 0.25rem;
+    padding: 0 1.25rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
   }
-  .mode-btn {
+  .mode-tab {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.9rem;
-    font-size: 0.8rem;
+    gap: 0.4rem;
+    padding: 0.7rem 0.9rem;
+    font-size: 0.85rem;
     font-weight: 500;
     color: #64748b;
-    background: #f8fafc;
+    background: none;
     border: none;
+    border-bottom: 2.5px solid transparent;
+    margin-bottom: -1px;
     cursor: pointer;
     font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
   }
-  .mode-btn:not(:last-child) { border-right: 1px solid #e2e8f0; }
-  .mode-btn.active { color: #0369a1; background: #f0f9ff; font-weight: 600; }
+  .mode-tab:hover { color: #1e293b; }
+  .mode-tab.active { color: #0284c7; border-bottom-color: #0284c7; font-weight: 700; }
 
   .adv-close-btn {
     background: none;
@@ -585,11 +576,9 @@
     gap: 0.875rem;
   }
 
-  .adv-row { display: flex; flex-direction: column; gap: 0.5rem; }
-  .adv-row.two-col { flex-direction: row; gap: 0.75rem; align-items: flex-start; }
   .field { display: flex; flex-direction: column; gap: 0.3rem; }
-  .field--date { flex: 0 0 170px; }
-  .field--source { flex: 1; }
+  .field--date { flex: 0 0 auto; }
+  .field--date input { max-width: 170px; }
 
   label {
     font-size: 0.78rem;
@@ -613,29 +602,6 @@
     border-color: #0284c7;
     box-shadow: 0 0 0 3px #e0f2fe;
   }
-
-  .adv-source-toggle {
-    display: flex;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-    align-self: flex-start;
-  }
-  .adv-source-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.45rem 0.9rem;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #64748b;
-    background: #f8fafc;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .adv-source-btn:not(:last-child) { border-right: 1px solid #e2e8f0; }
-  .adv-source-btn.active { color: #0369a1; background: #f0f9ff; font-weight: 600; }
 
   .adv-cond-list {
     display: flex;
@@ -728,6 +694,7 @@
     padding: 2px 9px;
   }
   .new-issue-badge { color: #7c3aed; background: #f3e8ff; }
+  .new-sub-issue-badge { color: #0369a1; background: #e0f2fe; }
   .proposal-title-input, .proposal-discipline-input {
     font-size: 0.8rem;
     padding: 0.3rem 0.5rem;

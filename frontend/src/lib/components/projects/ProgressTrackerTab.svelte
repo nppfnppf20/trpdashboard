@@ -63,6 +63,10 @@
 
   $: sortedIssues = sortList(issues, sortKey, sortDir);
 
+  // Sub-issue Status / Progress columns only earn their place once something
+  // in the tracker actually uses sub-issues — many projects won't.
+  $: hasAnySubIssues = issues.some(iss => iss.sub_issues?.length > 0);
+
   // ── Top scrollbar mirror ──────────────────────────────────────────────────
   let scrollTopEl, tableWrapperEl, tableEl;
   let _mirrorCleanup = null;
@@ -118,13 +122,11 @@
     }
   }
 
-  // ── Stage picker (project-wide, tags new actions — shared with the Stages
-  // Board via admin_console.project_stage_instances) ─────────────────────────
+  // ── Stages (per-action tag only — no global "current stage" concept.
+  // Shared with the Stages Board via admin_console.project_stage_instances.
+  // Each Add Action flow defaults to whatever stage was used most recently,
+  // as a one-click starting point, not a project-wide setting.) ─────────────
   let stages = [];
-  let currentStageInstanceId = null;
-  let showAddStage = false;
-  let newStageName = '';
-  let addingStage = false;
 
   async function loadStages() {
     try {
@@ -135,21 +137,41 @@
     }
   }
 
-  async function handleAddStage() {
-    const trimmed = newStageName.trim();
-    if (!trimmed) { showAddStage = false; return; }
-    addingStage = true;
+  function computeLastUsedStage(issuesList) {
+    let latest = null;
+    for (const iss of issuesList) {
+      const a = iss.actions?.[0];
+      if (!a) continue;
+      if (!latest || a.action_date > latest.action_date || (a.action_date === latest.action_date && a.id > latest.id)) {
+        latest = a;
+      }
+    }
+    return latest?.stage_instance_id ?? null;
+  }
+
+  $: lastUsedStageInstanceId = computeLastUsedStage(issues);
+
+  // Inline "+ new stage" for the drawer's own quick-add form (Add Action's
+  // modal has an equivalent of its own).
+  let showAddStageInline = false;
+  let newStageNameInline = '';
+  let addingStageInline = false;
+
+  async function handleAddStageInline() {
+    const trimmed = newStageNameInline.trim();
+    if (!trimmed) { showAddStageInline = false; return; }
+    addingStageInline = true;
     try {
       const board = await createCustomStage(projectId, { name: trimmed });
       stages = board.stages || [];
       const created = stages.find(s => s.stage_name === trimmed) || stages[stages.length - 1];
-      if (created) currentStageInstanceId = created.instance_id;
-      newStageName = '';
-      showAddStage = false;
+      if (created) tlAddForm.stage_instance_id = created.instance_id;
+      newStageNameInline = '';
+      showAddStageInline = false;
     } catch (err) {
       console.error('Failed to add stage:', err);
     } finally {
-      addingStage = false;
+      addingStageInline = false;
     }
   }
 
@@ -308,14 +330,6 @@
     }
   }
 
-  // ── Expand/collapse long text ─────────────────────────────────────────────
-  let expandedKeys = new Set();
-  function toggleExpand(key) {
-    const next = new Set(expandedKeys);
-    if (next.has(key)) { next.delete(key); } else { next.add(key); }
-    expandedKeys = next;
-  }
-
   // ── Add Action modal ────────────────────────────────────────────────────────
   let showAddAction = false;
   let actionPreselectId = null;
@@ -336,9 +350,9 @@
         );
       }
     }
-    if (e.detail.issues?.length) {
-      // New issues created via Draft from Meeting Notes — simplest correct
-      // path is a full refresh so their actions land nested correctly too.
+    if (e.detail.issues?.length || e.detail.subIssues?.length) {
+      // New issues/sub-issues created via Draft from Meeting Notes — simplest
+      // correct path is a full refresh so their actions land nested correctly too.
       refreshData();
     }
   }
@@ -388,11 +402,13 @@
       source_type: 'note',
       summary: '',
       full_text: '',
-      stage_instance_id: currentStageInstanceId,
+      stage_instance_id: lastUsedStageInstanceId,
     };
     tlAddSubIds = {};
     tlAddError = null;
     tlAddGenerated = false;
+    showAddStageInline = false;
+    newStageNameInline = '';
     showTlAdd = true;
   }
 
@@ -520,9 +536,13 @@
     const rows = sortedIssues.map(iss => {
       const subs = iss.sub_issues || [];
       const span = Math.max(1, subs.length);
-      const subCells = (s) => s
-        ? `${td(s.sub_issue_text)}${td(s.status || 'In Progress')}${td(progressText(subIssueActions(iss, s.id)))}`
-        : `${td('')}${td('')}${td('')}`;
+      const subCells = (s) => {
+        const base = s ? td(s.sub_issue_text) : td('');
+        if (!hasAnySubIssues) return base;
+        return s
+          ? `${base}${td(s.status || 'In Progress')}${td(progressText(subIssueActions(iss, s.id)))}`
+          : `${base}${td('')}${td('')}`;
+      };
       const mainProgress = progressText(mainIssueActions(iss));
       const first = `<tr>
         ${td(iss.discipline, span)}
@@ -535,10 +555,11 @@
       return first + rest;
     }).join('');
 
+    const subHeaders = hasAnySubIssues ? `${th('Sub-issue status')}${th('Sub-issue progress')}` : '';
     return `<h2>Issues Tracker</h2>
 <p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
 <table style="border-collapse:collapse;width:100%;">
-  <thead><tr>${th('Discipline')}${th('Title')}${th('Sub-issue')}${th('Sub-issue status')}${th('Sub-issue progress')}${th('Main issue progress')}${th('Status')}</tr></thead>
+  <thead><tr>${th('Discipline')}${th('Title')}${th('Sub-issue')}${subHeaders}${th('Main issue progress')}${th('Status')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
   }
@@ -573,7 +594,7 @@
   {projectId}
   {issues}
   preselectedIssueId={actionPreselectId}
-  defaultStageInstanceId={currentStageInstanceId}
+  defaultStageInstanceId={lastUsedStageInstanceId}
   initialMode={addActionInitialMode}
   on:done={handleActionsDone}
   on:close={() => { showAddAction = false; actionPreselectId = null; addActionInitialMode = 'manual'; }}
@@ -599,7 +620,7 @@
       <div class="tl-body">
         <div class="tl-quick-actions">
           <button class="tl-add-btn" on:click={openTlAdd} class:tl-add-btn-hidden={showTlAdd}>
-            <i class="las la-plus"></i> Add Action
+            <i class="las la-plus"></i> Add Advancement
           </button>
           <button class="tl-add-btn tl-add-btn-secondary" on:click={() => openAddAction(timelineIssueId, 'meeting-notes')}>
             <i class="las la-magic"></i> Draft from Meeting Notes
@@ -610,16 +631,24 @@
           <div class="tl-add-form">
             <div class="tl-add-row">
               <input type="date" class="form-input tl-input" bind:value={tlAddForm.action_date} />
-              <select class="form-input tl-input" bind:value={tlAddForm.source_type}>
-                <option value="note">Note</option>
-                <option value="email">Email trail</option>
-              </select>
               <select class="form-input tl-input" bind:value={tlAddForm.stage_instance_id}>
                 <option value={null}>No stage</option>
                 {#each stages as s (s.instance_id)}
                   <option value={s.instance_id}>{s.stage_name}</option>
                 {/each}
               </select>
+              {#if showAddStageInline}
+                <input
+                  class="form-input tl-input tl-stage-new-input"
+                  placeholder="New stage name"
+                  bind:value={newStageNameInline}
+                  on:keydown={e => { if (e.key === 'Enter') handleAddStageInline(); if (e.key === 'Escape') { showAddStageInline = false; newStageNameInline = ''; } }}
+                />
+                <button class="btn btn-secondary btn-sm" disabled={addingStageInline} on:click={handleAddStageInline}>{addingStageInline ? 'Adding…' : 'Add'}</button>
+                <button class="btn btn-ghost btn-sm" on:click={() => { showAddStageInline = false; newStageNameInline = ''; }}>Cancel</button>
+              {:else}
+                <button class="tl-stage-add-toggle" on:click={() => showAddStageInline = true}><i class="las la-plus"></i> New stage</button>
+              {/if}
             </div>
             {#if timelineIssue.sub_issues.length}
               <div class="tl-req-picker">
@@ -635,7 +664,7 @@
             <textarea class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
               placeholder="Summary — leave blank to auto-summarise from the text below…"></textarea>
             <textarea class="form-input tl-input" rows="4" bind:value={tlAddForm.full_text}
-              placeholder={tlAddForm.source_type === 'email' ? 'Paste the email trail here…' : 'Fuller detail…'}></textarea>
+              placeholder="Fuller detail — paste an email trail, notes, whatever you've got…"></textarea>
             {#if tlAddGenerated}
               <div class="tl-notice"><i class="las la-magic"></i> Summary generated — review or edit it, then Save.</div>
             {/if}
@@ -643,14 +672,14 @@
             <div class="tl-add-btns">
               <button class="btn btn-ghost btn-sm" on:click={() => showTlAdd = false} disabled={tlAddSaving || tlAddGenerating}>Cancel</button>
               <button class="btn btn-primary btn-sm" on:click={saveTlAdd} disabled={tlAddSaving || tlAddGenerating}>
-                {#if tlAddGenerating}Summarising…{:else if tlAddSaving}Saving…{:else if tlAddGenerated}Confirm & Save{:else}Save Action{/if}
+                {#if tlAddGenerating}Summarising…{:else if tlAddSaving}Saving…{:else if tlAddGenerated}Confirm & Save{:else}Save Advancement{/if}
               </button>
             </div>
           </div>
         {/if}
 
         {#if !(timelineIssue.actions || []).length && !showTlAdd}
-          <p class="tl-empty">No actions recorded yet.</p>
+          <p class="tl-empty">No advancements recorded yet.</p>
         {/if}
 
         <div class="tl-entries">
@@ -745,29 +774,8 @@
         <i class="las la-plus"></i> Add Issues
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => openAddAction()} disabled={!issues.length}>
-        <i class="las la-history"></i> Add Action
+        <i class="las la-history"></i> Add Advancement
       </button>
-      <div class="pt-stage-picker">
-        <span class="pt-stage-picker-label">Stage:</span>
-        <select class="pt-stage-select" bind:value={currentStageInstanceId}>
-          <option value={null}>No stage</option>
-          {#each stages as s (s.instance_id)}
-            <option value={s.instance_id}>{s.stage_name}</option>
-          {/each}
-        </select>
-        {#if showAddStage}
-          <input
-            class="pt-stage-new-input"
-            placeholder="New stage name"
-            bind:value={newStageName}
-            on:keydown={e => { if (e.key === 'Enter') handleAddStage(); if (e.key === 'Escape') { showAddStage = false; newStageName = ''; } }}
-          />
-          <button class="btn btn-secondary btn-sm" disabled={addingStage} on:click={handleAddStage}>{addingStage ? 'Adding…' : 'Add'}</button>
-          <button class="btn btn-ghost btn-sm" on:click={() => { showAddStage = false; newStageName = ''; }}>Cancel</button>
-        {:else}
-          <button class="pt-stage-add-toggle" on:click={() => showAddStage = true}><i class="las la-plus"></i> New stage</button>
-        {/if}
-      </div>
     </div>
     <div class="pt-topbar-right">
       <div class="pt-meta-badges">
@@ -818,8 +826,10 @@
               </button>
             </th>
             <th class="pt-th pt-th-sub">Sub-issues</th>
-            <th class="pt-th pt-th-substatus">Sub-issue Status</th>
-            <th class="pt-th pt-th-subprogress">Sub-issue Progress</th>
+            {#if hasAnySubIssues}
+              <th class="pt-th pt-th-substatus">Sub-issue Status</th>
+              <th class="pt-th pt-th-subprogress">Sub-issue Progress</th>
+            {/if}
             <th class="pt-th pt-th-mainprogress">Main Issue Progress</th>
             <th class="pt-th pt-th-status">Status</th>
             <th class="pt-th pt-th-actions"></th>
@@ -879,8 +889,6 @@
                       </div>
                     </div>
                   {/if}
-                {:else if subAddingFor !== iss.id}
-                  <span class="pt-cell-muted">No sub-issues</span>
                 {/if}
                 {#if si === span - 1}
                   {#if subAddingFor === iss.id}
@@ -898,11 +906,14 @@
                       </div>
                     </div>
                   {:else}
-                    <button class="pt-expand-btn pt-req-add-btn" title="Add sub-issue" on:click={() => startSubAdd(iss.id)}>+</button>
+                    <button class="pt-progress-empty" title="Add sub-issue" on:click={() => startSubAdd(iss.id)}>
+                      <i class="las la-plus"></i> Add
+                    </button>
                   {/if}
                 {/if}
               </td>
 
+              {#if hasAnySubIssues}
               <!-- Sub-issue status (one per sub-row) -->
               <td class="pt-td pt-td-substatus" class:pt-td-internal={si < span - 1}>
                 {#if sub}
@@ -935,7 +946,7 @@
                       <span class="pt-progress-count">{subActions.length} update{subActions.length !== 1 ? 's' : ''}</span>
                     </button>
                   {:else}
-                    <button class="pt-progress-empty" on:click={() => openAddAction(iss.id)} title="Add an action for this sub-issue">
+                    <button class="pt-progress-empty" on:click={() => openAddAction(iss.id)} title="Add an advancement for this sub-issue">
                       <i class="las la-plus"></i> Add
                     </button>
                   {/if}
@@ -943,6 +954,7 @@
                   <span class="pt-cell-muted">—</span>
                 {/if}
               </td>
+              {/if}
 
               {#if si === 0}
               <!-- Main Issue Progress (rowspan — actions not tied to any
@@ -960,7 +972,7 @@
                     <span class="pt-progress-count">{mainActions.length} update{mainActions.length !== 1 ? 's' : ''}</span>
                   </button>
                 {:else}
-                  <button class="pt-progress-empty" on:click={() => openAddAction(iss.id)} title="Add first action">
+                  <button class="pt-progress-empty" on:click={() => openAddAction(iss.id)} title="Add first advancement">
                     <i class="las la-plus"></i> Add
                   </button>
                 {/if}
@@ -1019,19 +1031,6 @@
   /* ── Top bar ─────────────────────────────────────────────────────────────── */
   .pt-topbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
   .pt-topbar-left, .pt-topbar-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-
-  .pt-stage-picker {
-    display: flex; align-items: center; gap: 0.4rem;
-    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.3rem 0.6rem;
-  }
-  .pt-stage-picker-label { font-size: 0.75rem; font-weight: 600; color: #475569; }
-  .pt-stage-select { padding: 0.25rem 0.4rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.78rem; font-family: inherit; background: white; }
-  .pt-stage-new-input { padding: 0.25rem 0.4rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.78rem; font-family: inherit; }
-  .pt-stage-add-toggle {
-    display: flex; align-items: center; gap: 0.25rem; background: none; border: none;
-    color: #0284c7; font-size: 0.75rem; font-weight: 500; cursor: pointer; font-family: inherit;
-  }
-  .pt-stage-add-toggle:hover { text-decoration: underline; }
 
   .pt-meta-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   .pt-meta-badge {
@@ -1097,21 +1096,59 @@
   .pt-req-line:hover .pt-req-hover-btns { opacity: 1; }
   .pt-req-btns { display: flex; gap: 2px; }
   .pt-req-add-row { display: flex; gap: 4px; align-items: center; }
-  .pt-req-add-btn { font-size: 0.75rem; color: #0284c7; background: none; border: none; cursor: pointer; padding: 2px 0; }
-  .pt-expand-btn { font-size: 0.75rem; color: #0284c7; background: none; border: none; cursor: pointer; padding: 0; }
 
   .pt-progress-cell {
-    display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
-    background: none; border: none; cursor: pointer; padding: 0; width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s;
   }
-  .pt-progress-date { font-size: 0.72rem; color: #64748b; display: flex; align-items: center; gap: 5px; }
+  .pt-progress-cell:hover { border-color: #c4b5fd; background: #faf5ff; }
+  .pt-progress-date {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #9333ea;
+    display: flex; align-items: center; gap: 5px;
+  }
   .pt-progress-stage { font-size: 0.62rem; font-weight: 600; color: white; border-radius: 999px; padding: 1px 6px; }
-  .pt-progress-summary { font-size: 0.8rem; color: #1e293b; }
-  .pt-progress-count { font-size: 0.68rem; color: #94a3b8; }
-  .pt-progress-empty {
-    display: flex; align-items: center; gap: 4px; font-size: 0.78rem; color: #0284c7;
-    background: none; border: 1px dashed #bae6fd; border-radius: 6px; padding: 0.3rem 0.6rem; cursor: pointer;
+  .pt-progress-summary {
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: #334155;
   }
+  .pt-progress-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 100px;
+    padding: 1px 7px;
+    margin-top: 2px;
+  }
+  .pt-progress-empty {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    background: none;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .pt-progress-empty:hover { color: #9333ea; border-color: #c4b5fd; background: #faf5ff; }
 
   .pt-status-select {
     display: inline-block; width: auto; max-width: 100%;
@@ -1152,8 +1189,14 @@
   .tl-add-btn-secondary:hover { background: #faf5ff; }
 
   .tl-add-form { display: flex; flex-direction: column; gap: 0.6rem; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem; background: #f8fafc; }
-  .tl-add-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .tl-add-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
   .tl-input { font-size: 0.8rem; }
+  .tl-stage-new-input { max-width: 160px; }
+  .tl-stage-add-toggle {
+    display: flex; align-items: center; gap: 0.25rem; background: none; border: none;
+    color: #0284c7; font-size: 0.75rem; font-weight: 500; cursor: pointer; font-family: inherit;
+  }
+  .tl-stage-add-toggle:hover { text-decoration: underline; }
   .tl-req-picker { display: flex; flex-direction: column; gap: 0.3rem; background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.5rem; }
   .tl-req-picker-label { font-size: 0.7rem; font-weight: 600; color: #64748b; }
   .tl-req-check { display: flex; align-items: flex-start; gap: 0.4rem; font-size: 0.78rem; color: #334155; cursor: pointer; }
