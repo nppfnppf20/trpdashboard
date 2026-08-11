@@ -3,6 +3,7 @@
   import {
     createActions, suggestActionSummaries,
     listMeetingNotesForPicker, draftFromMeetingNotes, commitDraftedActions,
+    getProgressData,
   } from '$lib/api/progressTracker.js';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
 
@@ -12,6 +13,7 @@
   export let preselectedIssueId = null;   // open with one issue already ticked
   export let defaultStageInstanceId = null;
   export let initialMode = 'manual';      // 'manual' | 'meeting-notes' — which tab the modal opens on
+  export let preselectedTranscriptId = null;   // meeting-notes mode: skip picking a note, draft from this one straight away
 
   const dispatch = createEventDispatcher();
 
@@ -171,11 +173,26 @@
   let proposals = [];       // enriched with accepted/editable fields
   let draftError = null;
   let committing = false;
+  // Cosmetic issue-title lookup for meeting-notes mode. Callers already
+  // inside the Issues Tracker pass `issues`; callers elsewhere (e.g. the
+  // Meeting Notes tab's "Add to Issues Tracker?" prompt) don't have that
+  // list handy, so fetch it once, lazily, the first time it's needed.
+  let mnIssues = [];
+  let mnIssuesLoaded = false;
 
   async function enterMeetingNotesMode() {
     mode = 'meeting-notes';
     proposals = [];
     draftError = null;
+    if (issues.length) {
+      mnIssues = issues;
+    } else if (!mnIssuesLoaded) {
+      mnIssuesLoaded = true;
+      try {
+        const data = await getProgressData(projectId);
+        mnIssues = data.issues || [];
+      } catch { /* labels just fall back to "Issue #id" */ }
+    }
     if (!meetingNotes.length) {
       notesLoading = true;
       try {
@@ -186,6 +203,12 @@
         notesLoading = false;
       }
     }
+    // Opened directly from a just-saved meeting note ("Add to Issues
+    // Tracker?") — skip the picker and go straight to drafting.
+    if (preselectedTranscriptId) {
+      selectedNoteIds = { [preselectedTranscriptId]: true };
+      await runDraft();
+    }
   }
 
   $: selectedNoteCount = Object.values(selectedNoteIds).filter(Boolean).length;
@@ -195,7 +218,7 @@
   }
 
   function issueTitleById(id) {
-    return issues.find(iss => iss.id === id)?.title || `Issue #${id}`;
+    return mnIssues.find(iss => iss.id === id)?.title || `Issue #${id}`;
   }
 
   async function runDraft() {
@@ -248,6 +271,8 @@
     mode = 'manual';
     selectedNoteIds = {};
     proposals = [];
+    mnIssues = [];
+    mnIssuesLoaded = false;
     dispatch('close');
   }
 </script>

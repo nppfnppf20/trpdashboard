@@ -5,6 +5,7 @@
   import { buildExportFilename } from '$lib/services/exportFilename.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
+  import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import {
     getDocumentSummaries,
     generateDocumentSummary,
@@ -28,6 +29,13 @@
 
   export let project;
   $: projectId = project?.id;
+
+  // "Add this to the Issues Tracker?" prompt — shown after a note saves,
+  // whether this tab is rendered inside the per-project view or the
+  // standalone /meeting-notes page (both mount this same component).
+  let issuesPromptNoteId = null;
+  let issuesPromptNoteTitle = '';
+  let showDraftIssuesModal = false;
 
   // Sub-tab
   let activeSubTab = 'meetings'; // 'meetings' | 'briefing'
@@ -518,6 +526,8 @@
 
       notes = [newNote, ...notes];
       showUploadPanel = false;
+      issuesPromptNoteId = result.transcript.id;
+      issuesPromptNoteTitle = result.transcript.title;
     } catch (err) {
       uploadError = err.message;
     } finally {
@@ -697,6 +707,15 @@
   onClose={() => showMeetingGuide = false}
 />
 
+<AddActionModal
+  bind:show={showDraftIssuesModal}
+  {projectId}
+  initialMode="meeting-notes"
+  preselectedTranscriptId={issuesPromptNoteId}
+  on:done={() => { showDraftIssuesModal = false; issuesPromptNoteId = null; }}
+  on:close={() => showDraftIssuesModal = false}
+/>
+
 <div class="mn-tab">
 
   <!-- Sub-tab toggle -->
@@ -859,6 +878,18 @@
   {:else if error}
     <div class="mn-error">{error}</div>
   {:else}
+
+    {#if issuesPromptNoteId}
+      <div class="mn-issues-prompt">
+        <span class="mn-issues-prompt-text"><i class="las la-list-alt"></i> Add "{issuesPromptNoteTitle}" to the Issues Tracker?</span>
+        <div class="mn-issues-prompt-actions">
+          <button class="btn btn-primary btn-sm" on:click={() => showDraftIssuesModal = true}>
+            <i class="las la-magic"></i> Yes, draft from this note
+          </button>
+          <button class="btn btn-ghost btn-sm" on:click={() => issuesPromptNoteId = null}>Dismiss</button>
+        </div>
+      </div>
+    {/if}
 
     <!-- ── Top row ────────────────────────────────────────────────────── -->
     <div class="mn-top-row">
@@ -1867,6 +1898,27 @@
     color: #991b1b;
     font-size: 0.875rem;
   }
+  .mn-issues-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 8px;
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 0.75rem;
+  }
+  .mn-issues-prompt-text {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #0369a1;
+  }
+  .mn-issues-prompt-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
   .mn-error-sm { color: #dc2626; font-size: 0.8rem; margin: 0.25rem 0 0; }
   .mn-loading {
     display: flex;
