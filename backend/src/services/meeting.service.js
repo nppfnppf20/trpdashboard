@@ -1,4 +1,4 @@
-import { callClaude } from './llm.shared.js';
+import { callClaude, callLLM, resolveProvider } from './llm.shared.js';
 import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Process a meeting transcript into a structured record.
@@ -143,7 +143,7 @@ export async function extractInsights(transcriptText, meetingType) {
   }
 }
 
-export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project') {
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null) {
   const systemPrompt = await buildSystemPrompt();
 
   // CPD records always use detailed length unless the caller explicitly chose custom
@@ -173,7 +173,8 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
 
   parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
 
-  const raw = await callClaude(systemPrompt, parts.join('\n\n'), undefined, 16000);
+  const resolvedProvider = await resolveProvider('meeting_processing', provider);
+  const raw = await callLLM({ provider: resolvedProvider, system: systemPrompt, prompt: parts.join('\n\n'), maxTokens: 16000 });
 
   const summary_html = extractTag(raw, 'SUMMARY_HTML');
   if (!summary_html) {

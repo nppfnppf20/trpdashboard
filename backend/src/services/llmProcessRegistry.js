@@ -61,6 +61,12 @@ export const LLM_PROCESS_REGISTRY = [
     description: 'Brief coverage, consistency, and grammar checks on a draft.',
     status: 'configurable',
   },
+  {
+    key: 'meeting_processing',
+    label: 'Meeting Notes Processing',
+    description: 'Summarises meeting transcripts (Project Meetings tab has its own per-upload override).',
+    status: 'configurable',
+  },
 
   // ── claude_only ───────────────────────────────────────────────────────
   {
@@ -139,12 +145,6 @@ export const LLM_PROCESS_REGISTRY = [
     key: 'tracker_intake',
     label: 'Tracker Intake Processing',
     description: 'Processes intake text into structured tracker actions.',
-    status: 'claude_only',
-  },
-  {
-    key: 'meeting_processing',
-    label: 'Meeting Notes Processing',
-    description: 'Extracts insights and summarises meeting transcripts.',
     status: 'claude_only',
   },
   {

@@ -9,7 +9,7 @@ import { processMeetingTranscript, extractInsights } from '../services/meeting.s
 export async function processMeetingNote(req, res) {
   try {
     const { projectId } = req.params;
-    const { user_notes, agenda, summary_type, custom_prompt } = req.body;
+    const { user_notes, agenda, summary_type, custom_prompt, provider } = req.body;
 
     let text;
     let fileName;
@@ -24,7 +24,7 @@ export async function processMeetingNote(req, res) {
     }
 
     const { meeting_title, meeting_date, attendees, summary_html, actions } = await processMeetingTranscript(
-      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null
+      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null
     );
 
     const title = meeting_title
@@ -307,7 +307,7 @@ export async function processInternalMeetingNote(req, res) {
     // Run summary + insights extraction in parallel
     const [summaryResult, extractedInsights] = await Promise.all([
       processMeetingTranscript(
-        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type
+        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type, null
       ),
       extractInsights(text, meeting_type),
     ]);

@@ -299,6 +299,7 @@
   let showUploadPanel = false;
   let uploadInputTab = 'upload'; // 'upload' | 'paste'
   let uploadSummaryType = 'brief'; // 'brief' | 'detailed' | 'custom'
+  let uploadProvider = ''; // '' = AI Providers admin default | 'anthropic' | 'openai'
   let uploadCustomPrompt = '';
   let uploadFile = null;
   let uploadPasteText = '';
@@ -490,6 +491,7 @@
     uploadError = null;
     uploadInputTab = 'upload';
     uploadSummaryType = 'brief';
+    uploadProvider = '';
     showExtras = false;
     uploadProcessing = false;
   }
@@ -524,7 +526,8 @@
         userNotes: uploadUserNotes.trim() || null,
         agenda: uploadAgenda.trim() || null,
         summaryType: uploadSummaryType,
-        customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null
+        customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null,
+        provider: uploadProvider || null
       });
 
         // Auto-save suggested actions immediately — no editor confirmation step
@@ -923,6 +926,11 @@
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3-4 pages</span></button>
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>Custom</button>
+          <select class="mn-provider-select" bind:value={uploadProvider} title="AI model used to generate this summary — Default uses the AI Providers admin setting">
+            <option value="">Default</option>
+            <option value="anthropic">Claude</option>
+            <option value="openai">GPT-5.6</option>
+          </select>
         </div>
         {#if uploadSummaryType === 'custom'}
           <p class="mn-custom-hint"><i class="las la-info-circle"></i> Describe the format you want in the Custom Instructions field in Optional Extras below.</p>
@@ -1782,6 +1790,18 @@
   .mn-type-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .mn-type-label { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
   .mn-type-sub { font-size: 0.7rem; opacity: 0.8; }
+  .mn-provider-select {
+    margin-left: auto;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: #374151;
+    background: white;
+    cursor: pointer;
+  }
+  .mn-provider-select:focus { outline: none; border-color: #7c3aed; }
   .mn-input-tabs { display: flex; gap: 0.35rem; }
   .mn-custom-hint { font-size: 0.8rem; color: #3b82f6; margin: 0; display: flex; align-items: center; gap: 0.35rem; }
 
