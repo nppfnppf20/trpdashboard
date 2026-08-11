@@ -23,8 +23,14 @@ export async function processMeetingNote(req, res) {
       return res.status(400).json({ error: 'No file or text provided' });
     }
 
-    const { meeting_title, meeting_date, attendees, summary_html, actions } = await processMeetingTranscript(
-      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null
+    const { rows: existingOpenActions } = await pool.query(
+      `SELECT id, action_text, owner FROM planning_applications.meeting_actions
+       WHERE project_id = $1 AND status = 'pending' ORDER BY due_date NULLS LAST, created_at`,
+      [projectId]
+    );
+
+    const { meeting_title, meeting_date, attendees, summary_html, actions, completedActions } = await processMeetingTranscript(
+      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null, existingOpenActions
     );
 
     const title = meeting_title
@@ -50,7 +56,7 @@ export async function processMeetingNote(req, res) {
       );
 
       await client.query('COMMIT');
-      res.status(201).json({ transcript, summary, suggestedActions: actions });
+      res.status(201).json({ transcript, summary, suggestedActions: actions, completedActions });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -226,7 +232,7 @@ export async function createMeetingAction(req, res) {
 
 export async function updateMeetingAction(req, res) {
   const { actionId } = req.params;
-  const { action_text, owner, due_date, notes, status } = req.body;
+  const { action_text, owner, due_date, notes, status, completed_via_transcript_id } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.meeting_actions SET
@@ -240,9 +246,10 @@ export async function updateMeetingAction(req, res) {
            WHEN $6 = 'pending'                           THEN NULL
            ELSE completed_at
          END,
+         completed_via_transcript_id = COALESCE($7, completed_via_transcript_id),
          updated_at   = NOW()
        WHERE id = $1 RETURNING *`,
-      [actionId, action_text?.trim() || null, owner?.trim() || null, due_date || null, notes?.trim() || null, status || null]
+      [actionId, action_text?.trim() || null, owner?.trim() || null, due_date || null, notes?.trim() || null, status || null, completed_via_transcript_id || null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);

@@ -43,6 +43,7 @@
   let reviewTranscript = null; // { id, title, meeting_date, attendees_text }
   let reviewSummaryHtml = '';
   let reviewActions = [];      // [{ action_text, owner, due_date, notes, include }]
+  let reviewExistingActions = []; // [{ id, action_text, owner, evidence, include }] — pending actions the AI thinks this meeting closed out
   let reviewEditor;            // bind:this on RichTextEditor
   let reviewSaving = false;
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
@@ -50,6 +51,12 @@
 
   // Sub-tab
   let activeSubTab = 'meetings'; // 'meetings' | 'briefing'
+
+  // Full screen view
+  let isFullscreen = false;
+  function handleFullscreenKeydown(e) {
+    if (e.key === 'Escape' && isFullscreen) isFullscreen = false;
+  }
 
   // Briefing sub-tab state
   let showMeetingGuide = false;
@@ -532,6 +539,16 @@
         notes: a.notes || '',
         include: true
       }));
+      const completedMap = new Map((result.completedActions || []).map(c => [c.id, c.evidence]));
+      reviewExistingActions = pendingActions
+        .map(a => ({
+          id: a.id,
+          action_text: a.action_text,
+          owner: a.owner || '',
+          evidence: completedMap.get(a.id) || null,
+          include: completedMap.has(a.id)
+        }))
+        .sort((a, b) => (a.evidence ? 0 : 1) - (b.evidence ? 0 : 1));
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
@@ -575,6 +592,14 @@
       actions = [...enriched, ...actions];
       notes = notes.map(n => n.id === reviewTranscript.id ? { ...n, pending_count: saved.length } : n);
 
+      const toComplete = reviewExistingActions.filter(a => a.include);
+      if (toComplete.length) {
+        const completed = await Promise.all(
+          toComplete.map(a => updateMeetingAction(a.id, { status: 'complete', completed_via_transcript_id: reviewTranscript.id }))
+        );
+        actions = actions.map(a => completed.find(c => c.id === a.id) ? { ...a, ...completed.find(c => c.id === a.id) } : a);
+      }
+
       reviewSaved = true;
     } catch (err) {
       reviewError = err.message;
@@ -589,6 +614,7 @@
     reviewTranscript = null;
     reviewSummaryHtml = '';
     reviewActions = [];
+    reviewExistingActions = [];
     reviewSaved = false;
     reviewError = null;
   }
@@ -780,7 +806,9 @@
   on:close={() => showDraftIssuesModal = false}
 />
 
-<div class="mn-tab">
+<svelte:window on:keydown={handleFullscreenKeydown} />
+
+<div class="mn-tab" class:mn-fullscreen={isFullscreen}>
 
   <!-- Sub-tab toggle -->
   <div class="mn-subtabs">
@@ -789,6 +817,9 @@
     </button>
     <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'briefing'} on:click={openBriefingTab}>
       <i class="las la-file-alt"></i> Briefing Note
+    </button>
+    <button class="btn btn-secondary btn-sm mn-fullscreen-toggle" on:click={() => isFullscreen = !isFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Open full screen'}>
+      <i class="las {isFullscreen ? 'la-compress' : 'la-expand'}"></i> {isFullscreen ? 'Exit' : 'Full Screen'}
     </button>
   </div>
 
@@ -1391,6 +1422,26 @@
             {/if}
           </section>
 
+          {#if reviewExistingActions.length > 0}
+            <section class="mn-review-section">
+              <h3 class="mn-review-section-title">Existing Open Actions <span class="mn-type-sub">— tick any this meeting completed</span></h3>
+              <div class="mn-review-actions-table">
+                {#each reviewExistingActions as row (row.id)}
+                  <div class="mn-review-action-row" class:mn-review-action-row--to-complete={row.include}>
+                    <label class="mn-staged-check">
+                      <input type="checkbox" bind:checked={row.include} />
+                    </label>
+                    <div class="mn-review-existing-fields">
+                      <span class="mn-review-existing-text">{row.action_text}</span>
+                      {#if row.owner}<span class="mn-review-existing-owner">{row.owner}</span>{/if}
+                      {#if row.evidence}<span class="mn-review-evidence"><i class="las la-magic"></i> {row.evidence}</span>{/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </section>
+          {/if}
+
           {#if reviewError}<p class="mn-error-sm" style="padding:0 0.25rem">{reviewError}</p>{/if}
         </div>
 
@@ -1591,13 +1642,28 @@
   /* ── Layout ────────────────────────────────────────────────────────────── */
   .mn-tab { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem 0; overflow-y: auto; flex: 1; min-height: 0; }
 
+  /* Full screen: lift the whole tab over the project modal (1000). Kept below
+     1100 so nested modals — MeetingGuideModal (1100), this tab's own dialogs
+     and AddActionModal (2000) — still open on top of it. */
+  .mn-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    background: #fff;
+    padding: 1.25rem 1.75rem;
+    margin: 0;
+    flex: none;
+  }
+
   /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
   .mn-subtabs {
     display: flex;
+    align-items: center;
     gap: 0;
     border-bottom: 2px solid #e2e8f0;
     margin-bottom: 0.25rem;
   }
+  .mn-fullscreen-toggle { margin-left: auto; }
   .mn-subtab {
     background: none;
     border: none;
@@ -2151,6 +2217,11 @@
     transition: opacity .15s;
   }
   .mn-review-action-row--excluded { opacity: .45; }
+  .mn-review-action-row--to-complete { background: #f0fdf4; border-color: #86efac; }
+  .mn-review-existing-fields { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; padding-top: 0.15rem; }
+  .mn-review-existing-text { font-size: 0.85rem; color: #1e293b; }
+  .mn-review-existing-owner { font-size: 0.75rem; color: #64748b; }
+  .mn-review-evidence { display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; font-style: italic; color: #7c3aed; }
   .mn-review-action-fields { display: flex; flex-wrap: wrap; gap: 0.35rem; flex: 1; min-width: 0; }
   .mn-review-action-fields input { flex: 1 1 auto; }
   .mn-review-action-fields input:nth-child(1) { flex-basis: 100%; }
@@ -2178,7 +2249,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 2000;
     padding: 1rem;
   }
   .mn-modal {

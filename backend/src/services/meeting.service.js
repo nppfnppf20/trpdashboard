@@ -3,7 +3,7 @@ import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Process a meeting transcript into a structured record.
 
-Return your response using EXACTLY these delimiters — nothing before <MEETING_TITLE> and nothing after </ACTIONS_JSON>:
+Return your response using EXACTLY these delimiters — nothing before <MEETING_TITLE> and nothing after </COMPLETED_ACTIONS_JSON>:
 
 <MEETING_TITLE>short title or leave blank</MEETING_TITLE>
 <MEETING_DATE>YYYY-MM-DD or leave blank</MEETING_DATE>
@@ -14,6 +14,9 @@ HTML summary here
 <ACTIONS_JSON>
 [{"action_text":"...","owner":null,"due_date":null,"notes":null}]
 </ACTIONS_JSON>
+<COMPLETED_ACTIONS_JSON>
+[{"id":123,"evidence":"..."}]
+</COMPLETED_ACTIONS_JSON>
 
 ════════════════════════════════════════
 METADATA
@@ -63,6 +66,17 @@ JSON array. Each item: {"action_text":"verb-led description","owner":null,"due_d
 - notes: brief context or null
 - If no actions: []`;
 
+const PROMPT_COMPLETED_ACTIONS = `════════════════════════════════════════
+COMPLETED_ACTIONS_JSON
+════════════════════════════════════════
+
+You may be given a numbered list of EXISTING OPEN ACTIONS carried over from previous meetings (id, text, owner). Review the transcript and identify ONLY the ones this transcript gives CLEAR evidence are now finished, resolved, or no longer needed.
+
+JSON array. Each item: {"id": <the existing action's id, as a number>, "evidence": "short quote or close paraphrase from the transcript showing it's done"}
+- Be conservative: an action being merely discussed, referenced, or chased up is NOT evidence it's complete. Only include it if the transcript clearly states or implies it has been finished, resolved, or is no longer needed.
+- Never invent an id — only use ids from the EXISTING OPEN ACTIONS list you were given.
+- If no existing open actions were provided, or none appear complete: []`;
+
 async function buildSystemPrompt() {
   const brief = await getGuidingBrief('meeting_notes', null).catch(() => null);
 
@@ -84,7 +98,7 @@ The following is an example of the required format and style. Match its structur
 ${brief.style_example.trim()}`
     : '';
 
-  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS].join('\n\n');
+  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS, PROMPT_COMPLETED_ACTIONS].join('\n\n');
 }
 
 function extractTag(text, tag) {
@@ -143,7 +157,7 @@ export async function extractInsights(transcriptText, meetingType) {
   }
 }
 
-export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null) {
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null, existingOpenActions = []) {
   const systemPrompt = await buildSystemPrompt();
 
   // CPD records always use detailed length unless the caller explicitly chose custom
@@ -171,6 +185,13 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
     parts.push(`MEETING AGENDA:\n${agenda.trim()}`);
   }
 
+  if (existingOpenActions?.length) {
+    const list = existingOpenActions
+      .map(a => `- id ${a.id}: ${a.action_text}${a.owner ? ` (owner: ${a.owner})` : ''}`)
+      .join('\n');
+    parts.push(`EXISTING OPEN ACTIONS (mark complete in COMPLETED_ACTIONS_JSON only with clear evidence):\n${list}`);
+  }
+
   parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
 
   const resolvedProvider = await resolveProvider('meeting_processing', provider);
@@ -191,6 +212,20 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
     console.warn('[meeting.service] Could not parse ACTIONS_JSON, defaulting to []:', actionsRaw.slice(0, 200));
   }
 
+  const completedRaw = extractTag(raw, 'COMPLETED_ACTIONS_JSON') || '[]';
+  let completedActions = [];
+  try {
+    const parsed = JSON.parse(completedRaw);
+    if (Array.isArray(parsed)) {
+      const validIds = new Set(existingOpenActions.map(a => a.id));
+      completedActions = parsed
+        .filter(item => validIds.has(Number(item.id)))
+        .map(item => ({ id: Number(item.id), evidence: item.evidence?.trim() || null }));
+    }
+  } catch {
+    console.warn('[meeting.service] Could not parse COMPLETED_ACTIONS_JSON, defaulting to []:', completedRaw.slice(0, 200));
+  }
+
   return {
     meeting_title: extractTag(raw, 'MEETING_TITLE') || null,
     meeting_date: extractTag(raw, 'MEETING_DATE') || null,
@@ -201,6 +236,7 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
       owner: a.owner?.trim() || null,
       due_date: a.due_date || null,
       notes: a.notes?.trim() || null
-    })).filter(a => a.action_text)
+    })).filter(a => a.action_text),
+    completedActions
   };
 }
