@@ -142,12 +142,6 @@ export const LLM_PROCESS_REGISTRY = [
     status: 'claude_only',
   },
   {
-    key: 'tracker_intake',
-    label: 'Tracker Intake Processing',
-    description: 'Processes intake text into structured tracker actions.',
-    status: 'claude_only',
-  },
-  {
     key: 'conditions_tracker_suggestions',
     label: 'Conditions Tracker Suggestions',
     description: 'Suggests advancement summaries, summary emails, and fee quote works for conditions.',
