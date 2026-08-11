@@ -252,7 +252,7 @@
   let showCompleted = false;
   let showOutstandingActions = false;
   let showAddForm = false;
-  let expandedTranscripts = new Set();
+  let viewingTranscriptNote = null; // note object currently shown in the transcript viewer modal
 
   // Inline edit — actions
   let editingActionId = null;
@@ -453,13 +453,9 @@
     transcriptData = { ...transcriptData };
   }
 
-  function toggleTranscript(meetingId) {
-    if (expandedTranscripts.has(meetingId)) {
-      expandedTranscripts = new Set([...expandedTranscripts].filter(id => id !== meetingId));
-    } else {
-      expandedTranscripts = new Set([...expandedTranscripts, meetingId]);
-      loadTranscript(meetingId);
-    }
+  function openTranscript(note) {
+    viewingTranscriptNote = note;
+    loadTranscript(note.id);
   }
 
   // ── Upload panel ──────────────────────────────────────────────────────────
@@ -1323,9 +1319,8 @@
                     <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
                       <i class="las la-eye"></i> View Notes
                     </button>
-                    <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)}>
-                      <i class="las la-file-alt"></i>
-                      {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
+                    <button class="btn btn-secondary btn-sm" on:click={() => openTranscript(note)}>
+                      <i class="las la-file-alt"></i> Transcript
                     </button>
                     <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
                       <i class="las la-download"></i> Download
@@ -1336,18 +1331,6 @@
                     <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete meeting note">
                       <i class="las la-trash"></i>
                     </button>
-                  </div>
-                {/if}
-
-                {#if expandedTranscripts.has(note.id)}
-                  <div class="mn-transcript">
-                    {#if transcriptData[note.id]?.loading}
-                      <span class="mn-spinner-blue"></span> Loading transcript…
-                    {:else if transcriptData[note.id]?.error}
-                      <span class="mn-error-sm">{transcriptData[note.id].error}</span>
-                    {:else if transcriptData[note.id]?.text}
-                      <pre class="mn-transcript-text">{transcriptData[note.id].text}</pre>
-                    {/if}
                   </div>
                 {/if}
               </div>
@@ -1557,6 +1540,46 @@
         <button class="btn btn-primary btn-sm" on:click={() => { openBriefingEditor(viewingBriefing); viewingBriefing = null; }}>
           <i class="las la-pen"></i> Edit
         </button>
+      </div>
+
+    </div>
+  </div>
+{/if}
+
+<!-- ── Meeting Transcript Viewer Modal ────────────────────────────────────── -->
+{#if viewingTranscriptNote}
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && (viewingTranscriptNote = null)}>
+    <div class="mn-modal mn-editor-modal">
+
+      <div class="modal-header">
+        <div>
+          <h2 class="mn-modal-title">{viewingTranscriptNote.title}</h2>
+          <p class="mn-modal-meta">
+            Full transcript
+            {#if viewingTranscriptNote.meeting_date}&nbsp;&bull; {formatDate(viewingTranscriptNote.meeting_date)}{/if}
+            {#if viewingTranscriptNote.attendees_text}&nbsp;&bull; {viewingTranscriptNote.attendees_text}{/if}
+          </p>
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={() => viewingTranscriptNote = null}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        {#if transcriptData[viewingTranscriptNote.id]?.loading}
+          <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading transcript…</div>
+        {:else if transcriptData[viewingTranscriptNote.id]?.error}
+          <div class="mn-error">{transcriptData[viewingTranscriptNote.id].error}</div>
+        {:else if transcriptData[viewingTranscriptNote.id]?.text}
+          <pre class="mn-transcript-text mn-transcript-modal-text">{transcriptData[viewingTranscriptNote.id].text}</pre>
+        {:else}
+          <p class="mn-empty">No transcript stored for this meeting.</p>
+        {/if}
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" on:click={() => viewingTranscriptNote = null}>Close</button>
       </div>
 
     </div>
@@ -2055,14 +2078,7 @@
     margin-top: 0.5rem;
   }
 
-  /* Transcript expand */
-  .mn-transcript {
-    margin-top: 0.6rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid #f1f5f9;
-    font-size: 0.8rem;
-    color: #64748b;
-  }
+  /* Transcript viewer */
   .mn-transcript-text {
     font-family: inherit;
     font-size: 0.8rem;

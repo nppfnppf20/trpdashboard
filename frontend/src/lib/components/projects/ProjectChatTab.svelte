@@ -159,7 +159,7 @@
 
   $: sourceLabels = buildSourceLabels(groups);
   function buildSourceLabels(gs) {
-    const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
+    const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', IT: 'Issues Tracker', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
     for (const d of gs.find(g => g.key === 'documents')?.items ?? []) map[`D${d.id}`] = d.label;
     for (const m of gs.find(g => g.key === 'meetings')?.items ?? []) map[`M${m.id}`] = m.label;
     return map;
@@ -175,7 +175,7 @@
   function renderReply(text) {
     const escaped = escapeHtml(text);
     return escaped
-      .replace(/\[((?:D\d+|M\d+|COND|POL|PD|PC|P|C|K|A|H|S)(?:\s*[§·][^\]]*)?)\]/g, (match, inner) => {
+      .replace(/\[((?:D\d+|M\d+|COND|IT|POL|PD|PC|P|C|K|A|H|S)(?:\s*[§·][^\]]*)?)\]/g, (match, inner) => {
         const id = inner.split(/[\s§·]/)[0];
         const label = sourceLabels[id];
         const title = label ? ` title="${escapeHtml(label)}"` : '';

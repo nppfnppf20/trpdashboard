@@ -256,6 +256,48 @@ async function serializeConditions(projectId) {
   return { text, count: conditions.length };
 }
 
+async function serializeIssuesTracker(projectId) {
+  const { rows: issues } = await pool.query(
+    `SELECT id, discipline, title, status
+       FROM planning_applications.progress_issues
+      WHERE project_id = $1 ORDER BY sort_order, id`,
+    [projectId]
+  );
+  if (!issues.length) return null;
+
+  const ids = issues.map(i => i.id);
+  const [{ rows: subIssues }, { rows: actions }] = await Promise.all([
+    pool.query(
+      `SELECT issue_id, sub_issue_text, status
+         FROM planning_applications.progress_sub_issues
+        WHERE issue_id = ANY($1) ORDER BY sort_order, id`,
+      [ids]
+    ),
+    pool.query(
+      `SELECT a.issue_id, a.action_date, a.summary, a.source_type,
+              COALESCE(psd.name, psi.custom_name) AS stage_name
+         FROM planning_applications.progress_actions a
+         JOIN planning_applications.progress_issues i ON i.id = a.issue_id
+         LEFT JOIN admin_console.project_stage_instances psi ON psi.id = a.stage_instance_id
+         LEFT JOIN admin_console.project_stage_definitions psd ON psd.id = psi.stage_definition_id
+        WHERE a.issue_id = ANY($1) ORDER BY a.action_date, a.id`,
+      [ids]
+    ),
+  ]);
+
+  const text = issues.map(i => {
+    const subs = subIssues.filter(s => s.issue_id === i.id);
+    const acts = actions.filter(a => a.issue_id === i.id);
+    return [
+      `Issue: ${i.title}${i.discipline ? ` (${i.discipline})` : ''} — status: ${i.status}`,
+      subs.length ? '  Sub-issues:\n' + subs.map(s => `    - ${s.sub_issue_text} [${s.status}]`).join('\n') : null,
+      acts.length ? '  Action log:\n' + acts.map(a => `    - ${fmtDate(a.action_date)}${a.stage_name ? ` (${a.stage_name})` : ''}: ${a.summary}`).join('\n') : null,
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
+
+  return { text, count: issues.length };
+}
+
 async function serializeActions(projectId) {
   const { rows: actions } = await pool.query(
     `SELECT id, title, owner, status
@@ -532,6 +574,7 @@ const TABLE_GROUPS = [
   { key: 'key_issues',       sourceId: 'K',    label: 'Key Issues & Stage Notes', serialize: serializeKeyIssues },
   { key: 'consultation',     sourceId: 'C',    label: 'Consultation Tracker',     serialize: serializeConsultation },
   { key: 'conditions',       sourceId: 'COND', label: 'Conditions Tracker',       serialize: serializeConditions },
+  { key: 'issues_tracker',   sourceId: 'IT',   label: 'Issues Tracker',           serialize: serializeIssuesTracker },
   { key: 'actions',          sourceId: 'A',    label: 'Action Tracker',           serialize: serializeActions },
   { key: 'planning_history', sourceId: 'H',    label: 'Planning History',         serialize: serializePlanningHistory },
   { key: 'policies',         sourceId: 'POL',  label: 'Relevant Policies',        serialize: serializePolicies },
