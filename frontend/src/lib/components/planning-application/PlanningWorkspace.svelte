@@ -17,6 +17,7 @@
   import DraftingIssuesTab from '$lib/components/planning-application/DraftingIssuesTab.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
   import { exportHtmlToWord, getExportConfigForSlug } from '$lib/services/planningDeliverablesExport.js';
+  import { buildExportFilename } from '$lib/services/exportFilename.js';
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
   import SectionChatPanel from '$lib/components/planning-application/SectionChatPanel.svelte';
@@ -419,7 +420,7 @@
     if (!letterModalEditor) return;
     exportingLetterWord = true;
     try {
-      await exportHtmlToWord(letterModalEditor.getHTML(), letterModal?.name ?? 'document', '/basicdocument.docx');
+      await exportHtmlToWord(letterModalEditor.getHTML(), buildExportFilename(project, letterModal?.name ?? 'Letter'), '/basicdocument.docx');
     } finally {
       exportingLetterWord = false;
     }
@@ -466,7 +467,7 @@
     const html = draftEditor?.getHTML();
     if (!html) return;
     const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
-    const filename = activeType?.name ?? 'document';
+    const filename = buildExportFilename(project, activeType?.name ?? 'Document');
     const { templatePath, styles } = getExportConfigForSlug(activeType?.slug ?? '');
     console.log('[Export] slug:', activeType?.slug, '| template:', templatePath, '| styles:', styles);
     console.log('[Export] HTML preview:', html.slice(0, 500));

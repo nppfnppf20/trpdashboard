@@ -5,6 +5,7 @@
   import RichTextEditor from './RichTextEditor.svelte';
 
   export let deliverable;
+  export let project = null;
 
   const dispatch = createEventDispatcher();
 
@@ -134,7 +135,7 @@
 
   async function handleExportWord() {
     try {
-      await exportDeliverableToWord(deliverable, currentHTML);
+      await exportDeliverableToWord(deliverable, currentHTML, project);
     } catch (err) {
       console.error('Error exporting to Word:', err);
       alert('Failed to export to Word: ' + err.message);

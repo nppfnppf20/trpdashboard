@@ -15,6 +15,7 @@
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
   import { exportQuotesPdf } from '$lib/services/quotesPdfExport.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { buildExportFilename } from '$lib/services/exportFilename.js';
   import '$lib/styles/tables.css';
   import '$lib/styles/badges.css';
   import '$lib/styles/buttons.css';
@@ -383,8 +384,7 @@
     exporting = true;
     try {
       const html = buildExportHtml();
-      const projectRef = project?.project_code || project?.project_reference || project?.site_name || 'Project';
-      await exportHtmlToWord(html, `${projectRef} Surveyor Quotes.docx`);
+      await exportHtmlToWord(html, buildExportFilename(project, 'Surveyor Fee Quotes'));
     } finally {
       exporting = false;
     }

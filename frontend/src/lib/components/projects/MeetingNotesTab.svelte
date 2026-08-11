@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { buildExportFilename } from '$lib/services/exportFilename.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import ActionTrackerTab from '$lib/components/projects/ActionTrackerTab.svelte';
@@ -720,7 +721,7 @@
     const metaLine = [dateStr, note.attendees_text].filter(Boolean).join(' · ');
     const html = richTextEditor?.getHTML() ?? note.summary_html ?? '';
     const exportHtml = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${html}`;
-    await exportHtmlToWord(exportHtml, `${title}${dateStr ? ` ${dateStr}` : ''}`, '/basicdocument.docx');
+    await exportHtmlToWord(exportHtml, buildExportFilename(project, `${title}${dateStr ? ` ${dateStr}` : ''}`), '/basicdocument.docx');
   }
 
   // ── Download (from note card, no editor) ─────────────────────────────────
@@ -732,7 +733,7 @@
       : '';
     const metaLine = [dateStr, note.attendees_text].filter(Boolean).join(' · ');
     const html = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${note.summary_html || '<p>No summary available.</p>'}`;
-    await exportHtmlToWord(html, `${title}${dateStr ? ` ${dateStr}` : ''}`, '/basicdocument.docx');
+    await exportHtmlToWord(html, buildExportFilename(project, `${title}${dateStr ? ` ${dateStr}` : ''}`), '/basicdocument.docx');
   }
 </script>
 

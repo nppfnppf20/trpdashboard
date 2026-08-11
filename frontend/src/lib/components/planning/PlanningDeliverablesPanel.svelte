@@ -280,6 +280,7 @@
 {#if editingDeliverable && selectedDeliverable}
   <DeliverableEditor
     deliverable={selectedDeliverable}
+    project={project}
     on:close={handleCloseEditor}
   />
 {/if}

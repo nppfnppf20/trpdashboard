@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { drawTitleBlock, drawPageFooter, projectLineFor } from './pdfExportShared.js';
+import { buildExportFilename } from './exportFilename.js';
 import { drawQuotesSection } from './quotesPdfExport.js';
 import { drawInstructedTable, drawProgrammeTimeline } from './instructedPdfExport.js';
 
@@ -160,8 +161,7 @@ export function exportConditionsPdf(project, conditions) {
     doc.putTotalPages(totalPagesExp);
   }
 
-  const projectRef = project?.project_reference || project?.site_name || 'Project';
-  doc.save(`${projectRef} Conditions Tracker.pdf`);
+  doc.save(`${buildExportFilename(project, 'Conditions Tracker')}.pdf`);
 }
 
 /**
@@ -212,6 +212,5 @@ export function exportConditionsWithExtras(project, conditions, extras, options)
     doc.putTotalPages(totalPagesExp);
   }
 
-  const projectRef = project?.project_reference || project?.site_name || 'Project';
-  doc.save(`${projectRef} Conditions Tracker.pdf`);
+  doc.save(`${buildExportFilename(project, 'Conditions Tracker')}.pdf`);
 }

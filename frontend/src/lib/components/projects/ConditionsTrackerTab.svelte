@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { buildExportFilename } from '$lib/services/exportFilename.js';
   import { exportConditionsPdf, exportConditionsWithExtras } from '$lib/services/conditionsPdfExport.js';
   import AddConditionsModal from '$lib/components/projects/AddConditionsModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
@@ -812,8 +813,7 @@
   async function handleExport() {
     if (!conditions.length) { alert('No conditions to export.'); return; }
     const html = buildExportHtml();
-    const projectRef = project?.project_reference || project?.site_name || 'Project';
-    await exportHtmlToWord(html, `${projectRef} Conditions Tracker.docx`);
+    await exportHtmlToWord(html, buildExportFilename(project, 'Conditions Tracker'));
     try {
       const updated = await markConditionsExported(projectId);
       meta = { ...meta, ...updated };

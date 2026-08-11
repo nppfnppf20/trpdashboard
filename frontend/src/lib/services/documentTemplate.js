@@ -3,6 +3,7 @@
  * This template defines the structure, styling, and content organization
  * that should be consistent across both PDF and Word document exports.
  */
+import { buildExportFilename } from './exportFilename.js';
 
 /**
  * Document formatting configuration
@@ -288,9 +289,7 @@ export function formatDocumentDate(dateInput) {
  * @returns {string} Generated filename
  */
 export function generateFilename(siteName = 'TRP_Report', extension = 'pdf') {
-  const date = new Date().toISOString().split('T')[0];
-  const safeSiteName = siteName.replace(/[^a-zA-Z0-9]/g, '_');
-  return `${safeSiteName}_TRP_Report_${date}.${extension}`;
+  return `${buildExportFilename(siteName, 'TRP Report')}.${extension}`;
 }
 
 /**

@@ -507,7 +507,7 @@
         </button>
         {#if projectId}
           <button class="save-button" on:click={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : savedOk ? 'Saved!' : 'Save to Workspace'}
+            {saving ? 'Saving…' : savedOk ? 'Saved!' : 'Save to Planning Application Workspace'}
           </button>
           {#if saveError}<span class="save-error">{saveError}</span>{/if}
         {/if}
@@ -634,6 +634,33 @@
   .charts-button:hover {
     background: #f57c00;
     border-color: #f57c00;
+  }
+
+  .save-button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #9333ea;
+    background: #9333ea;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+
+  .save-button:hover:not(:disabled) {
+    background: #7e22ce;
+    border-color: #7e22ce;
+  }
+
+  .save-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .save-error {
+    color: #c33;
+    font-size: 0.85rem;
   }
 
   .results-loading {

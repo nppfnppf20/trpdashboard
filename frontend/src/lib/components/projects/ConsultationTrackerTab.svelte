@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { buildExportFilename } from '$lib/services/exportFilename.js';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PublicCommentsTab from '$lib/components/projects/PublicCommentsTab.svelte';
@@ -468,8 +469,7 @@
   async function handleExport() {
     if (!responses.length) { alert('No responses to export.'); return; }
     const html = buildExportHtml();
-    const projectRef = project?.project_reference || project?.site_name || 'Project';
-    await exportHtmlToWord(html, `${projectRef} Consultation Tracker.docx`);
+    await exportHtmlToWord(html, buildExportFilename(project, 'Consultation Tracker'));
     try {
       const updated = await markConsultationExported(projectId);
       meta = { ...meta, ...updated };

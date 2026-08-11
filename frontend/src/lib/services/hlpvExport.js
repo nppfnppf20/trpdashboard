@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageBreak } from 'docx';
 import fileSaver from 'file-saver';
+import { buildExportFilename } from './exportFilename.js';
 
 const { saveAs } = fileSaver;
 
@@ -13,10 +14,7 @@ export async function exportHLPVFindingsToWord(reportData, projectName = 'Site')
     const doc = createWordDocumentFromReport(reportData, projectName);
     const blob = await Packer.toBlob(doc);
     
-    // Generate filename
-    const safeName = projectName.replace(/[^a-zA-Z0-9]/g, '_');
-    const timestamp = new Date().toISOString().split('T')[0];
-    const filename = `${safeName}_Planning_Constraints_${timestamp}.docx`;
+    const filename = `${buildExportFilename(projectName, 'Planning Constraints')}.docx`;
 
     saveAs(blob, filename);
     console.log('✅ Word document exported successfully:', filename);

@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { drawTitleBlock, drawPageFooter, projectLineFor, sortQuotesByDiscipline } from './pdfExportShared.js';
+import { buildExportFilename } from './exportFilename.js';
 
 // A4 landscape export of the Surveyor Quotes page: quote requests sent,
 // followed by quotes received with their line items (mirrors the Conditions
@@ -178,6 +179,5 @@ export function exportQuotesPdf(project, quotes, sentRequests) {
     doc.putTotalPages(totalPagesExp);
   }
 
-  const projectRef = project?.project_reference || project?.project_code || project?.site_name || 'Project';
-  doc.save(`${projectRef} Surveyor Quotes.pdf`);
+  doc.save(`${buildExportFilename(project, 'Surveyor Fee Quotes')}.pdf`);
 }

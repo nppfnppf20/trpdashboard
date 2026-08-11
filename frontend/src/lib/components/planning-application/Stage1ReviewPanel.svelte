@@ -3,6 +3,7 @@
   import { generateStage1Review } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { buildExportFilename } from '$lib/services/exportFilename.js';
   import DeliverableEditor from '$lib/components/planning/DeliverableEditor.svelte';
   import '$lib/styles/trpformatting.css';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
@@ -27,8 +28,8 @@
   async function exportToWord() {
     exportingWord = true;
     try {
-      const safeName = `Stage_1_Planning_Appraisal_${project.project_name}`;
-      await exportHtmlToWord(generatedHtml, safeName, '/stage1reviewtemplate.docx');
+      const filename = buildExportFilename(project, 'Stage 1 Planning Appraisal');
+      await exportHtmlToWord(generatedHtml, filename, '/stage1reviewtemplate.docx');
     } catch (err) {
       error = err.message;
     } finally {
@@ -205,7 +206,7 @@
 
 <!-- Deliverable Editor -->
 {#if editorDeliverable}
-  <DeliverableEditor deliverable={editorDeliverable} on:close={closeEditor} />
+  <DeliverableEditor deliverable={editorDeliverable} project={project} on:close={closeEditor} />
 {/if}
 
 <PromptEditModal

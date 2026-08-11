@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { drawTitleBlock, drawPageFooter, projectLineFor, sortQuotesByDiscipline } from './pdfExportShared.js';
+import { buildExportFilename } from './exportFilename.js';
 
 // A4 landscape export of the Instructed Surveyors page: the instructed
 // table (optionally with Key Dates / Progress columns mirroring the
@@ -361,6 +362,5 @@ export function exportInstructedPdf(project, quotes, actionsByQuote, programmeEv
     doc.putTotalPages(totalPagesExp);
   }
 
-  const projectRef = project?.project_reference || project?.project_code || project?.site_name || 'Project';
-  doc.save(`${projectRef} Instructed Surveyors.pdf`);
+  doc.save(`${buildExportFilename(project, 'Instructed Surveyors')}.pdf`);
 }

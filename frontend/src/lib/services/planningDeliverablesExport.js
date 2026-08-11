@@ -1,5 +1,6 @@
 import PizZip from 'pizzip';
 import fileSaver from 'file-saver';
+import { sanitizeFilename, buildExportFilename } from './exportFilename.js';
 
 const { saveAs } = fileSaver;
 
@@ -66,7 +67,7 @@ export function getExportConfigForSlug(slug) {
 /**
  * Export a planning deliverable to Word using a .docx style template
  */
-export async function exportDeliverableToWord(deliverable, html) {
+export async function exportDeliverableToWord(deliverable, html, project = null) {
   const templatePath = getTemplatePath(deliverable);
   const response = await fetch(templatePath);
   if (!response.ok) throw new Error(`Could not load template: ${templatePath}`);
@@ -92,8 +93,8 @@ export async function exportDeliverableToWord(deliverable, html) {
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   });
 
-  const safeName = deliverable.deliverable_name.replace(/[^a-zA-Z0-9]/g, '_');
-  saveAs(blob, `${safeName}.docx`);
+  const filename = project ? buildExportFilename(project, deliverable.deliverable_name) : sanitizeFilename(deliverable.deliverable_name);
+  saveAs(blob, `${filename}.docx`);
 }
 
 /**
@@ -338,8 +339,10 @@ export async function exportHtmlToWord(html, filename, templatePath = '/basicdoc
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   });
 
-  const safeName = filename.replace(/[^a-zA-Z0-9]/g, '_');
-  saveAs(blob, `${safeName}.docx`);
+  // Strip a caller-supplied .docx suffix (some callers still pass one) so we
+  // never double up the extension after sanitizing.
+  const base = filename.replace(/\.docx$/i, '');
+  saveAs(blob, `${sanitizeFilename(base)}.docx`);
 }
 
 export default { exportDeliverableToWord, exportHtmlToWord };
