@@ -30,12 +30,23 @@
   export let project;
   $: projectId = project?.id;
 
-  // "Add this to the Issues Tracker?" prompt — shown after a note saves,
-  // whether this tab is rendered inside the per-project view or the
-  // standalone /meeting-notes page (both mount this same component).
+  // "Add this to the Issues Tracker?" hop — triggered from the post-process
+  // review modal below, reused whether this tab is rendered inside the
+  // per-project view or the standalone /meeting-notes page.
   let issuesPromptNoteId = null;
-  let issuesPromptNoteTitle = '';
   let showDraftIssuesModal = false;
+
+  // Post-process review modal — opens right after a transcript is processed.
+  // Lets you edit the AI summary and accept/edit/reject suggested actions
+  // before anything (beyond the transcript + raw summary) is committed.
+  let reviewOpen = false;
+  let reviewTranscript = null; // { id, title, meeting_date, attendees_text }
+  let reviewSummaryHtml = '';
+  let reviewActions = [];      // [{ action_text, owner, due_date, notes, include }]
+  let reviewEditor;            // bind:this on RichTextEditor
+  let reviewSaving = false;
+  let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
+  let reviewError = null;
 
   // Sub-tab
   let activeSubTab = 'meetings'; // 'meetings' | 'briefing'
@@ -494,23 +505,6 @@
         provider: uploadProvider || null
       });
 
-        // Auto-save suggested actions immediately — no editor confirmation step
-      const saved = await Promise.all(
-        (result.suggestedActions || []).map(a => createMeetingAction(projectId, {
-          action_text: a.action_text,
-          owner: a.owner || null,
-          due_date: a.due_date || null,
-          notes: a.notes || null,
-          transcript_id: result.transcript.id
-        }))
-      );
-      const enriched = saved.map(a => ({
-        ...a,
-        meeting_title: result.transcript.title,
-        meeting_date: result.transcript.meeting_date
-      }));
-      actions = [...enriched, ...actions];
-
       const newNote = {
         id: result.transcript.id,
         title: result.transcript.title,
@@ -520,19 +514,89 @@
         created_at: result.transcript.created_at,
         summary_id: result.summary?.id,
         summary_html: result.summary?.summary_html,
-        pending_count: saved.length,
+        pending_count: 0,
         complete_count: 0
       };
 
       notes = [newNote, ...notes];
       showUploadPanel = false;
-      issuesPromptNoteId = result.transcript.id;
-      issuesPromptNoteTitle = result.transcript.title;
+
+      // Open the review modal instead of auto-saving actions — nothing beyond
+      // the transcript + raw summary is committed until Save is pressed there.
+      reviewTranscript = newNote;
+      reviewSummaryHtml = result.summary?.summary_html || '';
+      reviewActions = (result.suggestedActions || []).map(a => ({
+        action_text: a.action_text || '',
+        owner: a.owner || '',
+        due_date: a.due_date || '',
+        notes: a.notes || '',
+        include: true
+      }));
+      reviewSaving = false;
+      reviewSaved = false;
+      reviewError = null;
+      reviewOpen = true;
     } catch (err) {
       uploadError = err.message;
     } finally {
       uploadProcessing = false;
     }
+  }
+
+  // ── Post-process review modal ───────────────────────────────────────────────
+
+  function removeReviewAction(index) {
+    reviewActions = reviewActions.filter((_, i) => i !== index);
+  }
+
+  async function saveReview() {
+    reviewSaving = true;
+    reviewError = null;
+    try {
+      const html = reviewEditor?.getHTML() ?? reviewSummaryHtml;
+      const updated = await updateMeetingSummary(reviewTranscript.id, html);
+      notes = notes.map(n => n.id === reviewTranscript.id ? { ...n, summary_html: updated.summary_html } : n);
+
+      const accepted = reviewActions.filter(a => a.include && a.action_text.trim());
+      const saved = await Promise.all(
+        accepted.map(a => createMeetingAction(projectId, {
+          action_text: a.action_text.trim(),
+          owner: a.owner.trim() || null,
+          due_date: a.due_date || null,
+          notes: a.notes.trim() || null,
+          transcript_id: reviewTranscript.id
+        }))
+      );
+      const enriched = saved.map(a => ({
+        ...a,
+        meeting_title: reviewTranscript.title,
+        meeting_date: reviewTranscript.meeting_date
+      }));
+      actions = [...enriched, ...actions];
+      notes = notes.map(n => n.id === reviewTranscript.id ? { ...n, pending_count: saved.length } : n);
+
+      reviewSaved = true;
+    } catch (err) {
+      reviewError = err.message;
+    } finally {
+      reviewSaving = false;
+    }
+  }
+
+  function closeReview() {
+    if (reviewSaving) return;
+    reviewOpen = false;
+    reviewTranscript = null;
+    reviewSummaryHtml = '';
+    reviewActions = [];
+    reviewSaved = false;
+    reviewError = null;
+  }
+
+  function reviewAddToIssuesTracker() {
+    issuesPromptNoteId = reviewTranscript.id;
+    showDraftIssuesModal = true;
+    closeReview();
   }
 
   // ── Note editor ───────────────────────────────────────────────────────────
@@ -878,18 +942,6 @@
   {:else if error}
     <div class="mn-error">{error}</div>
   {:else}
-
-    {#if issuesPromptNoteId}
-      <div class="mn-issues-prompt">
-        <span class="mn-issues-prompt-text"><i class="las la-list-alt"></i> Add "{issuesPromptNoteTitle}" to the Issues Tracker?</span>
-        <div class="mn-issues-prompt-actions">
-          <button class="btn btn-primary btn-sm" on:click={() => showDraftIssuesModal = true}>
-            <i class="las la-magic"></i> Yes, draft from this note
-          </button>
-          <button class="btn btn-ghost btn-sm" on:click={() => issuesPromptNoteId = null}>Dismiss</button>
-        </div>
-      </div>
-    {/if}
 
     <!-- ── Top row ────────────────────────────────────────────────────── -->
     <div class="mn-top-row">
@@ -1279,6 +1331,93 @@
   {/if} <!-- end activeSubTab === 'briefing' / else -->
 
 </div>
+
+<!-- ── Post-process Review Modal ──────────────────────────────────────────── -->
+{#if reviewOpen}
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && !reviewSaving && closeReview()}>
+    <div class="mn-modal mn-editor-modal mn-review-modal">
+
+      <!-- Header -->
+      <div class="modal-header mn-editor-header">
+        <div>
+          <h2 class="mn-modal-title">{reviewTranscript.title}</h2>
+          <p class="mn-modal-meta">
+            {formatDate(reviewTranscript.meeting_date)}
+            {#if reviewTranscript.attendees_text} &bull; {reviewTranscript.attendees_text}{/if}
+          </p>
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={closeReview} disabled={reviewSaving}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+
+      {#if !reviewSaved}
+        <!-- Body — scrolls: summary editor, then the actions table -->
+        <div class="mn-editor-body mn-review-body">
+          <section class="mn-review-section">
+            <h3 class="mn-review-section-title">Meeting Notes</h3>
+            <RichTextEditor
+              bind:this={reviewEditor}
+              content={reviewSummaryHtml}
+              placeholder="Meeting summary…"
+              fullHeight={false}
+            />
+          </section>
+
+          <section class="mn-review-section">
+            <h3 class="mn-review-section-title">Suggested Actions</h3>
+            {#if reviewActions.length === 0}
+              <p class="mn-empty">No actions were extracted from this meeting.</p>
+            {:else}
+              <div class="mn-review-actions-table">
+                {#each reviewActions as row, i}
+                  <div class="mn-review-action-row" class:mn-review-action-row--excluded={!row.include}>
+                    <label class="mn-staged-check">
+                      <input type="checkbox" bind:checked={row.include} />
+                    </label>
+                    <div class="mn-review-action-fields">
+                      <input class="mn-input-sm" bind:value={row.action_text} disabled={!row.include} placeholder="Action" />
+                      <input class="mn-input-sm mn-review-owner" bind:value={row.owner} disabled={!row.include} placeholder="Owner" />
+                      <input class="mn-input-sm mn-review-date" type="date" bind:value={row.due_date} disabled={!row.include} />
+                      <input class="mn-input-sm mn-review-notes" bind:value={row.notes} disabled={!row.include} placeholder="Notes" />
+                    </div>
+                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeReviewAction(i)} title="Remove suggestion">
+                      <i class="las la-trash"></i>
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </section>
+
+          {#if reviewError}<p class="mn-error-sm" style="padding:0 0.25rem">{reviewError}</p>{/if}
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary btn-sm" on:click={closeReview} disabled={reviewSaving}>Close without saving</button>
+          <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving}>
+            {#if reviewSaving}<span class="mn-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
+          </button>
+        </div>
+      {:else}
+        <!-- Post-save — hand off to the Issues Tracker draft flow -->
+        <div class="mn-editor-body mn-review-body">
+          <div class="mn-issues-prompt">
+            <span class="mn-issues-prompt-text"><i class="las la-list-alt"></i> Saved. Add "{reviewTranscript.title}" to the Issues Tracker?</span>
+            <div class="mn-issues-prompt-actions">
+              <button class="btn btn-primary btn-sm" on:click={reviewAddToIssuesTracker}>
+                <i class="las la-magic"></i> Yes, draft from this note
+              </button>
+              <button class="btn btn-ghost btn-sm" on:click={closeReview}>No, done</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+    </div>
+  </div>
+{/if}
 
 <!-- ── Note Editor Modal ─────────────────────────────────────────────────── -->
 {#if editorNote}
@@ -1987,6 +2126,48 @@
     flex: 1;
     min-height: 0;
   }
+
+  /* ── Post-process review modal ──────────────────────────────────────────── */
+  .mn-review-modal { max-width: 780px; }
+  .mn-review-body {
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 1.25rem 1.5rem;
+  }
+  .mn-review-section-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .mn-review-actions-table { display: flex; flex-direction: column; gap: 0.5rem; }
+  .mn-review-action-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    transition: opacity .15s;
+  }
+  .mn-review-action-row--excluded { opacity: .45; }
+  .mn-review-action-fields { display: flex; flex-wrap: wrap; gap: 0.35rem; flex: 1; min-width: 0; }
+  .mn-review-action-fields input { flex: 1 1 auto; }
+  .mn-review-action-fields input:nth-child(1) { flex-basis: 100%; }
+  .mn-review-owner { flex: 1 1 140px !important; }
+  .mn-review-date { flex: 0 0 150px !important; }
+  .mn-review-notes { flex: 2 1 200px !important; }
+  .mn-staged-check { padding-top: 0.4rem; flex-shrink: 0; }
+  .mn-input-sm {
+    padding: .35rem .6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: .83rem;
+    font-family: inherit;
+    outline: none;
+  }
+  .mn-input-sm:focus { border-color: #93c5fd; }
+  .mn-input-sm:disabled { background: #f8fafc; color: #94a3b8; }
 
 
   /* ── Modal ───────────────────────────────────────────────────────────────── */

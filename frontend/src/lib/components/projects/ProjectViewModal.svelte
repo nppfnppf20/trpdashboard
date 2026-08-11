@@ -46,6 +46,19 @@
     betaDropdownOpen = false;
   }
 
+  let trackersDropdownOpen = false;
+  const trackerTabs = ['consultation_tracker', 'conditions_tracker', 'progress_tracker'];
+  const trackerLabels = {
+    consultation_tracker: 'Consultation Tracker',
+    conditions_tracker: 'Conditions Tracker',
+    progress_tracker: 'Issues Tracker',
+  };
+
+  function handleTrackerTabSelect(tab) {
+    activeTab = tab;
+    trackersDropdownOpen = false;
+  }
+
   // Map state
   let mapContainer;
   let map;
@@ -466,6 +479,7 @@
     error = null;
     activeTab = 'site_boundary';
     betaDropdownOpen = false;
+    trackersDropdownOpen = false;
     policyFormOpen = false;
     conflictResults = null;
     conflictError = null;
@@ -488,7 +502,10 @@
   }
 </script>
 
-<svelte:window on:click={(e) => { if (betaDropdownOpen && !e.target.closest('.beta-dropdown-wrapper')) betaDropdownOpen = false; }} />
+<svelte:window on:click={(e) => {
+  if (betaDropdownOpen && !e.target.closest('.beta-dropdown-wrapper')) betaDropdownOpen = false;
+  if (trackersDropdownOpen && !e.target.closest('.trackers-dropdown-wrapper')) trackersDropdownOpen = false;
+}} />
 
 {#if isOpen}
   <div class="modal-backdrop" on:click={handleBackdropClick} role="presentation">
@@ -535,24 +552,27 @@
         >
           Meeting Notes
         </button>
-        <button
-          class="tab-button {activeTab === 'consultation_tracker' ? 'active' : ''}"
-          on:click={() => activeTab = 'consultation_tracker'}
-        >
-          Consultation Tracker
-        </button>
-        <button
-          class="tab-button {activeTab === 'conditions_tracker' ? 'active' : ''}"
-          on:click={() => activeTab = 'conditions_tracker'}
-        >
-          Conditions Tracker
-        </button>
-        <button
-          class="tab-button {activeTab === 'progress_tracker' ? 'active' : ''}"
-          on:click={() => activeTab = 'progress_tracker'}
-        >
-          Issues Tracker
-        </button>
+        <div class="trackers-dropdown-wrapper">
+          <button
+            class="tab-button {trackerTabs.includes(activeTab) ? 'active' : ''}"
+            on:click={() => trackersDropdownOpen = !trackersDropdownOpen}
+          >
+            {trackerTabs.includes(activeTab) ? trackerLabels[activeTab] : 'Trackers'} <i class="las la-angle-down beta-chevron {trackersDropdownOpen ? 'open' : ''}"></i>
+          </button>
+          {#if trackersDropdownOpen}
+            <div class="beta-dropdown" role="menu">
+              {#each trackerTabs as tab}
+                <button
+                  class="beta-dropdown-item {activeTab === tab ? 'active' : ''}"
+                  on:click={() => handleTrackerTabSelect(tab)}
+                  role="menuitem"
+                >
+                  {trackerLabels[tab]}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
         <button
           class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
           on:click={() => activeTab = 'surveyor'}
@@ -2483,7 +2503,8 @@
   }
 
   /* Beta dropdown */
-  .beta-dropdown-wrapper {
+  .beta-dropdown-wrapper,
+  .trackers-dropdown-wrapper {
     position: relative;
     display: flex;
     align-items: stretch;
@@ -2504,7 +2525,9 @@
     position: absolute;
     top: 100%;
     right: 0;
-    z-index: 200;
+    /* Leaflet's own panes (markers/tooltips/popups on the Site Boundary map)
+       use z-index up to 700 — clear that comfortably so this always sits on top. */
+    z-index: 2000;
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 8px;

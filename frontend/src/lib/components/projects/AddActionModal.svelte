@@ -256,10 +256,10 @@
         }),
       });
       dispatch('done', { issues: result.issues, subIssues: result.sub_issues, rows: result.actions });
+      committing = false;
       close();
     } catch (err) {
       draftError = err.message;
-    } finally {
       committing = false;
     }
   }
