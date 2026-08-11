@@ -14,7 +14,7 @@
   import { appealScopeIncorporation, appealIncorporateTargeted } from '$lib/api/appeal.js';
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
-  import DraftingIssuesTab from '$lib/components/planning-application/DraftingIssuesTab.svelte';
+  import DraftingIssuesModal from '$lib/components/planning-application/DraftingIssuesModal.svelte';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
   import { exportHtmlToWord, getExportConfigForSlug } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
@@ -429,6 +429,13 @@
   let startingDocsType = null; // { id, slug, name } of the appeal type whose modal is open
   let cardContextPct = {}; // typeId -> 0-100
 
+  // Draft types that actually read from admin_console.drafting_issues —
+  // planning_statement_v3 fully (editable, drives its section generation),
+  // stage1_review_v3 and hlpv_v3 read-only (a {{DRAFTING_ISSUE_NOTES}} prompt
+  // block). Shown as an "Issues" button on each of their cards.
+  const DRAFTING_ISSUES_SLUGS = ['planning_statement_v3', 'stage1_review_v3', 'hlpv_v3'];
+  let draftingIssuesType = null; // { id, slug, name } of the card whose Issues modal is open
+
   async function loadCardContextPcts() {
     // Issue notes already loaded — add their text to every type's baseline
     const issueNotesChars = Object.values(issueNotes).reduce((acc, note) =>
@@ -549,10 +556,6 @@
     <button class="tab" class:active={activeTab === 'key-issues'} on:click={() => activeTab = 'key-issues'}>
       Planning Issues
     </button>
-    <button class="tab" class:active={activeTab === 'drafting-issues'} on:click={() => activeTab = 'drafting-issues'}>
-      Drafting Issues
-    </button>
-
   </div>
 
   <!-- Body -->
@@ -669,12 +672,6 @@
           {/each}
         </div>
       {/if}
-    </div>
-
-  {:else if activeTab === 'drafting-issues'}
-    <!-- ── Tab: Drafting Issues (independent of Planning Issues / Stages board) ── -->
-    <div class="tab-body">
-      <DraftingIssuesTab {project} />
     </div>
 
   {:else if activeTab === 'draft'}
@@ -898,13 +895,28 @@
                     <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name }}>
                       <i class="las la-file-import"></i> Starting docs
                     </button>
+                    {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
+                      <button class="draft-setting-btn" title="View / edit the drafting issues this draft is generated from" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                        <i class="las la-list-alt"></i> Issues
+                      </button>
+                    {/if}
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openAppealPrompt(type.id)}><i class="las la-sliders-h"></i></button>
                   {:else if type.tool === 'stage1'}
                     <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name, tool: type.tool }}>
                       <i class="las la-file-import"></i> Starting docs
                     </button>
+                    {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
+                      <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                        <i class="las la-list-alt"></i> Issues
+                      </button>
+                    {/if}
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
                   {:else if type.tool === 'hlpv'}
+                    {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
+                      <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                        <i class="las la-list-alt"></i> Issues
+                      </button>
+                    {/if}
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
                   {:else}
                     <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
@@ -1743,6 +1755,13 @@
     typeName={startingDocsType.name}
     tool={startingDocsType.tool ?? 'appeal'}
     on:close={() => { startingDocsType = null; loadCardContextPcts(); }}
+  />
+{/if}
+
+{#if draftingIssuesType}
+  <DraftingIssuesModal
+    {project}
+    on:close={() => draftingIssuesType = null}
   />
 {/if}
 

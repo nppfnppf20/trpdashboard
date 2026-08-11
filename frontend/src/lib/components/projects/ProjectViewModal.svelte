@@ -13,6 +13,7 @@
   import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import ConsultationTrackerTab from '$lib/components/projects/ConsultationTrackerTab.svelte';
   import ConditionsTrackerTab from '$lib/components/projects/ConditionsTrackerTab.svelte';
+  import ProgressTrackerTab from '$lib/components/projects/ProgressTrackerTab.svelte';
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
@@ -545,6 +546,12 @@
           on:click={() => activeTab = 'conditions_tracker'}
         >
           Conditions Tracker
+        </button>
+        <button
+          class="tab-button {activeTab === 'progress_tracker' ? 'active' : ''}"
+          on:click={() => activeTab = 'progress_tracker'}
+        >
+          Issues Tracker
         </button>
         <button
           class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
@@ -1476,6 +1483,10 @@
           {:else if activeTab === 'conditions_tracker'}
             <div class="ct-scroll-wrap">
               <ConditionsTrackerTab project={projectData} />
+            </div>
+          {:else if activeTab === 'progress_tracker'}
+            <div class="ct-scroll-wrap">
+              <ProgressTrackerTab project={projectData} />
             </div>
           {:else if activeTab === 'completeness'}
             <ProjectCompletenessTab project={projectData} />
