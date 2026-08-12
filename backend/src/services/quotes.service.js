@@ -491,6 +491,7 @@ export async function updateQuoteInstructionStatus(id, instructionStatus, select
       SET
         instruction_status = $1,
         partially_instructed_total = $2,
+        instruction_status_changed_at = NOW(),
         updated_at = NOW()
       WHERE id = $3
       RETURNING *

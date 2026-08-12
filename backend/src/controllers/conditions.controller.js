@@ -37,7 +37,7 @@ export async function feeQuoteWorks(req, res) {
 export async function getConditionsData(req, res) {
   const { projectId } = req.params;
   try {
-    const [{ rows: conditions }, { rows: requirements }, { rows: advancements }, { rows: advReqLinks }, { rows: quoteLinks }, { rows: quoteActions }, { rows: meta }] = await Promise.all([
+    const [{ rows: conditions }, { rows: requirements }, { rows: advancements }, { rows: advReqLinks }, { rows: quoteLinks }, { rows: quoteActions }, { rows: quoteKeyDates }, { rows: meta }] = await Promise.all([
       pool.query(
         `SELECT id, condition_number, title, condition_type, wording, reason, initial_actions,
                 original_consultant, original_consultant_email, fee_quote_requested_at,
@@ -61,7 +61,7 @@ export async function getConditionsData(req, res) {
       ),
       pool.query(
         `SELECT ca.id, ca.condition_id, ca.advancement_date, ca.summary,
-                ca.full_text, ca.source_type, ca.created_at, ca.updated_at
+                ca.full_text, ca.source_type, ca.quote_id, ca.created_at, ca.updated_at
          FROM planning_applications.condition_advancements ca
          JOIN planning_applications.conditions c ON c.id = ca.condition_id
          WHERE c.project_id = $1
@@ -79,6 +79,7 @@ export async function getConditionsData(req, res) {
       pool.query(
         `SELECT cql.condition_id, cql.quote_id,
                 q.status AS quote_status, q.total AS quote_total,
+                q.instruction_status, q.instruction_status_changed_at, q.work_status,
                 so.organisation, so.discipline
          FROM planning_applications.condition_quote_links cql
          JOIN planning_applications.conditions c ON c.id = cql.condition_id
@@ -97,6 +98,18 @@ export async function getConditionsData(req, res) {
            WHERE c.project_id = $1
          )
          ORDER BY qa.action_date DESC, qa.id DESC`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT qkd.quote_id, qkd.id, qkd.title, qkd.date, qkd.colour
+         FROM admin_console.quote_key_dates qkd
+         WHERE qkd.quote_id IN (
+           SELECT cql.quote_id
+           FROM planning_applications.condition_quote_links cql
+           JOIN planning_applications.conditions c ON c.id = cql.condition_id
+           WHERE c.project_id = $1
+         )
+         ORDER BY qkd.date ASC, qkd.id ASC`,
         [projectId]
       ),
       pool.query(
@@ -123,15 +136,23 @@ export async function getConditionsData(req, res) {
     for (const qa of quoteActions) {
       (actionsByQuote[qa.quote_id] ||= []).push(qa);
     }
+    const keyDatesByQuote = {};
+    for (const kd of quoteKeyDates) {
+      (keyDatesByQuote[kd.quote_id] ||= []).push(kd);
+    }
     const quotesByCondition = {};
     for (const link of quoteLinks) {
       (quotesByCondition[link.condition_id] ||= []).push({
         quote_id: link.quote_id,
         quote_status: link.quote_status,
         quote_total: link.quote_total,
+        instruction_status: link.instruction_status,
+        instruction_status_changed_at: link.instruction_status_changed_at,
+        work_status: link.work_status,
         organisation: link.organisation,
         discipline: link.discipline,
         actions: actionsByQuote[link.quote_id] || [],
+        key_dates: keyDatesByQuote[link.quote_id] || [],
       });
     }
     const withRequirements = conditions.map(c => ({
@@ -362,13 +383,21 @@ export async function createAdvancements(req, res) {
     await client.query('BEGIN');
     const created = [];
     for (const item of items) {
+      const quoteId = item.quote_id || null;
       const { rows } = await client.query(
         `INSERT INTO planning_applications.condition_advancements
-           (condition_id, advancement_date, summary, full_text, source_type)
-         SELECT $1, $2, $3, $4, $5
+           (condition_id, advancement_date, summary, full_text, source_type, quote_id)
+         SELECT $1, $2, $3, $4, $5, $7::uuid
          WHERE EXISTS (
            SELECT 1 FROM planning_applications.conditions c
            WHERE c.id = $1 AND c.project_id = $6
+         )
+         AND (
+           $7::uuid IS NULL
+           OR EXISTS (
+             SELECT 1 FROM planning_applications.condition_quote_links cql
+             WHERE cql.condition_id = $1 AND cql.quote_id = $7::uuid
+           )
          )
          RETURNING *`,
         [
@@ -378,9 +407,10 @@ export async function createAdvancements(req, res) {
           full_text?.trim() || null,
           source_type?.trim() || 'note',
           projectId,
+          quoteId,
         ]
       );
-      if (!rows[0]) throw new Error(`Condition ${item.condition_id} does not belong to this project`);
+      if (!rows[0]) throw new Error(`Condition ${item.condition_id} does not belong to this project, or the tagged quote isn't linked to it`);
 
       // Link to specific requirements where given (verified against the condition)
       const linkedIds = [];
@@ -542,16 +572,33 @@ export async function advancementsSummaryEmail(req, res) {
 
 export async function updateAdvancement(req, res) {
   const { advancementId } = req.params;
-  const { advancement_date, summary, full_text, source_type, requirement_ids } = req.body;
+  const { advancement_date, summary, full_text, source_type, requirement_ids, quote_id } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    if ('quote_id' in req.body && quote_id) {
+      const { rows: [ok] } = await client.query(
+        `SELECT 1
+         FROM planning_applications.condition_advancements ca
+         JOIN planning_applications.condition_quote_links cql
+           ON cql.condition_id = ca.condition_id AND cql.quote_id = $2::uuid
+         WHERE ca.id = $1`,
+        [advancementId, quote_id]
+      );
+      if (!ok) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: "That quote isn't linked to this condition" });
+      }
+    }
+
     const { rows } = await client.query(
       `UPDATE planning_applications.condition_advancements SET
          advancement_date = COALESCE($2, advancement_date),
          summary          = COALESCE($3, summary),
          full_text        = CASE WHEN $4 THEN $5 ELSE full_text END,
          source_type      = COALESCE($6, source_type),
+         quote_id         = CASE WHEN $7 THEN $8::uuid ELSE quote_id END,
          updated_at       = NOW()
        WHERE id = $1 RETURNING *`,
       [
@@ -560,6 +607,7 @@ export async function updateAdvancement(req, res) {
         summary != null ? summary.trim() || null : null,
         'full_text' in req.body, full_text?.trim() || null,
         source_type?.trim() || null,
+        'quote_id' in req.body, quote_id || null,
       ]
     );
     if (!rows[0]) {

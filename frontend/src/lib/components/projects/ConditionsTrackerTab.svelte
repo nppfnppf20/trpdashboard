@@ -437,7 +437,9 @@
   function openTimeline(c) { timelineConditionId = c.id; }
 
   // ── Linked quotes (from surveyor management) ──────────────────────────────
-  // Quote actions interleave with the condition's own advancements, read-only
+  // Quote actions, key dates and instruction-status changes all interleave
+  // with the condition's own advancements, read-only — each merged live from
+  // its own source rather than duplicated into condition_advancements.
   function mergedTimeline(c) {
     const own = (c.advancements || []).map(a => ({ ...a, _kind: 'condition' }));
     const fromQuotes = (c.linked_quotes || []).flatMap(q =>
@@ -451,7 +453,27 @@
         _org: q.organisation || 'Quote',
       }))
     );
-    return [...own, ...fromQuotes].sort((a, b) =>
+    const fromKeyDates = (c.linked_quotes || []).flatMap(q =>
+      (q.key_dates || []).map(kd => ({
+        id: `kd-${kd.id}`,
+        advancement_date: kd.date,
+        summary: kd.title,
+        full_text: null,
+        _kind: 'key_date',
+        _org: q.organisation || 'Quote',
+      }))
+    );
+    const fromInstructionStatus = (c.linked_quotes || [])
+      .filter(q => q.instruction_status_changed_at)
+      .map(q => ({
+        id: `is-${q.quote_id}`,
+        advancement_date: String(q.instruction_status_changed_at).slice(0, 10),
+        summary: `Instruction status: ${q.instruction_status}`,
+        full_text: null,
+        _kind: 'instruction_status',
+        _org: q.organisation || 'Quote',
+      }));
+    return [...own, ...fromQuotes, ...fromKeyDates, ...fromInstructionStatus].sort((a, b) =>
       String(b.advancement_date || '').localeCompare(String(a.advancement_date || ''))
       || String(b.id).localeCompare(String(a.id))
     );
@@ -541,7 +563,7 @@
 
   // Add form inside the drawer
   let showTlAdd = false;
-  let tlAddForm = { advancement_date: '', source_type: 'note', summary: '', full_text: '' };
+  let tlAddForm = { advancement_date: '', source_type: 'note', summary: '', full_text: '', quote_id: null };
   let tlAddReqIds = {};   // requirement_id -> bool, for the drawer add form
   let tlAddSaving = false;
   let tlAddGenerating = false;
@@ -549,11 +571,15 @@
   let tlAddError = null;
 
   function openTlAdd() {
+    // Default the "relevant quote" tag: auto-select when there's exactly one
+    // linked quote, otherwise leave untagged and let the picker force a choice.
+    const linked = timelineCondition?.linked_quotes || [];
     tlAddForm = {
       advancement_date: new Date().toISOString().slice(0, 10),
       source_type: 'note',
       summary: '',
       full_text: '',
+      quote_id: linked.length === 1 ? linked[0].quote_id : null,
     };
     tlAddReqIds = {};
     tlAddError = null;
@@ -601,7 +627,7 @@
         advancement_date: tlAddForm.advancement_date,
         full_text: tlAddForm.full_text.trim() || null,
         source_type: tlAddForm.source_type,
-        items: [{ condition_id: timelineConditionId, summary: tlAddForm.summary.trim(), requirement_ids: tlSelectedReqIds() }],
+        items: [{ condition_id: timelineConditionId, summary: tlAddForm.summary.trim(), requirement_ids: tlSelectedReqIds(), quote_id: tlAddForm.quote_id || null }],
       });
       handleAdvancementsDone({ detail: { rows } });
       showTlAdd = false;
@@ -625,6 +651,7 @@
       source_type: a.source_type || 'note',
       summary: a.summary || '',
       full_text: a.full_text || '',
+      quote_id: a.quote_id || null,
       reqIds,
     };
   }
@@ -636,6 +663,7 @@
         summary: tlEditForm.summary || null,
         full_text: tlEditForm.full_text || null,
         source_type: tlEditForm.source_type || null,
+        quote_id: tlEditForm.quote_id || null,
         requirement_ids: Object.entries(tlEditForm.reqIds).filter(([, on]) => on).map(([id]) => parseInt(id, 10)),
       });
       conditions = conditions.map(c => c.id === conditionId
@@ -944,14 +972,27 @@
             </button>
           </div>
           {#each timelineCondition.linked_quotes || [] as q (q.quote_id)}
-            <div class="tl-quote-chip">
-              <span class="tl-quote-org">{q.organisation || 'Quote'}</span>
-              {#if q.discipline}<span class="tl-quote-meta">{q.discipline}</span>{/if}
-              {#if q.quote_status}<span class="tl-quote-status">{q.quote_status}</span>{/if}
-              {#if formatQuoteTotal(q.quote_total)}<span class="tl-quote-meta">{formatQuoteTotal(q.quote_total)}</span>{/if}
-              <button class="btn btn-icon btn-ghost tl-quote-unlink" title="Unlink quote" on:click={() => handleUnlinkQuote(q.quote_id)}>
-                <i class="las la-times"></i>
-              </button>
+            <div class="tl-quote-card">
+              <div class="tl-quote-chip">
+                <span class="tl-quote-org">{q.organisation || 'Quote'}</span>
+                {#if q.discipline}<span class="tl-quote-meta">{q.discipline}</span>{/if}
+                {#if formatQuoteTotal(q.quote_total)}<span class="tl-quote-meta">{formatQuoteTotal(q.quote_total)}</span>{/if}
+                <button class="btn btn-icon btn-ghost tl-quote-unlink" title="Unlink quote" on:click={() => handleUnlinkQuote(q.quote_id)}>
+                  <i class="las la-times"></i>
+                </button>
+              </div>
+              <div class="tl-quote-statuses">
+                {#if q.instruction_status}<span class="tl-quote-status-pill">Instruction: {q.instruction_status}</span>{/if}
+                {#if q.work_status}<span class="tl-quote-status-pill">Work: {q.work_status}</span>{/if}
+              </div>
+              {#if q.key_dates?.length}
+                <div class="tl-quote-keydates">
+                  <span class="tl-quote-keydates-label">Key dates</span>
+                  {#each q.key_dates as kd (kd.id)}
+                    <span class="tl-quote-keydate">{kd.title} — {formatDate(kd.date)}</span>
+                  {/each}
+                </div>
+              {/if}
             </div>
           {:else}
             {#if !showQuotePicker}
@@ -1004,6 +1045,17 @@
                 {/each}
               </div>
             {/if}
+            {#if timelineCondition.linked_quotes?.length}
+              <div class="tl-add-row">
+                <span class="tl-req-picker-label">Relevant quote:</span>
+                <select class="form-input tl-input" bind:value={tlAddForm.quote_id}>
+                  <option value={null}>Not relevant to a quote</option>
+                  {#each timelineCondition.linked_quotes as q (q.quote_id)}
+                    <option value={q.quote_id}>{q.organisation || 'Quote'}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
             <textarea class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
               placeholder="Summary — leave blank to auto-summarise from the text below…"></textarea>
             <textarea class="form-input tl-input" rows="5" bind:value={tlAddForm.full_text}
@@ -1032,7 +1084,11 @@
         <div class="tl-entries">
           {#each tlMerged as a (a.id)}
             <div class="tl-entry">
-              <div class="tl-entry-marker" class:tl-entry-marker-quote={a._kind === 'quote'}></div>
+              <div class="tl-entry-marker"
+                class:tl-entry-marker-quote={a._kind === 'quote'}
+                class:tl-entry-marker-keydate={a._kind === 'key_date'}
+                class:tl-entry-marker-status={a._kind === 'instruction_status'}
+              ></div>
               <div class="tl-entry-content">
                 {#if tlEditingId === a.id}
                   <div class="tl-add-row">
@@ -1053,6 +1109,17 @@
                       {/each}
                     </div>
                   {/if}
+                  {#if timelineCondition.linked_quotes?.length}
+                    <div class="tl-add-row">
+                      <span class="tl-req-picker-label">Relevant quote:</span>
+                      <select class="form-input tl-input" bind:value={tlEditForm.quote_id}>
+                        <option value={null}>Not relevant to a quote</option>
+                        {#each timelineCondition.linked_quotes as q (q.quote_id)}
+                          <option value={q.quote_id}>{q.organisation || 'Quote'}</option>
+                        {/each}
+                      </select>
+                    </div>
+                  {/if}
                   <textarea class="form-input tl-input" rows="2" bind:value={tlEditForm.summary}></textarea>
                   <textarea class="form-input tl-input" rows="5" bind:value={tlEditForm.full_text} placeholder="Source text (optional)…"></textarea>
                   <div class="tl-add-btns">
@@ -1062,23 +1129,43 @@
                 {:else}
                   <div class="tl-entry-head">
                     <span class="tl-entry-date">{formatDate(a.advancement_date)}</span>
-                    <span class="tl-source-badge" class:tl-source-email={a.source_type === 'email'}>
-                      <i class="las {a.source_type === 'email' ? 'la-envelope' : 'la-sticky-note'}"></i>
-                      {a.source_type === 'email' ? 'Email trail' : 'Note'}
-                    </span>
+                    {#if a._kind === 'condition' || a._kind === 'quote'}
+                      <span class="tl-source-badge" class:tl-source-email={a.source_type === 'email'}>
+                        <i class="las {a.source_type === 'email' ? 'la-envelope' : 'la-sticky-note'}"></i>
+                        {a.source_type === 'email' ? 'Email trail' : 'Note'}
+                      </span>
+                    {/if}
+                    {#if a._kind === 'condition' && a.quote_id}
+                      {@const taggedQuote = timelineCondition.linked_quotes?.find(q => q.quote_id === a.quote_id)}
+                      {#if taggedQuote}
+                        <span class="tl-quote-badge" title="Tagged as relevant to this linked quote">
+                          <i class="las la-link"></i> {taggedQuote.organisation || 'Quote'}
+                        </span>
+                      {/if}
+                    {/if}
                     {#if a._kind === 'quote'}
                       <span class="tl-quote-badge" title="From the linked quote's actions log in surveyor management">
                         <i class="las la-file-invoice-dollar"></i> {a._org}
                       </span>
                     {/if}
-                    {#if a._kind !== 'quote'}
+                    {#if a._kind === 'key_date'}
+                      <span class="tl-quote-badge tl-keydate-badge" title="Key date from the linked quote in surveyor management">
+                        <i class="las la-calendar"></i> {a._org}
+                      </span>
+                    {/if}
+                    {#if a._kind === 'instruction_status'}
+                      <span class="tl-quote-badge tl-status-badge" title="Instruction status change from the linked quote in surveyor management">
+                        <i class="las la-flag"></i> {a._org}
+                      </span>
+                    {/if}
+                    {#if a._kind === 'condition'}
                       <div class="tl-entry-btns">
                         <button class="btn btn-icon btn-ghost" title="Edit" on:click={() => startTlEdit(a)}><i class="las la-pen"></i></button>
                         <button class="btn btn-icon btn-danger-ghost" title="Delete" on:click={() => removeAdvancement(timelineCondition.id, a.id)}><i class="las la-trash"></i></button>
                       </div>
                     {/if}
                   </div>
-                  {#if a._kind !== 'quote' && a.requirement_ids?.length}
+                  {#if a._kind === 'condition' && a.requirement_ids?.length}
                     <div class="tl-req-tags">
                       {#each timelineCondition.requirements.filter(req => a.requirement_ids.includes(req.id)) as req (req.id)}
                         <span class="tl-req-tag" title={req.requirement_text}>
@@ -2018,14 +2105,48 @@
     font-size: 0.76rem;
     color: #94a3b8;
   }
+  .tl-quote-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+  }
   .tl-quote-chip {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 0.35rem 0.6rem;
+  }
+  .tl-quote-statuses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .tl-quote-status-pill {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #334155;
+    background: #f1f5f9;
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+  .tl-quote-keydates {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+  .tl-quote-keydates-label { font-weight: 600; color: #475569; }
+  .tl-quote-keydate {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    border-radius: 6px;
+    padding: 1px 7px;
   }
   .tl-quote-org {
     font-size: 0.78rem;
@@ -2041,16 +2162,6 @@
     font-size: 0.7rem;
     color: #64748b;
     flex-shrink: 0;
-  }
-  .tl-quote-status {
-    font-size: 0.66rem;
-    font-weight: 700;
-    color: #2563eb;
-    background: #dbeafe;
-    border-radius: 999px;
-    padding: 1px 8px;
-    flex-shrink: 0;
-    white-space: nowrap;
   }
   .tl-quote-unlink { flex-shrink: 0; }
   .tl-quote-picker {
@@ -2079,8 +2190,10 @@
     min-width: 0;
   }
 
-  /* Quote entries in the timeline */
+  /* Quote / key-date / instruction-status entries in the timeline */
   .tl-entry-marker-quote { background: #0ea5e9; }
+  .tl-entry-marker-keydate { background: #f59e0b; }
+  .tl-entry-marker-status { background: #16a34a; }
   .tl-quote-badge {
     display: inline-flex;
     align-items: center;
@@ -2096,6 +2209,8 @@
     text-overflow: ellipsis;
     max-width: 180px;
   }
+  .tl-keydate-badge { color: #92400e; background: #fef3c7; }
+  .tl-status-badge { color: #15803d; background: #dcfce7; }
   .ct-progress-date .las { margin-left: 3px; color: #0369a1; }
 
   .tl-req-picker {
