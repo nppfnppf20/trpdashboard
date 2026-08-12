@@ -16,15 +16,11 @@
   } from '$lib/api/projectDocs.js';
   import {
     getMeetingNotes,
-    getMeetingActions,
     getMeetingTranscript,
     deleteMeetingNote,
     updateMeetingNote,
     updateMeetingSummary,
-    processMeetingNote,
-    createMeetingAction,
-    updateMeetingAction,
-    deleteMeetingAction
+    processMeetingNote
   } from '$lib/api/meetingNotes.js';
 
   export let project;
@@ -37,13 +33,12 @@
   let showDraftIssuesModal = false;
 
   // Post-process review modal — opens right after a transcript is processed.
-  // Lets you edit the AI summary and accept/edit/reject suggested actions
-  // before anything (beyond the transcript + raw summary) is committed.
+  // Lets you edit the AI summary before it's saved, then offers the Issues
+  // Tracker hop. Actions/completion tracking lives in the DB only now —
+  // this tab doesn't surface or edit them.
   let reviewOpen = false;
   let reviewTranscript = null; // { id, title, meeting_date, attendees_text }
   let reviewSummaryHtml = '';
-  let reviewActions = [];      // [{ action_text, owner, due_date, notes, include }]
-  let reviewExistingActions = []; // [{ id, action_text, owner, evidence, include }] — pending actions the AI thinks this meeting closed out
   let reviewEditor;            // bind:this on RichTextEditor
   let reviewSaving = false;
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
@@ -243,36 +238,22 @@
 
   // Data
   let notes = [];
-  let actions = [];
   let loading = true;
   let error = null;
 
   // UI toggles
   let showAllMeetings = false;
-  let showCompleted = false;
-  let showOutstandingActions = false;
-  let showAddForm = false;
   let viewingTranscriptNote = null; // note object currently shown in the transcript viewer modal
-
-  // Inline edit — actions
-  let editingActionId = null;
-  let editForm = {};
 
   // Inline edit — note metadata
   let editingNoteId = null;
   let noteEditForm = { title: '', meeting_date: '', attendees_text: '' };
 
-  // Add action form
-  let newAction = { action_text: '', owner: '', due_date: '', notes: '' };
-  let addError = null;
-  let adding = false;
-
   // Transcript view (lazy-loaded)
   let transcriptData = {};
 
-  // Note editor modal (view/edit summary + review actions)
+  // Note editor modal (view/edit summary)
   let editorNote = null;     // the note object currently open
-  let editorIsNew = false;   // true = actions not yet saved (post-processing)
   let editorInitialHtml = '';
   let editorSaving = false;
   let richTextEditor;        // bind:this on RichTextEditor
@@ -300,10 +281,7 @@
     loading = true;
     error = null;
     try {
-      [notes, actions] = await Promise.all([
-        getMeetingNotes(projectId),
-        getMeetingActions(projectId)
-      ]);
+      notes = await getMeetingNotes(projectId);
     } catch (err) {
       error = err.message;
     } finally {
@@ -311,8 +289,6 @@
     }
   }
 
-  $: pendingActions   = actions.filter(a => a.status === 'pending');
-  $: completedActions = actions.filter(a => a.status === 'complete');
   $: latestNote = notes[0] ?? null;
 
   function formatDate(d) {
@@ -320,94 +296,13 @@
     return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  function isOverdue(due_date) {
-    if (!due_date) return false;
-    return new Date(due_date) < new Date(new Date().toDateString());
-  }
-
-  // ── Actions ───────────────────────────────────────────────────────────────
-
-  async function toggleStatus(action) {
-    const newStatus = action.status === 'pending' ? 'complete' : 'pending';
-    try {
-      await updateMeetingAction(action.id, { status: newStatus });
-      // Update locally to preserve meeting_title, meeting_date etc.
-      actions = actions.map(a => a.id === action.id
-        ? { ...a, status: newStatus, completed_at: newStatus === 'complete' ? new Date().toISOString() : null }
-        : a
-      );
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
-  function startEdit(action) {
-    editingActionId = action.id;
-    editForm = {
-      action_text: action.action_text,
-      owner: action.owner ?? '',
-      due_date: action.due_date ? action.due_date.split('T')[0] : '',
-      notes: action.notes ?? ''
-    };
-  }
-
-  async function saveEdit(actionId) {
-    try {
-      await updateMeetingAction(actionId, {
-        action_text: editForm.action_text,
-        owner: editForm.owner || null,
-        due_date: editForm.due_date || null,
-        notes: editForm.notes || null
-      });
-      actions = actions.map(a => a.id === actionId
-        ? { ...a, action_text: editForm.action_text, owner: editForm.owner || null, due_date: editForm.due_date || null, notes: editForm.notes || null }
-        : a
-      );
-      editingActionId = null;
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
-  async function removeAction(id) {
-    if (!confirm('Delete this action?')) return;
-    try {
-      await deleteMeetingAction(id);
-      actions = actions.filter(a => a.id !== id);
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
-  async function addAction() {
-    if (!newAction.action_text.trim()) { addError = 'Action text is required.'; return; }
-    adding = true;
-    addError = null;
-    try {
-      const created = await createMeetingAction(projectId, {
-        action_text: newAction.action_text,
-        owner: newAction.owner || null,
-        due_date: newAction.due_date || null,
-        notes: newAction.notes || null
-      });
-      actions = [created, ...actions];
-      newAction = { action_text: '', owner: '', due_date: '', notes: '' };
-      showAddForm = false;
-    } catch (err) {
-      addError = err.message;
-    } finally {
-      adding = false;
-    }
-  }
-
   // ── Meeting notes ─────────────────────────────────────────────────────────
 
   async function removeNote(id) {
-    if (!confirm('Delete this meeting note and all its actions?')) return;
+    if (!confirm('Delete this meeting note?')) return;
     try {
       await deleteMeetingNote(id);
       notes = notes.filter(n => n.id !== id);
-      actions = actions.filter(a => a.transcript_id !== id);
       if (editorNote?.id === id) { editorNote = null; }
     } catch (err) {
       alert(err.message);
@@ -516,35 +411,16 @@
         file_name: result.transcript.file_name,
         created_at: result.transcript.created_at,
         summary_id: result.summary?.id,
-        summary_html: result.summary?.summary_html,
-        pending_count: 0,
-        complete_count: 0
+        summary_html: result.summary?.summary_html
       };
 
       notes = [newNote, ...notes];
       showUploadPanel = false;
 
-      // Open the review modal instead of auto-saving actions — nothing beyond
-      // the transcript + raw summary is committed until Save is pressed there.
+      // Open the review modal — nothing beyond the transcript + raw summary
+      // is committed until Save is pressed there.
       reviewTranscript = newNote;
       reviewSummaryHtml = result.summary?.summary_html || '';
-      reviewActions = (result.suggestedActions || []).map(a => ({
-        action_text: a.action_text || '',
-        owner: a.owner || '',
-        due_date: a.due_date || '',
-        notes: a.notes || '',
-        include: true
-      }));
-      const completedMap = new Map((result.completedActions || []).map(c => [c.id, c.evidence]));
-      reviewExistingActions = pendingActions
-        .map(a => ({
-          id: a.id,
-          action_text: a.action_text,
-          owner: a.owner || '',
-          evidence: completedMap.get(a.id) || null,
-          include: completedMap.has(a.id)
-        }))
-        .sort((a, b) => (a.evidence ? 0 : 1) - (b.evidence ? 0 : 1));
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
@@ -558,10 +434,6 @@
 
   // ── Post-process review modal ───────────────────────────────────────────────
 
-  function removeReviewAction(index) {
-    reviewActions = reviewActions.filter((_, i) => i !== index);
-  }
-
   async function saveReview() {
     reviewSaving = true;
     reviewError = null;
@@ -569,32 +441,6 @@
       const html = reviewEditor?.getHTML() ?? reviewSummaryHtml;
       const updated = await updateMeetingSummary(reviewTranscript.id, html);
       notes = notes.map(n => n.id === reviewTranscript.id ? { ...n, summary_html: updated.summary_html } : n);
-
-      const accepted = reviewActions.filter(a => a.include && a.action_text.trim());
-      const saved = await Promise.all(
-        accepted.map(a => createMeetingAction(projectId, {
-          action_text: a.action_text.trim(),
-          owner: a.owner.trim() || null,
-          due_date: a.due_date || null,
-          notes: a.notes.trim() || null,
-          transcript_id: reviewTranscript.id
-        }))
-      );
-      const enriched = saved.map(a => ({
-        ...a,
-        meeting_title: reviewTranscript.title,
-        meeting_date: reviewTranscript.meeting_date
-      }));
-      actions = [...enriched, ...actions];
-      notes = notes.map(n => n.id === reviewTranscript.id ? { ...n, pending_count: saved.length } : n);
-
-      const toComplete = reviewExistingActions.filter(a => a.include);
-      if (toComplete.length) {
-        const completed = await Promise.all(
-          toComplete.map(a => updateMeetingAction(a.id, { status: 'complete', completed_via_transcript_id: reviewTranscript.id }))
-        );
-        actions = actions.map(a => completed.find(c => c.id === a.id) ? { ...a, ...completed.find(c => c.id === a.id) } : a);
-      }
 
       reviewSaved = true;
     } catch (err) {
@@ -609,8 +455,6 @@
     reviewOpen = false;
     reviewTranscript = null;
     reviewSummaryHtml = '';
-    reviewActions = [];
-    reviewExistingActions = [];
     reviewSaved = false;
     reviewError = null;
   }
@@ -623,82 +467,13 @@
 
   // ── Note editor ───────────────────────────────────────────────────────────
 
-  function escapeHtml(str) {
-    return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function isoToDisplay(iso) {
-    if (!iso) return '';
-    const [y, m, d] = iso.split('T')[0].split('-');
-    return d ? `${d}/${m}/${y}` : iso;
-  }
-
-  function displayToIso(str) {
-    if (!str) return null;
-    const dm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (dm) return `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-    return null;
-  }
-
-  function buildActionsHtml(suggestedActions) {
-    if (!suggestedActions?.length) return '';
-    const td = 'style="padding:0.35rem 0.6rem;border:1px solid #e2e8f0;vertical-align:top;"';
-    const th = 'style="text-align:left;padding:0.35rem 0.6rem;background:#f1f5f9;border:1px solid #e2e8f0;font-size:0.72rem;font-weight:600;color:#64748b;text-transform:uppercase;"';
-    const rows = suggestedActions.map(a => {
-      const date = isoToDisplay(a.due_date);
-      return `<tr><td data-col="action" ${td}>${escapeHtml(a.action_text)}</td><td data-col="owner" ${td}>${escapeHtml(a.owner)}</td><td data-col="due_date" ${td}>${escapeHtml(date)}</td><td data-col="notes" ${td}>${escapeHtml(a.notes)}</td></tr>`;
-    }).join('');
-    return `<h3>Actions</h3><table data-mn-actions="1" style="border-collapse:collapse;width:100%;font-size:0.875rem;margin-top:0.25rem;"><thead><tr><th ${th}>Action</th><th ${th}>Owner</th><th ${th}>Due date (DD/MM/YYYY)</th><th ${th}>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
-  }
-
-  function parseActionsFromHtml(html) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    // Prefer data attribute; fall back to finding any table whose first header is "Action"
-    let table = doc.querySelector('table[data-mn-actions]');
-    if (!table) {
-      for (const t of doc.querySelectorAll('table')) {
-        if (t.querySelector('thead th')?.textContent.trim().toLowerCase().startsWith('action')) {
-          table = t; break;
-        }
-      }
-    }
-    if (!table) return [];
-    return Array.from(table.querySelectorAll('tbody tr')).map(row => {
-      const cell = (col) => (row.querySelector(`td[data-col="${col}"]`) ?? row.querySelectorAll('td')[{ action:0, owner:1, due_date:2, notes:3 }[col]])?.textContent.trim();
-      return {
-        action_text: cell('action') || '',
-        owner: cell('owner') || null,
-        due_date: displayToIso(cell('due_date')),
-        notes: cell('notes') || null,
-      };
-    }).filter(a => a.action_text);
-  }
-
-  function stripActionsTable(html) {
-    // Remove any <h3>Actions</h3> + following <table> regardless of attributes
-    return html.replace(/<h3[^>]*>\s*Actions\s*<\/h3>\s*<table[\s\S]*?<\/table>/i, '').trim();
-  }
-
-  function openNoteEditor(note, suggestedActions = null) {
+  function openNoteEditor(note) {
     editorNote = note;
-    editorIsNew = suggestedActions !== null;
-    if (suggestedActions !== null) {
-      // New note post-processing — append LLM-suggested actions
-      const actionsHtml = suggestedActions.length ? buildActionsHtml(suggestedActions) : '';
-      editorInitialHtml = (note.summary_html || '') + actionsHtml;
-    } else {
-      // Existing note — rebuild actions table fresh from DB state
-      const baseHtml = stripActionsTable(note.summary_html || '');
-      const noteActions = actions.filter(a => a.transcript_id === note.id);
-      editorInitialHtml = baseHtml + (noteActions.length ? buildActionsHtml(noteActions) : '');
-    }
+    editorInitialHtml = note.summary_html || '';
   }
 
   function closeNoteEditor() {
     editorNote = null;
-    editorIsNew = false;
     editorInitialHtml = '';
   }
 
@@ -707,52 +482,8 @@
     editorSaving = true;
     try {
       const html = richTextEditor?.getHTML() ?? editorNote.summary_html;
-
       const updated = await updateMeetingSummary(editorNote.id, html);
       notes = notes.map(n => n.id === editorNote.id ? { ...n, summary_html: updated.summary_html } : n);
-
-      const parsedActions = parseActionsFromHtml(html);
-
-      if (editorIsNew) {
-        // Create all action records fresh
-        const saved = await Promise.all(
-          parsedActions.map(a => createMeetingAction(projectId, {
-            action_text: a.action_text,
-            owner: a.owner || null,
-            due_date: a.due_date || null,
-            notes: a.notes || null,
-            transcript_id: editorNote.id
-          }))
-        );
-        const enriched = saved.map(a => ({ ...a, meeting_title: editorNote.title, meeting_date: editorNote.meeting_date }));
-        actions = [...enriched, ...actions];
-        notes = notes.map(n => n.id === editorNote.id ? { ...n, pending_count: saved.length } : n);
-      } else if (parsedActions.length > 0) {
-        // Update existing records matched by action_text; create any that are new
-        const existingForNote = actions.filter(a => a.transcript_id === editorNote.id);
-        for (const p of parsedActions) {
-          const match = existingForNote.find(a => a.action_text === p.action_text);
-          if (match) {
-            const upd = await updateMeetingAction(match.id, {
-              action_text: p.action_text,
-              owner: p.owner,
-              due_date: p.due_date,
-              notes: p.notes
-            });
-            actions = actions.map(a => a.id === match.id ? { ...a, ...upd } : a);
-          } else {
-            const created = await createMeetingAction(projectId, {
-              action_text: p.action_text,
-              owner: p.owner || null,
-              due_date: p.due_date || null,
-              notes: p.notes || null,
-              transcript_id: editorNote.id
-            });
-            actions = [...actions, { ...created, meeting_title: editorNote.title, meeting_date: editorNote.meeting_date }];
-          }
-        }
-      }
-
       closeNoteEditor();
     } catch (err) {
       alert(err.message);
@@ -1078,14 +809,6 @@
               {#if latestNote.meeting_date}<span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>{/if}
               {#if latestNote.attendees_text}<span class="mn-cell-dim">{latestNote.attendees_text}</span>{/if}
             </div>
-            <div class="mn-latest-badges">
-              {#if Number(latestNote.pending_count) > 0}
-                <span class="mn-badge mn-badge-warn">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
-              {/if}
-              {#if Number(latestNote.complete_count) > 0}
-                <span class="mn-badge mn-badge-ok">{latestNote.complete_count} completed</span>
-              {/if}
-            </div>
             <div class="mn-latest-card-btns">
               <button class="btn btn-primary btn-sm" on:click={() => openNoteEditor(latestNote)}>
                 <i class="las la-eye"></i> View Notes
@@ -1104,162 +827,6 @@
       </div>
 
     </div>
-
-    <!-- ── Outstanding Actions ─────────────────────────────────────────── -->
-    <div class="mn-section mn-section-muted">
-      <div class="mn-section-head">
-        <button class="mn-concertina-btn" on:click={() => showOutstandingActions = !showOutstandingActions}>
-          <i class="las la-{showOutstandingActions ? 'angle-up' : 'angle-down'}"></i>
-          Outstanding Actions
-        </button>
-        {#if pendingActions.length > 0}
-          <span class="mn-badge mn-badge-warn">{pendingActions.length}</span>
-        {/if}
-        <button class="btn btn-primary btn-sm mn-ml-auto" on:click={() => { showOutstandingActions = true; showAddForm = !showAddForm; addError = null; }}>
-          <i class="las la-plus"></i> Add Action
-        </button>
-      </div>
-
-      {#if showOutstandingActions}
-
-      {#if showAddForm}
-        <div class="mn-add-form">
-          <div class="form-row">
-            <div class="form-group form-group-wide">
-              <label>Action <span class="required">*</span></label>
-              <input type="text" class="form-input" bind:value={newAction.action_text} placeholder="Describe the action…" />
-            </div>
-            <div class="form-group">
-              <label>Owner</label>
-              <input type="text" class="form-input" bind:value={newAction.owner} placeholder="Person responsible" />
-            </div>
-            <div class="form-group">
-              <label>Due Date</label>
-              <input type="date" class="form-input" bind:value={newAction.due_date} />
-            </div>
-            <div class="form-group form-group-wide">
-              <label>Notes</label>
-              <input type="text" class="form-input" bind:value={newAction.notes} placeholder="Any additional context" />
-            </div>
-          </div>
-          {#if addError}<p class="mn-error-sm">{addError}</p>{/if}
-          <div class="mn-form-footer">
-            <button class="btn btn-secondary btn-sm" on:click={() => { showAddForm = false; addError = null; }}>Cancel</button>
-            <button class="btn btn-primary btn-sm" on:click={addAction} disabled={adding}>
-              {adding ? 'Adding…' : 'Add Action'}
-            </button>
-          </div>
-        </div>
-      {/if}
-
-      {#if pendingActions.length === 0}
-        <p class="mn-empty">No outstanding actions.</p>
-      {:else}
-        <div class="mn-table">
-          <div class="mn-table-head">
-            <span>Action</span>
-            <span>Owner</span>
-            <span>Due</span>
-            <span>From</span>
-            <span></span>
-          </div>
-          {#each pendingActions as action (action.id)}
-            {#if editingActionId === action.id}
-              <div class="mn-row mn-row-editing">
-                <div class="form-row">
-                  <div class="form-group form-group-wide">
-                    <label>Action</label>
-                    <input type="text" class="form-input" bind:value={editForm.action_text} />
-                  </div>
-                  <div class="form-group">
-                    <label>Owner</label>
-                    <input type="text" class="form-input" bind:value={editForm.owner} placeholder="Person responsible" />
-                  </div>
-                  <div class="form-group">
-                    <label>Due Date</label>
-                    <input type="date" class="form-input" bind:value={editForm.due_date} />
-                  </div>
-                  <div class="form-group form-group-wide">
-                    <label>Notes</label>
-                    <input type="text" class="form-input" bind:value={editForm.notes} placeholder="Optional notes" />
-                  </div>
-                </div>
-                <div class="mn-form-footer">
-                  <button class="btn btn-secondary btn-sm" on:click={() => editingActionId = null}>Cancel</button>
-                  <button class="btn btn-primary btn-sm" on:click={() => saveEdit(action.id)}>Save</button>
-                </div>
-              </div>
-            {:else}
-              <div class="mn-row" class:mn-row-overdue={isOverdue(action.due_date)}>
-                <button class="mn-status-btn mn-status-pending" on:click={() => toggleStatus(action)} title="Mark complete">
-                  <i class="las la-circle"></i>
-                </button>
-                <span class="mn-action-text">
-                  {action.action_text}
-                  {#if action.notes}<span class="mn-action-note">{action.notes}</span>{/if}
-                </span>
-                <span class="mn-cell-muted">{action.owner ?? '—'}</span>
-                <span class="mn-cell-muted" class:mn-overdue-text={isOverdue(action.due_date)}>
-                  {formatDate(action.due_date)}
-                </span>
-                <span class="mn-cell-dim">
-                  {#if action.meeting_title}{action.meeting_title}{:else}<span class="mn-manual">Manual</span>{/if}
-                </span>
-                <div class="mn-row-btns">
-                  <button class="btn btn-icon btn-ghost" on:click={() => startEdit(action)} title="Edit">
-                    <i class="las la-pen"></i>
-                  </button>
-                  <button class="btn btn-icon btn-danger-ghost" on:click={() => removeAction(action.id)} title="Delete">
-                    <i class="las la-trash"></i>
-                  </button>
-                </div>
-              </div>
-            {/if}
-          {/each}
-        </div>
-      {/if}
-
-      {/if}
-    </div>
-
-    <!-- ── Completed Actions ──────────────────────────────────────────── -->
-    {#if completedActions.length > 0}
-      <div class="mn-section mn-section-muted">
-        <button class="mn-concertina-btn" on:click={() => showCompleted = !showCompleted}>
-          <i class="las la-{showCompleted ? 'angle-up' : 'angle-down'}"></i>
-          Completed Actions ({completedActions.length})
-        </button>
-        {#if showCompleted}
-          <div class="mn-table mn-table-mt">
-            <div class="mn-table-head">
-              <span>Action</span>
-              <span>Owner</span>
-              <span>Completed</span>
-              <span>From</span>
-              <span></span>
-            </div>
-            {#each completedActions as action (action.id)}
-              <div class="mn-row mn-row-done">
-                <button class="mn-status-btn mn-status-complete" on:click={() => toggleStatus(action)} title="Reopen">
-                  <i class="las la-check-circle"></i>
-                </button>
-                <span class="mn-action-text mn-done">{action.action_text}</span>
-                <span class="mn-cell-muted">{action.owner ?? '—'}</span>
-                <span class="mn-cell-muted">{formatDate(action.completed_at)}</span>
-                <span class="mn-cell-dim">
-                  {#if action.meeting_title}{action.meeting_title}{:else}<span class="mn-manual">Manual</span>{/if}
-                </span>
-                <div class="mn-row-btns">
-                  <button class="btn btn-icon btn-danger-ghost" on:click={() => removeAction(action.id)} title="Delete">
-                    <i class="las la-trash"></i>
-                  </button>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
 
     <!-- ── All Meeting Notes ──────────────────────────────────────────── -->
     <div class="mn-section mn-section-muted">
@@ -1304,14 +871,6 @@
                       {/if}
                       {#if note.attendees_text}
                         <span class="mn-cell-dim">{note.attendees_text}</span>
-                      {/if}
-                    </div>
-                    <div class="mn-note-badges-row">
-                      {#if Number(note.pending_count) > 0}
-                        <span class="mn-badge mn-badge-warn">{note.pending_count} open</span>
-                      {/if}
-                      {#if Number(note.complete_count) > 0}
-                        <span class="mn-badge mn-badge-ok">{note.complete_count} done</span>
                       {/if}
                     </div>
                   </div>
@@ -1367,7 +926,7 @@
       </div>
 
       {#if !reviewSaved}
-        <!-- Body — scrolls: summary editor, then the actions table -->
+        <!-- Body — scrolls: just the summary editor -->
         <div class="mn-editor-body mn-review-body">
           <section class="mn-review-section">
             <h3 class="mn-review-section-title">Meeting Notes</h3>
@@ -1378,52 +937,6 @@
               fullHeight={false}
             />
           </section>
-
-          <section class="mn-review-section">
-            <h3 class="mn-review-section-title">Suggested Actions</h3>
-            {#if reviewActions.length === 0}
-              <p class="mn-empty">No actions were extracted from this meeting.</p>
-            {:else}
-              <div class="mn-review-actions-table">
-                {#each reviewActions as row, i}
-                  <div class="mn-review-action-row" class:mn-review-action-row--excluded={!row.include}>
-                    <label class="mn-staged-check">
-                      <input type="checkbox" bind:checked={row.include} />
-                    </label>
-                    <div class="mn-review-action-fields">
-                      <input class="mn-input-sm" bind:value={row.action_text} disabled={!row.include} placeholder="Action" />
-                      <input class="mn-input-sm mn-review-owner" bind:value={row.owner} disabled={!row.include} placeholder="Owner" />
-                      <input class="mn-input-sm mn-review-date" type="date" bind:value={row.due_date} disabled={!row.include} />
-                      <input class="mn-input-sm mn-review-notes" bind:value={row.notes} disabled={!row.include} placeholder="Notes" />
-                    </div>
-                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeReviewAction(i)} title="Remove suggestion">
-                      <i class="las la-trash"></i>
-                    </button>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </section>
-
-          {#if reviewExistingActions.length > 0}
-            <section class="mn-review-section">
-              <h3 class="mn-review-section-title">Existing Open Actions <span class="mn-type-sub">— tick any this meeting completed</span></h3>
-              <div class="mn-review-actions-table">
-                {#each reviewExistingActions as row (row.id)}
-                  <div class="mn-review-action-row" class:mn-review-action-row--to-complete={row.include}>
-                    <label class="mn-staged-check">
-                      <input type="checkbox" bind:checked={row.include} />
-                    </label>
-                    <div class="mn-review-existing-fields">
-                      <span class="mn-review-existing-text">{row.action_text}</span>
-                      {#if row.owner}<span class="mn-review-existing-owner">{row.owner}</span>{/if}
-                      {#if row.evidence}<span class="mn-review-evidence"><i class="las la-magic"></i> {row.evidence}</span>{/if}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            </section>
-          {/if}
 
           {#if reviewError}<p class="mn-error-sm" style="padding:0 0.25rem">{reviewError}</p>{/if}
         </div>
@@ -1461,15 +974,12 @@
 
       <!-- Header -->
       <div class="modal-header mn-editor-header">
-        <div class="mn-result-header-text">
-          {#if editorIsNew}<div class="mn-result-tick"><i class="las la-check-circle"></i></div>{/if}
-          <div>
-            <h2 class="mn-modal-title">{editorNote.title}</h2>
-            <p class="mn-modal-meta">
-              {formatDate(editorNote.meeting_date)}
-              {#if editorNote.attendees_text} &bull; {editorNote.attendees_text}{/if}
-            </p>
-          </div>
+        <div>
+          <h2 class="mn-modal-title">{editorNote.title}</h2>
+          <p class="mn-modal-meta">
+            {formatDate(editorNote.meeting_date)}
+            {#if editorNote.attendees_text} &bull; {editorNote.attendees_text}{/if}
+          </p>
         </div>
         <div class="mn-editor-header-btns">
           <button class="btn btn-secondary btn-sm" on:click={downloadFromEditor} disabled={editorSaving}>
@@ -1494,13 +1004,11 @@
       <!-- Footer -->
       <div class="modal-footer">
         <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
-          {editorIsNew ? 'Skip actions' : 'Close'}
+          Close
         </button>
         <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving}>
           {#if editorSaving}
             <span class="mn-spinner"></span> Saving…
-          {:else if editorIsNew}
-            <i class="las la-check"></i> Save &amp; accept actions
           {:else}
             <i class="las la-save"></i> Save changes
           {/if}
@@ -1819,11 +1327,6 @@
     gap: 0.2rem 0.6rem;
     font-size: 0.8rem;
   }
-  .mn-latest-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-  }
   .mn-latest-card-btns {
     display: flex;
     gap: 0.5rem;
@@ -1876,8 +1379,6 @@
   }
   .mn-concertina-btn:hover { color: #1e293b; }
 
-  .mn-ml-auto { margin-left: auto; }
-  .mn-row-btns { display: flex; align-items: center; gap: 0.4rem; }
   .mn-table-mt { margin-top: 0.75rem; }
 
   /* ── Upload panel ──────────────────────────────────────────────────────── */
@@ -1918,15 +1419,6 @@
   .required { color: #ef4444; }
 
   .mn-form-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
-
-  .mn-add-form {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 0.85rem;
-    margin-top: 0.75rem;
-    margin-bottom: 0.75rem;
-  }
 
   /* Summary type toggle */
   .mn-type-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
@@ -1971,72 +1463,8 @@
 
   .mn-extras-toggle { font-size: 0.8rem; }
 
-  /* ── Actions table ─────────────────────────────────────────────────────── */
-  .mn-table {
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    overflow: hidden;
-    margin-top: 0.75rem;
-  }
-  .mn-table-head {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr auto;
-    gap: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    background: #f8fafc;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .mn-row {
-    display: grid;
-    grid-template-columns: auto 2fr 1fr 1fr 1fr auto;
-    gap: 0.75rem;
-    align-items: center;
-    padding: 0.55rem 0.75rem;
-    border-top: 1px solid #f1f5f9;
-    font-size: 0.875rem;
-  }
-  .mn-row:hover { background: #f8fafc; }
-  .mn-row-overdue { background: #fff7f7; }
-  .mn-row-done { opacity: 0.7; }
-  .mn-row-editing {
-    display: block;
-    padding: 0.75rem;
-    border-top: 1px solid #e2e8f0;
-    background: #f8fafc;
-  }
-
-  .mn-status-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.1rem;
-    padding: 0;
-    line-height: 1;
-    flex-shrink: 0;
-  }
-  .mn-status-pending { color: #cbd5e1; }
-  .mn-status-pending:hover { color: #22c55e; }
-  .mn-status-complete { color: #22c55e; }
-  .mn-status-complete:hover { color: #cbd5e1; }
-
-  .mn-action-text { color: #1e293b; font-size: 0.875rem; line-height: 1.4; }
-  .mn-action-text.mn-done { text-decoration: line-through; color: #94a3b8; }
-  .mn-action-note { display: block; font-size: 0.75rem; color: #94a3b8; margin-top: 0.1rem; }
   .mn-cell-muted { color: #64748b; font-size: 0.8rem; }
   .mn-cell-dim { color: #94a3b8; font-size: 0.78rem; }
-  .mn-overdue-text { color: #dc2626 !important; font-weight: 600; }
-  .mn-manual {
-    background: #f1f5f9;
-    color: #64748b;
-    font-size: 0.7rem;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-  }
 
   /* ── Note cards (All Meeting Notes) ──────────────────────────────────── */
   .mn-notes-list { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -2055,7 +1483,6 @@
   }
   .mn-note-meta { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; }
   .mn-note-title { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
-  .mn-note-badges-row { display: flex; gap: 0.35rem; align-items: center; flex-shrink: 0; }
   .mn-note-actions {
     display: flex;
     gap: 0.4rem;
@@ -2097,17 +1524,6 @@
     overflow-y: visible;
     font-size: 0.85rem;
   }
-
-  /* ── Badges ─────────────────────────────────────────────────────────────── */
-  .mn-badge {
-    font-size: 0.72rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 10px;
-    white-space: nowrap;
-  }
-  .mn-badge-warn { background: #fef3c7; color: #92400e; }
-  .mn-badge-ok   { background: #dcfce7; color: #166534; }
 
   /* ── States ─────────────────────────────────────────────────────────────── */
   .mn-empty { color: #94a3b8; font-size: 0.875rem; padding: 0.5rem 0; margin: 0; }
@@ -2175,19 +1591,6 @@
   .mn-editor-header {
     justify-content: space-between;
   }
-  .mn-result-header-text {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    min-width: 0;
-  }
-  .mn-result-tick {
-    font-size: 1.6rem;
-    color: #22c55e;
-    line-height: 1;
-    margin-top: 0.1rem;
-    flex-shrink: 0;
-  }
   .mn-editor-header-btns {
     display: flex;
     align-items: center;
@@ -2222,40 +1625,6 @@
     font-weight: 600;
     color: #1e293b;
   }
-  .mn-review-actions-table { display: flex; flex-direction: column; gap: 0.5rem; }
-  .mn-review-action-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.5rem 0.6rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    transition: opacity .15s;
-  }
-  .mn-review-action-row--excluded { opacity: .45; }
-  .mn-review-action-row--to-complete { background: #f0fdf4; border-color: #86efac; }
-  .mn-review-existing-fields { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; padding-top: 0.15rem; }
-  .mn-review-existing-text { font-size: 0.85rem; color: #1e293b; }
-  .mn-review-existing-owner { font-size: 0.75rem; color: #64748b; }
-  .mn-review-evidence { display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; font-style: italic; color: #7c3aed; }
-  .mn-review-action-fields { display: flex; flex-wrap: wrap; gap: 0.35rem; flex: 1; min-width: 0; }
-  .mn-review-action-fields input { flex: 1 1 auto; }
-  .mn-review-action-fields input:nth-child(1) { flex-basis: 100%; }
-  .mn-review-owner { flex: 1 1 140px !important; }
-  .mn-review-date { flex: 0 0 150px !important; }
-  .mn-review-notes { flex: 2 1 200px !important; }
-  .mn-staged-check { padding-top: 0.4rem; flex-shrink: 0; }
-  .mn-input-sm {
-    padding: .35rem .6rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: .83rem;
-    font-family: inherit;
-    outline: none;
-  }
-  .mn-input-sm:focus { border-color: #93c5fd; }
-  .mn-input-sm:disabled { background: #f8fafc; color: #94a3b8; }
-
 
   /* ── Modal ───────────────────────────────────────────────────────────────── */
   .modal-backdrop {
