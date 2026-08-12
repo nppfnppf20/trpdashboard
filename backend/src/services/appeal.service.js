@@ -514,7 +514,15 @@ function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allI
 
   // Free-text notes from the Drafting Issues tab (only populated for issues
   // sourced from admin_console.drafting_issues, e.g. Planning Statement v3).
+  // argument_for ("Argument notes" in the Drafting Issues UI) is the
+  // consultant's own outline of the compliance argument for this issue —
+  // deliberately not used anywhere else in Planning Statement v3.
+  // argument_against is not surfaced in that UI at all and is not used here.
   if (issue) {
+    if (issue.argument_for?.trim()) {
+      lines.push(`### Argument Notes`);
+      lines.push(issue.argument_for.trim());
+    }
     for (const f of TIER_NOTE_FIELDS) {
       if (issue[f.key]?.trim()) {
         lines.push(`### ${f.label}`);

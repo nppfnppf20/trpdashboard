@@ -1,7 +1,7 @@
 <script>
   import {
     getDraftingIssues, createDraftingIssue, updateDraftingIssue,
-    deleteDraftingIssue, importFromKeyIssues, draftIssuesFromBriefing,
+    deleteDraftingIssue, draftIssuesFromBriefing,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
     getDraftingIssueSnippetRelevance, toggleDraftingIssueSnippet,
   } from '$lib/api/draftingIssues.js';
@@ -81,30 +81,11 @@
       if (r.status === 'rejected') console.error(`Failed to load ${label}:`, r.reason);
     }
 
-    const issuesLoaded = issuesR.status === 'fulfilled';
-    if (issuesLoaded) issues = issuesR.value;
+    if (issuesR.status === 'fulfilled') issues = issuesR.value;
     if (policyR.status === 'fulfilled') policyRelevance = policyR.value;
     if (snippetR.status === 'fulfilled') snippetRelevance = snippetR.value;
     if (policiesR.status === 'fulfilled') projectPolicies = policiesR.value;
     if (typesR.status === 'fulfilled') issueTypes = typesR.value;
-
-    // Auto-seed from Key Issues the first time this list is empty, so
-    // there's nothing to click before you see something useful here. Only
-    // attempted if we actually know the list is empty (i.e. the fetch
-    // succeeded) — never treat a failed fetch as "genuinely empty".
-    if (issuesLoaded && issues.length === 0) {
-      try {
-        const result = await importFromKeyIssues(project.id);
-        if (result.imported > 0) {
-          [issues, policyRelevance] = await Promise.all([
-            getDraftingIssues(project.id),
-            getDraftingIssuePolicyRelevance(project.id),
-          ]);
-        }
-      } catch (err) {
-        console.error('Failed to import from key issues:', err);
-      }
-    }
 
     loading = false;
   }
@@ -126,7 +107,7 @@
   }
 
   async function handleDelete(issue) {
-    if (!confirm(`Delete "${issue.label}"? This only removes it from the drafting issues list — the original key issue (if any) is untouched.`)) return;
+    if (!confirm(`Delete "${issue.label}"?`)) return;
     try {
       await deleteDraftingIssue(issue.id);
       issues = issues.filter(i => i.id !== issue.id);
@@ -174,7 +155,7 @@
   <div class="di-header">
     <div class="di-header-text">
       <h3>Drafting Issues</h3>
-      <p>An independent issue list used for AI document generation (currently Planning Statement v3). Seeded from Key Issues, but editing here never changes the Stages board — and vice versa.</p>
+      <p>An independent issue list used for AI document generation (currently Planning Statement v3). Build it up manually or with "Draft from Briefing Note" below.</p>
     </div>
     <div class="di-header-actions">
       <button class="btn btn-secondary" on:click={openDraftModal} disabled={!project}>
@@ -196,7 +177,7 @@
     </div>
 
     {#if issues.length === 0}
-      <p class="di-empty">No drafting issues yet. Click "Import from Key Issues" to start from your tracked issues, or add one manually above.</p>
+      <p class="di-empty">No drafting issues yet. Add one manually above, or use "Draft from Briefing Note".</p>
     {:else}
       <div class="di-list">
         {#each issues as issue (issue.id)}

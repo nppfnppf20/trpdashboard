@@ -2,7 +2,8 @@
  * Drafting Issues controller.
  * A project-scoped issue list for AI document generation, independent of
  * admin_console.project_issue_tracks (the workflow/Stages-board "key issues").
- * Seeded from key issues via importFromKeyIssues, then edited independently.
+ * Built manually or via "Draft from Briefing Note" — no longer seeded from
+ * key issues.
  * Currently wired into Planning Statement v3 only — see appeal.controller.js.
  */
 
@@ -153,79 +154,6 @@ export async function reorderDraftingIssues(req, res) {
   } catch (err) {
     console.error('draftingIssues.reorder error:', err);
     res.status(500).json({ error: 'Failed to reorder drafting issues' });
-  }
-}
-
-// Copies any active key issue (project_issue_tracks) not already imported
-// (no existing drafting_issues row with that source_track_id) — along with
-// its argument notes and linked policies — as a one-off starting point.
-// Safe to re-run: already-imported issues are skipped, so it only ever adds
-// new ones, never overwrites edits made since the last import.
-export async function importFromKeyIssues(req, res) {
-  const { projectId } = req.params;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const { rows: tracks } = await client.query(
-      `SELECT pit.id, pit.label, pit.discipline, pit.issue_type_id, pit.summary,
-              n.argument_for, n.argument_against,
-              n.policy_national, n.policy_local, n.policy_neighbourhood,
-              n.policy_supplementary, n.policy_other
-       FROM admin_console.project_issue_tracks pit
-       LEFT JOIN planning_applications.issue_notes n
-         ON n.track_id = pit.id AND n.project_id = pit.project_id
-       WHERE pit.project_id = $1 AND pit.is_active = TRUE
-         AND NOT EXISTS (
-           SELECT 1 FROM admin_console.drafting_issues di
-           WHERE di.source_track_id = pit.id
-         )
-       ORDER BY pit.sort_order, pit.id`,
-      [projectId]
-    );
-
-    if (!tracks.length) {
-      await client.query('ROLLBACK');
-      return res.json({ imported: 0 });
-    }
-
-    const { rows: maxRow } = await client.query(
-      `SELECT COALESCE(MAX(sort_order), -1) AS max FROM admin_console.drafting_issues WHERE project_id = $1`,
-      [projectId]
-    );
-    let nextOrder = maxRow[0].max + 1;
-
-    for (const t of tracks) {
-      const { rows: inserted } = await client.query(
-        `INSERT INTO admin_console.drafting_issues
-           (project_id, label, discipline, issue_type_id, source_track_id, argument_for, argument_against,
-            summary, policy_national, policy_local, policy_neighbourhood, policy_supplementary, policy_other, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         RETURNING id`,
-        [projectId, t.label, t.discipline, t.issue_type_id, t.id, t.argument_for, t.argument_against,
-         t.summary, t.policy_national, t.policy_local, t.policy_neighbourhood, t.policy_supplementary, t.policy_other,
-         nextOrder++]
-      );
-      const draftingIssueId = inserted[0].id;
-
-      await client.query(
-        `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
-         SELECT $1, ptr.policy_id
-         FROM planning_applications.policy_track_relevance ptr
-         WHERE ptr.track_id = $2
-         ON CONFLICT DO NOTHING`,
-        [draftingIssueId, t.id]
-      );
-    }
-
-    await client.query('COMMIT');
-    res.json({ imported: tracks.length });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('draftingIssues.importFromKeyIssues error:', err);
-    res.status(500).json({ error: 'Failed to import from key issues' });
-  } finally {
-    client.release();
   }
 }
 

@@ -54,13 +54,6 @@ export async function reorderDraftingIssues(projectId, orderedIds) {
   return res.json();
 }
 
-export async function importFromKeyIssues(projectId) {
-  const res = await authFetch(`${BASE}/projects/${projectId}/import-from-key-issues`, {
-    method: 'POST'
-  });
-  if (!res.ok) throw new Error('Failed to import from key issues');
-  return res.json();
-}
 
 export async function getDraftingIssuePolicyRelevance(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/policy-relevance`);

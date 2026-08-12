@@ -6,7 +6,6 @@ import {
   setDraftingIssueType,
   deleteDraftingIssue,
   reorderDraftingIssues,
-  importFromKeyIssues,
   draftIssuesFromBriefing,
   getDraftingIssuePolicyRelevance,
   toggleDraftingIssuePolicy,
@@ -19,7 +18,6 @@ const router = express.Router();
 router.get('/projects/:projectId', listDraftingIssues);
 router.post('/projects/:projectId', createDraftingIssue);
 router.put('/projects/:projectId/reorder', reorderDraftingIssues);
-router.post('/projects/:projectId/import-from-key-issues', importFromKeyIssues);
 router.post('/projects/:projectId/draft-from-briefing', draftIssuesFromBriefing);
 router.get('/projects/:projectId/policy-relevance', getDraftingIssuePolicyRelevance);
 router.get('/projects/:projectId/snippet-relevance', getDraftingIssueSnippetRelevance);
