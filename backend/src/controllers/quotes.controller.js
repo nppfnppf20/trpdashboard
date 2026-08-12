@@ -158,6 +158,27 @@ export async function listProjectConditions(req, res) {
 }
 
 /**
+ * GET /api/admin-console/quotes/projects/:projectId/issues
+ * Lightweight list of a project's Issues Tracker issues for the "link to
+ * condition(s)/issue(s)" pickers in Surveyor Management. :projectId here is
+ * the integer PK. Optional ?quoteId= marks which rows are already linked.
+ */
+export async function listProjectIssues(req, res) {
+  try {
+    const { projectId } = req.params;
+    const { quoteId } = req.query;
+    const issues = await quotesService.listProjectIssuesForLinking(projectId, quoteId || null);
+    res.json({ issues });
+  } catch (error) {
+    console.error('Error fetching project issues for linking:', error);
+    res.status(500).json({
+      error: 'Failed to fetch project issues',
+      details: error.message
+    });
+  }
+}
+
+/**
  * GET /api/admin-console/projects/:projectId/programme-events
  * Get programme events for a project
  */

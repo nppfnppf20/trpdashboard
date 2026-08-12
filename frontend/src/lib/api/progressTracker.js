@@ -142,3 +142,27 @@ export async function markProgressIssuedToClient(projectId) {
   if (!res.ok) throw new Error('Failed to update issue timestamp');
   return res.json();
 }
+
+// ── Quote links (Surveyor Management) ──────────────────────────────────────
+
+export async function getProjectQuotesForIssues(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/quotes`);
+  if (!res.ok) throw new Error('Failed to fetch project quotes');
+  return res.json();
+}
+
+export async function linkIssueQuote(issueId, quoteId) {
+  const res = await authFetch(`${BASE}/issues/${issueId}/quote-links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quote_id: quoteId }),
+  });
+  if (!res.ok) throw new Error('Failed to link quote');
+  return res.json();
+}
+
+export async function unlinkIssueQuote(issueId, quoteId) {
+  const res = await authFetch(`${BASE}/issues/${issueId}/quote-links/${quoteId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to unlink quote');
+  return res.json();
+}

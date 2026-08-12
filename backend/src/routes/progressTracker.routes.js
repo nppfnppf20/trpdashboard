@@ -14,6 +14,9 @@ import {
   listMeetingNotesForPicker,
   draftFromMeetingNotes,
   commitDraftedActions,
+  listProjectQuotes,
+  linkIssueQuote,
+  unlinkIssueQuote,
   markExported,
   markIssuedToClient,
 } from '../controllers/progressTracker.controller.js';
@@ -36,5 +39,8 @@ router.delete('/actions/:actionId', deleteAction);
 router.get('/projects/:projectId/meeting-notes', listMeetingNotesForPicker);
 router.post('/projects/:projectId/actions/draft-from-meeting-notes', draftFromMeetingNotes);
 router.post('/projects/:projectId/actions/commit-drafted', commitDraftedActions);
+router.get('/projects/:projectId/quotes', listProjectQuotes);
+router.post('/issues/:issueId/quote-links', linkIssueQuote);
+router.delete('/issues/:issueId/quote-links/:quoteId', unlinkIssueQuote);
 
 export default router;

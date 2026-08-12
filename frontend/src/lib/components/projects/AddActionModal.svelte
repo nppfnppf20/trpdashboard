@@ -75,7 +75,15 @@
     stageInstanceId = defaultStageInstanceId;
     selections = {};
     for (const iss of issues) {
-      selections[iss.id] = { checked: iss.id === preselectedIssueId, summary: '', subIds: {} };
+      // Default the "relevant quote" tag: auto-select when the issue has
+      // exactly one linked quote, otherwise leave untagged.
+      const linked = iss.linked_quotes || [];
+      selections[iss.id] = {
+        checked: iss.id === preselectedIssueId,
+        summary: '',
+        subIds: {},
+        quoteId: linked.length === 1 ? linked[0].quote_id : null,
+      };
     }
     loadStages();
     seeded = true;
@@ -104,6 +112,7 @@
         issue_id: iss.id,
         summary: selections[iss.id].summary.trim(),
         sub_issue_ids: Object.entries(selections[iss.id].subIds).filter(([, on]) => on).map(([id]) => parseInt(id, 10)),
+        quote_id: selections[iss.id].quoteId || null,
       }));
 
     if (!items.length) { error = 'Tick at least one issue this action applies to.'; return; }
@@ -364,6 +373,17 @@
                             <span class="adv-req-label" class:adv-req-complete={sub.status === 'Complete'}>{sub.sub_issue_text}</span>
                           </label>
                         {/each}
+                      </div>
+                    {/if}
+                    {#if iss.linked_quotes?.length}
+                      <div class="adv-quote-picker">
+                        <span class="adv-quote-picker-label">Relevant quote:</span>
+                        <select class="adv-quote-select" bind:value={selections[iss.id].quoteId}>
+                          <option value={null}>Not relevant to a quote</option>
+                          {#each iss.linked_quotes as q (q.quote_id)}
+                            <option value={q.quote_id}>{q.organisation || 'Quote'}</option>
+                          {/each}
+                        </select>
                       </div>
                     {/if}
                     <textarea
@@ -673,6 +693,21 @@
     background: #fff;
     border: 1px solid #bae6fd;
     border-radius: 6px;
+  }
+  .adv-quote-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: 1.5rem;
+  }
+  .adv-quote-picker-label { font-size: 0.76rem; font-weight: 600; color: #475569; }
+  .adv-quote-select {
+    font-size: 0.78rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: inherit;
+    background: white;
   }
   .adv-req-check {
     display: flex;

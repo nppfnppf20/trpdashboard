@@ -76,6 +76,14 @@ export async function getProjectConditionsForLinking(projectId, quoteId = null) 
   return await response.json();
 }
 
+// Same as above, for Issues Tracker issues.
+export async function getProjectIssuesForLinking(projectId, quoteId = null) {
+  const url = `${API_BASE_URL}/quotes/projects/${projectId}/issues${quoteId ? `?quoteId=${quoteId}` : ''}`;
+  const response = await authFetch(url);
+  if (!response.ok) throw new Error('Failed to fetch project issues');
+  return await response.json();
+}
+
 export async function getProgrammeEvents(projectId) {
   const response = await authFetch(`${API_BASE_URL}/quotes/projects/${projectId}/programme-events`);
   if (!response.ok) throw new Error('Failed to fetch programme events');

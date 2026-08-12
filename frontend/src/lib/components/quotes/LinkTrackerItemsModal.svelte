@@ -1,7 +1,8 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { getProjectConditionsForLinking } from '$lib/api/quotes.js';
+  import { getProjectConditionsForLinking, getProjectIssuesForLinking } from '$lib/api/quotes.js';
   import { linkConditionQuote, unlinkConditionQuote } from '$lib/api/conditions.js';
+  import { linkIssueQuote, unlinkIssueQuote } from '$lib/api/progressTracker.js';
 
   export let show = false;
   export let projectPk;   // integer project id (public.projects.id)
@@ -10,8 +11,11 @@
   const dispatch = createEventDispatcher();
 
   let conditions = [];
-  let originalLinkedIds = new Set();
-  let checkedIds = new Set();
+  let issues = [];
+  let originalLinkedConditionIds = new Set();
+  let originalLinkedIssueIds = new Set();
+  let checkedConditionIds = new Set();
+  let checkedIssueIds = new Set();
   let loading = false;
   let saving = false;
   let error = null;
@@ -26,10 +30,16 @@
     loading = true;
     error = null;
     try {
-      const { conditions: rows } = await getProjectConditionsForLinking(projectPk, quote.id);
-      conditions = rows;
-      originalLinkedIds = new Set(rows.filter(c => c.linked).map(c => c.id));
-      checkedIds = new Set(originalLinkedIds);
+      const [{ conditions: conditionRows }, { issues: issueRows }] = await Promise.all([
+        getProjectConditionsForLinking(projectPk, quote.id),
+        getProjectIssuesForLinking(projectPk, quote.id),
+      ]);
+      conditions = conditionRows;
+      issues = issueRows;
+      originalLinkedConditionIds = new Set(conditionRows.filter(c => c.linked).map(c => c.id));
+      originalLinkedIssueIds = new Set(issueRows.filter(i => i.linked).map(i => i.id));
+      checkedConditionIds = new Set(originalLinkedConditionIds);
+      checkedIssueIds = new Set(originalLinkedIssueIds);
     } catch (err) {
       error = err.message;
     } finally {
@@ -37,20 +47,32 @@
     }
   }
 
-  function toggle(id) {
-    const next = new Set(checkedIds);
+  function toggleCondition(id) {
+    const next = new Set(checkedConditionIds);
     if (next.has(id)) next.delete(id); else next.add(id);
-    checkedIds = next;
+    checkedConditionIds = next;
+  }
+
+  function toggleIssue(id) {
+    const next = new Set(checkedIssueIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    checkedIssueIds = next;
   }
 
   async function save() {
     saving = true;
     error = null;
     try {
-      const toLink = [...checkedIds].filter(id => !originalLinkedIds.has(id));
-      const toUnlink = [...originalLinkedIds].filter(id => !checkedIds.has(id));
-      for (const conditionId of toLink) await linkConditionQuote(conditionId, quote.id);
-      for (const conditionId of toUnlink) await unlinkConditionQuote(conditionId, quote.id);
+      const condToLink = [...checkedConditionIds].filter(id => !originalLinkedConditionIds.has(id));
+      const condToUnlink = [...originalLinkedConditionIds].filter(id => !checkedConditionIds.has(id));
+      for (const id of condToLink) await linkConditionQuote(id, quote.id);
+      for (const id of condToUnlink) await unlinkConditionQuote(id, quote.id);
+
+      const issueToLink = [...checkedIssueIds].filter(id => !originalLinkedIssueIds.has(id));
+      const issueToUnlink = [...originalLinkedIssueIds].filter(id => !checkedIssueIds.has(id));
+      for (const id of issueToLink) await linkIssueQuote(id, quote.id);
+      for (const id of issueToUnlink) await unlinkIssueQuote(id, quote.id);
+
       dispatch('done');
       close();
     } catch (err) {
@@ -65,34 +87,56 @@
     show = false;
     loaded = false;
     conditions = [];
+    issues = [];
     dispatch('close');
   }
 </script>
 
 {#if show}
   <div class="modal-overlay" on:click|self={close} role="dialog" aria-modal="true">
-    <div class="modal modal-link-conditions">
+    <div class="modal modal-link-items">
       <div class="modal-header">
-        <span class="modal-title">Link to Conditions: {quote?.surveyor_organisation || 'Quote'}</span>
+        <span class="modal-title">Link to Conditions / Issues: {quote?.surveyor_organisation || 'Quote'}</span>
         <button class="modal-close" on:click={close}>&times;</button>
       </div>
 
       <div class="modal-body">
         {#if loading}
-          <div class="lc-loading"><span class="lc-spinner"></span> Loading conditions…</div>
-        {:else if conditions.length === 0}
-          <p class="lc-empty">No conditions found for this project yet — add them in Conditions Tracker first.</p>
+          <div class="lc-loading"><span class="lc-spinner"></span> Loading…</div>
         {:else}
-          <div class="lc-list">
-            {#each conditions as c (c.id)}
-              <label class="lc-row">
-                <input type="checkbox" checked={checkedIds.has(c.id)} on:change={() => toggle(c.id)} />
-                <span class="lc-row-text">
-                  {#if c.condition_number}<span class="lc-row-number">{c.condition_number}.</span>{/if}
-                  {c.title}
-                </span>
-              </label>
-            {/each}
+          <div class="lc-section">
+            <span class="lc-section-label">Conditions</span>
+            {#if conditions.length === 0}
+              <p class="lc-empty">No conditions on this project yet.</p>
+            {:else}
+              <div class="lc-list">
+                {#each conditions as c (c.id)}
+                  <label class="lc-row">
+                    <input type="checkbox" checked={checkedConditionIds.has(c.id)} on:change={() => toggleCondition(c.id)} />
+                    <span class="lc-row-text">
+                      {#if c.condition_number}<span class="lc-row-number">{c.condition_number}.</span>{/if}
+                      {c.title}
+                    </span>
+                  </label>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          <div class="lc-section">
+            <span class="lc-section-label">Issues</span>
+            {#if issues.length === 0}
+              <p class="lc-empty">No issues on this project yet.</p>
+            {:else}
+              <div class="lc-list">
+                {#each issues as i (i.id)}
+                  <label class="lc-row">
+                    <input type="checkbox" checked={checkedIssueIds.has(i.id)} on:change={() => toggleIssue(i.id)} />
+                    <span class="lc-row-text">{i.title}</span>
+                  </label>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
         {#if error}<div class="lc-error">{error}</div>{/if}
@@ -100,7 +144,7 @@
 
       <div class="modal-footer">
         <button class="btn-cancel" on:click={close} disabled={saving}>Cancel</button>
-        <button class="btn-save" on:click={save} disabled={saving || loading || conditions.length === 0}>
+        <button class="btn-save" on:click={save} disabled={saving || loading || (conditions.length === 0 && issues.length === 0)}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
@@ -126,11 +170,11 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    max-height: 80vh;
+    max-height: 82vh;
     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
   }
 
-  .modal-link-conditions { max-width: 480px; }
+  .modal-link-items { max-width: 520px; }
 
   .modal-header {
     display: flex;
@@ -162,6 +206,18 @@
     flex: 1;
     overflow-y: auto;
     padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  .lc-section { display: flex; flex-direction: column; gap: 0.4rem; }
+  .lc-section-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
   }
 
   .lc-loading {
@@ -180,22 +236,26 @@
 
   .lc-empty {
     margin: 0;
-    padding: 1rem 0;
-    font-size: 0.85rem;
+    padding: 0.5rem 0;
+    font-size: 0.82rem;
     color: #94a3b8;
-    text-align: center;
   }
 
   .lc-list {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.3rem;
+    max-height: 160px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.4rem 0.5rem;
   }
   .lc-row {
     display: flex;
     align-items: flex-start;
     gap: 0.55rem;
-    padding: 0.4rem 0.5rem;
+    padding: 0.3rem 0.4rem;
     border-radius: 6px;
     cursor: pointer;
   }
@@ -205,7 +265,6 @@
   .lc-row-number { font-weight: 600; color: #475569; margin-right: 2px; }
 
   .lc-error {
-    margin-top: 0.75rem;
     font-size: 0.8rem;
     color: #dc2626;
     background: #fef2f2;

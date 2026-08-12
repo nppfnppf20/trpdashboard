@@ -4,7 +4,7 @@
   import ContactModal from '$lib/components/admin-console/ContactModal.svelte';
   import LineItemsModal from '$lib/components/admin-console/LineItemsModal.svelte';
   import AddQuoteModal from '$lib/components/quotes/AddQuoteModal.svelte';
-  import LinkConditionsModal from '$lib/components/quotes/LinkConditionsModal.svelte';
+  import LinkTrackerItemsModal from '$lib/components/quotes/LinkTrackerItemsModal.svelte';
   import EditProjectModal from '$lib/components/surveyor-management/EditProjectModal.svelte';
   import InstructedModal from '$lib/components/surveyor-briefings/InstructedModal.svelte';
   import NotInstructedModal from '$lib/components/surveyor-briefings/NotInstructedModal.svelte';
@@ -595,7 +595,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
                 <button
                   class="action-btn"
                   on:click={() => openLinkConditions(quote)}
-                  title="Link to conditions"
+                  title="Link to conditions / issues"
                 >
                   <i class="las la-link"></i>
                 </button>
@@ -683,7 +683,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
   on:close={() => showAddQuoteModal = false}
 />
 
-<LinkConditionsModal
+<LinkTrackerItemsModal
   bind:show={showLinkConditions}
   projectPk={project?.id}
   quote={linkingQuote}

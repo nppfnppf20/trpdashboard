@@ -233,6 +233,26 @@ export async function listProjectConditionsForLinking(projectId, quoteId = null)
 }
 
 /**
+ * Lightweight list of a project's Issues Tracker issues, for the "link to
+ * condition(s)/issue(s)" pickers in Surveyor Management. Same shape/pattern
+ * as listProjectConditionsForLinking, just against progress_issues.
+ */
+export async function listProjectIssuesForLinking(projectId, quoteId = null) {
+  const query = `
+    SELECT i.id, i.title,
+           EXISTS (
+             SELECT 1 FROM planning_applications.progress_issue_quote_links piql
+             WHERE piql.issue_id = i.id AND piql.quote_id = $2::uuid
+           ) AS linked
+    FROM planning_applications.progress_issues i
+    WHERE i.project_id = $1
+    ORDER BY i.sort_order ASC, i.id ASC
+  `;
+  const result = await pool.query(query, [projectId, quoteId]);
+  return result.rows;
+}
+
+/**
  * Get programme events for a project
  */
 export async function getProgrammeEvents(projectId) {

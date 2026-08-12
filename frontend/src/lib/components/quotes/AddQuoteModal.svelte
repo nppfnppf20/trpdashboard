@@ -1,35 +1,43 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
-  import { createQuote, extractQuoteFromDocument, extractQuoteFromPastedText, getProjectConditionsForLinking } from '$lib/api/quotes.js';
+  import { createQuote, extractQuoteFromDocument, extractQuoteFromPastedText, getProjectConditionsForLinking, getProjectIssuesForLinking } from '$lib/api/quotes.js';
   import { getAllSurveyorOrganisations } from '$lib/api/surveyorOrganisations.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
   import { linkConditionQuote } from '$lib/api/conditions.js';
+  import { linkIssueQuote } from '$lib/api/progressTracker.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
   import AutocompleteInput from '$lib/components/shared/AutocompleteInput.svelte';
   import AddEditSurveyorModal from '$lib/components/admin-console/AddEditSurveyorModal.svelte';
 
   export let show = false;
   export let projectId = null;
-  export let projectPk = null;   // integer project id — for the "link to condition(s)" picker
+  export let projectPk = null;   // integer project id — for the "link to condition(s)/issue(s)" picker
 
-  // Conditions Tracker linking — optional, only offered when the project has
-  // conditions. Not part of the queue item's captured/restored form state
-  // (unlike the fields below); resets to nothing checked per form load.
+  // Conditions Tracker / Issues Tracker linking — optional, only offered when
+  // the project has conditions/issues. Not part of the queue item's
+  // captured/restored form state (unlike the fields below); resets to
+  // nothing checked per form load.
   let projectConditions = [];
+  let projectIssues = [];
   let checkedConditionIds = new Set();
-  let conditionsLoaded = false;
+  let checkedIssueIds = new Set();
+  let trackerItemsLoaded = false;
 
-  $: if (show && projectPk && !conditionsLoaded) {
-    conditionsLoaded = true;
-    loadProjectConditions();
+  $: if (show && projectPk && !trackerItemsLoaded) {
+    trackerItemsLoaded = true;
+    loadProjectTrackerItems();
   }
 
-  async function loadProjectConditions() {
+  async function loadProjectTrackerItems() {
     try {
-      const { conditions } = await getProjectConditionsForLinking(projectPk);
+      const [{ conditions }, { issues }] = await Promise.all([
+        getProjectConditionsForLinking(projectPk),
+        getProjectIssuesForLinking(projectPk),
+      ]);
       projectConditions = conditions;
+      projectIssues = issues;
     } catch (err) {
-      console.error('Failed to load project conditions:', err);
+      console.error('Failed to load project conditions/issues:', err);
     }
   }
 
@@ -37,6 +45,12 @@
     const next = new Set(checkedConditionIds);
     if (next.has(id)) next.delete(id); else next.add(id);
     checkedConditionIds = next;
+  }
+
+  function toggleIssue(id) {
+    const next = new Set(checkedIssueIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    checkedIssueIds = next;
   }
 
   const dispatch = createEventDispatcher();
@@ -183,6 +197,7 @@
     lineItems = form.lineItems;
     additionalNotes = form.additionalNotes;
     checkedConditionIds = new Set();
+    checkedIssueIds = new Set();
   }
 
   function goToIndex(index) {
@@ -455,6 +470,9 @@
 
       for (const conditionId of checkedConditionIds) {
         await linkConditionQuote(conditionId, newQuote.id);
+      }
+      for (const issueId of checkedIssueIds) {
+        await linkIssueQuote(issueId, newQuote.id);
       }
 
       dispatch('save', { quote: newQuote });
@@ -821,23 +839,39 @@
             ></textarea>
           </div>
 
-          {#if projectConditions.length}
+          {#if projectConditions.length || projectIssues.length}
             <div class="section-divider">
-              <h3>Link to Condition(s)</h3>
+              <h3>Link to Condition(s) / Issue(s)</h3>
             </div>
-            <div class="form-group">
-              <div class="aq-condition-list">
-                {#each projectConditions as c (c.id)}
-                  <label class="aq-condition-row">
-                    <input type="checkbox" checked={checkedConditionIds.has(c.id)} on:change={() => toggleCondition(c.id)} />
-                    <span class="aq-condition-text">
-                      {#if c.condition_number}<span class="aq-condition-number">{c.condition_number}.</span>{/if}
-                      {c.title}
-                    </span>
-                  </label>
-                {/each}
+            {#if projectConditions.length}
+              <div class="form-group">
+                <label>Conditions</label>
+                <div class="aq-condition-list">
+                  {#each projectConditions as c (c.id)}
+                    <label class="aq-condition-row">
+                      <input type="checkbox" checked={checkedConditionIds.has(c.id)} on:change={() => toggleCondition(c.id)} />
+                      <span class="aq-condition-text">
+                        {#if c.condition_number}<span class="aq-condition-number">{c.condition_number}.</span>{/if}
+                        {c.title}
+                      </span>
+                    </label>
+                  {/each}
+                </div>
               </div>
-            </div>
+            {/if}
+            {#if projectIssues.length}
+              <div class="form-group">
+                <label>Issues</label>
+                <div class="aq-condition-list">
+                  {#each projectIssues as i (i.id)}
+                    <label class="aq-condition-row">
+                      <input type="checkbox" checked={checkedIssueIds.has(i.id)} on:change={() => toggleIssue(i.id)} />
+                      <span class="aq-condition-text">{i.title}</span>
+                    </label>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           {/if}
         {:else if allSaved}
           <div class="batch-complete">

@@ -8,7 +8,10 @@ import { suggestActionSummaries, draftActionsFromMeetingNotes } from '../service
 export async function getProgressData(req, res) {
   const { projectId } = req.params;
   try {
-    const [{ rows: issues }, { rows: subIssues }, { rows: actions }, { rows: actionSubLinks }, { rows: meta }] = await Promise.all([
+    const [
+      { rows: issues }, { rows: subIssues }, { rows: actions }, { rows: actionSubLinks },
+      { rows: quoteLinks }, { rows: quoteActions }, { rows: quoteKeyDates }, { rows: meta },
+    ] = await Promise.all([
       pool.query(
         `SELECT id, discipline, title, status, sort_order, created_at, updated_at
          FROM planning_applications.progress_issues
@@ -25,7 +28,7 @@ export async function getProgressData(req, res) {
         [projectId]
       ),
       pool.query(
-        `SELECT a.id, a.issue_id, a.action_date, a.summary, a.full_text, a.source_type,
+        `SELECT a.id, a.issue_id, a.action_date, a.summary, a.full_text, a.source_type, a.quote_id,
                 a.stage_instance_id, a.meeting_transcript_id, a.created_at, a.updated_at,
                 COALESCE(psd.name, psi.custom_name) AS stage_name,
                 mt.title AS meeting_note_title
@@ -44,6 +47,42 @@ export async function getProgressData(req, res) {
          JOIN planning_applications.progress_actions a ON a.id = asi.action_id
          JOIN planning_applications.progress_issues i ON i.id = a.issue_id
          WHERE i.project_id = $1`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT piql.issue_id, piql.quote_id,
+                q.total AS quote_total,
+                q.instruction_status, q.instruction_status_changed_at, q.work_status,
+                so.organisation, so.discipline
+         FROM planning_applications.progress_issue_quote_links piql
+         JOIN planning_applications.progress_issues i ON i.id = piql.issue_id
+         JOIN admin_console.quotes q ON q.id = piql.quote_id
+         LEFT JOIN admin_console.surveyor_organisations so ON so.id = q.surveyor_organisation_id
+         WHERE i.project_id = $1`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT qa.quote_id, qa.id, qa.action_date, qa.summary, qa.full_text, qa.source_type
+         FROM admin_console.quote_actions qa
+         WHERE qa.quote_id IN (
+           SELECT piql.quote_id
+           FROM planning_applications.progress_issue_quote_links piql
+           JOIN planning_applications.progress_issues i ON i.id = piql.issue_id
+           WHERE i.project_id = $1
+         )
+         ORDER BY qa.action_date DESC, qa.id DESC`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT qkd.quote_id, qkd.id, qkd.title, qkd.date, qkd.colour
+         FROM admin_console.quote_key_dates qkd
+         WHERE qkd.quote_id IN (
+           SELECT piql.quote_id
+           FROM planning_applications.progress_issue_quote_links piql
+           JOIN planning_applications.progress_issues i ON i.id = piql.issue_id
+           WHERE i.project_id = $1
+         )
+         ORDER BY qkd.date ASC, qkd.id ASC`,
         [projectId]
       ),
       pool.query(
@@ -66,10 +105,33 @@ export async function getProgressData(req, res) {
     for (const a of actions) {
       (actionsByIssue[a.issue_id] ||= []).push({ ...a, sub_issue_ids: subIdsByAction[a.id] || [] });
     }
+    const actionsByQuote = {};
+    for (const qa of quoteActions) {
+      (actionsByQuote[qa.quote_id] ||= []).push(qa);
+    }
+    const keyDatesByQuote = {};
+    for (const kd of quoteKeyDates) {
+      (keyDatesByQuote[kd.quote_id] ||= []).push(kd);
+    }
+    const quotesByIssue = {};
+    for (const link of quoteLinks) {
+      (quotesByIssue[link.issue_id] ||= []).push({
+        quote_id: link.quote_id,
+        quote_total: link.quote_total,
+        instruction_status: link.instruction_status,
+        instruction_status_changed_at: link.instruction_status_changed_at,
+        work_status: link.work_status,
+        organisation: link.organisation,
+        discipline: link.discipline,
+        actions: actionsByQuote[link.quote_id] || [],
+        key_dates: keyDatesByQuote[link.quote_id] || [],
+      });
+    }
     const withDetail = issues.map(i => ({
       ...i,
       sub_issues: subByIssue[i.id] || [],
       actions: actionsByIssue[i.id] || [],
+      linked_quotes: quotesByIssue[i.id] || [],
     }));
 
     res.json({
@@ -245,13 +307,21 @@ export async function createActions(req, res) {
     await client.query('BEGIN');
     const created = [];
     for (const item of items) {
+      const quoteId = item.quote_id || null;
       const { rows } = await client.query(
         `INSERT INTO planning_applications.progress_actions
-           (issue_id, action_date, summary, full_text, source_type, stage_instance_id)
-         SELECT $1, $2, $3, $4, $5, $6
+           (issue_id, action_date, summary, full_text, source_type, stage_instance_id, quote_id)
+         SELECT $1, $2, $3, $4, $5, $6, $8::uuid
          WHERE EXISTS (
            SELECT 1 FROM planning_applications.progress_issues i
            WHERE i.id = $1 AND i.project_id = $7
+         )
+         AND (
+           $8::uuid IS NULL
+           OR EXISTS (
+             SELECT 1 FROM planning_applications.progress_issue_quote_links piql
+             WHERE piql.issue_id = $1 AND piql.quote_id = $8::uuid
+           )
          )
          RETURNING *`,
         [
@@ -262,9 +332,10 @@ export async function createActions(req, res) {
           source_type?.trim() || 'note',
           stage_instance_id || null,
           projectId,
+          quoteId,
         ]
       );
-      if (!rows[0]) throw new Error(`Issue ${item.issue_id} does not belong to this project`);
+      if (!rows[0]) throw new Error(`Issue ${item.issue_id} does not belong to this project, or the tagged quote isn't linked to it`);
 
       const linkedIds = [];
       for (const subId of item.sub_issue_ids || []) {
@@ -342,10 +413,26 @@ export async function suggestActions(req, res) {
 
 export async function updateAction(req, res) {
   const { actionId } = req.params;
-  const { action_date, summary, full_text, source_type, stage_instance_id, sub_issue_ids } = req.body;
+  const { action_date, summary, full_text, source_type, stage_instance_id, sub_issue_ids, quote_id } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    if ('quote_id' in req.body && quote_id) {
+      const { rows: [ok] } = await client.query(
+        `SELECT 1
+         FROM planning_applications.progress_actions a
+         JOIN planning_applications.progress_issue_quote_links piql
+           ON piql.issue_id = a.issue_id AND piql.quote_id = $2::uuid
+         WHERE a.id = $1`,
+        [actionId, quote_id]
+      );
+      if (!ok) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: "That quote isn't linked to this issue" });
+      }
+    }
+
     const { rows } = await client.query(
       `UPDATE planning_applications.progress_actions SET
          action_date       = COALESCE($2, action_date),
@@ -353,6 +440,7 @@ export async function updateAction(req, res) {
          full_text         = CASE WHEN $4 THEN $5 ELSE full_text END,
          source_type       = COALESCE($6, source_type),
          stage_instance_id = CASE WHEN $7 THEN $8 ELSE stage_instance_id END,
+         quote_id          = CASE WHEN $9 THEN $10::uuid ELSE quote_id END,
          updated_at        = NOW()
        WHERE id = $1 RETURNING *`,
       [
@@ -362,6 +450,7 @@ export async function updateAction(req, res) {
         'full_text' in req.body, full_text?.trim() || null,
         source_type?.trim() || null,
         'stage_instance_id' in req.body, stage_instance_id || null,
+        'quote_id' in req.body, quote_id || null,
       ]
     );
     if (!rows[0]) {
@@ -405,6 +494,70 @@ export async function updateAction(req, res) {
     res.status(500).json({ error: 'Failed to update action' });
   } finally {
     client.release();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quote links: attach quotes from surveyor management to issues — mirrors
+// listProjectQuotes/linkConditionQuote/unlinkConditionQuote in conditions.controller.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function listProjectQuotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT q.id, q.status, q.total,
+              so.organisation, so.discipline,
+              c.name AS contact_name
+       FROM admin_console.quotes q
+       JOIN public.projects p ON p.unique_id = q.project_id
+       LEFT JOIN admin_console.surveyor_organisations so ON so.id = q.surveyor_organisation_id
+       LEFT JOIN admin_console.contacts c ON c.id = q.contact_id
+       WHERE p.id = $1
+       ORDER BY so.organisation ASC NULLS LAST, q.created_at DESC`,
+      [projectId]
+    );
+    res.json({ quotes: rows });
+  } catch (err) {
+    console.error('progressTracker.listProjectQuotes error:', err);
+    res.status(500).json({ error: 'Failed to fetch project quotes' });
+  }
+}
+
+export async function linkIssueQuote(req, res) {
+  const { issueId } = req.params;
+  const { quote_id } = req.body;
+  if (!quote_id) return res.status(400).json({ error: 'quote_id is required' });
+  try {
+    await pool.query(
+      `INSERT INTO planning_applications.progress_issue_quote_links (issue_id, quote_id)
+       SELECT i.id, q.id
+       FROM planning_applications.progress_issues i
+       JOIN public.projects p ON p.id = i.project_id
+       JOIN admin_console.quotes q ON q.project_id = p.unique_id
+       WHERE i.id = $1 AND q.id = $2
+       ON CONFLICT DO NOTHING`,
+      [issueId, quote_id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('progressTracker.linkIssueQuote error:', err);
+    res.status(500).json({ error: 'Failed to link quote' });
+  }
+}
+
+export async function unlinkIssueQuote(req, res) {
+  const { issueId, quoteId } = req.params;
+  try {
+    await pool.query(
+      `DELETE FROM planning_applications.progress_issue_quote_links
+       WHERE issue_id = $1 AND quote_id = $2`,
+      [issueId, quoteId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('progressTracker.unlinkIssueQuote error:', err);
+    res.status(500).json({ error: 'Failed to unlink quote' });
   }
 }
 
