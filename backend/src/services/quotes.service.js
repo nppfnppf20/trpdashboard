@@ -206,6 +206,33 @@ export async function getQuoteKeyDates(projectId) {
 }
 
 /**
+ * Lightweight list of a project's conditions, for the "link to condition(s)"
+ * pickers in Surveyor Management. `projectId` here is the integer PK
+ * (public.projects.id / planning_applications.conditions.project_id),
+ * NOT the admin_console.quotes.project_id unique_id text code.
+ * When quoteId is given, each row's `linked` flag reflects whether that
+ * quote is already linked to it; when omitted, `linked` is always false
+ * (used before a quote exists yet, e.g. the Add Quote modal).
+ */
+export async function listProjectConditionsForLinking(projectId, quoteId = null) {
+  const query = `
+    SELECT c.id, c.condition_number, c.title,
+           EXISTS (
+             SELECT 1 FROM planning_applications.condition_quote_links cql
+             WHERE cql.condition_id = c.id AND cql.quote_id = $2::uuid
+           ) AS linked
+    FROM planning_applications.conditions c
+    WHERE c.project_id = $1
+    ORDER BY
+      c.sort_order ASC,
+      COALESCE(NULLIF(regexp_replace(c.condition_number, '\\D', '', 'g'), '')::int, 999999) ASC,
+      c.id ASC
+  `;
+  const result = await pool.query(query, [projectId, quoteId]);
+  return result.rows;
+}
+
+/**
  * Get programme events for a project
  */
 export async function getProgrammeEvents(projectId) {

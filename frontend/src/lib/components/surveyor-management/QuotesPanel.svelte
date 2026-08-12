@@ -4,6 +4,7 @@
   import ContactModal from '$lib/components/admin-console/ContactModal.svelte';
   import LineItemsModal from '$lib/components/admin-console/LineItemsModal.svelte';
   import AddQuoteModal from '$lib/components/quotes/AddQuoteModal.svelte';
+  import LinkConditionsModal from '$lib/components/quotes/LinkConditionsModal.svelte';
   import EditProjectModal from '$lib/components/surveyor-management/EditProjectModal.svelte';
   import InstructedModal from '$lib/components/surveyor-briefings/InstructedModal.svelte';
   import NotInstructedModal from '$lib/components/surveyor-briefings/NotInstructedModal.svelte';
@@ -360,6 +361,14 @@
     dispatch('deleteQuote', { quote });
   }
 
+  let showLinkConditions = false;
+  let linkingQuote = null;
+
+  function openLinkConditions(quote) {
+    linkingQuote = quote;
+    showLinkConditions = true;
+  }
+
   function openAddQuoteModal() {
     if (!projectId) {
       alert('Please select a project first');
@@ -584,6 +593,13 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
               </td>
               <td class="actions-cell">
                 <button
+                  class="action-btn"
+                  on:click={() => openLinkConditions(quote)}
+                  title="Link to conditions"
+                >
+                  <i class="las la-link"></i>
+                </button>
+                <button
                   class="action-btn edit-btn"
                   on:click={() => handleEdit(quote)}
                   title="Edit quote"
@@ -662,8 +678,17 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
 <AddQuoteModal
   show={showAddQuoteModal}
   {projectId}
+  projectPk={project?.id}
   on:save={handleAddQuote}
   on:close={() => showAddQuoteModal = false}
+/>
+
+<LinkConditionsModal
+  bind:show={showLinkConditions}
+  projectPk={project?.id}
+  quote={linkingQuote}
+  on:done={() => { showLinkConditions = false; linkingQuote = null; }}
+  on:close={() => { showLinkConditions = false; linkingQuote = null; }}
 />
 
 <!-- Edit Quote Modal -->

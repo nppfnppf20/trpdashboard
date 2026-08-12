@@ -23,6 +23,9 @@ router.get('/projects/with-stats', quotesController.getProjectsWithStats);
 // GET /api/admin-console/quotes/projects/:projectId/quote-key-dates - Get quote key dates
 router.get('/projects/:projectId/quote-key-dates', quotesController.getQuoteKeyDates);
 
+// GET /api/admin-console/quotes/projects/:projectId/conditions - Lightweight condition list for linking (optional ?quoteId=)
+router.get('/projects/:projectId/conditions', quotesController.listProjectConditions);
+
 // GET /api/admin-console/quotes/projects/:projectId/programme-events - Get programme events
 router.get('/projects/:projectId/programme-events', quotesController.getProgrammeEvents);
 

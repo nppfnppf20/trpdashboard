@@ -1,14 +1,43 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
-  import { createQuote, extractQuoteFromDocument, extractQuoteFromPastedText } from '$lib/api/quotes.js';
+  import { createQuote, extractQuoteFromDocument, extractQuoteFromPastedText, getProjectConditionsForLinking } from '$lib/api/quotes.js';
   import { getAllSurveyorOrganisations } from '$lib/api/surveyorOrganisations.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
+  import { linkConditionQuote } from '$lib/api/conditions.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
   import AutocompleteInput from '$lib/components/shared/AutocompleteInput.svelte';
   import AddEditSurveyorModal from '$lib/components/admin-console/AddEditSurveyorModal.svelte';
 
   export let show = false;
   export let projectId = null;
+  export let projectPk = null;   // integer project id — for the "link to condition(s)" picker
+
+  // Conditions Tracker linking — optional, only offered when the project has
+  // conditions. Not part of the queue item's captured/restored form state
+  // (unlike the fields below); resets to nothing checked per form load.
+  let projectConditions = [];
+  let checkedConditionIds = new Set();
+  let conditionsLoaded = false;
+
+  $: if (show && projectPk && !conditionsLoaded) {
+    conditionsLoaded = true;
+    loadProjectConditions();
+  }
+
+  async function loadProjectConditions() {
+    try {
+      const { conditions } = await getProjectConditionsForLinking(projectPk);
+      projectConditions = conditions;
+    } catch (err) {
+      console.error('Failed to load project conditions:', err);
+    }
+  }
+
+  function toggleCondition(id) {
+    const next = new Set(checkedConditionIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    checkedConditionIds = next;
+  }
 
   const dispatch = createEventDispatcher();
 
@@ -153,6 +182,7 @@
     contact = form.contact;
     lineItems = form.lineItems;
     additionalNotes = form.additionalNotes;
+    checkedConditionIds = new Set();
   }
 
   function goToIndex(index) {
@@ -422,6 +452,11 @@
       };
 
       const newQuote = await createQuote(quoteData);
+
+      for (const conditionId of checkedConditionIds) {
+        await linkConditionQuote(conditionId, newQuote.id);
+      }
+
       dispatch('save', { quote: newQuote });
 
       if (currentIndex !== null && queue[currentIndex]) {
@@ -785,6 +820,25 @@
               rows="4"
             ></textarea>
           </div>
+
+          {#if projectConditions.length}
+            <div class="section-divider">
+              <h3>Link to Condition(s)</h3>
+            </div>
+            <div class="form-group">
+              <div class="aq-condition-list">
+                {#each projectConditions as c (c.id)}
+                  <label class="aq-condition-row">
+                    <input type="checkbox" checked={checkedConditionIds.has(c.id)} on:change={() => toggleCondition(c.id)} />
+                    <span class="aq-condition-text">
+                      {#if c.condition_number}<span class="aq-condition-number">{c.condition_number}.</span>{/if}
+                      {c.title}
+                    </span>
+                  </label>
+                {/each}
+              </div>
+            </div>
+          {/if}
         {:else if allSaved}
           <div class="batch-complete">
             <i class="las la-check-circle"></i>
@@ -970,6 +1024,26 @@
     font-weight: 600;
     color: #1e293b;
   }
+
+  .aq-condition-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem;
+  }
+  .aq-condition-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+  .aq-condition-row input { margin-top: 2px; }
+  .aq-condition-text { font-size: 0.85rem; color: #1e293b; line-height: 1.4; }
+  .aq-condition-number { font-weight: 600; color: #475569; margin-right: 2px; }
 
   .line-items-table {
     width: 100%;

@@ -67,6 +67,15 @@ export async function getQuoteKeyDates(projectId) {
   return await response.json();
 }
 
+// projectId here is the integer project PK, not admin_console.quotes' unique_id
+// project code. quoteId (optional) marks which conditions are already linked.
+export async function getProjectConditionsForLinking(projectId, quoteId = null) {
+  const url = `${API_BASE_URL}/quotes/projects/${projectId}/conditions${quoteId ? `?quoteId=${quoteId}` : ''}`;
+  const response = await authFetch(url);
+  if (!response.ok) throw new Error('Failed to fetch project conditions');
+  return await response.json();
+}
+
 export async function getProgrammeEvents(projectId) {
   const response = await authFetch(`${API_BASE_URL}/quotes/projects/${projectId}/programme-events`);
   if (!response.ok) throw new Error('Failed to fetch programme events');

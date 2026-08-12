@@ -129,9 +129,30 @@ export async function getQuoteKeyDates(req, res) {
     res.json(keyDates);
   } catch (error) {
     console.error('Error fetching quote key dates:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch quote key dates',
-      details: error.message 
+      details: error.message
+    });
+  }
+}
+
+/**
+ * GET /api/admin-console/quotes/projects/:projectId/conditions
+ * Lightweight list of a project's conditions for the "link to condition(s)"
+ * pickers in Surveyor Management. :projectId here is the integer PK.
+ * Optional ?quoteId= marks which rows are already linked to that quote.
+ */
+export async function listProjectConditions(req, res) {
+  try {
+    const { projectId } = req.params;
+    const { quoteId } = req.query;
+    const conditions = await quotesService.listProjectConditionsForLinking(projectId, quoteId || null);
+    res.json({ conditions });
+  } catch (error) {
+    console.error('Error fetching project conditions for linking:', error);
+    res.status(500).json({
+      error: 'Failed to fetch project conditions',
+      details: error.message
     });
   }
 }
