@@ -83,11 +83,11 @@ export async function toggleDraftingIssueSnippet(draftingIssueId, issueTypeId, f
   return res.json();
 }
 
-export async function draftIssuesFromBriefing(projectId, sources) {
+export async function draftIssuesFromBriefing(projectId, sources, { allowNewIssues = true, issueScope = {} } = {}) {
   const res = await authFetch(`${BASE}/projects/${projectId}/draft-from-briefing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sources })
+    body: JSON.stringify({ sources, allowNewIssues, issueScope })
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));

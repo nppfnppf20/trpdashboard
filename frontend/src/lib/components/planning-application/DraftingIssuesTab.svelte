@@ -35,9 +35,17 @@
   let drafting = false;
   let notePicker;
 
+  // Per-issue permission for this run: which fields the LLM is allowed to
+  // write to. Lets you, for example, drop in a specialist report for one
+  // issue without disturbing anything else's argument notes.
+  let allowNewIssues = true;
+  let issueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool } }
+
   function openDraftModal() {
     notePicker?.reset();
     draftSources = [];
+    allowNewIssues = true;
+    issueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true }]));
     showDraftModal = true;
   }
 
@@ -45,10 +53,17 @@
     showDraftModal = false;
   }
 
+  function toggleScope(issueId, field) {
+    issueScope = {
+      ...issueScope,
+      [issueId]: { ...issueScope[issueId], [field]: !issueScope[issueId][field] },
+    };
+  }
+
   async function handleDraftContinue() {
     drafting = true;
     try {
-      await draftIssuesFromBriefing(project.id, draftSources);
+      await draftIssuesFromBriefing(project.id, draftSources, { allowNewIssues, issueScope });
       closeDraftModal();
       await load();
     } catch (err) {
@@ -244,6 +259,39 @@
           bind:overBudget={draftOverBudget}
           hint="Tick any briefing notes and meeting notes to draft drafting issues from."
         />
+
+        <div class="di-scope">
+          <p class="di-scope-title">Which fields can this update?</p>
+          <label class="di-scope-new">
+            <input type="checkbox" bind:checked={allowNewIssues} />
+            <span>Add newly discovered issues</span>
+          </label>
+          {#if issues.length > 0}
+            <div class="di-scope-list">
+              {#each issues as issue (issue.id)}
+                <div class="di-scope-issue">
+                  <span class="di-scope-label">{issue.label}</span>
+                  <label class="di-scope-field">
+                    <input
+                      type="checkbox"
+                      checked={issueScope[issue.id]?.argumentNotes}
+                      on:change={() => toggleScope(issue.id, 'argumentNotes')}
+                    />
+                    Argument notes{issue.argument_for?.trim() ? ' (filled)' : ''}
+                  </label>
+                  <label class="di-scope-field">
+                    <input
+                      type="checkbox"
+                      checked={issueScope[issue.id]?.specialistReport}
+                      on:change={() => toggleScope(issue.id, 'specialistReport')}
+                    />
+                    Specialist report{issue.specialist_report?.trim() ? ' (filled)' : ''}
+                  </label>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
       <div class="di-modal-footer">
         <button class="btn btn-secondary" on:click={closeDraftModal} disabled={drafting}>Cancel</button>
@@ -282,7 +330,23 @@
 
   .di-modal {
     background: white; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    max-width: 560px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
+    max-width: 640px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .di-scope { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
+  .di-scope-title { margin: 0 0 0.5rem; font-size: 0.8125rem; font-weight: 600; color: #1e293b; }
+  .di-scope-new {
+    display: flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; color: #334155;
+    margin-bottom: 0.65rem; cursor: pointer;
+  }
+  .di-scope-list {
+    display: flex; flex-direction: column; gap: 0.5rem; max-height: 12rem; overflow-y: auto;
+    border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.5rem 0.65rem;
+  }
+  .di-scope-issue { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.9rem; padding: 0.2rem 0; }
+  .di-scope-label { flex: 1; min-width: 8rem; font-size: 0.8125rem; font-weight: 500; color: #1e293b; }
+  .di-scope-field {
+    display: flex; align-items: center; gap: 0.35rem; font-size: 0.775rem; color: #64748b; cursor: pointer; white-space: nowrap;
   }
 
   .di-modal-header {

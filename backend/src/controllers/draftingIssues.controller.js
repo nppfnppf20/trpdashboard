@@ -274,10 +274,15 @@ export async function toggleDraftingIssueSnippet(req, res) {
 
 export async function draftIssuesFromBriefing(req, res) {
   const { projectId } = req.params;
-  const { sources } = req.body ?? {};
+  const { sources, allowNewIssues = true, issueScope = {} } = req.body ?? {};
   if (!Array.isArray(sources) || !sources.length) {
     return res.status(400).json({ error: 'sources is required' });
   }
+  // issueScope is a per-issue permission map the "Draft from Briefing Note"
+  // picker sends: { [issueId]: { argumentNotes: bool, specialistReport: bool } }.
+  // An issue absent from the map (e.g. request predates the picker) defaults
+  // to both fields allowed, so existing callers keep the old behaviour.
+  const scopeFor = (id) => issueScope[id] ?? { argumentNotes: true, specialistReport: true };
 
   try {
     const { rows: projectRows } = await pool.query(
@@ -344,6 +349,7 @@ export async function draftIssuesFromBriefing(req, res) {
         let draftingIssueId;
 
         if (r.new_issue) {
+          if (!allowNewIssues) continue;
           if (!r.suggested_label?.trim()) continue;
           const { rows: inserted } = await client.query(
             `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, specialist_report, sort_order)
@@ -353,16 +359,32 @@ export async function draftIssuesFromBriefing(req, res) {
           draftingIssueId = inserted[0].id;
         } else {
           if (!r.drafting_issue_id) continue;
-          // specialist_report only overwrites if the model actually returned
-          // something for it — unlike argument_for, not every briefing will
-          // touch on specialist report findings for an issue, and we don't
-          // want to blank out an existing entry just because this pass didn't.
+          const scope = scopeFor(r.drafting_issue_id);
+          if (!scope.argumentNotes && !scope.specialistReport) continue; // issue excluded from this run entirely
+
+          // Only the fields the picker allowed for this issue are included in
+          // the SET clause — an unchecked field is left completely alone.
+          // specialist_report, when allowed, only overwrites if the model
+          // actually returned something for it this pass — unlike
+          // argument_for, not every briefing touches on specialist report
+          // findings for an issue, and we don't want to blank out an
+          // existing entry just because this pass didn't.
+          const setParts = [];
+          const params = [];
+          if (scope.argumentNotes) {
+            params.push(r.argument_for ?? null);
+            setParts.push(`argument_for = $${params.length}`);
+          }
+          if (scope.specialistReport) {
+            params.push(r.specialist_report ?? null);
+            setParts.push(`specialist_report = CASE WHEN $${params.length}::text IS NOT NULL THEN $${params.length} ELSE specialist_report END`);
+          }
+          params.push(r.drafting_issue_id, projectId);
           const { rows: updated } = await client.query(
             `UPDATE admin_console.drafting_issues
-             SET argument_for = $1,
-                 specialist_report = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE specialist_report END
-             WHERE id = $3 AND project_id = $4 RETURNING id`,
-            [r.argument_for ?? null, r.specialist_report ?? null, r.drafting_issue_id, projectId]
+             SET ${setParts.join(', ')}
+             WHERE id = $${params.length - 1} AND project_id = $${params.length} RETURNING id`,
+            params
           );
           if (!updated.length) continue;
           draftingIssueId = updated[0].id;
