@@ -387,22 +387,46 @@ export async function generatePlanningPolicySection({
 // snippets (admin_console.issue_types), rather than one flat call for the section.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const POLICY_TIER_LABELS = { national: 'National Policy', local: 'Local Policy', neighbourhood: 'Neighbourhood Policy', supplementary: 'Supplementary Guidance', other: 'Other Policy' };
-const POLICY_TIER_ORDER = ['national', 'local', 'neighbourhood', 'supplementary', 'other'];
+// Three presentation groups for a Planning Assessment sub-section's policy
+// context, in the order the section prompt is required to write them:
+// National Policy (NPPF only) -> Development Plan Policy (Local +
+// Neighbourhood — both are statutory development plan documents under
+// s.38(6)) -> Other Policy and Guidance (NPPG, other national guidance such
+// as Written Ministerial Statements/NPS, other guidance, and any
+// supplementary/other-tier linked policies). NPPG and "other national" text
+// are deliberately grouped with guidance, not with the NPPF — they carry
+// different statutory weight even though issue_types calls them "national".
+const DEVELOPMENT_PLAN_TIERS = ['local', 'neighbourhood'];
+const GUIDANCE_TIERS = ['supplementary', 'other'];
+const NATIONAL_SNIPPET_FIELDS = ['nppf_text'];
+const GUIDANCE_SNIPPET_FIELDS = ['nppg_text', 'other_national_text', 'other_guidance_text'];
+const SNIPPET_FIELD_LABELS = { nppf_text: 'NPPF', nppg_text: 'NPPG', other_national_text: 'Other National Policy', other_guidance_text: 'Other Guidance' };
 
 function stripHtmlPlain(s) {
   return s?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
 }
 
-function appendSnippetFields(lines, row) {
-  if (row.nppf_text?.trim())           lines.push(`NPPF: ${noEmDash(stripHtmlPlain(row.nppf_text))}`);
-  if (row.nppg_text?.trim())           lines.push(`NPPG: ${noEmDash(stripHtmlPlain(row.nppg_text))}`);
-  if (row.other_national_text?.trim()) lines.push(`Other National Policy: ${noEmDash(stripHtmlPlain(row.other_national_text))}`);
-  if (row.other_guidance_text?.trim()) lines.push(`Other Guidance: ${noEmDash(stripHtmlPlain(row.other_guidance_text))}`);
-}
-
 function hasSnippetContent(row) {
   return !!(row.nppf_text?.trim() || row.nppg_text?.trim() || row.other_national_text?.trim() || row.other_guidance_text?.trim());
+}
+
+function hasFieldContent(row, fields) {
+  return fields.some(f => row[f]?.trim());
+}
+
+// plan_name comes from public.policy_documents via project_policies.plan_id
+// (see fetchLinkedPoliciesForDraftType) — null for policies not yet linked
+// to a specific plan record, in which case the model is left to refer to it
+// generically (e.g. "national policy") per the section prompt's naming rules.
+function policyBlockLines(p) {
+  const lines = [];
+  const planPrefix = p.plan_name ? `${p.plan_name} — ` : '';
+  const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+  const keyTag = p.is_key_policy ? ' [KEY POLICY — quote verbatim in draft]' : '';
+  lines.push(`${planPrefix}${ref}${p.policy_name}${keyTag}`);
+  if (p.policy_text?.trim())              lines.push(`Policy wording: "${p.policy_text.trim()}"`);
+  if (p.relevant_supporting_text?.trim()) lines.push(`Supporting context: ${p.relevant_supporting_text.trim().slice(0, 400)}`);
+  return lines;
 }
 
 // New context this adds beyond what generateAppealDraftFromPrompt already injects
@@ -429,44 +453,63 @@ const TIER_NOTE_FIELDS = [
 function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allIssueTypes = [], issue = null) {
   const lines = [];
   const candidateRowsById = {};
+  let isFallback = false;
 
-  if (linkedSnippets.length) {
-    // Explicitly linked (manually, or matched by "Draft from Briefing Note") —
-    // an issue can have several; list them all as confident candidates rather
-    // than falling back to the whole library.
-    for (const row of linkedSnippets) {
-      candidateRowsById[row.id] = row;
-      lines.push(`### Policy Snippet Template — id:${row.id} (${row.label}${row.development_type ? `, ${row.development_type}` : ', generic'})`);
-      appendSnippetFields(lines, row);
+  // Explicitly linked (manually, or matched by "Draft from Briefing Note") —
+  // an issue can have several; offered as confident candidates. Otherwise
+  // the whole library is offered and the model judges relevance itself.
+  let snippetRows = linkedSnippets;
+  if (!snippetRows.length && allIssueTypes.length) {
+    snippetRows = allIssueTypes.filter(hasSnippetContent);
+    isFallback = true;
+  }
+  for (const row of snippetRows) candidateRowsById[row.id] = row;
+
+  let preambleShown = false;
+  const snippetBlock = (fields) => {
+    const rows = snippetRows.filter(row => hasFieldContent(row, fields));
+    if (!rows.length) return;
+    if (isFallback && !preambleShown) {
+      lines.push(`Each policy snippet template below may or may not apply to this issue — judge which, if any, fit both this issue's subject matter and this project's actual development type, using the project details and briefing notes already provided. Do not use a template for the wrong development type or an unrelated issue.`);
+      preambleShown = true;
     }
-  } else if (allIssueTypes.length) {
-    const usableRows = allIssueTypes.filter(hasSnippetContent);
-    if (usableRows.length) {
-      lines.push(`### Available Policy Snippet Templates`);
-      lines.push(`Each template below may or may not apply to this issue — judge which, if any, fit both this issue's subject matter and this project's actual development type, using the project details and briefing notes already provided. Do not use a template for the wrong development type or an unrelated issue.`);
-      for (const t of usableRows) {
-        candidateRowsById[t.id] = t;
-        lines.push(`\n#### Template id:${t.id} — ${t.label}${t.development_type ? ` (${t.development_type})` : ' (generic)'}`);
-        appendSnippetFields(lines, t);
+    for (const row of rows) {
+      lines.push(`Policy Snippet Template — id:${row.id} (${row.label}${row.development_type ? `, ${row.development_type}` : ', generic'})`);
+      for (const f of fields) {
+        if (row[f]?.trim()) lines.push(`${SNIPPET_FIELD_LABELS[f]}: ${noEmDash(stripHtmlPlain(row[f]))}`);
       }
+    }
+  };
+
+  // --- Group 1: National Policy (NPPF only) ---
+  const nationalPolicies = linkedPolicies.filter(p => p.policy_type === 'national');
+  if (nationalPolicies.length || snippetRows.some(row => hasFieldContent(row, NATIONAL_SNIPPET_FIELDS))) {
+    lines.push(`### National Policy`);
+    snippetBlock(NATIONAL_SNIPPET_FIELDS);
+    for (const p of nationalPolicies) lines.push(...policyBlockLines(p));
+  }
+
+  // --- Group 2: Development Plan Policy (Local + Neighbourhood) ---
+  const devPlanPolicies = linkedPolicies.filter(p => DEVELOPMENT_PLAN_TIERS.includes(p.policy_type));
+  if (devPlanPolicies.length) {
+    lines.push(`### Development Plan Policy`);
+    for (const tier of DEVELOPMENT_PLAN_TIERS) {
+      for (const p of devPlanPolicies.filter(p => p.policy_type === tier)) lines.push(...policyBlockLines(p));
+    }
+  }
+
+  // --- Group 3: Other Policy and Guidance (NPPG, other national guidance, other guidance, supplementary/other-tier policies) ---
+  const guidancePolicies = linkedPolicies.filter(p => GUIDANCE_TIERS.includes(p.policy_type));
+  if (guidancePolicies.length || snippetRows.some(row => hasFieldContent(row, GUIDANCE_SNIPPET_FIELDS))) {
+    lines.push(`### Other Policy and Guidance`);
+    snippetBlock(GUIDANCE_SNIPPET_FIELDS);
+    for (const tier of GUIDANCE_TIERS) {
+      for (const p of guidancePolicies.filter(p => p.policy_type === tier)) lines.push(...policyBlockLines(p));
     }
   }
 
   if (Object.keys(candidateRowsById).length) {
-    lines.push(`\nWhen you use wording from one of the templates above, quote it verbatim and wrap exactly the quoted portion — nothing more — like this: <span data-snippet="ID">the exact quoted text</span>, using that template's id. Only wrap text copied directly from a template, never your own analysis or paraphrasing. If none of the templates apply, ignore this instruction entirely.`);
-  }
-
-  for (const tier of POLICY_TIER_ORDER) {
-    const tierPolicies = linkedPolicies.filter(p => p.policy_type === tier);
-    if (!tierPolicies.length) continue;
-    lines.push(`### ${POLICY_TIER_LABELS[tier]}`);
-    for (const p of tierPolicies) {
-      const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
-      const keyTag = p.is_key_policy ? ' [KEY POLICY — quote verbatim in draft]' : '';
-      lines.push(`${ref}${p.policy_name}${keyTag}`);
-      if (p.policy_text?.trim())              lines.push(`Policy wording: "${p.policy_text.trim()}"`);
-      if (p.relevant_supporting_text?.trim()) lines.push(`Supporting context: ${p.relevant_supporting_text.trim().slice(0, 400)}`);
-    }
+    lines.push(`When you use wording from one of the policy snippet templates above, quote it verbatim and wrap exactly the quoted portion — nothing more — like this: <span data-snippet="ID">the exact quoted text</span>, using that template's id. Only wrap text copied directly from a template, never your own analysis or paraphrasing. If none of the templates apply, ignore this instruction entirely.`);
   }
 
   // Free-text notes from the Drafting Issues tab (only populated for issues

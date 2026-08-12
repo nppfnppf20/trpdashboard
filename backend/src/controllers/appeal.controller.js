@@ -493,9 +493,11 @@ async function fetchLinkedPoliciesForDraftType(draftType, projectId) {
     const { rows } = await pool.query(
       `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
               pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy,
+              pd.plan_name,
               dipr.drafting_issue_id AS track_id
        FROM public.project_policies pp
        JOIN admin_console.drafting_issue_policy_relevance dipr ON dipr.policy_id = pp.id
+       LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
        WHERE pp.project_id = $1
        ORDER BY dipr.drafting_issue_id, pp.policy_type, pp.policy_reference`,
       [projectId]
