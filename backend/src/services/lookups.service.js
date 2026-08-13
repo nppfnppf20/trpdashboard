@@ -31,6 +31,12 @@ const LOOKUP_CONFIGS = {
     labelColumn: 'name',
     orderBy: 'id'
   },
+  'development_types': {
+    table: 'admin_console.development_types',
+    idColumn: 'id',
+    labelColumn: 'name',
+    orderBy: 'id'
+  },
   'surveyor_disciplines': {
     table: 'admin_console.surveyor_disciplines',
     idColumn: 'id',

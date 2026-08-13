@@ -21,6 +21,7 @@ async function createProject(req, res) {
     client_spv_name,
     sectors,     // Array of strings
     sub_sectors, // Array of strings
+    development_types, // Array of strings
     designations_on_site,
     relevant_nearby_designations,
     status
@@ -49,14 +50,18 @@ async function createProject(req, res) {
     // Convert LPA array to JSONB
     const lpaJson = local_planning_authority ? JSON.stringify(local_planning_authority) : null;
 
+    // development_type (singular, legacy) is kept in sync with the first
+    // selected development_types entry — see migration 146 for why.
+    const primaryDevType = development_types?.length ? development_types[0] : null;
+
     // Insert into projects table
     const result = await pool.query(
       `INSERT INTO projects
        (project_id, project_name, project_type, local_planning_authority, project_lead,
         project_manager, project_director, address, polygon_geojson, area,
-        client, client_spv_name, sectors, sub_sectors,
+        client, client_spv_name, sectors, sub_sectors, development_types, development_type,
         designations_on_site, relevant_nearby_designations, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        RETURNING *`,
       [
         project_id,
@@ -73,6 +78,8 @@ async function createProject(req, res) {
         client_spv_name || null,
         sectors ? JSON.stringify(sectors) : '[]',
         sub_sectors ? JSON.stringify(sub_sectors) : '[]',
+        development_types ? JSON.stringify(development_types) : '[]',
+        primaryDevType,
         designations_on_site || null,
         relevant_nearby_designations || null,
         status || null
@@ -98,7 +105,7 @@ async function getAllProjects(req, res) {
               lpa_reference, submission_date, validation_date,
               lpa_consultation_end_date, committee_date, target_determination_date,
               determined_date, expiry_of_1st_stat_period_date, eot_date,
-              six_months_appeal_window_date, comments, development_type,
+              six_months_appeal_window_date, comments, development_type, development_types,
               about_applicant, created_at, updated_at
        FROM projects
        ORDER BY created_at DESC`
@@ -177,6 +184,7 @@ async function updateProject(req, res) {
     client_spv_name,
     sectors,
     sub_sectors,
+    development_types,
     designations_on_site,
     relevant_nearby_designations,
     status,
@@ -201,6 +209,13 @@ async function updateProject(req, res) {
   try {
     const lpaJson = local_planning_authority ? JSON.stringify(local_planning_authority) : undefined;
 
+    // development_type (singular, legacy) is kept in sync with the first
+    // selected development_types entry whenever development_types is part
+    // of this update — see migration 146 for why it's kept around at all.
+    const primaryDevType = development_types !== undefined
+      ? (development_types.length ? development_types[0] : null)
+      : undefined;
+
     const result = await pool.query(
       `UPDATE projects
        SET project_id = COALESCE($1, project_id),
@@ -216,26 +231,28 @@ async function updateProject(req, res) {
            client_spv_name = COALESCE($11, client_spv_name),
            sectors = COALESCE($12, sectors),
            sub_sectors = COALESCE($13, sub_sectors),
-           designations_on_site = COALESCE($14, designations_on_site),
-           relevant_nearby_designations = COALESCE($15, relevant_nearby_designations),
-           status = COALESCE($16, status),
-           development_description = $17,
-           case_officer_name = $18,
-           case_officer_email = $19,
-           case_officer_phone_number = $20,
-           lpa_reference = $21,
-           submission_date = $22,
-           validation_date = $23,
-           lpa_consultation_end_date = $24,
-           committee_date = $25,
-           target_determination_date = $26,
-           determined_date = $27,
-           expiry_of_1st_stat_period_date = $28,
-           eot_date = $29,
-           six_months_appeal_window_date = $30,
-           comments = $31,
-           about_applicant = $32
-       WHERE id = $33
+           development_types = COALESCE($14, development_types),
+           development_type = COALESCE($15, development_type),
+           designations_on_site = COALESCE($16, designations_on_site),
+           relevant_nearby_designations = COALESCE($17, relevant_nearby_designations),
+           status = COALESCE($18, status),
+           development_description = $19,
+           case_officer_name = $20,
+           case_officer_email = $21,
+           case_officer_phone_number = $22,
+           lpa_reference = $23,
+           submission_date = $24,
+           validation_date = $25,
+           lpa_consultation_end_date = $26,
+           committee_date = $27,
+           target_determination_date = $28,
+           determined_date = $29,
+           expiry_of_1st_stat_period_date = $30,
+           eot_date = $31,
+           six_months_appeal_window_date = $32,
+           comments = $33,
+           about_applicant = $34
+       WHERE id = $35
        RETURNING *`,
       [
         project_id, project_name, lpaJson, project_lead, project_manager,
@@ -243,6 +260,8 @@ async function updateProject(req, res) {
         client_spv_name,
         sectors ? JSON.stringify(sectors) : null,
         sub_sectors ? JSON.stringify(sub_sectors) : null,
+        development_types !== undefined ? JSON.stringify(development_types) : null,
+        primaryDevType,
         designations_on_site,
         relevant_nearby_designations, status,
         development_description || null,

@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, setProjectDevelopmentType, getPaDraftContext, saveDraft } from '$lib/api/planningApplication.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, getPaDraftContext, saveDraft } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
@@ -15,6 +15,8 @@
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import DraftingIssuesModal from '$lib/components/planning-application/DraftingIssuesModal.svelte';
+  import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
+  import { getDraftingIssues } from '$lib/api/draftingIssues.js';
   import ArgumentStructurePanel from '$lib/components/planning-application/ArgumentStructurePanel.svelte';
   import { exportHtmlToWord, getExportConfigForSlug } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
@@ -238,8 +240,9 @@
     'Industrial', 'Change of Use', 'Agricultural', 'Synchronous condensers', 'Other'
   ];
 
+  // Set on the project's own info page now (Development Type multi-select) —
+  // this card only reads it, it doesn't offer an editable selector any more.
   let developmentType = project.development_type ?? '';
-  let devTypeSaving = false;
 
   // Per-card dev type override for appeal cards that use dev-type-specific guiding briefs.
   // Defaults to the project dev type and can be changed per-card without saving to DB.
@@ -255,19 +258,6 @@
   // Per-card AI provider choice for draft generation — session-only override,
   // not persisted. Empty/unset means "use the AI Providers admin default".
   let draftProviderByType = {};
-
-  async function handleDevTypeChange(e) {
-    const value = e.target.value;
-    developmentType = value;
-    devTypeSaving = true;
-    try {
-      await setProjectDevelopmentType(project.id, value || null);
-    } catch (err) {
-      console.error('Failed to save development type:', err);
-    } finally {
-      devTypeSaving = false;
-    }
-  }
 
   let activeTab = 'draft';
 
@@ -435,6 +425,21 @@
   // block). Shown as an "Issues" button on each of their cards.
   const DRAFTING_ISSUES_SLUGS = ['planning_statement_v3', 'stage1_review_v3', 'hlpv_v3'];
   let draftingIssuesType = null; // { id, slug, name } of the card whose Issues modal is open
+
+  // Meeting Guide — launched from a draft card so it can show the briefing
+  // agenda tailored to that specific document type (only planning_statement_v3
+  // has dedicated content so far; other types fall back to the generic guide).
+  let meetingGuideType = null; // { id, slug, name } of the card whose guide is open
+  let meetingGuideIssues = [];
+  async function openMeetingGuide(type) {
+    meetingGuideType = type;
+    meetingGuideIssues = [];
+    try {
+      meetingGuideIssues = await getDraftingIssues(project.id);
+    } catch (err) {
+      console.error('Failed to load drafting issues for meeting guide:', err);
+    }
+  }
 
   async function loadCardContextPcts() {
     // Issue notes already loaded — add their text to every type's baseline
@@ -819,14 +824,6 @@
                   {/if}
                 </div>
                 <div class="draft-type-actions">
-                  {#if type.tool !== 'appeal' && type.tool !== 'stage1' && type.tool !== 'hlpv'}
-                  <select class="card-dev-type-select" value={developmentType} on:change={handleDevTypeChange} disabled={devTypeSaving} title="Development type">
-                    <option value="">Dev type...</option>
-                    {#each DEV_TYPES as dt}
-                      <option value={dt}>{dt}</option>
-                    {/each}
-                  </select>
-                  {/if}
                   {#if draft}
                     <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
@@ -899,6 +896,9 @@
                       <button class="draft-setting-btn" title="View / edit the drafting issues this draft is generated from" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
+                      <button class="draft-setting-btn" title="Open the briefing meeting guide for this document type" on:click={() => openMeetingGuide({ id: type.id, slug: type.slug, name: type.name })}>
+                        <i class="las la-clipboard-list"></i> Meeting Guide
+                      </button>
                     {/if}
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openAppealPrompt(type.id)}><i class="las la-sliders-h"></i></button>
                   {:else if type.tool === 'stage1'}
@@ -909,12 +909,18 @@
                       <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
+                      <button class="draft-setting-btn" title="Open the briefing meeting guide for this document type" on:click={() => openMeetingGuide({ id: type.id, slug: type.slug, name: type.name })}>
+                        <i class="las la-clipboard-list"></i> Meeting Guide
+                      </button>
                     {/if}
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
                   {:else if type.tool === 'hlpv'}
                     {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
                       <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
+                      </button>
+                      <button class="draft-setting-btn" title="Open the briefing meeting guide for this document type" on:click={() => openMeetingGuide({ id: type.id, slug: type.slug, name: type.name })}>
+                        <i class="las la-clipboard-list"></i> Meeting Guide
                       </button>
                     {/if}
                     <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
@@ -1764,6 +1770,15 @@
     on:close={() => draftingIssuesType = null}
   />
 {/if}
+
+<MeetingGuideModal
+  show={!!meetingGuideType}
+  {project}
+  docTypeSlug={meetingGuideType?.slug ?? null}
+  docTypeLabel={meetingGuideType?.name ?? null}
+  issueTracks={meetingGuideIssues}
+  onClose={() => { meetingGuideType = null; meetingGuideIssues = []; }}
+/>
 
 <!-- Regenerate confirmation modal -->
 {#if regenPending}

@@ -442,8 +442,10 @@ function policyBlockLines(p) {
 // so verifyAndCleanSnippetSpans() can check them against the real text
 // afterward — the model still writes the surrounding prose freely, only the
 // quoted words themselves are verified.
+// policy_national is deliberately excluded — it's folded into Group 1
+// (National Policy) above instead, alongside the linked policies and NPPF
+// snippets it relates to, rather than surfacing as its own late heading here.
 const TIER_NOTE_FIELDS = [
-  { key: 'policy_national',      label: 'National Policy Notes' },
   { key: 'policy_local',         label: 'Local Policy Notes' },
   { key: 'policy_neighbourhood', label: 'Neighbourhood Policy Notes' },
   { key: 'policy_supplementary', label: 'Supplementary Policy Notes' },
@@ -482,11 +484,21 @@ function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allI
   };
 
   // --- Group 1: National Policy (NPPF only) ---
+  // The working-notes free text (issue.policy_national, "National Policy" box
+  // in the Drafting Issues UI) is folded in here rather than surfaced via
+  // TIER_NOTE_FIELDS further down, so all of an issue's national-policy
+  // material — linked policies, NPPF snippets, and the manual note — reads
+  // as one block instead of two disconnected headings.
   const nationalPolicies = linkedPolicies.filter(p => p.policy_type === 'national');
-  if (nationalPolicies.length || snippetRows.some(row => hasFieldContent(row, NATIONAL_SNIPPET_FIELDS))) {
+  const nationalNotes = issue?.policy_national?.trim();
+  if (nationalPolicies.length || nationalNotes || snippetRows.some(row => hasFieldContent(row, NATIONAL_SNIPPET_FIELDS))) {
     lines.push(`### National Policy`);
     snippetBlock(NATIONAL_SNIPPET_FIELDS);
     for (const p of nationalPolicies) lines.push(...policyBlockLines(p));
+    if (nationalNotes) {
+      lines.push(`National Policy Notes:`);
+      lines.push(nationalNotes);
+    }
   }
 
   // --- Group 2: Development Plan Policy (Local + Neighbourhood) ---

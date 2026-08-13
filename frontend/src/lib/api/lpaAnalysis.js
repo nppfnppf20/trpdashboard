@@ -46,6 +46,12 @@ export async function deletePolicy(policyId) {
   return res.json();
 }
 
+export async function getNationalPolicyPrecedents(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/national-policy-precedents`);
+  if (!res.ok) throw new Error('Failed to fetch national policy precedents');
+  return res.json();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LPA Decision Documents
 // ─────────────────────────────────────────────────────────────────────────────

@@ -20,6 +20,8 @@
   let sectorOptionsLoading = false;
   let subSectorOptions = [];
   let subSectorOptionsLoading = false;
+  let developmentTypeOptions = [];
+  let developmentTypeOptionsLoading = false;
   let lpaOptions = [];
   let lpaOptionsLoading = false;
   let showLpaDropdown = false;
@@ -40,6 +42,7 @@
     client_spv_name: '',
     sectors: [],
     sub_sectors: [],
+    development_types: [],
     designations_on_site: '',
     relevant_nearby_designations: '',
     status: ''
@@ -95,6 +98,10 @@
 
   $: if (browser && isOpen && subSectorOptions.length === 0 && !subSectorOptionsLoading) {
     loadSubSectorOptions();
+  }
+
+  $: if (browser && isOpen && developmentTypeOptions.length === 0 && !developmentTypeOptionsLoading) {
+    loadDevelopmentTypeOptions();
   }
 
   $: if (browser && isOpen && lpaOptions.length === 0 && !lpaOptionsLoading) {
@@ -153,6 +160,17 @@
       console.error('Failed to load sub-sector options:', error);
     } finally {
       subSectorOptionsLoading = false;
+    }
+  }
+
+  async function loadDevelopmentTypeOptions() {
+    developmentTypeOptionsLoading = true;
+    try {
+      developmentTypeOptions = await getLookupOptions('development_types');
+    } catch (error) {
+      console.error('Failed to load development type options:', error);
+    } finally {
+      developmentTypeOptionsLoading = false;
     }
   }
 
@@ -398,6 +416,7 @@
       client_spv_name: '',
       sectors: [],
       sub_sectors: [],
+      development_types: [],
       designations_on_site: '',
       relevant_nearby_designations: '',
       status: ''
@@ -594,6 +613,16 @@
                 bind:selected={formData.sub_sectors}
                 placeholder="Select sub-sector(s)..."
                 loading={subSectorOptionsLoading}
+              />
+            </div>
+
+            <div class="form-group">
+              <label>Development Type</label>
+              <MultiSelectDropdown
+                options={developmentTypeOptions}
+                bind:selected={formData.development_types}
+                placeholder="Select development type(s)..."
+                loading={developmentTypeOptionsLoading}
               />
             </div>
 

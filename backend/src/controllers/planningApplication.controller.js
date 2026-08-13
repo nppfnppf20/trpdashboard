@@ -39,7 +39,7 @@ import {
   DEFAULT_INCORPORATE_APPEAL_PROMPT,
   DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
 } from '../services/llm.service.js';
-import { BASE_SECTIONS, ISSUE_QUESTIONS, TAIL_SECTIONS } from '../services/meetingGuideContent.js';
+import { getGuideContent } from '../services/meetingGuideContent.js';
 import { DEFAULT_STAGE1_REVIEW_PROMPT, DEFAULT_STAGE1_REVIEW_V3_TEMPLATE } from './stage1Review.controller.js';
 import { DEFAULT_HLPV_V3_TEMPLATE } from './hlpvV3.controller.js';
 import { DEFAULT_BRIEF_CHECK_TEMPLATE, DEFAULT_CONSISTENCY_CHECK_TEMPLATE, DEFAULT_GRAMMAR_CHECK_TEMPLATE } from './draftCheck.controller.js';
@@ -1450,11 +1450,34 @@ export async function getDocumentSummaryTranscript(req, res) {
   }
 }
 
-export async function getMeetingGuide(_req, res) {
+export async function getMeetingGuide(req, res) {
+  const { docType, projectId } = req.query;
+  const guide = getGuideContent(docType);
+
+  let onFileDocTypes = new Set();
+  if (projectId) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT doc_type FROM planning_applications.document_summaries WHERE project_id = $1`,
+        [projectId]
+      );
+      onFileDocTypes = new Set(rows.map(r => r.doc_type));
+    } catch (err) {
+      console.error('pa.getMeetingGuide onFile lookup error:', err);
+    }
+  }
+
+  const annotate = (s) => s.coveredByDocType && onFileDocTypes.has(s.coveredByDocType)
+    ? { ...s, onFile: true }
+    : s;
+
   res.json({
-    baseSections: BASE_SECTIONS,
-    issueQuestions: ISSUE_QUESTIONS,
-    tailSections: TAIL_SECTIONS
+    label: guide.label,
+    baseSections: guide.baseSections.map(annotate),
+    issueQuestions: guide.issueQuestions,
+    issueSectionLabel: guide.issueSectionLabel,
+    issueSectionFeedsLabel: guide.issueSectionFeedsLabel,
+    tailSections: guide.tailSections.map(annotate)
   });
 }
 

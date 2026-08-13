@@ -24,6 +24,8 @@
   let sectorOptionsLoading = false;
   let subSectorOptions = [];
   let subSectorOptionsLoading = false;
+  let developmentTypeOptions = [];
+  let developmentTypeOptionsLoading = false;
 
   const statusOptions = ['Prospective', 'Instructed', 'Submitted', 'Post-Submission', 'Closed'];
   const projectTypeOptions = ['Full Application', 'DoC', 'NMA', 'S73', 'Appeal', 'Other'];
@@ -44,6 +46,7 @@
     client_spv_name: '',
     sectors: [],
     sub_sectors: [],
+    development_types: [],
     designations_on_site: '',
     relevant_nearby_designations: '',
     development_description: '',
@@ -113,6 +116,9 @@
   $: if (browser && isOpen && subSectorOptions.length === 0 && !subSectorOptionsLoading) {
     loadSubSectorOptions();
   }
+  $: if (browser && isOpen && developmentTypeOptions.length === 0 && !developmentTypeOptionsLoading) {
+    loadDevelopmentTypeOptions();
+  }
 
   async function loadClientOptions() {
     clientOptionsLoading = true;
@@ -140,6 +146,13 @@
     try { subSectorOptions = await getLookupOptions('sub_sectors'); }
     catch (e) { console.error('Failed to load sub-sector options:', e); }
     finally { subSectorOptionsLoading = false; }
+  }
+
+  async function loadDevelopmentTypeOptions() {
+    developmentTypeOptionsLoading = true;
+    try { developmentTypeOptions = await getLookupOptions('development_types'); }
+    catch (e) { console.error('Failed to load development type options:', e); }
+    finally { developmentTypeOptionsLoading = false; }
   }
 
   onDestroy(() => { cleanupMap(); });
@@ -179,6 +192,7 @@
         client_spv_name: project.client_spv_name || '',
         sectors: project.sectors || [],
         sub_sectors: project.sub_sectors || [],
+        development_types: project.development_types || [],
         designations_on_site: project.designations_on_site || '',
         relevant_nearby_designations: project.relevant_nearby_designations || '',
         development_description: project.development_description || '',
@@ -335,7 +349,7 @@
       project_id: '', project_name: '', local_planning_authority: [],
       project_lead: '', project_manager: '', project_director: '',
       address: '', polygon_geojson: null, area: '', client: '',
-      client_spv_name: '', sectors: [], sub_sectors: [],
+      client_spv_name: '', sectors: [], sub_sectors: [], development_types: [],
       designations_on_site: '', relevant_nearby_designations: '', development_description: '', status: '', about_applicant: '',
       case_officer_name: '', case_officer_email: '', case_officer_phone_number: '',
       lpa_reference: '', submission_date: '', validation_date: '',
@@ -457,6 +471,16 @@
                       bind:selected={formData.sub_sectors}
                       placeholder="Select sub-sector(s)..."
                       loading={subSectorOptionsLoading}
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label>Development Type</label>
+                    <MultiSelectDropdown
+                      options={developmentTypeOptions}
+                      bind:selected={formData.development_types}
+                      placeholder="Select development type(s)..."
+                      loading={developmentTypeOptionsLoading}
                     />
                   </div>
 

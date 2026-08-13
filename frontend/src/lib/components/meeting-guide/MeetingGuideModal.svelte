@@ -4,18 +4,20 @@
 
   export let show = false;
   export let project = null;
-  export let issueTracks = []; // pass active tracks in so we don't need an extra fetch
+  export let issueTracks = []; // pass active tracks (or drafting issues) in so we don't need an extra fetch
+  export let docTypeSlug = null; // e.g. 'planning_statement_v3' — omit for the generic guide
+  export let docTypeLabel = null; // display label shown in the header when docTypeSlug is set
   export let onClose;
 
   let sections = [];
   let guideError = null;
 
-  $: if (show) loadSections(issueTracks);
+  $: if (show) loadSections(issueTracks, docTypeSlug, project?.id);
 
-  async function loadSections(tracks) {
+  async function loadSections(tracks, docType, projectId) {
     guideError = null;
     try {
-      const guide = await fetchGuideContent();
+      const guide = await fetchGuideContent(docType, projectId);
       sections = buildGuide(guide, tracks);
     } catch (err) {
       guideError = err.message;
@@ -34,7 +36,7 @@
         <div class="header-left">
           <i class="las la-clipboard-list"></i>
           <div>
-            <h2>Briefing Meeting Guide</h2>
+            <h2>Briefing Meeting Guide{#if docTypeLabel} <span class="doc-type-tag">{docTypeLabel}</span>{/if}</h2>
             {#if project}
               <p class="project-name">{project.project_name}</p>
             {/if}
@@ -122,6 +124,16 @@
     font-size: 1.125rem;
     font-weight: 600;
     color: #1e293b;
+  }
+
+  .doc-type-tag {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #7c3aed;
+    background: #f3e8ff;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    vertical-align: middle;
   }
 
   .project-name {

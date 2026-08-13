@@ -1,17 +1,34 @@
 <script>
   import { onMount, createEventDispatcher } from 'svelte';
-  import { getPolicies, createPolicy, updatePolicy, deletePolicy } from '$lib/api/lpaAnalysis.js';
+  import { getPolicies, createPolicy, updatePolicy, deletePolicy, getNationalPolicyPrecedents } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
+  import { listIssueTypes } from '$lib/api/issueTypes.js';
 
   const dispatch = createEventDispatcher();
 
   export let project;
   $: projectId = project?.id;
+  $: projectDevTypes = project?.development_types ?? [];
 
   let policies = [];
   let planDocs = [];
+  let issueTypes = [];
+  let precedents = [];
   let loading = true;
   let error = null;
+  let showTemplates = false;
+  let showPrecedents = false;
+  let importingKey = null;
+
+  // Generic templates (development_type IS NULL) always apply; dev-type ones
+  // only apply where they overlap the project's selected development types.
+  $: matchingTemplates = issueTypes.filter(
+    t => !t.development_type || projectDevTypes.includes(t.development_type)
+  );
+
+  function templateFieldCount(t) {
+    return ['nppf_text', 'nppg_text', 'other_national_text', 'other_guidance_text'].filter(f => t[f]?.trim()).length;
+  }
 
   // Form state
   let showForm = false;
@@ -46,6 +63,32 @@
       error = err.message;
     } finally {
       loading = false;
+    }
+    // Loaded independently — a failure here shouldn't block the policy list above.
+    try { issueTypes = await listIssueTypes(); }
+    catch (err) { console.error('Failed to load policy snippet templates:', err); }
+    try { precedents = await getNationalPolicyPrecedents(projectId); }
+    catch (err) { console.error('Failed to load national policy precedents:', err); }
+  }
+
+  // Copies only the portable parts (reference/name/verbatim text) — never
+  // relevant_supporting_text or is_key_policy, which are the other project's
+  // own judgment calls, not facts that should carry across.
+  async function importPrecedent(p) {
+    const key = `${p.policy_reference}|${p.policy_name}`;
+    importingKey = key;
+    try {
+      await createPolicy(projectId, {
+        policy_reference: p.policy_reference,
+        policy_name: p.policy_name,
+        policy_type: 'national',
+        policy_text: p.policy_text
+      });
+      await load();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      importingKey = null;
     }
   }
 
@@ -210,13 +253,85 @@
     </div>
   {:else}
     <div class="tab-header">
-      <button class="btn-add-multiple" on:click={openBulkModal}>
-        <i class="las la-list-ul"></i> Add Multiple
+      <button class="btn-templates" on:click={() => showTemplates = !showTemplates}>
+        <i class="las la-layer-group"></i> National Policy Templates ({matchingTemplates.length})
+        <i class="las {showTemplates ? 'la-angle-up' : 'la-angle-down'}"></i>
       </button>
-      <button class="btn-add" on:click={openAdd}>
-        <i class="las la-plus"></i> Add Policy
+      <button class="btn-templates" on:click={() => showPrecedents = !showPrecedents}>
+        <i class="las la-history"></i> Used on Similar Projects ({precedents.length})
+        <i class="las {showPrecedents ? 'la-angle-up' : 'la-angle-down'}"></i>
       </button>
+      <div class="tab-header-actions">
+        <button class="btn-add-multiple" on:click={openBulkModal}>
+          <i class="las la-list-ul"></i> Add Multiple
+        </button>
+        <button class="btn-add" on:click={openAdd}>
+          <i class="las la-plus"></i> Add Policy
+        </button>
+      </div>
     </div>
+
+    {#if showTemplates}
+      <div class="templates-panel">
+        {#if !projectDevTypes.length}
+          <p class="templates-hint">This project has no Development Type set — only generic (non-dev-type-specific) templates are shown below. Set a development type on the project's info page to also see dev-type-specific ones.</p>
+        {/if}
+        {#if matchingTemplates.length === 0}
+          <p class="templates-empty">No matching snippet templates.</p>
+        {:else}
+          <div class="templates-list">
+            {#each matchingTemplates as t (t.id)}
+              <details class="template-item">
+                <summary>
+                  <span class="template-label">{t.label}</span>
+                  <span class="template-devtype">{t.development_type || 'generic'}</span>
+                  <span class="template-fields">{templateFieldCount(t)} field{templateFieldCount(t) === 1 ? '' : 's'}</span>
+                </summary>
+                {#if t.nppf_text}<div class="template-field"><strong>NPPF</strong>{@html t.nppf_text}</div>{/if}
+                {#if t.nppg_text}<div class="template-field"><strong>NPPG</strong>{@html t.nppg_text}</div>{/if}
+                {#if t.other_national_text}<div class="template-field"><strong>Other National Policy</strong>{@html t.other_national_text}</div>{/if}
+                {#if t.other_guidance_text}<div class="template-field"><strong>Other Guidance</strong>{@html t.other_guidance_text}</div>{/if}
+              </details>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#if showPrecedents}
+      <div class="templates-panel">
+        {#if !projectDevTypes.length}
+          <p class="templates-hint">This project has no Development Type set, so no other projects can be matched. Set a development type on the project's info page first.</p>
+        {:else if precedents.length === 0}
+          <p class="templates-empty">No national policies recorded yet on other projects sharing this project's development type.</p>
+        {:else}
+          <div class="templates-list">
+            {#each precedents as p (`${p.policy_reference}|${p.policy_name}`)}
+              <div class="precedent-item">
+                <div class="precedent-header">
+                  {#if p.policy_reference}<span class="ref-chip">{p.policy_reference}</span>{/if}
+                  <span class="precedent-name">{p.policy_name}</span>
+                  <span class="precedent-used-on">used on {p.used_on} other project{p.used_on == 1 ? '' : 's'}</span>
+                  <button
+                    class="btn-import"
+                    disabled={importingKey === `${p.policy_reference}|${p.policy_name}`}
+                    on:click={() => importPrecedent(p)}
+                  >
+                    {importingKey === `${p.policy_reference}|${p.policy_name}` ? 'Adding…' : 'Add to this project'}
+                  </button>
+                </div>
+                {#if p.policy_text}
+                  <details class="policy-detail">
+                    <summary>Policy text</summary>
+                    <p class="detail-body">{p.policy_text}</p>
+                  </details>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     {#if showForm}
       <div class="policy-form-card">
@@ -477,11 +592,112 @@
 
   .tab-header {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     align-items: center;
     gap: 0.5rem;
     padding: 0.75rem 1.25rem;
   }
+
+  .tab-header-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+  .btn-templates {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    background: white;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+  .btn-templates:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+  .templates-panel {
+    margin: 0 1.25rem 0.5rem;
+    padding: 0.9rem 1rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+  }
+  .templates-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.8rem;
+    color: #64748b;
+    font-style: italic;
+  }
+  .templates-empty { margin: 0; font-size: 0.85rem; color: #94a3b8; }
+  .templates-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .template-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+  }
+  .template-item summary {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #1e293b;
+    font-weight: 500;
+    list-style: none;
+  }
+  .template-item summary::-webkit-details-marker { display: none; }
+  .template-label { flex: 1; }
+  .template-devtype {
+    font-size: 0.7rem; font-weight: 600; color: #64748b; background: #f1f5f9;
+    padding: 0.1rem 0.4rem; border-radius: 3px; text-transform: capitalize;
+  }
+  .template-fields { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; }
+  .template-field {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #f1f5f9;
+    font-size: 0.8rem;
+    color: #334155;
+    line-height: 1.6;
+  }
+  .template-field strong {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+    margin-bottom: 0.2rem;
+  }
+
+  .precedent-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+  }
+  .precedent-header { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+  .precedent-name { flex: 1; font-weight: 500; color: #1e293b; min-width: 8rem; }
+  .precedent-used-on { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; }
+  .btn-import {
+    padding: 0.3rem 0.7rem;
+    background: white;
+    color: #9333ea;
+    border: 1px solid #9333ea;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .btn-import:hover:not(:disabled) { background: #faf5ff; }
+  .btn-import:disabled { opacity: 0.6; cursor: not-allowed; }
 
   .btn-add-multiple {
     display: flex;

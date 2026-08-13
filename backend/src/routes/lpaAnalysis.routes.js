@@ -10,6 +10,7 @@ import {
   createPolicy,
   updatePolicy,
   deletePolicy,
+  listNationalPolicyPrecedents,
   listLpaDocuments,
   uploadLpaDocument,
   deleteLpaDocument,
@@ -38,6 +39,7 @@ router.get('/projects/:projectId/policies', listPolicies);
 router.post('/projects/:projectId/policies', createPolicy);
 router.put('/policies/:policyId', updatePolicy);
 router.delete('/policies/:policyId', deletePolicy);
+router.get('/projects/:projectId/national-policy-precedents', listNationalPolicyPrecedents);
 
 // LPA decision documents
 router.get('/projects/:projectId/lpa-documents', listLpaDocuments);

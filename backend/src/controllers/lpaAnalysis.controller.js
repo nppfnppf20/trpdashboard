@@ -101,6 +101,41 @@ export async function createPolicy(req, res) {
   }
 }
 
+// National policy is the one tier that's genuinely portable between projects
+// regardless of LPA (unlike Local/Neighbourhood, which are area-specific) —
+// see [[project_dev_type_and_national_policy_library]]. Scoped to
+// policy_type = 'national' only, and only to other projects sharing at
+// least one development type with this one.
+export async function listNationalPolicyPrecedents(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT development_types FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+    const devTypes = projectRows[0].development_types ?? [];
+    if (!devTypes.length) return res.json([]);
+
+    const { rows } = await pool.query(
+      `SELECT pp.policy_reference, pp.policy_name, pp.policy_text,
+              COUNT(DISTINCT pp.project_id) AS used_on
+       FROM project_policies pp
+       JOIN projects p ON p.id = pp.project_id
+       WHERE pp.policy_type = 'national'
+         AND pp.project_id != $1
+         AND p.development_types ?| $2::text[]
+       GROUP BY pp.policy_reference, pp.policy_name, pp.policy_text
+       ORDER BY used_on DESC, pp.policy_name`,
+      [projectId, devTypes]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('listNationalPolicyPrecedents error:', err);
+    res.status(500).json({ error: 'Failed to fetch national policy precedents' });
+  }
+}
+
 export async function updatePolicy(req, res) {
   const { policyId } = req.params;
   const { policy_reference, policy_name, policy_type, policy_text, relevant_supporting_text, notes, is_key_policy, plan_id } = req.body;

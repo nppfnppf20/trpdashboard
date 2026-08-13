@@ -21,11 +21,11 @@
   ];
 
   const POLICY_TIERS = [
-    { key: 'policy_national',      label: 'National Policy',      dbType: 'national',      placeholder: 'Key NPPF provisions and national guidance relevant to this issue...' },
-    { key: 'policy_local',         label: 'Local Policy',         dbType: 'local',         placeholder: 'Local plan policies and their requirements...' },
-    { key: 'policy_neighbourhood', label: 'Neighbourhood Policy', dbType: 'neighbourhood', placeholder: 'Neighbourhood plan policies (if applicable)...' },
-    { key: 'policy_supplementary', label: 'Supplementary',        dbType: 'supplementary', placeholder: 'SPDs, design guides or other supplementary guidance...' },
-    { key: 'policy_other',         label: 'Other',                dbType: 'other',         placeholder: 'Any other relevant planning policy or guidance...' },
+    { key: 'policy_national',      label: 'National Policy',      dbType: 'national',      placeholder: 'Add further national policy notes...' },
+    { key: 'policy_local',         label: 'Local Policy',         dbType: 'local',         placeholder: 'Add further local policy notes...' },
+    { key: 'policy_neighbourhood', label: 'Neighbourhood Policy', dbType: 'neighbourhood', placeholder: 'Add further neighbourhood policy notes...' },
+    { key: 'policy_supplementary', label: 'Supplementary',        dbType: 'supplementary', placeholder: 'Add further supplementary guidance notes...' },
+    { key: 'policy_other',         label: 'Other',                dbType: 'other',         placeholder: 'Add further policy notes...' },
   ];
 
   let open = {};
@@ -34,6 +34,17 @@
   let previewSnippet = null;
   let snippetToggling = {};
   let editingSnippets = false;
+  let textareaExpanded = {};
+
+  function expandTextarea(tierKey) {
+    textareaExpanded = { ...textareaExpanded, [tierKey]: true };
+  }
+
+  function collapseTextareaIfEmpty(tierKey, value) {
+    if (!value?.trim()) {
+      textareaExpanded = { ...textareaExpanded, [tierKey]: false };
+    }
+  }
 
   $: policiesByType = policies.reduce((acc, p) => {
     const t = (p.policy_type ?? '').toLowerCase();
@@ -218,10 +229,12 @@
 
         <textarea
           class="tier-textarea"
+          class:tier-textarea-compact={!textareaExpanded[tier.key] && !issue[tier.key]?.trim()}
           placeholder={tier.placeholder}
           value={issue[tier.key] ?? ''}
           use:autoresize
-          on:blur={(e) => onNoteChange(tier.key, e.target.value)}
+          on:focus={() => expandTextarea(tier.key)}
+          on:blur={(e) => { onNoteChange(tier.key, e.target.value); collapseTextareaIfEmpty(tier.key, e.target.value); }}
         ></textarea>
       </div>
     {/if}
@@ -342,8 +355,12 @@
     width: 100%; box-sizing: border-box; padding: 0.625rem 0.75rem;
     border: 1px solid #ddd6fe; border-radius: 6px; font-size: 0.875rem; font-family: inherit;
     color: #374151; background: #faf5ff; resize: none; overflow: hidden; line-height: 1.5;
-    min-height: 100px; transition: border-color 0.15s, background 0.15s;
+    min-height: 100px; transition: border-color 0.15s, background 0.15s, min-height 0.15s;
   }
+
+  /* Empty and not focused — shrunk to a single-line "click to add" affordance
+     rather than a full-height empty box for every tier by default. */
+  .tier-textarea-compact { min-height: 2.25rem; }
 
   .tier-textarea:focus { outline: none; border-color: #7c3aed; background: white; box-shadow: 0 0 0 3px rgba(124,58,237,0.07); }
   .tier-textarea::placeholder { color: #94a3b8; }
