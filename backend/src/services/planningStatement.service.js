@@ -87,15 +87,22 @@ const OUTPUT_VAR_PLACEHOLDER_LABELS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Outline of the kick-off meeting guide, rebuilt from meetingGuideContent.js
-// so the briefing summary structure always matches the on-screen guide
+// so the briefing summary structure always matches the on-screen guide.
+// Section titles are stored unnumbered; numbered here by position (mirrors
+// buildGuide() on the frontend).
 function buildMeetingGuideOutline() {
-  const block = (s) => `${s.title}\n${s.questions.map(q => `- ${q}`).join('\n')}`;
+  const block = (s, n) => `${n}. ${s.title}\n${s.questions.map(q => `- ${q}`).join('\n')}`;
+  const issueSectionNumber = BASE_SECTIONS.length + 1;
   const keyIssues = [
-    '9. Key Issues',
-    'For each planning issue or constraint discussed (e.g. landscape, heritage, ecology, highways), use a numbered sub-heading per issue (9.1, 9.2, …) and cover:',
+    `${issueSectionNumber}. Key Issues`,
+    `For each planning issue or constraint discussed (e.g. landscape, heritage, ecology, highways), use a numbered sub-heading per issue (${issueSectionNumber}.1, ${issueSectionNumber}.2, …) and cover:`,
     ...ISSUE_QUESTIONS.map(q => `- ${q}`)
   ].join('\n');
-  return [...BASE_SECTIONS.map(block), keyIssues, ...TAIL_SECTIONS.map(block)].join('\n\n');
+  return [
+    ...BASE_SECTIONS.map((s, i) => block(s, i + 1)),
+    keyIssues,
+    ...TAIL_SECTIONS.map((s, i) => block(s, issueSectionNumber + 1 + i))
+  ].join('\n\n');
 }
 
 const DEFAULT_SUMMARY_PROMPTS = {

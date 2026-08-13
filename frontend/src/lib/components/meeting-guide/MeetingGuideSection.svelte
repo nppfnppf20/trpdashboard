@@ -1,12 +1,12 @@
 <script>
-  export let section; // { title, feedsLabel, questions: string[], onFile?, priorToolNote? }
+  export let section; // { title, feedsLabel, headerNote?, questions: string[], onFile?, priorToolNote? }
 
   // Collapse by default when we already have a saved document covering this
   let open = !section.onFile;
 </script>
 
 <div class="guide-section" class:on-file={section.onFile}>
-  <button class="section-header" on:click={() => (open = !open)}>
+  <button class="section-header" class:section-header--with-note={!!section.headerNote} on:click={() => (open = !open)}>
     <div class="header-left">
       <i class="las la-{open ? 'chevron-down' : 'chevron-right'} chevron"></i>
       <span class="section-title">{section.title}</span>
@@ -18,6 +18,10 @@
       <span class="feeds-tag">feeds → {section.feedsLabel}</span>
     {/if}
   </button>
+
+  {#if section.headerNote}
+    <p class="header-note">{section.headerNote}</p>
+  {/if}
 
   {#if open}
     {#if section.onFile}
@@ -55,6 +59,23 @@
 
   .section-header:hover {
     background: #f1f5f9;
+  }
+
+  .section-header--with-note {
+    padding-bottom: 0.4rem;
+  }
+
+  .header-note {
+    margin: 0;
+    padding: 0 1rem 0.75rem 1rem;
+    background: #f8fafc;
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  .guide-section.on-file .header-note {
+    background: #f0fdf4;
   }
 
   .header-left {
