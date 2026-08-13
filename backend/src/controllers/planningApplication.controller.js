@@ -38,6 +38,7 @@ import {
   DEFAULT_SCOPE_INCORPORATION_PROMPT,
   DEFAULT_INCORPORATE_APPEAL_PROMPT,
   DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
+  DEFAULT_INCORPORATE_SPECIALIST_REPORT_PROMPT,
 } from '../services/llm.service.js';
 import { getGuideContent } from '../services/meetingGuideContent.js';
 import { DEFAULT_STAGE1_REVIEW_PROMPT, DEFAULT_STAGE1_REVIEW_V3_TEMPLATE } from './stage1Review.controller.js';
@@ -55,6 +56,7 @@ const ACTION_PROMPT_DEFAULTS = {
   stage1_review_v3:              DEFAULT_STAGE1_REVIEW_V3_TEMPLATE,
   hlpv_v3:                       DEFAULT_HLPV_V3_TEMPLATE,
   incorporate_appeal:            DEFAULT_INCORPORATE_APPEAL_PROMPT,
+  incorporate_specialist_report: DEFAULT_INCORPORATE_SPECIALIST_REPORT_PROMPT,
   generate_appeal_argument:      DEFAULT_GENERATE_APPEAL_ARGUMENT_PROMPT,
   draft_check_brief:             DEFAULT_BRIEF_CHECK_TEMPLATE,
   draft_check_consistency:       DEFAULT_CONSISTENCY_CHECK_TEMPLATE,
@@ -1452,20 +1454,23 @@ export async function getDocumentSummaryTranscript(req, res) {
 
 export async function getMeetingGuide(req, res) {
   const { docType, projectId } = req.query;
-  const guide = getGuideContent(docType);
 
   let onFileDocTypes = new Set();
+  let developmentTypes = [];
   if (projectId) {
     try {
-      const { rows } = await pool.query(
-        `SELECT DISTINCT doc_type FROM planning_applications.document_summaries WHERE project_id = $1`,
-        [projectId]
-      );
-      onFileDocTypes = new Set(rows.map(r => r.doc_type));
+      const [summaryRows, projectRows] = await Promise.all([
+        pool.query(`SELECT DISTINCT doc_type FROM planning_applications.document_summaries WHERE project_id = $1`, [projectId]),
+        pool.query(`SELECT development_types FROM public.projects WHERE id = $1`, [projectId]),
+      ]);
+      onFileDocTypes = new Set(summaryRows.rows.map(r => r.doc_type));
+      developmentTypes = projectRows.rows[0]?.development_types ?? [];
     } catch (err) {
-      console.error('pa.getMeetingGuide onFile lookup error:', err);
+      console.error('pa.getMeetingGuide lookup error:', err);
     }
   }
+
+  const guide = getGuideContent(docType, developmentTypes);
 
   const annotate = (s) => s.coveredByDocType && onFileDocTypes.has(s.coveredByDocType)
     ? { ...s, onFile: true }

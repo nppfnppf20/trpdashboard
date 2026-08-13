@@ -139,11 +139,12 @@ export async function appealScopeIncorporation(projectId, typeId, { file, docume
   return res.json();
 }
 
-export async function appealIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, paragraphs, userNotes, docType }) {
+export async function appealIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, paragraphs, userNotes, docType, issueId }) {
   const form = new FormData();
   form.append('paragraphs', JSON.stringify(paragraphs));
   if (userNotes) form.append('user_notes', userNotes);
   if (docType) form.append('doc_type', docType);
+  if (issueId) form.append('issue_id', issueId);
   if (file) {
     form.append('file', file);
   } else {

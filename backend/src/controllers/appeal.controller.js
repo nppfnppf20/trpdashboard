@@ -11,7 +11,7 @@ import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateDraftSection, summariseDocument, scopeDocumentIncorporation, incorporateTargetedParagraphs, resolveProvider } from '../services/llm.service.js';
-import { generateAppealDraftFromPrompt, generateIssueOrderedSection, generatePlanningPolicySection, DEFAULT_DRAFT_PROMPT } from '../services/appeal.service.js';
+import { generateAppealDraftFromPrompt, generateIssueOrderedSection, generatePlanningPolicySection, DEFAULT_DRAFT_PROMPT, incorporateSpecialistReportIntoIssue } from '../services/appeal.service.js';
 import { fetchLinkedPoliciesByTrack, fetchIssueTypesByTrack } from './planningApplication.controller.js';
 
 async function loadGlobalPrompt(key) {
@@ -1256,7 +1256,7 @@ export async function scopeIncorporation(req, res) {
 
 export async function incorporateTargeted(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title, user_notes = null, provider: requestedProvider } = req.body ?? {};
+  const { document_id, document_text, document_title, user_notes = null, provider: requestedProvider, doc_type, issue_id } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
@@ -1287,6 +1287,44 @@ export async function incorporateTargeted(req, res) {
     } else {
       documentText = document_text;
       filename = document_title || 'Pasted document';
+    }
+
+    // Specialist report uploaded against a specific Planning Statement v3
+    // issue: lean entirely on that issue's own Planning Assessment section
+    // prompt for structure/style rather than the generic multi-purpose
+    // incorporation prompt below — see incorporateSpecialistReportIntoIssue.
+    if (doc_type === 'specialist_report' && issue_id && typeRows[0]?.slug === V3_SLUG) {
+      const [{ rows: issueRows2 }, { rows: sectionRows }, { rows: draftRows }, { rows: policyRows }] = await Promise.all([
+        pool.query(`SELECT label, discipline FROM admin_console.drafting_issues WHERE id = $1 AND project_id = $2`, [issue_id, projectId]),
+        pool.query(`SELECT generation_prompt FROM appeals.appeal_draft_sections WHERE draft_type_id = $1 AND slug = 'planning_assessment'`, [typeId]),
+        pool.query(`SELECT content_html FROM appeals.appeal_drafts WHERE project_id = $1 AND draft_type_id = $2`, [projectId, typeId]),
+        pool.query(
+          `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
+                  pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy, pd.plan_name
+           FROM public.project_policies pp
+           JOIN admin_console.drafting_issue_policy_relevance dipr ON dipr.policy_id = pp.id
+           LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+           WHERE dipr.drafting_issue_id = $1
+           ORDER BY pp.policy_type, pp.policy_reference`,
+          [issue_id]
+        ),
+      ]);
+      if (!issueRows2.length) return res.status(404).json({ error: 'Drafting issue not found' });
+
+      const updated = await incorporateSpecialistReportIntoIssue({
+        paragraphs,
+        documentText,
+        filename,
+        issueLabel: issueRows2[0].label,
+        issueDiscipline: issueRows2[0].discipline,
+        linkedPolicies: policyRows,
+        assessmentSectionPrompt: sectionRows[0]?.generation_prompt ?? '',
+        currentDraftHtml: draftRows[0]?.content_html ?? '',
+        userNotes: user_notes,
+        customPrompt: await loadGlobalPrompt('incorporate_specialist_report'),
+        provider,
+      });
+      return res.json({ updated });
     }
 
     const [issueRows, { projectBrief, guidingBrief }, exampleDoc] = await Promise.all([

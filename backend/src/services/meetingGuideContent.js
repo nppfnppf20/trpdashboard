@@ -439,6 +439,104 @@ const STAGE1_REVIEW_V3_TAIL_SECTIONS = [
   }
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HLPV v3
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Built against the hlpv_v3 master prompt (hlpvV3.controller.js). Even
+// lighter-touch than Stage 1 Review v3 — "an early-stage, desk-based
+// preliminary appraisal, not a submission document" — and structurally
+// different: the output is a single two-column Topic/Detail table (Site
+// Details rows, then one row per constraint/opportunity), not sequential
+// <h2>/<h3> prose sections, so there's no numbering concept to preserve.
+// Same "recommendations only from the Briefing Transcript, never the
+// Drafting Issue Notes" rule as Stage 1 and Planning Statement.
+//
+// Two tokens the prompt reads — {{DESIGNATIONS_AND_CONSTRAINTS}} and
+// {{CORRESPONDENCE_DETAILS}} — have no backing data source anywhere in the
+// system (always substituted "(not provided)"; see migration 138's own
+// comment). No meeting questions built around them for the same reason
+// Stage 1's now-inert guiding-brief fetch didn't get a question: there's
+// nowhere for the answer to land yet.
+//
+// {{PLANNING_CONTEXT}} is explicitly light-touch here — "does not require a
+// comprehensive policy schedule" — so no dedicated policy section, unlike
+// Planning Statement.
+
+const HLPV_V3_BASE_SECTIONS = [
+  {
+    title: 'Site, Proposal and Context',
+    feedsLabel: 'Site and Proposal Information + Introductory Paragraphs',
+    questions: [
+      'Confirm the site name / address, determining LPA, and development type(s) are set correctly on the project.',
+      'Is this being prepared as a letter to a named recipient, or as an internal/standalone note?',
+      'Any limitation to state up front — e.g. desk-based only, no site visit undertaken?'
+    ]
+  },
+  {
+    title: 'Overall Preliminary View',
+    feedsLabel: 'Overall Preliminary View section — written before the main table',
+    questions: [
+      "What's the overall sense of the site's apparent potential for this development, at this very early stage?",
+      'Is there any apparent showstopping or fundamental constraint that should be flagged immediately?',
+      'Any broad implication for layout or developable area worth noting up front?'
+    ]
+  },
+  {
+    title: 'Planning Context',
+    feedsLabel: 'Development Plan / Relevant Planning Policy row — light touch only, no full policy schedule needed',
+    questions: [
+      'What is the broad local plan position for this type of development — supportive, restrictive, or silent — without needing a full policy schedule?',
+      'Are there any specific policies the client or LPA has already flagged as particularly material?'
+    ]
+  },
+  {
+    title: 'Planning History',
+    feedsLabel: 'Planning History row — only included where material',
+    questions: [
+      'Has the client (or anyone connected with the site) attempted this site before, under this or a different scheme, applicant, or agent? Anything unlikely to show up in a standard planning register search?',
+      'Why does this history matter to the current proposal, if at all?'
+    ]
+  }
+];
+
+const HLPV_V3_ASSESSMENT_QUESTIONS = [
+  'What is the apparent constraint or opportunity, and what site feature or baseline does it relate to?',
+  "What's the preliminary implication for site layout, developable area, or design approach, if any?",
+  'What further work or specialist input should happen next on this specifically? This can only come from this meeting — it will not be inferred from the drafting issue notes or the constraint itself.',
+  'Is there a supporting figure or plan that should be referenced here, even just to note one exists?'
+];
+
+// Dev-type-specific worked examples, keyed to admin_console.development_types
+// (migration 146) — resolved dynamically against the project's actual
+// development_types (plural, multi-select) rather than shown as a fixed set,
+// since what to screen for genuinely differs by scheme (glint and glare vs.
+// shadow flicker vs. daylight/sunlight are not interchangeable). 'Other' is
+// the fallback shown when none of the project's types match, or none are set.
+const HLPV_V3_DEV_TYPE_EXAMPLES = {
+  'Solar': 'For a solar scheme: the constraint is typically the site’s agricultural land classification and glint / glare to nearby receptors (roads, dwellings, airfields); the opportunity is renewable energy generation and grid capacity; further work might be an Agricultural Land Classification survey or a glint and glare assessment.',
+  'Wind': 'For a wind scheme: the constraint is typically noise, shadow flicker, and aviation or MOD safeguarding zones; the opportunity is renewable energy generation; further work might be a noise assessment, a shadow flicker study, or early consultation with the Civil Aviation Authority or MOD.',
+  'Synchronous condensers': 'For a synchronous condenser scheme: the constraint is typically noise from rotating plant and the visual impact of associated switchgear buildings; the opportunity is grid stability infrastructure supporting the wider renewable transition; further work might be a noise assessment or early engagement with National Grid on the connection case.',
+  'Residential': 'For a residential scheme: the constraint is typically neighbouring residential amenity and daylight / sunlight; the opportunity might be housing delivery or an affordable housing contribution; further work might be a Daylight and Sunlight Assessment.',
+  'Co-Living': 'For a co-living scheme: the constraint is often whether the local plan has a settled position on the co-living use class and appropriate amenity / management standards; the opportunity might be efficient land use; further work might be confirming the LPA’s position on co-living and reviewing communal facility provision.',
+  'Commercial': 'For a commercial scheme: the constraint might be retail impact on the town centre or loss of existing employment floorspace; the opportunity might be job creation or town centre vitality; further work might be a retail impact assessment or sequential test.',
+  'Mixed Use': 'For a mixed-use scheme: the constraint is often the interaction between different uses on site — noise or amenity conflicts between commercial and residential elements; the opportunity is efficient land use; further work might be a noise or odour assessment between uses, or confirming phasing.',
+  'Industrial': 'For an industrial scheme: the constraint is typically noise, HGV movements, and separation from residential receptors; the opportunity is employment floorspace; further work might be a noise assessment or a transport assessment covering HGV routing.',
+  'Change of Use': 'For a change of use: the constraint is typically the policy test for losing the existing use (employment, retail, agricultural) and evidencing the current lawful use; the opportunity is bringing a vacant or underused building back into active use; further work might be establishing the lawful use history or a marketing / viability exercise.',
+  'Agricultural': 'For an agricultural development: the constraint is typically the agricultural land classification and any functional or occupancy tie to the holding; the opportunity is supporting the rural economy or farm diversification; further work might be an Agricultural Land Classification survey or confirming the functional need case.',
+  'Other': 'Identify the constraint categories that actually apply to this development type, rather than defaulting to a generic list — what is the site feature, what is the implication, and what further work would resolve it?',
+};
+
+const HLPV_V3_TAIL_SECTIONS = [
+  {
+    title: 'Recommended Further Work',
+    feedsLabel: 'Recommended Further Work section — optional, only included where a clear consolidated list exists',
+    questions: [
+      'Beyond the per-issue next steps above, is there an overall consolidated list of further work recommended before a firmer view can be reached?'
+    ]
+  }
+];
+
 export const DOC_TYPE_GUIDES = {
   planning_statement_v3: {
     label: 'Planning Statement',
@@ -457,11 +555,45 @@ export const DOC_TYPE_GUIDES = {
     issueSectionFeedsLabel: 'Planning Assessment section (per issue) — Next Steps for each issue can only come from this meeting',
     issueSectionExamples: STAGE1_REVIEW_V3_ASSESSMENT_EXAMPLES,
     tailSections: STAGE1_REVIEW_V3_TAIL_SECTIONS,
+  },
+  hlpv_v3: {
+    label: 'HLPV',
+    baseSections: HLPV_V3_BASE_SECTIONS,
+    issueQuestions: HLPV_V3_ASSESSMENT_QUESTIONS,
+    issueSectionLabel: 'Constraints and Opportunities',
+    issueSectionFeedsLabel: 'Constraints and Opportunities rows (per issue) — further work can only come from this meeting',
+    issueSectionExamplesByDevType: HLPV_V3_DEV_TYPE_EXAMPLES,
+    tailSections: HLPV_V3_TAIL_SECTIONS,
   }
 };
 
-/** Resolve the guide content for a doc type, falling back to the generic guide. */
-export function getGuideContent(docTypeSlug) {
+/**
+ * Resolve worked examples for the issue section. Most doc types carry a
+ * fixed `issueSectionExamples` list. hlpv_v3 instead carries
+ * `issueSectionExamplesByDevType`, resolved against the project's actual
+ * development_types (plural, admin_console.development_types) so the
+ * examples reflect what's actually being proposed rather than a generic
+ * fixed set — matters more here than elsewhere since HLPV's whole purpose
+ * is constraint/opportunity screening, and what to screen for genuinely
+ * differs by scheme.
+ */
+function resolveIssueSectionExamples(config, developmentTypes) {
+  if (!config?.issueSectionExamplesByDevType) return config?.issueSectionExamples ?? [];
+  const map = config.issueSectionExamplesByDevType;
+  const matched = (developmentTypes ?? [])
+    .map(dt => map[dt])
+    .filter(Boolean);
+  if (matched.length) return matched;
+  return map.Other ? [map.Other] : [];
+}
+
+/**
+ * Resolve the guide content for a doc type, falling back to the generic
+ * guide. developmentTypes: the project's development_types (plural) —
+ * only consulted by doc types whose issue-section examples vary by dev
+ * type (currently just hlpv_v3); ignored otherwise.
+ */
+export function getGuideContent(docTypeSlug, developmentTypes = []) {
   const override = DOC_TYPE_GUIDES[docTypeSlug];
   if (!override) {
     return {
@@ -480,7 +612,7 @@ export function getGuideContent(docTypeSlug) {
     issueQuestions: override.issueQuestions ?? ISSUE_QUESTIONS,
     issueSectionLabel: override.issueSectionLabel ?? 'Key Issues',
     issueSectionFeedsLabel: override.issueSectionFeedsLabel ?? 'Issue working notes, HLPV, planning statement assessment',
-    issueSectionExamples: override.issueSectionExamples ?? [],
+    issueSectionExamples: resolveIssueSectionExamples(override, developmentTypes),
     tailSections: override.tailSections ?? TAIL_SECTIONS,
   };
 }

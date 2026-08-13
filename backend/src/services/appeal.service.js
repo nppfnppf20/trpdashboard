@@ -546,7 +546,7 @@ function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allI
       lines.push(issue.summary.trim());
     }
     if (issue.specialist_report?.trim()) {
-      lines.push(`### Specialist Report`);
+      lines.push(`### Specialist Report — Working Note (anticipated position, not a verified technical report — see the Planning Assessment section prompt's handling of Working Notes)`);
       lines.push(issue.specialist_report.trim());
     }
   }
@@ -826,6 +826,94 @@ Write in formal planning language — no em dashes, no paragraph numbers.
 
 Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you did not change:
 [{"id": "p2", "html": "<p>...</p>"}, {"id": "INSERT_AFTER_p2", "html": "<p>...</p>"}]`;
+
+  const raw = (await callLLM({
+    provider,
+    model: MODEL_SONNET,
+    maxTokens: 16000,
+    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.',
+    prompt,
+    stream: true,
+  })).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  return JSON.parse(raw);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Specialist report -> single-issue paragraph incorporation (Planning
+// Statement v3 only). Unlike incorporateTargetedParagraphs above, which
+// treats every upload the same and is free to rewrite a paragraph's argument
+// wholesale, this is scoped to one drafting issue and leans entirely on that
+// issue's own Planning Assessment section prompt (appeals.appeal_draft_sections,
+// slug: planning_assessment) for structure, policy discussion, concision and
+// style — it is not re-derived here. The uploaded report only supplies
+// evidence to substantiate the compliance conclusion the paragraph already
+// reaches; it must not restate policy or change the conclusion.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const DEFAULT_INCORPORATE_SPECIALIST_REPORT_PROMPT = `You have already been given the following instructions for drafting the Planning Considerations and Assessment section of this Planning Statement. Follow the same structure, policy discussion, technical evidence handling, concision, style and formatting rules set out below — do not depart from them or invent new rules of your own:
+
+{{PLANNING_ASSESSMENT_SECTION_PROMPT}}
+
+Here is the Planning Statement as drafted so far, including the Planning Assessment section:
+
+{{CURRENT_FULL_DRAFT}}
+
+This issue's linked policies:
+
+{{ISSUE_LINKED_POLICIES}}
+
+You have been given a specialist report for the issue "{{ISSUE_LABEL}}"{{ISSUE_DISCIPLINE}}:
+
+{{SPECIALIST_REPORT_TEXT}}
+
+{{USER_NOTES_BLOCK}}
+
+## Task
+
+Using the specialist report, draft the short passage (in line with the concision guidance above — normally a paragraph or so, not a new subsection) that uses the report's findings to evidence and justify this issue's policy compliance conclusion, exactly as the instructions above already require. Do not restate the policy or repeat drafting rules already covered above — just apply them.
+
+Look first to the report's conclusions or executive summary for the relevant findings. This is a starting point, not a restriction — draw on the body of the report where the conclusion doesn't cover something relevant, or where the report has no distinct conclusions section.
+
+Only use findings, figures and conclusions actually contained in the report. Do not invent, strengthen, or soften a finding. Preserve any qualification or uncertainty the report expresses.
+
+Where the report's findings conflict with something already stated in a paragraph, insert [INCONSISTENCY TO BE RESOLVED: identify the conflict briefly] rather than silently changing the conclusion.
+
+SELECTED PARAGRAPHS TO REVISE:
+{{PARAGRAPHS}}
+
+Write in formal planning language. Do not use em dashes. Do not number paragraphs.
+
+Return ONLY a valid JSON array — no markdown, no explanation. Include every paragraph you are returning, whether changed or not if it needs to appear in the output:
+[
+  {"id": "p3", "html": "<p>Updated paragraph...</p>"}
+]`;
+
+export async function incorporateSpecialistReportIntoIssue({
+  paragraphs, documentText, filename, issueLabel, issueDiscipline = null,
+  linkedPolicies = [], assessmentSectionPrompt = '', currentDraftHtml = '',
+  userNotes = null, customPrompt = null, provider = 'anthropic',
+}) {
+  const policyText = linkedPolicies.length
+    ? linkedPolicies.map(p => policyBlockLines(p).join('\n')).join('\n\n')
+    : '(no policies linked to this issue)';
+
+  const userNotesBlock = userNotes?.trim()
+    ? `## User Guidance — HIGH PRIORITY\nFollow these instructions precisely, particularly on which parts of the report to focus on:\n${userNotes.trim()}`
+    : '';
+
+  const paraBlock = paragraphs.map(p => `${p.id}:\n${p.html}`).join('\n\n');
+
+  const basePrompt = customPrompt?.trim() || DEFAULT_INCORPORATE_SPECIALIST_REPORT_PROMPT;
+
+  const prompt = basePrompt
+    .replace(/\{\{PLANNING_ASSESSMENT_SECTION_PROMPT\}\}/g, assessmentSectionPrompt?.trim() || '(no Planning Assessment section prompt configured)')
+    .replace(/\{\{CURRENT_FULL_DRAFT\}\}/g, currentDraftHtml?.trim() || '(no draft generated yet)')
+    .replace(/\{\{ISSUE_LINKED_POLICIES\}\}/g, policyText)
+    .replace(/\{\{ISSUE_LABEL\}\}/g, issueLabel)
+    .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issueDiscipline ? ` (${issueDiscipline})` : '')
+    .replace(/\{\{SPECIALIST_REPORT_TEXT\}\}/g, `${filename ? `${filename}\n` : ''}${documentText}`)
+    .replace(/\{\{USER_NOTES_BLOCK\}\}/g, userNotesBlock)
+    .replace(/\{\{PARAGRAPHS\}\}/g, paraBlock);
 
   const raw = (await callLLM({
     provider,

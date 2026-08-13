@@ -3,6 +3,7 @@
   import { diffArrays, diffWords } from 'diff';
   import { paScopeIncorporation, paIncorporateTargeted } from '$lib/api/planningApplication.js';
   import { generateDocumentSummary, replaceDocumentSummary, getDocumentSummaries } from '$lib/api/projectDocs.js';
+  import { getDraftingIssues } from '$lib/api/draftingIssues.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
@@ -15,12 +16,34 @@
   export let splitAll = false;          // when true, split entire document not just assessment section
   export let manualSelect = false;      // when true, skip LLM scoping — user ticks paragraphs manually
   export let incorporateLabel = null;   // button label override
+  export let enableIssueLink = false;   // when true, a "specialist_report" doc type asks which drafting issue this report belongs to
 
   let selectedDocType = docTypes?.[0]?.value ?? null;
 
   $: if (docTypes && !docTypes.some(dt => dt.value === selectedDocType)) {
     selectedDocType = docTypes[0]?.value ?? null;
   }
+
+  $: isSpecialistReport = selectedDocType === 'specialist_report';
+
+  // ── Issue link (specialist reports only) ────────────────────────────────────
+  const specialistReportPromptState = actionPromptState('incorporate_specialist_report');
+  let draftingIssuesList = [];
+  let draftingIssuesLoaded = false;
+  let selectedIssueId = null;
+
+  async function loadDraftingIssuesIfNeeded() {
+    if (draftingIssuesLoaded) return;
+    draftingIssuesLoaded = true;
+    try {
+      draftingIssuesList = await getDraftingIssues(project.id);
+    } catch (err) {
+      console.error('Failed to load drafting issues:', err);
+    }
+  }
+
+  $: if (enableIssueLink && isSpecialistReport) loadDraftingIssuesIfNeeded();
+  $: if (!isSpecialistReport) selectedIssueId = null;
 
   $: isProjectDoc = !!docTypes?.find(dt => dt.value === selectedDocType)?.projectDoc;
   $: selectedDocType, resetProjDoc();
@@ -253,7 +276,8 @@
         ? { file: uploadFile, documentTitle: uploadTitle || null, paragraphs: targeted, userNotes: userNotes || null }
         : { documentText: pasteText, documentTitle: pasteTitle || 'Pasted document', paragraphs: targeted, userNotes: userNotes || null };
 
-      const result = await (apiIncorporate ?? paIncorporateTargeted)(project.id, typeId, { ...payload, docType: selectedDocType });
+      const issueId = enableIssueLink && isSpecialistReport ? selectedIssueId : null;
+      const result = await (apiIncorporate ?? paIncorporateTargeted)(project.id, typeId, { ...payload, docType: selectedDocType, issueId });
 
       const updatedMap = {};
       const insertionsAfter = {};
@@ -499,6 +523,18 @@
       </div>
     {/if}
 
+    {#if enableIssueLink && isSpecialistReport}
+      <div class="doc-type-row">
+        <label class="doc-type-label">For issue</label>
+        <select class="doc-type-select" bind:value={selectedIssueId}>
+          <option value={null}>Select an issue...</option>
+          {#each draftingIssuesList as issue (issue.id)}
+            <option value={issue.id}>{issue.label}{issue.discipline ? ` (${issue.discipline})` : ''}</option>
+          {/each}
+        </select>
+      </div>
+    {/if}
+
     {#if isProjectDoc && projDocState !== 'idle'}
       {#if projDocState === 'generating'}
         <div class="loading-state">
@@ -603,13 +639,18 @@
             <i class="las la-magic"></i> Generate Summary
           </button>
         {:else}
-          <button class="incorporate-btn" disabled={!uploadFile} on:click={startIncorporate}>
+          <button class="incorporate-btn" disabled={!uploadFile || (enableIssueLink && isSpecialistReport && !selectedIssueId)} on:click={startIncorporate}>
             <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
           </button>
-          <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
-          <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+          {#if enableIssueLink && isSpecialistReport}
+            <button class="prompt-info-btn" title="Edit specialist report prompt" on:click={() => openActionPrompt('incorporate_specialist_report')}><i class="las la-code-branch"></i></button>
+          {:else}
+            <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+            <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+          {/if}
         {/if}
       </div>
+      {#if enableIssueLink && isSpecialistReport && !selectedIssueId}<p class="error-msg">Select which issue this report is for before incorporating.</p>{/if}
       {#if projDocError && isProjectDoc}<p class="error-msg">{projDocError}</p>{/if}
 
     {:else}
@@ -629,13 +670,18 @@
               <i class="las la-magic"></i> Generate Summary
             </button>
           {:else}
-            <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim()} on:click={startIncorporate}>
+            <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim() || (enableIssueLink && isSpecialistReport && !selectedIssueId)} on:click={startIncorporate}>
               <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
             </button>
-            <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
-            <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+            {#if enableIssueLink && isSpecialistReport}
+              <button class="prompt-info-btn" title="Edit specialist report prompt" on:click={() => openActionPrompt('incorporate_specialist_report')}><i class="las la-code-branch"></i></button>
+            {:else}
+              <button class="prompt-info-btn" title="Edit scope prompt" on:click={() => openActionPrompt('scope_incorporation')}><i class="las la-sliders-h"></i></button>
+              <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-code-branch"></i></button>
+            {/if}
           {/if}
         </div>
+        {#if enableIssueLink && isSpecialistReport && !selectedIssueId}<p class="error-msg">Select which issue this report is for before incorporating.</p>{/if}
         {#if projDocError && isProjectDoc}<p class="error-msg">{projDocError}</p>{/if}
       </div>
     {/if}
@@ -821,6 +867,20 @@
   on:change={(e) => setPromptText('incorporate_assessment', e.detail)}
   on:save={() => saveActionPromptStore('incorporate_assessment')}
   on:reset={() => resetActionPromptStore('incorporate_assessment')}
+/>
+
+<PromptEditModal
+  open={$specialistReportPromptState.open}
+  title="Edit Prompt: Incorporate Specialist Report"
+  promptText={$specialistReportPromptState.text}
+  contextTemplate={$specialistReportPromptState.contextTemplate}
+  loading={$specialistReportPromptState.loading}
+  saving={$specialistReportPromptState.saving}
+  saved={$specialistReportPromptState.saved}
+  on:close={() => closeActionPrompt('incorporate_specialist_report')}
+  on:change={(e) => setPromptText('incorporate_specialist_report', e.detail)}
+  on:save={() => saveActionPromptStore('incorporate_specialist_report')}
+  on:reset={() => resetActionPromptStore('incorporate_specialist_report')}
 />
 
 <style>

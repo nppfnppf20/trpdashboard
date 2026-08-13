@@ -754,6 +754,7 @@
               splitAll={true}
               manualSelect={true}
               incorporateLabel="Select paragraphs to update"
+              enableIssueLink={activeType?.slug === 'planning_statement_v3'}
               docTypes={[
                 { value: 'project_briefing',  label: 'Project Briefing' },
                 { value: 'specialist_report', label: 'Specialist Report' },
