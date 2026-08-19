@@ -44,13 +44,41 @@
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
   let reviewError = null;
 
-  // Note type — drives which fields/buttons show in the Add Note card
-  let uploadNoteType = 'meeting'; // 'meeting' | 'briefing'
+  // Note type — drives which fields/buttons show in the Add Note card.
+  // Starts unselected: the user must explicitly choose one before the
+  // rest of the form (and the ability to summarise) appears.
+  //
+  // Custom dropdown (not a native <select>) because the two states need
+  // different amounts of text: the option list shows a description to
+  // help the user pick, but once chosen the closed control should just
+  // read "Meeting Note" / "Briefing Note" — a native select always shows
+  // the same option text in both places.
+  let uploadNoteType = ''; // '' | 'meeting' | 'briefing'
+  let noteTypeMenuOpen = false;
+  let noteTypeDropdownEl;
+  const noteTypeOptions = [
+    { value: 'meeting', label: 'Meeting Note', description: 'General project or internal meeting' },
+    { value: 'briefing', label: 'Briefing Note', description: 'Kick-off, survey briefing, or a meeting that informs a planning deliverable' }
+  ];
+  $: selectedNoteTypeOption = noteTypeOptions.find(o => o.value === uploadNoteType) ?? null;
+
+  function selectNoteType(value) {
+    uploadNoteType = value;
+    noteTypeMenuOpen = false;
+  }
+
+  function handleWindowClick(e) {
+    if (noteTypeMenuOpen && noteTypeDropdownEl && !noteTypeDropdownEl.contains(e.target)) {
+      noteTypeMenuOpen = false;
+    }
+  }
 
   // Full screen view
   let isFullscreen = false;
   function handleFullscreenKeydown(e) {
-    if (e.key === 'Escape' && isFullscreen) isFullscreen = false;
+    if (e.key !== 'Escape') return;
+    if (noteTypeMenuOpen) { noteTypeMenuOpen = false; return; }
+    if (isFullscreen) isFullscreen = false;
   }
 
   // Briefing sub-tab state
@@ -285,6 +313,10 @@
   }
 
   $: latestNote = notes[0] ?? null;
+
+  // Collapsed-state summary for the Options disclosure in the Add Note card
+  $: summaryTypeLabel = uploadSummaryType === 'brief' ? 'Brief' : uploadSummaryType === 'detailed' ? 'Detailed' : 'Custom';
+  $: providerLabel = uploadProvider === 'anthropic' ? 'Claude' : uploadProvider === 'openai' ? 'GPT-5.6' : 'Default AI';
 
   // Combined feed for the "All Notes" list — meeting notes and briefing
   // notes are different tables (meeting_notes vs document_summaries), so
@@ -536,7 +568,7 @@
   on:close={() => showDraftIssuesModal = false}
 />
 
-<svelte:window on:keydown={handleFullscreenKeydown} />
+<svelte:window on:keydown={handleFullscreenKeydown} on:click={handleWindowClick} />
 
 <div class="mn-tab" class:mn-fullscreen={isFullscreen}>
 
@@ -575,102 +607,44 @@
 
       <!-- Upload card -->
       <div class="mn-upload-card">
-        <div class="mn-card-title-row">
-          <h3 class="mn-card-title">Add Note</h3>
-          <select class="mn-type-select" bind:value={uploadNoteType}>
-            <option value="meeting">Meeting Note</option>
-            <option value="briefing">Briefing Note</option>
-          </select>
+        <h3 class="mn-card-title">Summarise Meeting</h3>
+
+        <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
+          <button
+            type="button"
+            class="mn-note-type-select"
+            class:mn-note-type-select--unset={!uploadNoteType}
+            aria-haspopup="listbox"
+            aria-expanded={noteTypeMenuOpen}
+            on:click={() => noteTypeMenuOpen = !noteTypeMenuOpen}
+          >
+            <span>{selectedNoteTypeOption ? selectedNoteTypeOption.label : 'Select a note type…'}</span>
+            <i class="las la-{noteTypeMenuOpen ? 'angle-up' : 'angle-down'}"></i>
+          </button>
+          {#if noteTypeMenuOpen}
+            <div class="mn-note-type-menu" role="listbox">
+              {#each noteTypeOptions as opt (opt.value)}
+                <button
+                  type="button"
+                  class="mn-note-type-option"
+                  class:mn-note-type-option--active={uploadNoteType === opt.value}
+                  role="option"
+                  aria-selected={uploadNoteType === opt.value}
+                  on:click={() => selectNoteType(opt.value)}
+                >
+                  <span class="mn-note-type-option-label">{opt.label}</span>
+                  <span class="mn-note-type-option-desc">{opt.description}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
+        {#if !uploadNoteType}
+          <p class="mn-type-placeholder">Choose a note type above to enable the form below.</p>
+        {/if}
 
-        {#if uploadNoteType === 'meeting'}
-
-          <div class="mn-type-row">
-            <span class="mn-type-label">Summary</span>
-            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
-            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3-4 pages</span></button>
-            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>Custom</button>
-            <select class="mn-provider-select" bind:value={uploadProvider} title="AI model used to generate this summary - Default uses the AI Providers admin setting">
-              <option value="">Default</option>
-              <option value="anthropic">Claude</option>
-              <option value="openai">GPT-5.6</option>
-            </select>
-          </div>
-          {#if uploadSummaryType === 'custom'}
-            <p class="mn-custom-hint"><i class="las la-info-circle"></i> Describe the format you want in the Custom Instructions field in Optional Extras below.</p>
-          {/if}
-
-          <div class="mn-input-tabs">
-            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
-              <i class="las la-upload"></i> Upload File
-            </button>
-            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
-              <i class="las la-clipboard"></i> Paste Text
-            </button>
-          </div>
-
-          {#if uploadInputTab === 'upload'}
-            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-            <div
-              class="mn-drop-zone"
-              class:drag-over={uploadDragOver}
-              role="button"
-              tabindex="0"
-              on:dragover|preventDefault={() => uploadDragOver = true}
-              on:dragleave={() => uploadDragOver = false}
-              on:drop={handleDrop}
-              on:click={() => fileInput.click()}
-              on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
-            >
-              {#if uploadFile}
-                <i class="las la-file-alt mn-drop-icon"></i>
-                <span class="mn-drop-filename">{uploadFile.name}</span>
-                <span class="mn-drop-hint">Click to change file</span>
-              {:else}
-                <i class="las la-cloud-upload-alt mn-drop-icon"></i>
-                <span>Drop a file here or click to browse</span>
-                <span class="mn-drop-hint">PDF, DOCX or TXT</span>
-              {/if}
-            </div>
-            <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
-          {:else}
-            <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
-          {/if}
-
-          <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
-            <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
-            {showExtras ? 'Hide' : 'Show'} optional extras
-          </button>
-          {#if showExtras}
-            <div class="form-row">
-              <div class="form-group">
-                <label>Agenda</label>
-                <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the meeting agenda…"></textarea>
-              </div>
-              <div class="form-group">
-                <label>Consultant Notes</label>
-                <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
-              </div>
-            </div>
-            {#if uploadSummaryType === 'custom'}
-              <div class="form-group">
-                <label>Custom Instructions</label>
-                <textarea class="form-input" bind:value={uploadCustomPrompt} rows="3" placeholder="e.g. Produce a short bullet-point briefing note focused on planning policy. Include a risk register at the end."></textarea>
-              </div>
-            {/if}
-          {/if}
-
-          {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
-
-          <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
-            {#if uploadProcessing}
-              <span class="mn-spinner"></span> Processing…
-            {:else}
-              <i class="las la-magic"></i> Process Meeting Notes
-            {/if}
-          </button>
-
-        {:else}
+        <div class="mn-upload-form" class:mn-upload-form--disabled={!uploadNoteType} inert={!uploadNoteType}>
+        {#if uploadNoteType === 'briefing'}
 
           <p class="mn-briefing-hint">Once uploaded, the transcript powers "Populate from Briefing" in the Key Issues board.</p>
 
@@ -711,14 +685,14 @@
 
           {#if bInputTab === 'paste' && !bResult}
             <div class="mn-briefing-paste-actions">
-              <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
+              <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing || !uploadNoteType}>
                 {#if bProcessing}
                   <span class="mn-spinner"></span> Processing…
                 {:else}
                   <i class="las la-magic"></i> Summarise with AI
                 {/if}
               </button>
-              <button class="btn btn-secondary mn-process-btn" on:click={saveBriefingDirectly} disabled={bProcessing}>
+              <button class="btn btn-secondary mn-process-btn" on:click={saveBriefingDirectly} disabled={bProcessing || !uploadNoteType}>
                 <i class="las la-save"></i> Save as-is
               </button>
             </div>
@@ -734,13 +708,13 @@
               {#if bSaveError}<div class="mn-error-sm">{bSaveError}</div>{/if}
               <div class="mn-form-footer">
                 <button class="btn btn-secondary btn-sm" on:click={() => { bResult = null; bTitle = ''; }}>Discard</button>
-                <button class="btn btn-primary btn-sm" on:click={saveBriefing} disabled={bSaving}>
+                <button class="btn btn-primary btn-sm" on:click={saveBriefing} disabled={bSaving || !uploadNoteType}>
                   {bSaving ? 'Saving…' : 'Save Briefing'}
                 </button>
               </div>
             </div>
           {:else if bInputTab === 'upload'}
-            <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
+            <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing || !uploadNoteType}>
               {#if bProcessing}
                 <span class="mn-spinner"></span> Processing…
               {:else}
@@ -749,7 +723,96 @@
             </button>
           {/if}
 
+        {:else}
+
+          <div class="mn-input-tabs">
+            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
+              <i class="las la-upload"></i> Upload File
+            </button>
+            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
+              <i class="las la-clipboard"></i> Paste Text
+            </button>
+          </div>
+
+          {#if uploadInputTab === 'upload'}
+            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+            <div
+              class="mn-drop-zone"
+              class:drag-over={uploadDragOver}
+              role="button"
+              tabindex="0"
+              on:dragover|preventDefault={() => uploadDragOver = true}
+              on:dragleave={() => uploadDragOver = false}
+              on:drop={handleDrop}
+              on:click={() => fileInput.click()}
+              on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
+            >
+              {#if uploadFile}
+                <i class="las la-file-alt mn-drop-icon"></i>
+                <span class="mn-drop-filename">{uploadFile.name}</span>
+                <span class="mn-drop-hint">Click to change file</span>
+              {:else}
+                <i class="las la-cloud-upload-alt mn-drop-icon"></i>
+                <span>Drop a file here or click to browse</span>
+                <span class="mn-drop-hint">PDF, DOCX or TXT</span>
+              {/if}
+            </div>
+            <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
+          {:else}
+            <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+          {/if}
+
+          <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
+            <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
+            {showExtras ? 'Hide' : 'Show'} options
+            {#if !showExtras}<span class="mn-options-summary">· {summaryTypeLabel} summary · {providerLabel}</span>{/if}
+          </button>
+          {#if showExtras}
+            <div class="mn-type-row">
+              <span class="mn-type-label">Summary</span>
+              <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
+              <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3-4 pages</span></button>
+              <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => uploadSummaryType = 'custom'}>Custom</button>
+              <span class="mn-type-label mn-provider-label">LLM</span>
+              <select class="mn-provider-select" bind:value={uploadProvider} title="AI model used to generate this summary - Default uses the AI Providers admin setting">
+                <option value="">Default</option>
+                <option value="anthropic">Claude</option>
+                <option value="openai">GPT-5.6</option>
+              </select>
+            </div>
+            {#if uploadSummaryType === 'custom'}
+              <p class="mn-custom-hint"><i class="las la-info-circle"></i> Describe the format you want in the Custom Instructions field below.</p>
+            {/if}
+            <div class="form-row">
+              <div class="form-group">
+                <label>Agenda</label>
+                <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the meeting agenda…"></textarea>
+              </div>
+              <div class="form-group">
+                <label>Consultant Notes</label>
+                <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
+              </div>
+            </div>
+            {#if uploadSummaryType === 'custom'}
+              <div class="form-group">
+                <label>Custom Instructions</label>
+                <textarea class="form-input" bind:value={uploadCustomPrompt} rows="3" placeholder="e.g. Produce a short bullet-point briefing note focused on planning policy. Include a risk register at the end."></textarea>
+              </div>
+            {/if}
+          {/if}
+
+          {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
+
+          <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing || !uploadNoteType}>
+            {#if uploadProcessing}
+              <span class="mn-spinner"></span> Processing…
+            {:else}
+              <i class="las la-magic"></i> Process Meeting Notes
+            {/if}
+          </button>
+
         {/if}
+        </div>
       </div>
 
       <!-- Latest meeting card -->
@@ -795,7 +858,7 @@
       {#if showAllNotes}
         {#if briefingsError}<div class="mn-error mn-table-mt">{briefingsError}</div>{/if}
         {#if combinedItems.length === 0}
-          <p class="mn-empty mn-table-mt">No notes yet. Use "Add Note" above to get started.</p>
+          <p class="mn-empty mn-table-mt">No notes yet. Use "Summarise Meeting" above to get started.</p>
         {:else}
           <div class="mn-notes-list mn-table-mt">
             {#each combinedItems as item (item.itemType + '-' + item.id)}
@@ -1183,25 +1246,87 @@
     margin: 0;
   }
 
-  /* ── Add Note card: type dropdown ─────────────────────────────────────── */
-  .mn-card-title-row {
+  /* ── Add Note card: note-type selector ──────────────────────────────────
+     Deliberately the most prominent control in the card — nothing else
+     shows until this is set, so it needs to read as step one. Custom
+     dropdown (button + floating list) rather than a native <select> so
+     the closed control can show just the name while the open list shows
+     the full description — a native select can't split those. */
+  .mn-note-type-dropdown { position: relative; }
+  .mn-note-type-select {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1.5px solid #93c5fd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: inherit;
+    color: #1e293b;
+    background: #eff6ff;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem;
+    text-align: left;
   }
-  .mn-type-select {
-    padding: 0.35rem 0.5rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.8rem;
+  .mn-note-type-select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+  .mn-note-type-select--unset {
+    color: #64748b;
     font-weight: 500;
-    font-family: inherit;
-    color: #374151;
-    background: white;
-    cursor: pointer;
+    border-style: dashed;
+    border-color: #cbd5e1;
+    background: #f8fafc;
   }
-  .mn-type-select:focus { outline: none; border-color: #3b82f6; }
+  .mn-note-type-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.08);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .mn-note-type-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+  }
+  .mn-note-type-option:hover { background: #f1f5f9; }
+  .mn-note-type-option--active { background: #eff6ff; }
+  .mn-note-type-option-label { font-size: 0.85rem; font-weight: 600; color: #1e293b; }
+  .mn-note-type-option-desc { font-size: 0.75rem; color: #64748b; line-height: 1.35; }
+  .mn-type-placeholder {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    margin: 0.15rem 0 0;
+  }
+
+  /* Rest of the card — greyed out and inert until a note type is chosen */
+  .mn-upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .mn-upload-form--disabled {
+    opacity: 0.45;
+    filter: grayscale(0.4);
+  }
 
   /* ── Type badge (All Notes list) ──────────────────────────────────────── */
   .mn-type-badge {
@@ -1423,8 +1548,8 @@
   .mn-type-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .mn-type-label { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
   .mn-type-sub { font-size: 0.7rem; opacity: 0.8; }
+  .mn-provider-label { margin-left: auto; }
   .mn-provider-select {
-    margin-left: auto;
     padding: 0.35rem 0.5rem;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
@@ -1461,6 +1586,7 @@
   .mn-paste { min-height: 72px; }
 
   .mn-extras-toggle { font-size: 0.8rem; }
+  .mn-options-summary { color: #94a3b8; font-weight: 400; }
 
   .mn-cell-muted { color: #64748b; font-size: 0.8rem; }
   .mn-cell-dim { color: #94a3b8; font-size: 0.78rem; }
