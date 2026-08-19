@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { drawTitleBlock, drawPageFooter, projectLineFor } from './pdfExportShared.js';
 import { buildExportFilename } from './exportFilename.js';
 
-// A4 landscape export of the Issues Tracker: one merged block per issue
+// A4 landscape export of the Project Tracker: one merged block per issue
 // (like the on-screen table), one row slice per sub-issue, with progress
 // split into Sub-issue Progress (actions tagged to that sub-issue) and
 // Main Issue Progress (actions logged against the issue as a whole).
@@ -25,7 +25,7 @@ const DONE_FILL = [240, 253, 244];
 
 export function drawProgressSection(doc, { project, issues, margin, pageWidth, pageHeight, totalPagesExp }) {
   const projectLine = projectLineFor(project);
-  const cursorY = drawTitleBlock(doc, { title: 'Issues Tracker', projectLine, margin, pageWidth });
+  const cursorY = drawTitleBlock(doc, { title: 'Project Tracker', projectLine, margin, pageWidth });
 
   // Sub-issue Progress only earns a column once something in the tracker
   // actually uses sub-issues — many projects won't.
@@ -116,5 +116,5 @@ export function exportProgressPdf(project, issues) {
     doc.putTotalPages(totalPagesExp);
   }
 
-  doc.save(`${buildExportFilename(project, 'Issues Tracker')}.pdf`);
+  doc.save(`${buildExportFilename(project, 'Project Tracker')}.pdf`);
 }

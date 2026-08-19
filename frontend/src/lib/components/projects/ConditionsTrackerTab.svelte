@@ -7,7 +7,6 @@
   import AddConditionsModal from '$lib/components/projects/AddConditionsModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import ConditionEmailModal from '$lib/components/projects/ConditionEmailModal.svelte';
-  import SummaryEmailModal from '$lib/components/projects/SummaryEmailModal.svelte';
   import BulkFeeQuoteModal from '$lib/components/projects/BulkFeeQuoteModal.svelte';
   import ExportConditionsModal from '$lib/components/projects/ExportConditionsModal.svelte';
   import SelectSurveyorModal from '$lib/components/surveyor-briefings/SelectSurveyorModal.svelte';
@@ -411,9 +410,6 @@
   let emailCondition = null;
   let showEmailModal = false;
   let showBulkFeeQuote = false;
-
-  // ── Summary email (advancements in a date range) ──────────────────────────
-  let showSummaryEmail = false;
 
   function openEmailCompose(c) {
     emailCondition = c;
@@ -925,12 +921,6 @@
   on:close={() => { showEmailModal = false; emailCondition = null; }}
 />
 
-<SummaryEmailModal
-  bind:show={showSummaryEmail}
-  {project}
-  on:close={() => showSummaryEmail = false}
-/>
-
 <BulkFeeQuoteModal
   bind:show={showBulkFeeQuote}
   {projectId}
@@ -1238,9 +1228,6 @@
           <span class="ct-meta-badge ct-meta-badge-issued"><i class="las la-paper-plane"></i> Issued {formatDateTime(meta.last_issued_to_client_at)}</span>
         {/if}
       </div>
-      <button class="btn btn-secondary btn-sm" on:click={() => showSummaryEmail = true} disabled={!conditions.length} title="Draft a client progress email from the advancements in a date range">
-        <i class="las la-envelope-open-text"></i> Summary Email
-      </button>
       <button class="btn btn-secondary btn-sm" on:click={handleCopyForExcel} disabled={!conditions.length} title="Copy the table as a grid to paste into the Excel template at cell A9">
         <i class="las la-table"></i> Copy for Excel
       </button>

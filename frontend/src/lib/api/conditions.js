@@ -104,19 +104,6 @@ export async function suggestConditionAdvancementSummaries(projectId, { full_tex
   return res.json(); // { suggestions: [{ condition_id, summary }] }
 }
 
-export async function draftConditionsSummaryEmail(projectId, { from_date, to_date }) {
-  const res = await authFetch(`/api/conditions/projects/${projectId}/advancements/summary-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from_date, to_date }),
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error || 'Failed to draft the summary email');
-  }
-  return res.json(); // { subject, body, advancement_count }
-}
-
 export async function updateConditionAdvancement(advancementId, fields) {
   const res = await authFetch(`/api/conditions/advancements/${advancementId}`, {
     method: 'PUT',

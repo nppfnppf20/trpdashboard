@@ -42,6 +42,13 @@
   // ── Sub-tab ───────────────────────────────────────────────────────────────
   let subTab = 'statutory';  // 'statutory' | 'public'
 
+  // ── Full screen view ────────────────────────────────────────────────────────
+  let isFullscreen = false;
+
+  function handleFullscreenKeydown(e) {
+    if (e.key === 'Escape' && isFullscreen) isFullscreen = false;
+  }
+
   // ── Top scrollbar mirror ──────────────────────────────────────────────────
   let scrollTopEl, tableWrapperEl, tableEl;
   let _mirrorCleanup = null;
@@ -76,9 +83,7 @@
     updateConsultationResponse,
     deleteConsultationResponse,
     markConsultationExported,
-    markConsultationIssuedToClient,
     emailConsultantForResponse,
-    summariseConsultationResponses,
     createConsultationAdvancements,
     suggestConsultationAdvancementSummaries,
     updateConsultationAdvancement,
@@ -425,23 +430,6 @@
     }
   }
 
-  // ── Summarise ─────────────────────────────────────────────────────────────
-  let summaryText      = null;
-  let summaryRunning   = false;
-  let summaryError     = null;
-
-  async function doSummarise() {
-    summaryRunning = true; summaryError = null;
-    try {
-      const data = await summariseConsultationResponses(projectId);
-      summaryText = data.summary;
-    } catch (err) {
-      summaryError = err.message;
-    } finally {
-      summaryRunning = false;
-    }
-  }
-
   async function removeResponse(id) {
     if (!confirm('Delete this consultation response?')) return;
     try {
@@ -738,15 +726,6 @@ ${sections.join('<br>')}`;
     } catch { /* non-fatal */ }
   }
 
-  async function handleIssueToClient() {
-    try {
-      const updated = await markConsultationIssuedToClient(projectId);
-      meta = { ...meta, ...updated };
-      alert('Marked as issued to client. (Email integration coming soon.)');
-    } catch (err) {
-      alert(err.message);
-    }
-  }
 </script>
 
 <!-- ── Panel overlay ──────────────────────────────────────────────────────── -->
@@ -990,6 +969,8 @@ ${sections.join('<br>')}`;
   </button>
 </div>
 
+<svelte:window on:keydown={handleFullscreenKeydown} />
+
 {#if subTab === 'public'}
   <PublicCommentsTab {project} />
 {:else}
@@ -1127,7 +1108,7 @@ ${sections.join('<br>')}`;
 />
 
 <!-- ── Statutory consultees content ──────────────────────────────────────── -->
-<div class="ct-tab">
+<div class="ct-tab" class:ct-fullscreen={isFullscreen}>
 
   <!-- Top bar -->
   <div class="ct-topbar">
@@ -1147,25 +1128,15 @@ ${sections.join('<br>')}`;
         {#if meta.last_exported_at}
           <span class="ct-meta-badge"><i class="las la-download"></i> Exported {formatDateTime(meta.last_exported_at)}</span>
         {/if}
-        {#if meta.last_issued_to_client_at}
-          <span class="ct-meta-badge ct-meta-badge-issued"><i class="las la-paper-plane"></i> Issued {formatDateTime(meta.last_issued_to_client_at)}</span>
-        {/if}
       </div>
-      <button class="btn btn-secondary btn-sm" on:click={doSummarise} disabled={summaryRunning || !responses.length}>
-        {#if summaryRunning}
-          <span class="ct-spinner ct-spinner-sm"></span> Summarising…
-        {:else}
-          <i class="las la-magic"></i> {summaryText ? 'Re-run Summary' : 'Summarise'}
-        {/if}
-      </button>
       <button class="btn btn-secondary btn-sm" on:click={() => openExportModal('word')}>
         <i class="las la-file-word"></i> Word
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => openExportModal('pdf')}>
         <i class="las la-file-pdf"></i> PDF
       </button>
-      <button class="btn btn-ghost btn-sm ct-issue-btn" title="Email integration coming soon" on:click={handleIssueToClient} disabled={!responses.length}>
-        <i class="las la-paper-plane"></i> Send to Client
+      <button class="btn btn-secondary btn-sm" on:click={() => isFullscreen = !isFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Open the tracker full screen'}>
+        <i class="las {isFullscreen ? 'la-compress' : 'la-expand'}"></i> {isFullscreen ? 'Exit' : 'Full Screen'}
       </button>
     </div>
   </div>
@@ -1409,26 +1380,6 @@ ${sections.join('<br>')}`;
     <p class="ct-count">{responses.length} consultee response{responses.length !== 1 ? 's' : ''}</p>
   {/if}
 
-  <!-- ── Summary panel ───────────────────────────────────────────────────── -->
-  {#if summaryError}
-    <div class="ct-upload-error">{summaryError}</div>
-  {/if}
-
-  {#if summaryText}
-    <div class="ct-summary-panel">
-      <div class="ct-summary-hd">
-        <span class="ct-summary-label"><i class="las la-magic"></i> Outstanding Issues Summary</span>
-      </div>
-      <div class="ct-summary-body">
-        <ul class="ct-summary-bullets">
-          {#each summaryText.split('\n').map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean) as bullet}
-            <li>{bullet}</li>
-          {/each}
-        </ul>
-      </div>
-    </div>
-  {/if}
-
 </div>
 
 <BatchImportModal
@@ -1478,6 +1429,18 @@ ${sections.join('<br>')}`;
     min-height: 200px;
   }
 
+  /* Full screen: lift the whole tracker over the project modal (its own
+     modals/drawer all sit at z-index 2000+ so they still open on top) */
+  .ct-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    background: #fff;
+    padding: 1.25rem 1.75rem;
+    margin: 0;
+    overflow-y: auto;
+  }
+
   /* ── Top bar ─────────────────────────────────────────────────────────────── */
   .ct-topbar {
     display: flex;
@@ -1508,15 +1471,6 @@ ${sections.join('<br>')}`;
     align-items: center;
     gap: 4px;
   }
-  .ct-meta-badge-issued {
-    color: #16a34a;
-    background: #f0fdf4;
-    border-color: #bbf7d0;
-  }
-  .ct-issue-btn {
-    opacity: 0.7;
-  }
-
   /* ── States ─────────────────────────────────────────────────────────────── */
   .ct-state {
     display: flex;
@@ -1606,39 +1560,6 @@ ${sections.join('<br>')}`;
   }
   .ct-status-inprogress { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
   .ct-status-closed     { background: #dcfce7; color: #16a34a; border-color: #86efac; }
-
-  /* Summary panel */
-  .ct-summary-panel {
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .ct-summary-hd {
-    display: flex;
-    align-items: center;
-    padding: 0.625rem 1rem;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .ct-summary-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #64748b;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
-  .ct-summary-body { padding: 0.875rem 1rem; }
-  .ct-summary-bullets {
-    margin: 0;
-    padding-left: 1.125rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .ct-summary-bullets li { font-size: 0.8rem; color: #334155; line-height: 1.55; }
 
   .ct-td {
     padding: 0.65rem 0.75rem;

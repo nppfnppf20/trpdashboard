@@ -51,7 +51,7 @@
   const trackerLabels = {
     consultation_tracker: 'Consultation Tracker',
     conditions_tracker: 'Conditions Tracker',
-    progress_tracker: 'Issues Tracker',
+    progress_tracker: 'Project Tracker',
   };
 
   function handleTrackerTabSelect(tab) {

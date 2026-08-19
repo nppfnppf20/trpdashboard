@@ -584,7 +584,7 @@ const TABLE_GROUPS = [
   { key: 'key_issues',       sourceId: 'K',    label: 'Key Issues & Stage Notes', serialize: serializeKeyIssues },
   { key: 'consultation',     sourceId: 'C',    label: 'Consultation Tracker',     serialize: serializeConsultation },
   { key: 'conditions',       sourceId: 'COND', label: 'Conditions Tracker',       serialize: serializeConditions },
-  { key: 'issues_tracker',   sourceId: 'IT',   label: 'Issues Tracker',           serialize: serializeIssuesTracker },
+  { key: 'issues_tracker',   sourceId: 'IT',   label: 'Project Tracker',          serialize: serializeIssuesTracker },
   { key: 'actions',          sourceId: 'A',    label: 'Action Tracker',           serialize: serializeActions },
   { key: 'planning_history', sourceId: 'H',    label: 'Planning History',         serialize: serializePlanningHistory },
   { key: 'policies',         sourceId: 'POL',  label: 'Relevant Policies',        serialize: serializePolicies },

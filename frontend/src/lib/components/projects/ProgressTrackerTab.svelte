@@ -665,7 +665,7 @@
     }).join('');
 
     const subHeaders = hasAnySubIssues ? `${th('Sub-issue status')}${th('Sub-issue progress')}` : '';
-    return `<h2>Issues Tracker</h2>
+    return `<h2>Project Tracker</h2>
 <p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
 <table style="border-collapse:collapse;width:100%;">
   <thead><tr>${th('Discipline')}${th('Title')}${th('Sub-issue')}${subHeaders}${th('Main issue progress')}${th('Status')}</tr></thead>
@@ -679,7 +679,7 @@
     exportingWord = true;
     try {
       const html = buildExportHtml();
-      await exportHtmlToWord(html, buildExportFilename(project, 'Issues Tracker'));
+      await exportHtmlToWord(html, buildExportFilename(project, 'Project Tracker'));
       const updated = await markProgressExported(projectId);
       meta = { ...meta, ...updated };
     } catch (err) {

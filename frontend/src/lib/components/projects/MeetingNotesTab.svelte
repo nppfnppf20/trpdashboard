@@ -951,7 +951,7 @@
         <!-- Post-save — hand off to the Issues Tracker draft flow -->
         <div class="mn-editor-body mn-review-body">
           <div class="mn-issues-prompt">
-            <span class="mn-issues-prompt-text"><i class="las la-list-alt"></i> Saved. Add "{reviewTranscript.title}" to the Issues Tracker?</span>
+            <span class="mn-issues-prompt-text"><i class="las la-list-alt"></i> Saved. Add "{reviewTranscript.title}" to the Project Tracker?</span>
             <div class="mn-issues-prompt-actions">
               <button class="btn btn-primary btn-sm" on:click={reviewAddToIssuesTracker}>
                 <i class="las la-magic"></i> Yes, draft from this note

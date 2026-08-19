@@ -159,7 +159,7 @@
 
   $: sourceLabels = buildSourceLabels(groups);
   function buildSourceLabels(gs) {
-    const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', IT: 'Issues Tracker', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
+    const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', IT: 'Project Tracker', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
     for (const d of gs.find(g => g.key === 'documents')?.items ?? []) map[`D${d.id}`] = d.label;
     for (const m of gs.find(g => g.key === 'meetings')?.items ?? []) map[`M${m.id}`] = m.label;
     return map;
