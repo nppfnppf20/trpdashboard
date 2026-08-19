@@ -35,7 +35,7 @@ export async function getCommentsData(req, res) {
   try {
     const [{ rows: comments }, { rows: analysis }] = await Promise.all([
       pool.query(
-        `SELECT id, commenter_name, date_received, position, comment, further_info,
+        `SELECT id, commenter_name, date_received, position, comment, notes,
                 source_file_name, sort_order, created_at, updated_at
          FROM planning_applications.public_comments
          WHERE project_id = $1
@@ -62,11 +62,11 @@ export async function getCommentsData(req, res) {
 
 export async function createComment(req, res) {
   const { projectId } = req.params;
-  const { commenter_name, date_received, position, comment, further_info, source_file_name } = req.body;
+  const { commenter_name, date_received, position, comment, notes, source_file_name } = req.body;
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.public_comments
-         (project_id, commenter_name, date_received, position, comment, further_info, source_file_name)
+         (project_id, commenter_name, date_received, position, comment, notes, source_file_name)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
@@ -75,7 +75,7 @@ export async function createComment(req, res) {
         date_received || null,
         position?.trim() || null,
         comment?.trim() || null,
-        further_info?.trim() || null,
+        notes?.trim() || null,
         source_file_name?.trim() || null,
       ]
     );
@@ -88,7 +88,7 @@ export async function createComment(req, res) {
 
 export async function updateComment(req, res) {
   const { commentId } = req.params;
-  const { commenter_name, date_received, position, comment, further_info } = req.body;
+  const { commenter_name, date_received, position, comment, notes } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.public_comments SET
@@ -96,7 +96,7 @@ export async function updateComment(req, res) {
          date_received  = $3,
          position       = $4,
          comment        = $5,
-         further_info   = $6,
+         notes          = $6,
          updated_at     = NOW()
        WHERE id = $1 RETURNING *`,
       [
@@ -105,7 +105,7 @@ export async function updateComment(req, res) {
         date_received || null,
         position?.trim() || null,
         comment?.trim() || null,
-        further_info?.trim() || null,
+        notes?.trim() || null,
       ]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
@@ -134,7 +134,7 @@ export async function runAnalysis(req, res) {
   const { projectId } = req.params;
   try {
     const { rows: comments } = await pool.query(
-      `SELECT commenter_name, position, comment, further_info
+      `SELECT commenter_name, position, comment
        FROM planning_applications.public_comments
        WHERE project_id = $1
        ORDER BY sort_order ASC, date_received ASC NULLS LAST, created_at ASC`,

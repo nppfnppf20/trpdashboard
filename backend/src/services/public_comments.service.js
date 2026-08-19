@@ -7,8 +7,7 @@ Return EXACTLY these XML delimiters and nothing else before or after:
 <COMMENTER_NAME>name of the commenter, or "Anonymous" if not given</COMMENTER_NAME>
 <DATE_RECEIVED>YYYY-MM-DD or leave blank</DATE_RECEIVED>
 <POSITION>Support | Object | Neutral | Mixed | or leave blank</POSITION>
-<COMMENT>summary of their main point — 500 word maximum. If short, write naturally. If many points, use one short sentence per point so nothing is missed, and end with "Further detail is contained in the full response." if condensed.</COMMENT>
-<FURTHER_INFO>any additional details, secondary concerns, or specific requests — 500 word maximum, same rule applies. Leave blank if none.</FURTHER_INFO>
+<COMMENT>summary of everything they said - their main point plus any additional details, secondary concerns, or specific requests - 500 word maximum. If short, write naturally. If many points, use one short sentence per point so nothing is missed, and end with "Further detail is contained in the full response." if condensed.</COMMENT>
 
 Position guidance:
 - Support: commenter clearly supports the application
@@ -34,7 +33,6 @@ export async function processPublicComment(text, fileName, userNotes) {
     date_received:   parseXmlField(raw, 'DATE_RECEIVED')  || null,
     position:        parseXmlField(raw, 'POSITION')       || null,
     comment:         parseXmlField(raw, 'COMMENT')        || null,
-    further_info:    parseXmlField(raw, 'FURTHER_INFO')   || null,
   };
 }
 
@@ -42,7 +40,7 @@ export async function analysePublicComments(comments) {
   if (!comments.length) return { bulletSummary: [], themes: [] };
 
   const list = comments.map((c, i) =>
-    `${i + 1}. [${c.position || 'No position'}] ${c.commenter_name || 'Anonymous'}: ${c.comment || ''}${c.further_info ? ' ' + c.further_info : ''}`
+    `${i + 1}. [${c.position || 'No position'}] ${c.commenter_name || 'Anonymous'}: ${c.comment || ''}`
   ).join('\n');
 
   const prompt = `You are a planning application assistant analysing public consultation responses for a planning application.

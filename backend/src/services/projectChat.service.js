@@ -408,7 +408,7 @@ async function serializePolicyDocuments(projectId) {
 async function serializePublicComments(projectId) {
   const [{ rows: comments }, { rows: analysis }] = await Promise.all([
     pool.query(
-      `SELECT commenter_name, date_received, position, comment, further_info
+      `SELECT commenter_name, date_received, position, comment, notes
          FROM planning_applications.public_comments
         WHERE project_id = $1 ORDER BY sort_order, id`,
       [projectId]
@@ -430,7 +430,7 @@ async function serializePublicComments(projectId) {
   }
   if (comments.length) {
     parts.push('Individual comments:\n' + comments.map(c =>
-      `- ${c.commenter_name ?? 'Anonymous'}${c.position ? ` (${c.position})` : ''}${c.date_received ? `, ${fmtDate(c.date_received)}` : ''}: ${c.comment ?? ''}${c.further_info ? ` | Further info: ${c.further_info}` : ''}`
+      `- ${c.commenter_name ?? 'Anonymous'}${c.position ? ` (${c.position})` : ''}${c.date_received ? `, ${fmtDate(c.date_received)}` : ''}: ${c.comment ?? ''}${c.notes ? ` | Notes: ${c.notes}` : ''}`
     ).join('\n'));
   }
 

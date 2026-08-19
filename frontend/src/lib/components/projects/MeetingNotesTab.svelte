@@ -44,8 +44,8 @@
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
   let reviewError = null;
 
-  // Sub-tab
-  let activeSubTab = 'meetings'; // 'meetings' | 'briefing'
+  // Note type — drives which fields/buttons show in the Add Note card
+  let uploadNoteType = 'meeting'; // 'meeting' | 'briefing'
 
   // Full screen view
   let isFullscreen = false;
@@ -83,11 +83,6 @@
     } finally {
       briefingsLoading = false;
     }
-  }
-
-  function openBriefingTab() {
-    activeSubTab = 'briefing';
-    if (!briefingsLoaded) loadBriefings();
   }
 
   function handleBriefingDrop(e) {
@@ -242,7 +237,7 @@
   let error = null;
 
   // UI toggles
-  let showAllMeetings = false;
+  let showAllNotes = false;
   let viewingTranscriptNote = null; // note object currently shown in the transcript viewer modal
 
   // Inline edit — note metadata
@@ -274,8 +269,8 @@
   let showExtras = false;
   let fileInput;
 
-  onMount(() => { if (projectId) loadAll(); });
-  $: if (projectId) loadAll();
+  onMount(() => { if (projectId) { loadAll(); loadBriefings(); } });
+  $: if (projectId) { loadAll(); loadBriefings(); }
 
   async function loadAll() {
     loading = true;
@@ -290,6 +285,14 @@
   }
 
   $: latestNote = notes[0] ?? null;
+
+  // Combined feed for the "All Notes" list — meeting notes and briefing
+  // notes are different tables (meeting_notes vs document_summaries), so
+  // they're merged client-side and tagged with itemType for the shared list.
+  $: combinedItems = [
+    ...notes.map(n => ({ ...n, itemType: 'meeting', sortDate: n.meeting_date || n.created_at })),
+    ...briefings.map(b => ({ ...b, itemType: 'briefing', sortDate: b.created_at }))
+  ].sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
 
   function formatDate(d) {
     if (!d) return '—';
@@ -537,24 +540,21 @@
 
 <div class="mn-tab" class:mn-fullscreen={isFullscreen}>
 
-  <!-- Sub-tab toggle -->
-  <div class="mn-subtabs">
-    <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'meetings'} on:click={() => activeSubTab = 'meetings'}>
-      <i class="las la-users"></i> Project Meetings
-    </button>
-    <button class="mn-subtab" class:mn-subtab--active={activeSubTab === 'briefing'} on:click={openBriefingTab}>
-      <i class="las la-file-alt"></i> Briefing Note
-    </button>
-    <button class="btn btn-secondary btn-sm mn-fullscreen-toggle" on:click={() => isFullscreen = !isFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Open full screen'}>
+  <!-- Header -->
+  <div class="mn-header-row">
+    <h3 class="mn-header-title"><i class="las la-users"></i> Meeting Notes</h3>
+    <button class="btn btn-secondary btn-sm" on:click={() => isFullscreen = !isFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Open full screen'}>
       <i class="las {isFullscreen ? 'la-compress' : 'la-expand'}"></i> {isFullscreen ? 'Exit' : 'Full Screen'}
     </button>
   </div>
 
-  {#if activeSubTab === 'briefing'}
+  {#if loading}
+    <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading meeting notes…</div>
+  {:else if error}
+    <div class="mn-error">{error}</div>
+  {:else}
 
-    <!-- ── Briefing Note sub-tab ─────────────────────────────────────────── -->
-    <div class="mn-briefing-tab">
-
+    {#if uploadNoteType === 'briefing'}
       <!-- Meeting Guide card -->
       <div class="mn-guide-card">
         <div class="mn-guide-card-left">
@@ -568,230 +568,188 @@
           <i class="las la-clipboard-list"></i> Open Meeting Guide
         </button>
       </div>
-
-      <!-- Upload briefing transcript -->
-      <div class="mn-upload-card">
-        <h3 class="mn-card-title">Upload Briefing Transcript</h3>
-        <p class="mn-briefing-hint">Once uploaded, the transcript powers "Populate from Briefing" in the Key Issues board.</p>
-
-        <div class="mn-input-tabs">
-          <button class="btn btn-sm" class:btn-secondary={bInputTab === 'upload'} class:btn-ghost={bInputTab !== 'upload'} on:click={() => bInputTab = 'upload'}>
-            <i class="las la-upload"></i> Upload File
-          </button>
-          <button class="btn btn-sm" class:btn-secondary={bInputTab === 'paste'} class:btn-ghost={bInputTab !== 'paste'} on:click={() => bInputTab = 'paste'}>
-            <i class="las la-clipboard"></i> Paste Text
-          </button>
-        </div>
-
-        {#if bInputTab === 'upload'}
-          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-          <div class="mn-drop-zone" class:drag-over={bDragOver} role="button" tabindex="0"
-            on:dragover|preventDefault={() => bDragOver = true}
-            on:dragleave={() => bDragOver = false}
-            on:drop={handleBriefingDrop}
-            on:click={() => bFileInput.click()}
-            on:keydown={(e) => e.key === 'Enter' && bFileInput.click()}
-          >
-            {#if bFile}
-              <i class="las la-file-alt mn-drop-icon"></i>
-              <span class="mn-drop-filename">{bFile.name}</span>
-              <span class="mn-drop-hint">Click to change file</span>
-            {:else}
-              <i class="las la-cloud-upload-alt mn-drop-icon"></i>
-              <span>Drop a file here or click to browse</span>
-              <span class="mn-drop-hint">PDF, DOCX or TXT</span>
-            {/if}
-          </div>
-          <input bind:this={bFileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleBriefingFileChange} />
-        {:else}
-          <textarea class="form-input mn-paste" bind:value={bPasteText} placeholder="Paste the briefing transcript here…" rows="4"></textarea>
-        {/if}
-
-        {#if bError}<div class="mn-error">{bError}</div>{/if}
-
-        {#if bInputTab === 'paste' && !bResult}
-          <div class="mn-briefing-paste-actions">
-            <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
-              {#if bProcessing}
-                <span class="mn-spinner"></span> Processing…
-              {:else}
-                <i class="las la-magic"></i> Summarise with AI
-              {/if}
-            </button>
-            <button class="btn btn-secondary mn-process-btn" on:click={saveBriefingDirectly} disabled={bProcessing}>
-              <i class="las la-save"></i> Save as-is
-            </button>
-          </div>
-        {/if}
-
-        {#if bResult}
-          <div class="mn-briefing-result">
-            <div class="form-group">
-              <label>Title</label>
-              <input type="text" class="form-input" bind:value={bTitle} placeholder="e.g. Briefing Note - Feb 2025" />
-            </div>
-            <div class="mn-briefing-preview">{@html bResult.summary_html}</div>
-            {#if bSaveError}<div class="mn-error-sm">{bSaveError}</div>{/if}
-            <div class="mn-form-footer">
-              <button class="btn btn-secondary btn-sm" on:click={() => { bResult = null; bTitle = ''; }}>Discard</button>
-              <button class="btn btn-primary btn-sm" on:click={saveBriefing} disabled={bSaving}>
-                {bSaving ? 'Saving…' : 'Save Briefing'}
-              </button>
-            </div>
-          </div>
-        {:else if bInputTab === 'upload'}
-          <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
-            {#if bProcessing}
-              <span class="mn-spinner"></span> Processing…
-            {:else}
-              <i class="las la-magic"></i> Process Briefing
-            {/if}
-          </button>
-        {/if}
-      </div>
-
-      <!-- Existing briefing transcripts -->
-      <div class="mn-section mn-section-muted">
-        <h3 class="mn-briefings-heading">Saved Briefing Transcripts</h3>
-        {#if briefingsLoading}
-          <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading…</div>
-        {:else if briefingsError}
-          <div class="mn-error">{briefingsError}</div>
-        {:else if briefings.length === 0}
-          <p class="mn-empty">No briefing transcripts saved yet.</p>
-        {:else}
-          <div class="mn-notes-list mn-table-mt">
-            {#each briefings as b (b.id)}
-              <div class="mn-note-card">
-                <div class="mn-note-info">
-                  <div class="mn-note-meta">
-                    <span class="mn-note-title">{b.title}</span>
-                    {#if b.created_at}<span class="mn-cell-muted">{formatDate(b.created_at)}</span>{/if}
-                  </div>
-                  <div class="mn-note-actions">
-                    <button class="btn btn-secondary btn-sm" on:click={() => viewingBriefing = b}>
-                      <i class="las la-eye"></i> View
-                    </button>
-                    <button class="btn btn-secondary btn-sm" on:click={() => openBriefingEditor(b)}>
-                      <i class="las la-pen"></i> Edit
-                    </button>
-                    {#if b.has_transcript || b.transcript_text}
-                      <button class="btn btn-secondary btn-sm" on:click={() => openBriefingTranscript(b)}>
-                        <i class="las la-file-alt"></i> Transcript
-                      </button>
-                    {/if}
-                    <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(b.id)} title="Delete">
-                      <i class="las la-trash"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-    </div>
-
-  {:else}
-
-  {#if loading}
-    <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading meeting notes…</div>
-  {:else if error}
-    <div class="mn-error">{error}</div>
-  {:else}
+    {/if}
 
     <!-- ── Top row ────────────────────────────────────────────────────── -->
     <div class="mn-top-row">
 
       <!-- Upload card -->
       <div class="mn-upload-card">
-        <h3 class="mn-card-title">Add Meeting Notes</h3>
-
-        <div class="mn-type-row">
-          <span class="mn-type-label">Summary</span>
-          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
-          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3-4 pages</span></button>
-          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>Custom</button>
-          <select class="mn-provider-select" bind:value={uploadProvider} title="AI model used to generate this summary - Default uses the AI Providers admin setting">
-            <option value="">Default</option>
-            <option value="anthropic">Claude</option>
-            <option value="openai">GPT-5.6</option>
+        <div class="mn-card-title-row">
+          <h3 class="mn-card-title">Add Note</h3>
+          <select class="mn-type-select" bind:value={uploadNoteType}>
+            <option value="meeting">Meeting Note</option>
+            <option value="briefing">Briefing Note</option>
           </select>
         </div>
-        {#if uploadSummaryType === 'custom'}
-          <p class="mn-custom-hint"><i class="las la-info-circle"></i> Describe the format you want in the Custom Instructions field in Optional Extras below.</p>
-        {/if}
 
-        <div class="mn-input-tabs">
-          <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
-            <i class="las la-upload"></i> Upload File
-          </button>
-          <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
-            <i class="las la-clipboard"></i> Paste Text
-          </button>
-        </div>
+        {#if uploadNoteType === 'meeting'}
 
-        {#if uploadInputTab === 'upload'}
-          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-          <div
-            class="mn-drop-zone"
-            class:drag-over={uploadDragOver}
-            role="button"
-            tabindex="0"
-            on:dragover|preventDefault={() => uploadDragOver = true}
-            on:dragleave={() => uploadDragOver = false}
-            on:drop={handleDrop}
-            on:click={() => fileInput.click()}
-            on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
-          >
-            {#if uploadFile}
-              <i class="las la-file-alt mn-drop-icon"></i>
-              <span class="mn-drop-filename">{uploadFile.name}</span>
-              <span class="mn-drop-hint">Click to change file</span>
-            {:else}
-              <i class="las la-cloud-upload-alt mn-drop-icon"></i>
-              <span>Drop a file here or click to browse</span>
-              <span class="mn-drop-hint">PDF, DOCX or TXT</span>
-            {/if}
-          </div>
-          <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
-        {:else}
-          <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
-        {/if}
-
-        <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
-          <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
-          {showExtras ? 'Hide' : 'Show'} optional extras
-        </button>
-        {#if showExtras}
-          <div class="form-row">
-            <div class="form-group">
-              <label>Agenda</label>
-              <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the meeting agenda…"></textarea>
-            </div>
-            <div class="form-group">
-              <label>Consultant Notes</label>
-              <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
-            </div>
+          <div class="mn-type-row">
+            <span class="mn-type-label">Summary</span>
+            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
+            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3-4 pages</span></button>
+            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>Custom</button>
+            <select class="mn-provider-select" bind:value={uploadProvider} title="AI model used to generate this summary - Default uses the AI Providers admin setting">
+              <option value="">Default</option>
+              <option value="anthropic">Claude</option>
+              <option value="openai">GPT-5.6</option>
+            </select>
           </div>
           {#if uploadSummaryType === 'custom'}
-            <div class="form-group">
-              <label>Custom Instructions</label>
-              <textarea class="form-input" bind:value={uploadCustomPrompt} rows="3" placeholder="e.g. Produce a short bullet-point briefing note focused on planning policy. Include a risk register at the end."></textarea>
+            <p class="mn-custom-hint"><i class="las la-info-circle"></i> Describe the format you want in the Custom Instructions field in Optional Extras below.</p>
+          {/if}
+
+          <div class="mn-input-tabs">
+            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
+              <i class="las la-upload"></i> Upload File
+            </button>
+            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
+              <i class="las la-clipboard"></i> Paste Text
+            </button>
+          </div>
+
+          {#if uploadInputTab === 'upload'}
+            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+            <div
+              class="mn-drop-zone"
+              class:drag-over={uploadDragOver}
+              role="button"
+              tabindex="0"
+              on:dragover|preventDefault={() => uploadDragOver = true}
+              on:dragleave={() => uploadDragOver = false}
+              on:drop={handleDrop}
+              on:click={() => fileInput.click()}
+              on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
+            >
+              {#if uploadFile}
+                <i class="las la-file-alt mn-drop-icon"></i>
+                <span class="mn-drop-filename">{uploadFile.name}</span>
+                <span class="mn-drop-hint">Click to change file</span>
+              {:else}
+                <i class="las la-cloud-upload-alt mn-drop-icon"></i>
+                <span>Drop a file here or click to browse</span>
+                <span class="mn-drop-hint">PDF, DOCX or TXT</span>
+              {/if}
+            </div>
+            <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
+          {:else}
+            <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+          {/if}
+
+          <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
+            <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
+            {showExtras ? 'Hide' : 'Show'} optional extras
+          </button>
+          {#if showExtras}
+            <div class="form-row">
+              <div class="form-group">
+                <label>Agenda</label>
+                <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the meeting agenda…"></textarea>
+              </div>
+              <div class="form-group">
+                <label>Consultant Notes</label>
+                <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
+              </div>
+            </div>
+            {#if uploadSummaryType === 'custom'}
+              <div class="form-group">
+                <label>Custom Instructions</label>
+                <textarea class="form-input" bind:value={uploadCustomPrompt} rows="3" placeholder="e.g. Produce a short bullet-point briefing note focused on planning policy. Include a risk register at the end."></textarea>
+              </div>
+            {/if}
+          {/if}
+
+          {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
+
+          <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
+            {#if uploadProcessing}
+              <span class="mn-spinner"></span> Processing…
+            {:else}
+              <i class="las la-magic"></i> Process Meeting Notes
+            {/if}
+          </button>
+
+        {:else}
+
+          <p class="mn-briefing-hint">Once uploaded, the transcript powers "Populate from Briefing" in the Key Issues board.</p>
+
+          <div class="mn-input-tabs">
+            <button class="btn btn-sm" class:btn-secondary={bInputTab === 'upload'} class:btn-ghost={bInputTab !== 'upload'} on:click={() => bInputTab = 'upload'}>
+              <i class="las la-upload"></i> Upload File
+            </button>
+            <button class="btn btn-sm" class:btn-secondary={bInputTab === 'paste'} class:btn-ghost={bInputTab !== 'paste'} on:click={() => bInputTab = 'paste'}>
+              <i class="las la-clipboard"></i> Paste Text
+            </button>
+          </div>
+
+          {#if bInputTab === 'upload'}
+            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+            <div class="mn-drop-zone" class:drag-over={bDragOver} role="button" tabindex="0"
+              on:dragover|preventDefault={() => bDragOver = true}
+              on:dragleave={() => bDragOver = false}
+              on:drop={handleBriefingDrop}
+              on:click={() => bFileInput.click()}
+              on:keydown={(e) => e.key === 'Enter' && bFileInput.click()}
+            >
+              {#if bFile}
+                <i class="las la-file-alt mn-drop-icon"></i>
+                <span class="mn-drop-filename">{bFile.name}</span>
+                <span class="mn-drop-hint">Click to change file</span>
+              {:else}
+                <i class="las la-cloud-upload-alt mn-drop-icon"></i>
+                <span>Drop a file here or click to browse</span>
+                <span class="mn-drop-hint">PDF, DOCX or TXT</span>
+              {/if}
+            </div>
+            <input bind:this={bFileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleBriefingFileChange} />
+          {:else}
+            <textarea class="form-input mn-paste" bind:value={bPasteText} placeholder="Paste the briefing transcript here…" rows="4"></textarea>
+          {/if}
+
+          {#if bError}<div class="mn-error">{bError}</div>{/if}
+
+          {#if bInputTab === 'paste' && !bResult}
+            <div class="mn-briefing-paste-actions">
+              <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
+                {#if bProcessing}
+                  <span class="mn-spinner"></span> Processing…
+                {:else}
+                  <i class="las la-magic"></i> Summarise with AI
+                {/if}
+              </button>
+              <button class="btn btn-secondary mn-process-btn" on:click={saveBriefingDirectly} disabled={bProcessing}>
+                <i class="las la-save"></i> Save as-is
+              </button>
             </div>
           {/if}
-        {/if}
 
-        {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
-
-        <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
-          {#if uploadProcessing}
-            <span class="mn-spinner"></span> Processing…
-          {:else}
-            <i class="las la-magic"></i> Process Meeting Notes
+          {#if bResult}
+            <div class="mn-briefing-result">
+              <div class="form-group">
+                <label>Title</label>
+                <input type="text" class="form-input" bind:value={bTitle} placeholder="e.g. Briefing Note - Feb 2025" />
+              </div>
+              <div class="mn-briefing-preview">{@html bResult.summary_html}</div>
+              {#if bSaveError}<div class="mn-error-sm">{bSaveError}</div>{/if}
+              <div class="mn-form-footer">
+                <button class="btn btn-secondary btn-sm" on:click={() => { bResult = null; bTitle = ''; }}>Discard</button>
+                <button class="btn btn-primary btn-sm" on:click={saveBriefing} disabled={bSaving}>
+                  {bSaving ? 'Saving…' : 'Save Briefing'}
+                </button>
+              </div>
+            </div>
+          {:else if bInputTab === 'upload'}
+            <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing}>
+              {#if bProcessing}
+                <span class="mn-spinner"></span> Processing…
+              {:else}
+                <i class="las la-magic"></i> Process Briefing
+              {/if}
+            </button>
           {/if}
-        </button>
+
+        {/if}
       </div>
 
       <!-- Latest meeting card -->
@@ -828,20 +786,21 @@
 
     </div>
 
-    <!-- ── All Meeting Notes ──────────────────────────────────────────── -->
+    <!-- ── All Notes ──────────────────────────────────────────────────── -->
     <div class="mn-section mn-section-muted">
-      <button class="mn-concertina-btn" on:click={() => showAllMeetings = !showAllMeetings}>
-        <i class="las la-{showAllMeetings ? 'angle-up' : 'angle-down'}"></i>
-        All Meeting Notes ({notes.length})
+      <button class="mn-concertina-btn" on:click={() => showAllNotes = !showAllNotes}>
+        <i class="las la-{showAllNotes ? 'angle-up' : 'angle-down'}"></i>
+        All Notes ({combinedItems.length})
       </button>
-      {#if showAllMeetings}
-        {#if notes.length === 0}
-          <p class="mn-empty mn-table-mt">No meeting notes yet. Click "Add Meeting Notes" above to get started.</p>
+      {#if showAllNotes}
+        {#if briefingsError}<div class="mn-error mn-table-mt">{briefingsError}</div>{/if}
+        {#if combinedItems.length === 0}
+          <p class="mn-empty mn-table-mt">No notes yet. Use "Add Note" above to get started.</p>
         {:else}
           <div class="mn-notes-list mn-table-mt">
-            {#each notes as note (note.id)}
+            {#each combinedItems as item (item.itemType + '-' + item.id)}
               <div class="mn-note-card">
-                {#if editingNoteId === note.id}
+                {#if item.itemType === 'meeting' && editingNoteId === item.id}
                   <div class="mn-note-edit-form">
                     <div class="form-row-3">
                       <div class="form-group form-group-wide">
@@ -859,37 +818,57 @@
                     </div>
                     <div class="mn-form-footer">
                       <button class="btn btn-secondary btn-sm" on:click={() => editingNoteId = null}>Cancel</button>
-                      <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(note.id)}>Save</button>
+                      <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(item.id)}>Save</button>
                     </div>
                   </div>
                 {:else}
                   <div class="mn-note-info">
                     <div class="mn-note-meta">
-                      <span class="mn-note-title">{note.title}</span>
-                      {#if note.meeting_date}
-                        <span class="mn-cell-muted">{formatDate(note.meeting_date)}</span>
+                      <span class="mn-type-badge mn-type-badge--{item.itemType}">{item.itemType === 'meeting' ? 'Meeting' : 'Briefing'}</span>
+                      <span class="mn-note-title">{item.title}</span>
+                      {#if item.itemType === 'meeting' && item.meeting_date}
+                        <span class="mn-cell-muted">{formatDate(item.meeting_date)}</span>
+                      {:else if item.itemType === 'briefing' && item.created_at}
+                        <span class="mn-cell-muted">{formatDate(item.created_at)}</span>
                       {/if}
-                      {#if note.attendees_text}
-                        <span class="mn-cell-dim">{note.attendees_text}</span>
+                      {#if item.itemType === 'meeting' && item.attendees_text}
+                        <span class="mn-cell-dim">{item.attendees_text}</span>
                       {/if}
                     </div>
                   </div>
                   <div class="mn-note-actions">
-                    <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
-                      <i class="las la-eye"></i> View Notes
-                    </button>
-                    <button class="btn btn-secondary btn-sm" on:click={() => openTranscript(note)}>
-                      <i class="las la-file-alt"></i> Transcript
-                    </button>
-                    <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
-                      <i class="las la-download"></i> Download
-                    </button>
-                    <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(note)} title="Edit details">
-                      <i class="las la-pen"></i>
-                    </button>
-                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete meeting note">
-                      <i class="las la-trash"></i>
-                    </button>
+                    {#if item.itemType === 'meeting'}
+                      <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(item)}>
+                        <i class="las la-eye"></i> View Notes
+                      </button>
+                      <button class="btn btn-secondary btn-sm" on:click={() => openTranscript(item)}>
+                        <i class="las la-file-alt"></i> Transcript
+                      </button>
+                      <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(item)}>
+                        <i class="las la-download"></i> Download
+                      </button>
+                      <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(item)} title="Edit details">
+                        <i class="las la-pen"></i>
+                      </button>
+                      <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(item.id)} title="Delete meeting note">
+                        <i class="las la-trash"></i>
+                      </button>
+                    {:else}
+                      <button class="btn btn-secondary btn-sm" on:click={() => viewingBriefing = item}>
+                        <i class="las la-eye"></i> View
+                      </button>
+                      <button class="btn btn-secondary btn-sm" on:click={() => openBriefingEditor(item)}>
+                        <i class="las la-pen"></i> Edit
+                      </button>
+                      {#if item.has_transcript || item.transcript_text}
+                        <button class="btn btn-secondary btn-sm" on:click={() => openBriefingTranscript(item)}>
+                          <i class="las la-file-alt"></i> Transcript
+                        </button>
+                      {/if}
+                      <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(item.id)} title="Delete">
+                        <i class="las la-trash"></i>
+                      </button>
+                    {/if}
                   </div>
                 {/if}
               </div>
@@ -900,8 +879,6 @@
     </div>
 
   {/if}
-
-  {/if} <!-- end activeSubTab === 'briefing' / else -->
 
 </div>
 
@@ -1186,36 +1163,59 @@
     flex: none;
   }
 
-  /* ── Sub-tabs ───────────────────────────────────────────────────────────── */
-  .mn-subtabs {
+  /* ── Header ─────────────────────────────────────────────────────────────── */
+  .mn-header-row {
     display: flex;
     align-items: center;
-    gap: 0;
+    justify-content: space-between;
+    gap: 1rem;
     border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 0.6rem;
     margin-bottom: 0.25rem;
   }
-  .mn-fullscreen-toggle { margin-left: auto; }
-  .mn-subtab {
-    background: none;
-    border: none;
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #64748b;
-    cursor: pointer;
+  .mn-header-title {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    transition: color 0.15s, border-color 0.15s;
-    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
   }
-  .mn-subtab:hover { color: #1e293b; }
-  .mn-subtab--active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
 
-  /* ── Briefing sub-tab ───────────────────────────────────────────────────── */
-  .mn-briefing-tab { display: flex; flex-direction: column; gap: 1rem; }
+  /* ── Add Note card: type dropdown ─────────────────────────────────────── */
+  .mn-card-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .mn-type-select {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: inherit;
+    color: #374151;
+    background: white;
+    cursor: pointer;
+  }
+  .mn-type-select:focus { outline: none; border-color: #3b82f6; }
+
+  /* ── Type badge (All Notes list) ──────────────────────────────────────── */
+  .mn-type-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    width: fit-content;
+  }
+  .mn-type-badge--meeting { background: #eff6ff; color: #3b82f6; }
+  .mn-type-badge--briefing { background: #fff1f2; color: #f43f5e; }
 
   .mn-guide-card {
     background: #fff;
@@ -1258,7 +1258,6 @@
     overflow-y: auto;
     line-height: 1.6;
   }
-  .mn-briefings-heading { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0 0 0.5rem; }
   .mn-briefing-title-input { font-weight: 600; max-width: 480px; }
   .mn-briefing-paste-actions { display: flex; flex-direction: column; gap: 0.4rem; }
 

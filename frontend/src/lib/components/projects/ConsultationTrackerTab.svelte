@@ -641,12 +641,12 @@
       ${td(c.date_received ? formatDate(c.date_received) : '')}
       ${td(c.position || '')}
       ${td((c.comment || '').replace(/\n/g, '<br>'))}
-      ${td((c.further_info || '').replace(/\n/g, '<br>'))}
+      ${td((c.notes || '').replace(/\n/g, '<br>'))}
     </tr>`).join('');
 
     return `<h2>Public Comments</h2>
 <table style="border-collapse:collapse;width:100%;">
-  <thead><tr>${th('Name')}${th('Date')}${th('Position')}${th('Comment')}${th('Further Info')}</tr></thead>
+  <thead><tr>${th('Name')}${th('Date')}${th('Position')}${th('Comment Summary')}${th('Notes')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
   }

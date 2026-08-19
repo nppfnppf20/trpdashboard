@@ -33,8 +33,8 @@
     nameKey:         'commenter_name',
     nameLabel:       'Name',
     commentKey:      'comment',
-    commentLabel:    'Comment',
-    extraFields:     [{ key: 'further_info', label: 'Further Info' }],
+    commentLabel:    'Comment Summary',
+    extraFields:     [],
   };
 
   // ── State ─────────────────────────────────────────────────────────────────

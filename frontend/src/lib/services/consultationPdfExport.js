@@ -77,14 +77,14 @@ export function drawPublicCommentsSection(doc, { project, comments, margin, page
   const projectLine = projectLineFor(project);
   const cursorY = drawTitleBlock(doc, { title: 'Public Comments', projectLine, margin, pageWidth });
 
-  const head = [['Name', 'Date', 'Position', 'Comment', 'Further Info']];
+  const head = [['Name', 'Date', 'Position', 'Comment Summary', 'Notes']];
 
   const body = comments.map(c => [
     c.commenter_name || 'Anonymous',
     c.date_received ? formatDate(c.date_received) : '',
     c.position || '',
     c.comment || '',
-    c.further_info || '',
+    c.notes || '',
   ]);
 
   autoTable(doc, {

@@ -85,7 +85,7 @@
   let uploadError     = null;
   let suggestion      = null;
   let sourceFileName  = null;
-  let reviewForm      = { commenter_name: '', date_received: '', position: '', comment: '', further_info: '' };
+  let reviewForm      = { commenter_name: '', date_received: '', position: '', comment: '', notes: '' };
   let saving          = false;
   let saveError       = null;
 
@@ -93,7 +93,7 @@
   function closePanel() {
     panelOpen = false; uploadFile = null; pasteText = ''; userNotes = '';
     suggestion = null; sourceFileName = null; uploadError = null; saveError = null;
-    reviewForm = { commenter_name: '', date_received: '', position: '', comment: '', further_info: '' };
+    reviewForm = { commenter_name: '', date_received: '', position: '', comment: '', notes: '' };
   }
 
   function handleDragOver(e) { e.preventDefault(); dragOver = true; }
@@ -122,7 +122,7 @@
         date_received:  suggestion.date_received  || '',
         position:       suggestion.position       || '',
         comment:        suggestion.comment        || '',
-        further_info:   suggestion.further_info   || '',
+        notes:          '',
       };
     } catch (err) {
       uploadError = err.message;
@@ -155,7 +155,7 @@
       date_received:  c.date_received ? c.date_received.substring(0, 10) : '',
       position:       c.position      || '',
       comment:        c.comment       || '',
-      further_info:   c.further_info  || '',
+      notes:          c.notes         || '',
     };
   }
 
@@ -272,12 +272,12 @@
             </select>
           </div>
           <div class="ct-field ct-field-full">
-            <label class="ct-label">Comment</label>
+            <label class="ct-label">Comment Summary</label>
             <textarea class="form-input ct-review-ta" bind:value={reviewForm.comment} rows="4"></textarea>
           </div>
           <div class="ct-field ct-field-full">
-            <label class="ct-label">Further info</label>
-            <textarea class="form-input ct-review-ta" bind:value={reviewForm.further_info} rows="3" placeholder="Additional details, concerns, requests…"></textarea>
+            <label class="ct-label">Notes <span class="ct-label-opt">manual only - never filled by AI</span></label>
+            <textarea class="form-input ct-review-ta" bind:value={reviewForm.notes} rows="3" placeholder="Internal notes…"></textarea>
           </div>
         </div>
 
@@ -351,8 +351,8 @@
             <th class="ct-th pct-th-name">Name</th>
             <th class="ct-th pct-th-date">Date</th>
             <th class="ct-th pct-th-pos">Position</th>
-            <th class="ct-th pct-th-comment">Comment</th>
-            <th class="ct-th pct-th-further">Further Info</th>
+            <th class="ct-th pct-th-comment">Comment Summary</th>
+            <th class="ct-th pct-th-further">Notes</th>
             <th class="ct-th ct-th-actions"></th>
           </tr>
         </thead>
@@ -398,7 +398,7 @@
                 {/if}
               </td>
 
-              <!-- Comment -->
+              <!-- Comment Summary -->
               <td class="ct-td ct-td-comments">
                 {#if editing}
                   <textarea class="form-input ct-cell-input" bind:value={editForm.comment} rows="4"></textarea>
@@ -420,16 +420,16 @@
                 {/if}
               </td>
 
-              <!-- Further info -->
+              <!-- Notes (manual only, never AI-filled) -->
               <td class="ct-td ct-td-comments">
                 {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.further_info} rows="3" placeholder="Additional details…"></textarea>
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.notes} rows="3" placeholder="Internal notes…"></textarea>
                 {:else}
-                  {#if c.further_info}
+                  {#if c.notes}
                     {@const fexp = expandedIds.has('f' + c.id)}
-                    {@const ftrunc = c.further_info.length > 200}
+                    {@const ftrunc = c.notes.length > 200}
                     <p class="ct-comments-text">
-                      {fexp || !ftrunc ? c.further_info : c.further_info.slice(0, 200) + '…'}
+                      {fexp || !ftrunc ? c.notes : c.notes.slice(0, 200) + '…'}
                     </p>
                     {#if ftrunc}
                       <button class="ct-expand-btn" on:click={() => toggleExpand('f' + c.id)}>
