@@ -6,6 +6,10 @@ import {
   createResponse,
   updateResponse,
   deleteResponse,
+  createAdvancements,
+  suggestAdvancements,
+  updateAdvancement,
+  deleteAdvancement,
   markExported,
   markIssuedToClient,
   emailConsultant,
@@ -24,5 +28,9 @@ router.put('/responses/:responseId', updateResponse);
 router.delete('/responses/:responseId', deleteResponse);
 router.post('/responses/:responseId/email-consultant', emailConsultant);
 router.post('/projects/:projectId/summarise', summarise);
+router.post('/projects/:projectId/advancements', createAdvancements);
+router.post('/projects/:projectId/advancements/suggest', suggestAdvancements);
+router.put('/advancements/:advancementId', updateAdvancement);
+router.delete('/advancements/:advancementId', deleteAdvancement);
 
 export default router;

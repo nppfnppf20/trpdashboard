@@ -1,6 +1,6 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processConsultationResponse, summariseConsultation } from '../services/consultation.service.js';
+import { processConsultationResponse, summariseConsultation, suggestConsultationAdvancementSummaries } from '../services/consultation.service.js';
 import { sendEmail } from '../services/emailService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,10 +56,9 @@ export async function processConsultation(req, res) {
 export async function getConsultationData(req, res) {
   const { projectId } = req.params;
   try {
-    const [{ rows: responses }, { rows: meta }] = await Promise.all([
+    const [{ rows: responses }, { rows: advancements }, { rows: meta }] = await Promise.all([
       pool.query(
-        `SELECT id, consultee_name, date_received, position, comments,
-                consultant_response, response_issued, follow_up, status,
+        `SELECT id, consultee_name, date_received, position, comments, status,
                 discipline, original_consultant, original_consultant_email,
                 source_file_name, sort_order, created_at, updated_at
          FROM planning_applications.consultation_responses
@@ -77,12 +76,27 @@ export async function getConsultationData(req, res) {
         [projectId]
       ),
       pool.query(
+        `SELECT cra.id, cra.response_id, cra.advancement_date, cra.summary,
+                cra.full_text, cra.source_type, cra.created_at, cra.updated_at
+         FROM planning_applications.consultation_response_advancements cra
+         JOIN planning_applications.consultation_responses cr ON cr.id = cra.response_id
+         WHERE cr.project_id = $1
+         ORDER BY cra.advancement_date DESC, cra.id DESC`,
+        [projectId]
+      ),
+      pool.query(
         `SELECT last_exported_at, last_issued_to_client_at
          FROM planning_applications.consultation_tracker_meta
          WHERE project_id = $1`,
         [projectId]
       ),
     ]);
+
+    const advByResponse = {};
+    for (const a of advancements) {
+      (advByResponse[a.response_id] ||= []).push(a);
+    }
+    const withAdvancements = responses.map(r => ({ ...r, advancements: advByResponse[r.id] || [] }));
 
     // Consultants on this project (via quotes) — fail-safe: empty array if query errors
     let availableConsultants = [];
@@ -109,7 +123,7 @@ export async function getConsultationData(req, res) {
     }
 
     res.json({
-      responses,
+      responses: withAdvancements,
       meta: meta[0] || { last_exported_at: null, last_issued_to_client_at: null },
       availableConsultants,
     });
@@ -125,15 +139,14 @@ export async function getConsultationData(req, res) {
 
 export async function createResponse(req, res) {
   const { projectId } = req.params;
-  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, status, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
+  const { consultee_name, date_received, position, comments, status, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
   if (!consultee_name?.trim()) return res.status(400).json({ error: 'consultee_name is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.consultation_responses
          (project_id, consultee_name, date_received, position, comments,
-          consultant_response, response_issued, follow_up, status, source_file_name,
-          discipline, original_consultant, original_consultant_email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          status, source_file_name, discipline, original_consultant, original_consultant_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         projectId,
@@ -141,9 +154,6 @@ export async function createResponse(req, res) {
         date_received || null,
         position?.trim() || null,
         comments?.trim() || null,
-        consultant_response?.trim() || null,
-        response_issued === true || response_issued === 'true',
-        follow_up?.trim() || null,
         status?.trim() || 'In Progress',
         source_file_name?.trim() || null,
         discipline?.trim() || null,
@@ -151,7 +161,7 @@ export async function createResponse(req, res) {
         original_consultant_email?.trim() || null,
       ]
     );
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], advancements: [] });
   } catch (err) {
     console.error('consultation.createResponse error:', err);
     res.status(500).json({ error: 'Failed to create consultation response' });
@@ -164,7 +174,7 @@ export async function createResponse(req, res) {
 
 export async function updateResponse(req, res) {
   const { responseId } = req.params;
-  const { consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up, status, discipline, original_consultant, original_consultant_email } = req.body;
+  const { consultee_name, date_received, position, comments, status, discipline, original_consultant, original_consultant_email } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.consultation_responses SET
@@ -172,13 +182,10 @@ export async function updateResponse(req, res) {
          date_received                = COALESCE($3, date_received),
          position                     = COALESCE($4, position),
          comments                     = COALESCE($5, comments),
-         consultant_response          = COALESCE($6, consultant_response),
-         response_issued              = COALESCE($7, response_issued),
-         follow_up                    = COALESCE($8, follow_up),
-         status                       = COALESCE($9, status),
-         discipline                   = COALESCE($10, discipline),
-         original_consultant          = COALESCE($11, original_consultant),
-         original_consultant_email    = COALESCE($12, original_consultant_email),
+         status                       = COALESCE($6, status),
+         discipline                   = COALESCE($7, discipline),
+         original_consultant          = COALESCE($8, original_consultant),
+         original_consultant_email    = COALESCE($9, original_consultant_email),
          updated_at                   = NOW()
        WHERE id = $1 RETURNING *`,
       [
@@ -187,9 +194,6 @@ export async function updateResponse(req, res) {
         'date_received' in req.body ? (date_received || null) : null,
         'position' in req.body ? (position?.trim() || null) : null,
         'comments' in req.body ? (comments?.trim() || null) : null,
-        'consultant_response' in req.body ? (consultant_response?.trim() || null) : null,
-        response_issued != null ? (response_issued === true || response_issued === 'true') : null,
-        'follow_up' in req.body ? (follow_up?.trim() || null) : null,
         status?.trim() || null,
         'discipline' in req.body ? (discipline?.trim() || null) : null,
         'original_consultant' in req.body ? (original_consultant?.trim() || null) : null,
@@ -219,6 +223,147 @@ export async function deleteResponse(req, res) {
   } catch (err) {
     console.error('consultation.deleteResponse error:', err);
     res.status(500).json({ error: 'Failed to delete consultation response' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Advancements: dated progress entries against one or more consultee responses
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Batch create: one advancement (date + source text) applied to several
+// responses, each with its own summary. Transactional.
+export async function createAdvancements(req, res) {
+  const { projectId } = req.params;
+  const { advancement_date, full_text, source_type, items } = req.body;
+  if (!advancement_date) return res.status(400).json({ error: 'advancement_date is required' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'At least one response is required' });
+  if (items.some(i => !i.summary?.trim())) return res.status(400).json({ error: 'Each selected response needs a summary' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const created = [];
+    for (const item of items) {
+      const { rows } = await client.query(
+        `INSERT INTO planning_applications.consultation_response_advancements
+           (response_id, advancement_date, summary, full_text, source_type)
+         SELECT $1, $2, $3, $4, $5
+         WHERE EXISTS (
+           SELECT 1 FROM planning_applications.consultation_responses cr
+           WHERE cr.id = $1 AND cr.project_id = $6
+         )
+         RETURNING *`,
+        [
+          item.response_id,
+          advancement_date,
+          item.summary.trim(),
+          full_text?.trim() || null,
+          source_type?.trim() || 'note',
+          projectId,
+        ]
+      );
+      if (!rows[0]) throw new Error(`Response ${item.response_id} does not belong to this project`);
+      created.push(rows[0]);
+    }
+    await client.query('COMMIT');
+    res.status(201).json(created);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('consultation.createAdvancements error:', err);
+    res.status(500).json({ error: 'Failed to save advancement' });
+  } finally {
+    client.release();
+  }
+}
+
+// Suggest per-response summaries from source text: reads each response's
+// position, comments and previous advancements. User-supplied notes take
+// precedence. Among the ticked responses, only those the source material
+// actually contains relevant new information for come back with a summary.
+export async function suggestAdvancements(req, res) {
+  const { projectId } = req.params;
+  const { full_text, items } = req.body;
+  if (!full_text?.trim()) return res.status(400).json({ error: 'Paste the email trail or note text to summarise from' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'At least one response is required' });
+
+  try {
+    const ids = items.map(i => i.response_id);
+    const [{ rows: responses }, { rows: advancements }] = await Promise.all([
+      pool.query(
+        `SELECT id, consultee_name, position, comments
+         FROM planning_applications.consultation_responses
+         WHERE project_id = $1 AND id = ANY($2::int[])`,
+        [projectId, ids]
+      ),
+      pool.query(
+        `SELECT response_id, advancement_date::text, summary
+         FROM planning_applications.consultation_response_advancements
+         WHERE response_id = ANY($1::int[])
+         ORDER BY advancement_date DESC, id DESC`,
+        [ids]
+      ),
+    ]);
+    if (!responses.length) return res.status(404).json({ error: 'No matching responses found' });
+
+    const advByResponse = {};
+    for (const a of advancements) {
+      (advByResponse[a.response_id] ||= []).push(a);
+    }
+    const userSummaries = Object.fromEntries(items.map(i => [i.response_id, i.user_summary?.trim() || null]));
+
+    const enriched = responses.map(r => ({
+      ...r,
+      advancements: advByResponse[r.id] || [],
+      user_summary: userSummaries[r.id] || null,
+    }));
+
+    const suggestions = await suggestConsultationAdvancementSummaries(full_text, enriched);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('consultation.suggestAdvancements error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate summaries' });
+  }
+}
+
+export async function updateAdvancement(req, res) {
+  const { advancementId } = req.params;
+  const { advancement_date, summary, full_text, source_type } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.consultation_response_advancements SET
+         advancement_date = COALESCE($2, advancement_date),
+         summary          = COALESCE($3, summary),
+         full_text        = CASE WHEN $4 THEN $5 ELSE full_text END,
+         source_type      = COALESCE($6, source_type),
+         updated_at       = NOW()
+       WHERE id = $1 RETURNING *`,
+      [
+        advancementId,
+        advancement_date || null,
+        summary != null ? summary.trim() || null : null,
+        'full_text' in req.body, full_text?.trim() || null,
+        source_type?.trim() || null,
+      ]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('consultation.updateAdvancement error:', err);
+    res.status(500).json({ error: 'Failed to update advancement' });
+  }
+}
+
+export async function deleteAdvancement(req, res) {
+  const { advancementId } = req.params;
+  try {
+    await pool.query(
+      `DELETE FROM planning_applications.consultation_response_advancements WHERE id = $1`,
+      [advancementId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('consultation.deleteAdvancement error:', err);
+    res.status(500).json({ error: 'Failed to delete advancement' });
   }
 }
 

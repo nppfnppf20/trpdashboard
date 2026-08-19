@@ -305,10 +305,8 @@
         <i class="las la-plus"></i> Add Comment
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => showBatchImport = true}>
-        <i class="las la-layer-group"></i> Batch Import
+        <i class="las la-layer-group"></i> Batch Import Public Comments
       </button>
-    </div>
-    <div class="ct-topbar-right">
       <button
         class="btn btn-secondary btn-sm"
         on:click={doAnalysis}
@@ -321,6 +319,9 @@
           <i class="las la-magic"></i> {analysis.last_analysed_at ? 'Re-run Analysis' : 'Analyse Comments'}
         {/if}
       </button>
+      {#if analysis.last_analysed_at}
+        <span class="ct-meta-badge"><i class="las la-clock"></i> Last run {formatDateTime(analysis.last_analysed_at)}</span>
+      {/if}
     </div>
   </div>
 

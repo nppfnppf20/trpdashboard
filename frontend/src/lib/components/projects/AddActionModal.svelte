@@ -94,6 +94,14 @@
   $: hasBlankChecked = issues.some(iss => selections[iss.id]?.checked && !selections[iss.id].summary.trim());
   $: canGenerate = hasBlankChecked && fullText.trim().length > 0;
   $: canSave = checkedCount > 0 && !hasBlankChecked;
+  $: allChecked = issues.length > 0 && issues.every(iss => selections[iss.id]?.checked);
+
+  function toggleSelectAll() {
+    const next = !allChecked;
+    const updated = {};
+    for (const iss of issues) updated[iss.id] = { ...selections[iss.id], checked: next };
+    selections = updated;
+  }
 
   function issueLabel(iss) {
     return iss.discipline ? `${iss.title} (${iss.discipline})` : iss.title;
@@ -375,7 +383,10 @@
           {/if}
 
           <div class="field">
-            <label>Applies to <span class="label-hint">tick the issues - leave a summary blank to auto-summarise from the pasted text</span></label>
+            <div class="adv-applies-header">
+              <label>Applies to <span class="label-hint">tick the issues - leave a summary blank to auto-summarise from the pasted text</span></label>
+              <button type="button" class="select-all-btn" on:click={toggleSelectAll}>{allChecked ? 'Deselect all' : 'Select all'}</button>
+            </div>
             <div class="adv-cond-list">
               {#each issues as iss (iss.id)}
                 {@const sel = selections[iss.id]}
@@ -673,6 +684,25 @@
     box-shadow: 0 0 0 3px #e0f2fe;
   }
 
+  .adv-applies-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .select-all-btn {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+  .select-all-btn:hover { color: #1e293b; background: #f1f5f9; }
   .adv-generate-row {
     display: flex;
     align-items: center;

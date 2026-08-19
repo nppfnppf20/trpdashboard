@@ -3,10 +3,12 @@
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
+  import { exportConsultationPdf } from '$lib/services/consultationPdfExport.js';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PublicCommentsTab from '$lib/components/projects/PublicCommentsTab.svelte';
   import BatchImportModal from '$lib/components/projects/BatchImportModal.svelte';
+  import AddConsultationAdvancementModal from '$lib/components/projects/AddConsultationAdvancementModal.svelte';
 
   let showBatchImport = false;
 
@@ -74,6 +76,10 @@
     markConsultationIssuedToClient,
     emailConsultantForResponse,
     summariseConsultationResponses,
+    createConsultationAdvancements,
+    suggestConsultationAdvancementSummaries,
+    updateConsultationAdvancement,
+    deleteConsultationAdvancement,
   } from '$lib/api/consultation.js';
 
   export let project;
@@ -362,9 +368,6 @@
       date_received:             r.date_received ? r.date_received.split('T')[0] : '',
       position:                  r.position ?? '',
       comments:                  r.comments ?? '',
-      consultant_response:       r.consultant_response ?? '',
-      response_issued:           r.response_issued ?? false,
-      follow_up:                 r.follow_up ?? '',
       status:                    r.status ?? 'In Progress',
       discipline:                parseDisciplines(r.discipline),
       original_consultant:       r.original_consultant ?? '',
@@ -395,15 +398,12 @@
         date_received:             editForm.date_received  || null,
         position:                  editForm.position       || null,
         comments:                  editForm.comments       || null,
-        consultant_response:       editForm.consultant_response || null,
-        response_issued:           editForm.response_issued,
-        follow_up:                 editForm.follow_up      || null,
         status:                    editForm.status         || 'Open',
         discipline:                joinDisciplines(editForm.discipline) || null,
         original_consultant:       editForm.original_consultant  || null,
         original_consultant_email: editForm.original_consultant_email  || null,
       });
-      responses = sortResponses(responses.map(r => r.id === id ? updated : r));
+      responses = sortResponses(responses.map(r => r.id === id ? { ...r, ...updated } : r));
       editingId = null;
     } catch (err) {
       alert(err.message);
@@ -416,7 +416,7 @@
   async function updateStatus(r, newStatus) {
     try {
       const updated = await updateConsultationResponse(r.id, { status: newStatus });
-      responses = responses.map(x => x.id === r.id ? updated : x);
+      responses = responses.map(x => x.id === r.id ? { ...x, ...updated } : x);
     } catch (err) {
       alert(err.message);
     }
@@ -439,15 +439,6 @@
     }
   }
 
-  async function toggleResponseIssued(r) {
-    try {
-      const updated = await updateConsultationResponse(r.id, { response_issued: !r.response_issued });
-      responses = responses.map(x => x.id === r.id ? updated : x);
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
   async function removeResponse(id) {
     if (!confirm('Delete this consultation response?')) return;
     try {
@@ -464,6 +455,158 @@
     expandedIds = next;
   }
 
+  // ── Advancements ──────────────────────────────────────────────────────────
+  let showAddAdvancement = false;
+  let advPreselectId = null;
+
+  function sortAdvancements(arr) {
+    return [...arr].sort((a, b) =>
+      (b.advancement_date || '').localeCompare(a.advancement_date || '') || b.id - a.id
+    );
+  }
+
+  function openAddAdvancement(responseId = null) {
+    advPreselectId = responseId;
+    showAddAdvancement = true;
+  }
+
+  function handleAdvancementsDone(e) {
+    for (const row of e.detail.rows) {
+      responses = responses.map(r => r.id === row.response_id
+        ? { ...r, advancements: sortAdvancements([...(r.advancements || []), row]) }
+        : r
+      );
+    }
+  }
+
+  // ── Timeline drawer ───────────────────────────────────────────────────────
+  let timelineResponseId = null;
+  $: timelineResponse = responses.find(r => r.id === timelineResponseId) || null;
+
+  function openTimeline(r) { timelineResponseId = r.id; }
+
+  function closeTimeline() {
+    timelineResponseId = null;
+    tlEditingId = null;
+    showTlAdd = false;
+  }
+
+  // Add form inside the drawer
+  let showTlAdd = false;
+  let tlAddForm = { advancement_date: '', source_type: 'note', summary: '', full_text: '' };
+  let tlAddSaving = false;
+  let tlAddGenerating = false;
+  let tlAddGenerated = false;
+  let tlAddError = null;
+
+  function openTlAdd() {
+    tlAddForm = {
+      advancement_date: new Date().toISOString().slice(0, 10),
+      source_type: 'note',
+      summary: '',
+      full_text: '',
+    };
+    tlAddError = null;
+    tlAddGenerated = false;
+    showTlAdd = true;
+  }
+
+  $: tlCanGenerate = !tlAddForm.summary.trim() && tlAddForm.full_text.trim().length > 0;
+  $: tlCanSave = tlAddForm.summary.trim().length > 0;
+
+  // Fill the blank summary from the source text (position, comments and
+  // previous advancements are read server-side). No-ops once a summary is typed.
+  async function generateTlSummary() {
+    if (tlAddForm.summary.trim() || !tlAddForm.full_text.trim()) return;
+    tlAddGenerating = true;
+    tlAddError = null;
+    try {
+      const { suggestions } = await suggestConsultationAdvancementSummaries(projectId, {
+        full_text: tlAddForm.full_text,
+        items: [{ response_id: timelineResponseId, user_summary: null }],
+      });
+      if (suggestions[0]?.summary) {
+        tlAddForm = { ...tlAddForm, summary: suggestions[0].summary };
+        tlAddGenerated = true;
+      } else {
+        tlAddError = 'Could not generate a summary - please type one.';
+      }
+    } catch (err) {
+      tlAddError = err.message;
+    } finally {
+      tlAddGenerating = false;
+    }
+  }
+
+  async function saveTlAdd() {
+    if (!tlAddForm.summary.trim()) {
+      tlAddError = 'Type a summary, or use Generate & Fill Summary below.';
+      return;
+    }
+
+    tlAddSaving = true;
+    tlAddError = null;
+    try {
+      const rows = await createConsultationAdvancements(projectId, {
+        advancement_date: tlAddForm.advancement_date,
+        full_text: tlAddForm.full_text.trim() || null,
+        source_type: tlAddForm.source_type,
+        items: [{ response_id: timelineResponseId, summary: tlAddForm.summary.trim() }],
+      });
+      handleAdvancementsDone({ detail: { rows } });
+      showTlAdd = false;
+    } catch (err) {
+      tlAddError = err.message;
+    } finally {
+      tlAddSaving = false;
+    }
+  }
+
+  // Inline edit of a timeline entry
+  let tlEditingId = null;
+  let tlEditForm = {};
+
+  function startTlEdit(a) {
+    tlEditingId = a.id;
+    tlEditForm = {
+      advancement_date: a.advancement_date ? a.advancement_date.split('T')[0] : '',
+      source_type: a.source_type || 'note',
+      summary: a.summary || '',
+      full_text: a.full_text || '',
+    };
+  }
+
+  async function saveTlEdit(responseId) {
+    try {
+      const updated = await updateConsultationAdvancement(tlEditingId, {
+        advancement_date: tlEditForm.advancement_date || null,
+        summary: tlEditForm.summary || null,
+        full_text: tlEditForm.full_text || null,
+        source_type: tlEditForm.source_type || null,
+      });
+      responses = responses.map(r => r.id === responseId
+        ? { ...r, advancements: sortAdvancements(r.advancements.map(a => a.id === updated.id ? updated : a)) }
+        : r
+      );
+      tlEditingId = null;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function removeAdvancement(responseId, advancementId) {
+    if (!confirm('Delete this advancement?')) return;
+    try {
+      await deleteConsultationAdvancement(advancementId);
+      responses = responses.map(r => r.id === responseId
+        ? { ...r, advancements: r.advancements.filter(a => a.id !== advancementId) }
+        : r
+      );
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
   // ── Export ────────────────────────────────────────────────────────────────
 
   async function handleExport() {
@@ -476,6 +619,21 @@
     } catch { /* non-fatal */ }
   }
 
+  async function handleExportPdf() {
+    if (!responses.length) { alert('No responses to export.'); return; }
+    exportConsultationPdf(project, responses);
+    try {
+      const updated = await markConsultationExported(projectId);
+      meta = { ...meta, ...updated };
+    } catch { /* non-fatal */ }
+  }
+
+  function progressText(advancements) {
+    return sortAdvancements(advancements || [])
+      .map(a => `${formatDate(a.advancement_date)} - ${a.summary}`)
+      .join('<br><br>');
+  }
+
   function buildExportHtml() {
     const th = (t) => `<th style="text-align:left;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;font-size:11px;font-weight:600;">${t}</th>`;
     const td = (t) => `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;">${t || ''}</td>`;
@@ -484,15 +642,14 @@
       ${td(r.date_received ? formatDate(r.date_received) : '')}
       ${td(r.position || '')}
       ${td((r.comments || '').replace(/\n/g, '<br>'))}
-      ${td((r.consultant_response || '').replace(/\n/g, '<br>'))}
-      ${td(r.response_issued ? 'Yes' : 'No')}
-      ${td((r.follow_up || '').replace(/\n/g, '<br>'))}
+      ${td(progressText(r.advancements))}
+      ${td(r.status || '')}
     </tr>`).join('');
 
     return `<h2>Consultation Tracker</h2>
 <p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
 <table style="border-collapse:collapse;width:100%;">
-  <thead><tr>${th('Consultee')}${th('Date Received')}${th('Position')}${th('Comments')}${th('Our Response')}${th('Response Issued')}${th('Follow Up')}</tr></thead>
+  <thead><tr>${th('Consultee')}${th('Date Received')}${th('Position')}${th('Comments')}${th('Progress')}${th('Status')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
   }
@@ -753,6 +910,131 @@
   <PublicCommentsTab {project} />
 {:else}
 
+<!-- ── Progress timeline drawer ───────────────────────────────────────────── -->
+{#if timelineResponse}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="tl-overlay" on:click|self={closeTimeline}>
+    <div class="tl-drawer">
+      <div class="tl-header">
+        <div class="tl-header-text">
+          <h3 class="tl-title">{timelineResponse.consultee_name}</h3>
+          <p class="tl-subtitle">
+            {(timelineResponse.advancements || []).length} progress entr{(timelineResponse.advancements || []).length !== 1 ? 'ies' : 'y'}
+            {#if timelineResponse.position}· {timelineResponse.position}{/if}
+          </p>
+        </div>
+        <button class="btn btn-icon btn-ghost" on:click={closeTimeline}><i class="las la-times"></i></button>
+      </div>
+
+      <div class="tl-body">
+        {#if showTlAdd}
+          <div class="tl-add-form">
+            <div class="tl-add-row">
+              <input type="date" class="form-input tl-input" bind:value={tlAddForm.advancement_date} />
+              <select class="form-input tl-input" bind:value={tlAddForm.source_type}>
+                <option value="note">Note</option>
+                <option value="email">Email trail</option>
+              </select>
+            </div>
+            <textarea class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
+              placeholder="Summary - leave blank to auto-summarise from the text below…"></textarea>
+            <textarea class="form-input tl-input" rows="5" bind:value={tlAddForm.full_text}
+              placeholder={tlAddForm.source_type === 'email' ? 'Paste the email trail here…' : 'Fuller detail…'}></textarea>
+            <div class="tl-generate-row">
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                on:click={generateTlSummary}
+                disabled={!tlCanGenerate || tlAddGenerating || tlAddSaving}
+              >
+                {#if tlAddGenerating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Summary{/if}
+              </button>
+              <span class="tl-generate-hint">Fills the summary above from this text - leave it if you've already typed one</span>
+            </div>
+            {#if tlAddGenerated}
+              <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
+            {/if}
+            {#if tlAddError}<div class="tl-error">{tlAddError}</div>{/if}
+            <div class="tl-add-btns">
+              <button class="btn btn-ghost btn-sm" on:click={() => showTlAdd = false} disabled={tlAddSaving || tlAddGenerating}>Cancel</button>
+              <button
+                class="btn btn-primary btn-sm"
+                on:click={saveTlAdd}
+                disabled={tlAddSaving || tlAddGenerating || !tlCanSave}
+                title={!tlCanSave ? 'Type a summary or generate one first' : ''}
+              >
+                {tlAddSaving ? 'Saving…' : 'Save Advancement'}
+              </button>
+            </div>
+          </div>
+        {:else}
+          <button class="tl-add-btn" on:click={openTlAdd}>
+            <i class="las la-plus"></i> Add Advancement
+          </button>
+        {/if}
+
+        {#if !(timelineResponse.advancements || []).length && !showTlAdd}
+          <p class="tl-empty">No advancements recorded yet.</p>
+        {/if}
+
+        <div class="tl-entries">
+          {#each sortAdvancements(timelineResponse.advancements || []) as a (a.id)}
+            <div class="tl-entry">
+              <div class="tl-entry-marker"></div>
+              <div class="tl-entry-content">
+                {#if tlEditingId === a.id}
+                  <div class="tl-add-row">
+                    <input type="date" class="form-input tl-input" bind:value={tlEditForm.advancement_date} />
+                    <select class="form-input tl-input" bind:value={tlEditForm.source_type}>
+                      <option value="email">Email trail</option>
+                      <option value="note">Note</option>
+                    </select>
+                  </div>
+                  <textarea class="form-input tl-input" rows="2" bind:value={tlEditForm.summary}></textarea>
+                  <textarea class="form-input tl-input" rows="5" bind:value={tlEditForm.full_text} placeholder="Source text (optional)…"></textarea>
+                  <div class="tl-add-btns">
+                    <button class="btn btn-ghost btn-sm" on:click={() => tlEditingId = null}>Cancel</button>
+                    <button class="btn btn-primary btn-sm" on:click={() => saveTlEdit(timelineResponse.id)}>Save</button>
+                  </div>
+                {:else}
+                  <div class="tl-entry-head">
+                    <span class="tl-entry-date">{formatDate(a.advancement_date)}</span>
+                    <span class="tl-source-badge" class:tl-source-email={a.source_type === 'email'}>
+                      <i class="las {a.source_type === 'email' ? 'la-envelope' : 'la-sticky-note'}"></i>
+                      {a.source_type === 'email' ? 'Email trail' : 'Note'}
+                    </span>
+                    <div class="tl-entry-btns">
+                      <button class="btn btn-icon btn-ghost" title="Edit" on:click={() => startTlEdit(a)}><i class="las la-pen"></i></button>
+                      <button class="btn btn-icon btn-danger-ghost" title="Delete" on:click={() => removeAdvancement(timelineResponse.id, a.id)}><i class="las la-trash"></i></button>
+                    </div>
+                  </div>
+                  <p class="tl-entry-summary">{a.summary}</p>
+                  {#if a.full_text}
+                    <details class="tl-full-text">
+                      <summary>View source text</summary>
+                      <pre class="tl-full-text-body">{a.full_text}</pre>
+                    </details>
+                  {/if}
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<AddConsultationAdvancementModal
+  bind:show={showAddAdvancement}
+  {projectId}
+  {responses}
+  preselectedResponseId={advPreselectId}
+  on:done={handleAdvancementsDone}
+  on:close={() => { showAddAdvancement = false; advPreselectId = null; }}
+/>
+
 <!-- ── Statutory consultees content ──────────────────────────────────────── -->
 <div class="ct-tab">
 
@@ -763,7 +1045,10 @@
         <i class="las la-plus"></i> Add Response
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => showBatchImport = true}>
-        <i class="las la-layer-group"></i> Batch Import
+        <i class="las la-layer-group"></i> Batch Import Stat Consultee Responses
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => openAddAdvancement()} disabled={!responses.length}>
+        <i class="las la-history"></i> Add Advancement
       </button>
     </div>
     <div class="ct-topbar-right">
@@ -783,7 +1068,10 @@
         {/if}
       </button>
       <button class="btn btn-secondary btn-sm" on:click={handleExport} disabled={!responses.length}>
-        <i class="las la-file-word"></i> Export
+        <i class="las la-file-word"></i> Word
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={handleExportPdf} disabled={!responses.length}>
+        <i class="las la-file-pdf"></i> PDF
       </button>
       <button class="btn btn-ghost btn-sm ct-issue-btn" title="Email integration coming soon" on:click={handleIssueToClient} disabled={!responses.length}>
         <i class="las la-paper-plane"></i> Send to Client
@@ -815,9 +1103,7 @@
             <th class="ct-th ct-th-date">Date</th>
             <th class="ct-th ct-th-pos">Position</th>
             <th class="ct-th ct-th-comments">Comments</th>
-            <th class="ct-th ct-th-response">Our Response</th>
-            <th class="ct-th ct-th-issued">Issued</th>
-            <th class="ct-th ct-th-followup">Follow Up</th>
+            <th class="ct-th ct-th-progress">Progress</th>
             <th class="ct-th ct-th-status">Status</th>
             <th class="ct-th ct-th-discipline">Discipline</th>
             <th class="ct-th ct-th-consultant">Original Consultant</th>
@@ -891,51 +1177,20 @@
                 {/if}
               </td>
 
-              <!-- Our Response -->
-              <td class="ct-td ct-td-response">
-                {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.consultant_response} rows="3" placeholder="Response…"></textarea>
-                {:else}
-                  {#if r.consultant_response}
-                    <span class="ct-response-text">{r.consultant_response}</span>
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
-                  {/if}
-                {/if}
-              </td>
-
-              <!-- Issued -->
-              <td class="ct-td ct-td-issued">
-                {#if editing}
-                  <label class="ct-check-label ct-check-center">
-                    <input type="checkbox" bind:checked={editForm.response_issued} />
-                  </label>
-                {:else}
-                  <button
-                    class="ct-issued-toggle"
-                    class:ct-issued-yes={r.response_issued}
-                    on:click={() => toggleResponseIssued(r)}
-                    title={r.response_issued ? 'Click to mark not issued' : 'Click to mark issued'}
-                  >
-                    {#if r.response_issued}
-                      <i class="las la-check-circle"></i> Yes
-                    {:else}
-                      <i class="las la-circle"></i> No
-                    {/if}
+              <!-- Progress (advancements) -->
+              <td class="ct-td ct-td-progress">
+                {#if r.advancements?.length}
+                  {@const sorted = sortAdvancements(r.advancements)}
+                  {@const latest = sorted[0]}
+                  <button class="ct-progress-cell" on:click={() => openTimeline(r)} title="View full progress timeline">
+                    <span class="ct-progress-date">{formatDate(latest.advancement_date)}</span>
+                    <span class="ct-progress-summary">{latest.summary.length > 90 ? latest.summary.slice(0, 90) + '…' : latest.summary}</span>
+                    <span class="ct-progress-count">{sorted.length} update{sorted.length !== 1 ? 's' : ''}</span>
                   </button>
-                {/if}
-              </td>
-
-              <!-- Follow Up -->
-              <td class="ct-td ct-td-followup">
-                {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.follow_up} rows="3" placeholder="Follow up…"></textarea>
                 {:else}
-                  {#if r.follow_up}
-                    <span class="ct-followup-text">{r.follow_up}</span>
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
-                  {/if}
+                  <button class="ct-progress-empty" on:click={() => openAddAdvancement(r.id)} title="Add first advancement">
+                    <i class="las la-plus"></i> Add
+                  </button>
                 {/if}
               </td>
 
@@ -1237,9 +1492,7 @@
   .ct-th-comments   { min-width: 220px; max-width: 320px; }
   .ct-th-discipline { min-width: 100px; }
   .ct-th-consultant { min-width: 140px; }
-  .ct-th-response   { min-width: 150px; }
-  .ct-th-issued     { min-width: 80px; text-align: center; }
-  .ct-th-followup   { min-width: 130px; }
+  .ct-th-progress   { min-width: 180px; }
   .ct-th-status     { min-width: 120px; }
   .ct-th-actions    { width: 72px; }
 
@@ -1301,8 +1554,6 @@
     vertical-align: top;
     color: #334155;
   }
-  .ct-td-issued { text-align: center; }
-
   .ct-consultee-name { font-weight: 500; color: #1e293b; }
   .ct-source-file {
     margin-left: 4px;
@@ -1310,7 +1561,282 @@
     font-size: 0.75rem;
   }
   .ct-cell-muted { color: #94a3b8; font-size: 0.78rem; }
-  .ct-response-text, .ct-followup-text { font-size: 0.78rem; white-space: pre-wrap; }
+
+  /* ── Progress cell ────────────────────────────────────────────────────────── */
+  .ct-progress-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .ct-progress-cell:hover { border-color: #93c5fd; background: #f0f9ff; }
+  .ct-progress-date {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #0284c7;
+  }
+  .ct-progress-summary {
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: #334155;
+  }
+  .ct-progress-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 100px;
+    padding: 1px 7px;
+    margin-top: 2px;
+  }
+  .ct-progress-empty {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    background: none;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .ct-progress-empty:hover { color: #0284c7; border-color: #93c5fd; background: #f0f9ff; }
+
+  /* ── Timeline drawer ─────────────────────────────────────────────────────── */
+  .tl-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 9999;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .tl-drawer {
+    background: #fff;
+    width: 100%;
+    max-width: 520px;
+    height: 100%;
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+  }
+  .tl-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 1.125rem 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+  }
+  .tl-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.4;
+  }
+  .tl-subtitle {
+    margin: 2px 0 0;
+    font-size: 0.75rem;
+    color: #94a3b8;
+  }
+  .tl-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .tl-add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border: 2px dashed #93c5fd;
+    background: white;
+    color: #0284c7;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .tl-add-btn:hover { background: #f0f9ff; border-color: #0284c7; }
+
+  .tl-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border: 1px solid #bae6fd;
+    background: #f0f9ff;
+    border-radius: 10px;
+    padding: 0.875rem;
+  }
+  .tl-add-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .tl-add-row .tl-input { flex: 1; }
+  .tl-input {
+    font-size: 0.8rem;
+    padding: 5px 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  textarea.tl-input { font-family: inherit; resize: vertical; }
+  .tl-add-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  .tl-generate-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .tl-generate-hint { font-size: 0.72rem; color: #94a3b8; }
+  .mini-spinner {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border: 2px solid #bae6fd;
+    border-top-color: #0369a1;
+    border-radius: 50%;
+    animation: adv-spin 0.6s linear infinite;
+  }
+  @keyframes adv-spin { to { transform: rotate(360deg); } }
+  .tl-error {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.78rem;
+  }
+  .tl-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: #0369a1;
+    background: #fff;
+    border: 1px solid #bae6fd;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+  }
+  .tl-empty {
+    margin: 0;
+    text-align: center;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    padding: 1rem 0;
+  }
+
+  /* Entries */
+  .tl-entries {
+    display: flex;
+    flex-direction: column;
+  }
+  .tl-entry {
+    display: flex;
+    gap: 0.75rem;
+    position: relative;
+    padding-bottom: 1.125rem;
+  }
+  .tl-entry-marker {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #0284c7;
+    flex-shrink: 0;
+    margin-top: 5px;
+    position: relative;
+    z-index: 1;
+  }
+  .tl-entry:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 14px;
+    bottom: -4px;
+    width: 2px;
+    background: #e0f2fe;
+  }
+  .tl-entry-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tl-entry-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .tl-entry-date {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  .tl-source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 100px;
+    padding: 1px 8px;
+  }
+  .tl-source-email { color: #2563eb; background: #dbeafe; }
+  .tl-entry-btns {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+    visibility: hidden;
+  }
+  .tl-entry:hover .tl-entry-btns { visibility: visible; }
+  .tl-entry-summary {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: #334155;
+    white-space: pre-wrap;
+  }
+  .tl-full-text summary {
+    font-size: 0.72rem;
+    color: #0284c7;
+    cursor: pointer;
+    user-select: none;
+  }
+  .tl-full-text-body {
+    margin: 6px 0 0;
+    padding: 0.625rem 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.74rem;
+    line-height: 1.55;
+    color: #475569;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    max-height: 320px;
+    overflow-y: auto;
+  }
 
   /* ── Discipline multi-select in table cell (compact overrides) ──────────── */
   .ct-disc-cell :global(.msd-trigger) {
@@ -1498,28 +2024,6 @@
     text-decoration: underline;
   }
 
-  /* ── Response issued toggle ──────────────────────────────────────────────── */
-  .ct-issued-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: #94a3b8;
-    background: none;
-    border: 1px solid #e2e8f0;
-    border-radius: 4px;
-    padding: 3px 8px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .ct-issued-toggle:hover { border-color: #94a3b8; }
-  .ct-issued-yes {
-    color: #16a34a;
-    background: #f0fdf4;
-    border-color: #86efac;
-  }
-
   /* ── Row action buttons ──────────────────────────────────────────────────── */
   .ct-row-btns {
     display: flex;
@@ -1577,17 +2081,6 @@
     z-index: 200;
     margin-top: 2px;
   }
-
-  .ct-check-label {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.82rem;
-    font-weight: 500;
-    color: #475569;
-    cursor: pointer;
-  }
-  .ct-check-center { justify-content: center; }
 
   /* ── Panel overlay ───────────────────────────────────────────────────────── */
   .ct-overlay {

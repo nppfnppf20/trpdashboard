@@ -89,3 +89,45 @@ export async function markConsultationIssuedToClient(projectId) {
   if (!res.ok) throw new Error('Failed to record issue to client');
   return res.json(); // { last_exported_at, last_issued_to_client_at }
 }
+
+export async function createConsultationAdvancements(projectId, { advancement_date, full_text, source_type, items }) {
+  const res = await authFetch(`/api/consultation/projects/${projectId}/advancements`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ advancement_date, full_text, source_type, items }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to save advancement');
+  }
+  return res.json(); // [advancement rows]
+}
+
+export async function suggestConsultationAdvancementSummaries(projectId, { full_text, items }) {
+  const res = await authFetch(`/api/consultation/projects/${projectId}/advancements/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ full_text, items }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to generate summaries');
+  }
+  return res.json(); // { suggestions: [{ response_id, summary }] }
+}
+
+export async function updateConsultationAdvancement(advancementId, fields) {
+  const res = await authFetch(`/api/consultation/advancements/${advancementId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) throw new Error('Failed to update advancement');
+  return res.json();
+}
+
+export async function deleteConsultationAdvancement(advancementId) {
+  const res = await authFetch(`/api/consultation/advancements/${advancementId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete advancement');
+  return res.json();
+}

@@ -198,19 +198,29 @@ async function serializeKeyIssues(projectId) {
 
 async function serializeConsultation(projectId) {
   const { rows } = await pool.query(
-    `SELECT consultee_name, date_received, position, comments, consultant_response, response_issued, follow_up
+    `SELECT id, consultee_name, date_received, position, comments, status
        FROM planning_applications.consultation_responses
       WHERE project_id = $1 ORDER BY sort_order, id`,
     [projectId]
   );
   if (!rows.length) return null;
 
-  const text = rows.map(r => [
-    `Consultee: ${r.consultee_name}${r.position ? ` — position: ${r.position}` : ''}${r.date_received ? ` (received ${fmtDate(r.date_received)})` : ''}`,
-    r.comments ? `  Comments: ${r.comments}` : null,
-    r.consultant_response ? `  Consultant response${r.response_issued ? ' (issued)' : ' (not yet issued)'}: ${r.consultant_response}` : null,
-    r.follow_up ? `  Follow-up: ${r.follow_up}` : null,
-  ].filter(Boolean).join('\n')).join('\n\n');
+  const ids = rows.map(r => r.id);
+  const { rows: advancements } = await pool.query(
+    `SELECT response_id, advancement_date, summary
+       FROM planning_applications.consultation_response_advancements
+      WHERE response_id = ANY($1) ORDER BY advancement_date, id`,
+    [ids]
+  );
+
+  const text = rows.map(r => {
+    const advs = advancements.filter(a => a.response_id === r.id);
+    return [
+      `Consultee: ${r.consultee_name}${r.position ? ` — position: ${r.position}` : ''}${r.date_received ? ` (received ${fmtDate(r.date_received)})` : ''} — status: ${r.status || 'In Progress'}`,
+      r.comments ? `  Comments: ${r.comments}` : null,
+      advs.length ? '  Progress log:\n' + advs.map(a => `    - ${fmtDate(a.advancement_date)}: ${a.summary}`).join('\n') : null,
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
 
   return { text, count: rows.length };
 }
