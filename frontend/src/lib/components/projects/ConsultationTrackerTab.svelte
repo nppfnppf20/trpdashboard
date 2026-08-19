@@ -3,14 +3,17 @@
   import '$lib/styles/buttons.css';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
-  import { exportConsultationPdf } from '$lib/services/consultationPdfExport.js';
+  import { exportConsultationCombinedPdf } from '$lib/services/consultationPdfExport.js';
+  import { getPublicCommentsData } from '$lib/api/publicComments.js';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import PublicCommentsTab from '$lib/components/projects/PublicCommentsTab.svelte';
   import BatchImportModal from '$lib/components/projects/BatchImportModal.svelte';
   import AddConsultationAdvancementModal from '$lib/components/projects/AddConsultationAdvancementModal.svelte';
+  import ExportConsultationModal from '$lib/components/projects/ExportConsultationModal.svelte';
 
   let showBatchImport = false;
+  let showExportModal = false;
 
   function positionPriority(pos) {
     const p = (pos || '').toLowerCase();
@@ -608,24 +611,13 @@
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
+  // Word and PDF share the same options modal - exportFormat tracks which
+  // button opened it so the on:export handler knows which one to run.
+  let exportFormat = 'pdf';   // 'pdf' | 'word'
 
-  async function handleExport() {
-    if (!responses.length) { alert('No responses to export.'); return; }
-    const html = buildExportHtml();
-    await exportHtmlToWord(html, buildExportFilename(project, 'Consultation Tracker'));
-    try {
-      const updated = await markConsultationExported(projectId);
-      meta = { ...meta, ...updated };
-    } catch { /* non-fatal */ }
-  }
-
-  async function handleExportPdf() {
-    if (!responses.length) { alert('No responses to export.'); return; }
-    exportConsultationPdf(project, responses);
-    try {
-      const updated = await markConsultationExported(projectId);
-      meta = { ...meta, ...updated };
-    } catch { /* non-fatal */ }
+  function openExportModal(format) {
+    exportFormat = format;
+    showExportModal = true;
   }
 
   function progressText(advancements) {
@@ -634,7 +626,7 @@
       .join('<br><br>');
   }
 
-  function buildExportHtml() {
+  function buildStatutoryTableHtml() {
     const th = (t) => `<th style="text-align:left;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;font-size:11px;font-weight:600;">${t}</th>`;
     const td = (t) => `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;">${t || ''}</td>`;
     const rows = responses.map(r => `<tr>
@@ -646,12 +638,104 @@
       ${td(r.status || '')}
     </tr>`).join('');
 
-    return `<h2>Consultation Tracker</h2>
-<p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
+    return `<h2>Statutory Consultee Tracker</h2>
 <table style="border-collapse:collapse;width:100%;">
   <thead><tr>${th('Consultee')}${th('Date Received')}${th('Position')}${th('Comments')}${th('Progress')}${th('Status')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
+  }
+
+  function buildPublicCommentsTableHtml(comments) {
+    const th = (t) => `<th style="text-align:left;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;font-size:11px;font-weight:600;">${t}</th>`;
+    const td = (t) => `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;">${t || ''}</td>`;
+    const rows = (comments || []).map(c => `<tr>
+      ${td(c.commenter_name || 'Anonymous')}
+      ${td(c.date_received ? formatDate(c.date_received) : '')}
+      ${td(c.position || '')}
+      ${td((c.comment || '').replace(/\n/g, '<br>'))}
+      ${td((c.further_info || '').replace(/\n/g, '<br>'))}
+    </tr>`).join('');
+
+    return `<h2>Public Comments</h2>
+<table style="border-collapse:collapse;width:100%;">
+  <thead><tr>${th('Name')}${th('Date')}${th('Position')}${th('Comment')}${th('Further Info')}</tr></thead>
+  <tbody>${rows}</tbody>
+</table>`;
+  }
+
+  function buildPublicCommentsAnalysisHtml(analysis) {
+    const lastRun = analysis?.last_analysed_at
+      ? `<p><em>Last run ${formatDateTime(analysis.last_analysed_at)}</em></p>`
+      : '';
+
+    if (!analysis?.bullet_summary?.length && !analysis?.themes?.length) {
+      return `<h2>Public Comments Analysis</h2>${lastRun}<p>No analysis has been run yet.</p>`;
+    }
+
+    const bullets = analysis.bullet_summary?.length
+      ? `<h3>Summary</h3><ul>${analysis.bullet_summary.map(b => `<li>${b}</li>`).join('')}</ul>`
+      : '';
+
+    let themes = '';
+    if (analysis.themes?.length) {
+      const th = (t) => `<th style="text-align:left;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;font-size:11px;font-weight:600;">${t}</th>`;
+      const td = (t) => `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;">${t || ''}</td>`;
+      const rows = analysis.themes.map(t => `<tr>
+        ${td(t.theme)}
+        ${td(t.count != null ? String(t.count) : '')}
+        ${td(t.sentiment)}
+        ${td(t.summary)}
+      </tr>`).join('');
+      themes = `<h3>Recurring Themes</h3>
+<table style="border-collapse:collapse;width:100%;">
+  <thead><tr>${th('Theme')}${th('Count')}${th('Sentiment')}${th('Summary')}</tr></thead>
+  <tbody>${rows}</tbody>
+</table>`;
+    }
+
+    return `<h2>Public Comments Analysis</h2>${lastRun}${bullets}${themes}`;
+  }
+
+  function buildCombinedExportHtml({ includeStatutory, includePublic, includeAnalysis }, { publicComments, analysis }) {
+    const sections = [];
+    if (includeStatutory) sections.push(buildStatutoryTableHtml());
+    if (includePublic) sections.push(buildPublicCommentsTableHtml(publicComments));
+    if (includeAnalysis) sections.push(buildPublicCommentsAnalysisHtml(analysis));
+
+    return `<p>Project: ${project?.site_name || ''} | Exported: ${formatDate(new Date().toISOString())}</p>
+${sections.join('<br>')}`;
+  }
+
+  async function handleExportOptions(e) {
+    const { includeStatutory, includePublic, includeAnalysis } = e.detail;
+    try {
+      let publicComments = [];
+      let analysis = null;
+      if (includePublic || includeAnalysis) {
+        const data = await getPublicCommentsData(projectId);
+        publicComments = data.comments || [];
+        analysis = data.analysis || null;
+      }
+
+      if (exportFormat === 'word') {
+        const html = buildCombinedExportHtml({ includeStatutory, includePublic, includeAnalysis }, { publicComments, analysis });
+        await exportHtmlToWord(html, buildExportFilename(project, 'Consultation Tracker'));
+      } else {
+        exportConsultationCombinedPdf(
+          project,
+          { includeStatutory, includePublic, includeAnalysis },
+          { responses, publicComments, analysis }
+        );
+      }
+      showExportModal = false;
+    } catch (err) {
+      alert('Failed to export: ' + err.message);
+      return;
+    }
+    try {
+      const updated = await markConsultationExported(projectId);
+      meta = { ...meta, ...updated };
+    } catch { /* non-fatal */ }
   }
 
   async function handleIssueToClient() {
@@ -1035,6 +1119,13 @@
   on:close={() => { showAddAdvancement = false; advPreselectId = null; }}
 />
 
+<ExportConsultationModal
+  bind:show={showExportModal}
+  format={exportFormat}
+  on:export={handleExportOptions}
+  on:close={() => showExportModal = false}
+/>
+
 <!-- ── Statutory consultees content ──────────────────────────────────────── -->
 <div class="ct-tab">
 
@@ -1067,10 +1158,10 @@
           <i class="las la-magic"></i> {summaryText ? 'Re-run Summary' : 'Summarise'}
         {/if}
       </button>
-      <button class="btn btn-secondary btn-sm" on:click={handleExport} disabled={!responses.length}>
+      <button class="btn btn-secondary btn-sm" on:click={() => openExportModal('word')}>
         <i class="las la-file-word"></i> Word
       </button>
-      <button class="btn btn-secondary btn-sm" on:click={handleExportPdf} disabled={!responses.length}>
+      <button class="btn btn-secondary btn-sm" on:click={() => openExportModal('pdf')}>
         <i class="las la-file-pdf"></i> PDF
       </button>
       <button class="btn btn-ghost btn-sm ct-issue-btn" title="Email integration coming soon" on:click={handleIssueToClient} disabled={!responses.length}>
