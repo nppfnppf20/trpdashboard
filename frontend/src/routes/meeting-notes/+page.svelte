@@ -22,7 +22,29 @@
   } from '$lib/api/meetingNotes.js';
 
   // ── Type selection ──────────────────────────────────────────────────────────
-  let meetingType = 'internal'; // 'internal' | 'cpd' | 'project'
+  // Starts unselected: the workspace below stays greyed out and inert until
+  // the user explicitly picks a type — matches the per-project Meeting
+  // Notes tab's Add Note dropdown.
+  let meetingType = ''; // '' | 'internal' | 'cpd' | 'project'
+
+  let noteTypeMenuOpen = false;
+  let noteTypeDropdownEl;
+  const noteTypeOptions = [
+    { value: 'internal', label: 'Internal Meeting', description: 'General internal team meeting' },
+    { value: 'cpd', label: 'CPD', description: 'CPD or training session' },
+    { value: 'project', label: 'Project', description: 'Meeting tied to a specific client project' }
+  ];
+  $: selectedNoteTypeOption = noteTypeOptions.find(o => o.value === meetingType) ?? null;
+
+  function handleWindowClick(e) {
+    if (noteTypeMenuOpen && noteTypeDropdownEl && !noteTypeDropdownEl.contains(e.target)) {
+      noteTypeMenuOpen = false;
+    }
+  }
+
+  function handleWindowKeydown(e) {
+    if (e.key === 'Escape' && noteTypeMenuOpen) noteTypeMenuOpen = false;
+  }
 
   // ── Project selection ───────────────────────────────────────────────────────
   let selectedProject = null;
@@ -45,6 +67,15 @@
 
   function switchType(type) {
     meetingType = type;
+    noteTypeMenuOpen = false;
+    // CPD defaults to Detailed since that's the common case, but it's just
+    // a default now — the backend no longer forces it, so the user can
+    // still pick Brief or Custom.
+    if (type === 'cpd') {
+      uploadSummaryType = 'detailed';
+    } else if (type === 'internal') {
+      uploadSummaryType = 'brief';
+    }
     if (type !== 'project') {
       selectedProject = null;
       selectedProjectIdBinding = '';
@@ -82,7 +113,7 @@
   }
 
   async function loadNotes() {
-    if (meetingType === 'project') return;
+    if (!meetingType || meetingType === 'project') return;
     notesLoading = true;
     notesError = null;
     try {
@@ -467,6 +498,8 @@
   const TYPE_COLORS = { internal: 'badge-blue', cpd: 'badge-purple', project: 'badge-teal' };
 </script>
 
+<svelte:window on:click={handleWindowClick} on:keydown={handleWindowKeydown} />
+
 <div class="mn-page">
   <a href="/" class="home-button" title="Back to Home">
     <i class="las la-home"></i>
@@ -486,30 +519,42 @@
     </div>
   </div>
 
-  <!-- Workspace (tabbed) -->
+  <!-- Workspace -->
   <div class="workspace-container">
     <div class="workspace-tabs">
-      <button
-        class="workspace-tab"
-        class:workspace-tab--active={meetingType === 'internal'}
-        on:click={() => switchType('internal')}
-      >
-        <i class="las la-users-cog"></i> Internal Meeting
-      </button>
-      <button
-        class="workspace-tab"
-        class:workspace-tab--active={meetingType === 'cpd'}
-        on:click={() => switchType('cpd')}
-      >
-        <i class="las la-graduation-cap"></i> CPD
-      </button>
-      <button
-        class="workspace-tab"
-        class:workspace-tab--active={meetingType === 'project'}
-        on:click={() => switchType('project')}
-      >
-        <i class="las la-folder-open"></i> Project
-      </button>
+      <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
+        <button
+          type="button"
+          class="mn-note-type-select"
+          class:mn-note-type-select--unset={!meetingType}
+          aria-haspopup="listbox"
+          aria-expanded={noteTypeMenuOpen}
+          on:click={() => noteTypeMenuOpen = !noteTypeMenuOpen}
+        >
+          <span>{selectedNoteTypeOption ? selectedNoteTypeOption.label : 'Select a note type…'}</span>
+          <i class="las la-{noteTypeMenuOpen ? 'angle-up' : 'angle-down'}"></i>
+        </button>
+        {#if noteTypeMenuOpen}
+          <div class="mn-note-type-menu" role="listbox">
+            {#each noteTypeOptions as opt (opt.value)}
+              <button
+                type="button"
+                class="mn-note-type-option"
+                class:mn-note-type-option--active={meetingType === opt.value}
+                role="option"
+                aria-selected={meetingType === opt.value}
+                on:click={() => switchType(opt.value)}
+              >
+                <span class="mn-note-type-option-label">{opt.label}</span>
+                <span class="mn-note-type-option-desc">{opt.description}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+      {#if !meetingType}
+        <p class="mn-type-placeholder">Choose a note type above to enable the workspace below.</p>
+      {/if}
     </div>
 
     <div class="workspace-body">
@@ -534,7 +579,9 @@
       {/if}
 
     {:else}
-      <!-- Internal / CPD workspace -->
+      <!-- Internal / CPD workspace — shown by default (greyed while unset)
+           since it's the simpler of the two non-project types. -->
+      <div class="mn-upload-form" class:mn-upload-form--disabled={!meetingType} inert={!meetingType}>
       <div class="mn-top-row">
 
         <!-- Upload card -->
@@ -542,10 +589,6 @@
           <h3 class="mn-card-title">
             Add {meetingType === 'cpd' ? 'CPD' : 'Meeting'} Notes
           </h3>
-
-          {#if meetingType === 'brief'}
-            <!-- CPD always defaults to detailed in the service, but let user pick here too -->
-          {/if}
 
           <div class="mn-type-row">
             <span class="mn-type-label">Summary</span>
@@ -559,9 +602,6 @@
               Custom
             </button>
           </div>
-          {#if meetingType === 'cpd' && uploadSummaryType === 'brief'}
-            <p class="mn-info-hint"><i class="las la-info-circle"></i> CPD records will use detailed length by default.</p>
-          {/if}
 
           <div class="mn-input-tabs">
             <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
@@ -767,6 +807,7 @@
           {/if}
         </div>
       {/if}
+      </div>
 
     {/if}
     </div><!-- end workspace-body -->
@@ -1049,32 +1090,82 @@
   }
 
   .workspace-tabs {
-    display: flex;
-    border-bottom: 2px solid #e2e8f0;
-    padding: 0 0.25rem;
+    padding: 1rem 1.5rem;
     background: #f8fafc;
+    border-bottom: 2px solid #e2e8f0;
     border-radius: 12px 12px 0 0;
   }
 
-  .workspace-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.85rem 1.25rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #64748b;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    cursor: pointer;
+  /* ── Note-type dropdown — same pattern as the per-project Meeting Notes
+     tab's Add Note selector: closed control shows just the name, the
+     open list shows a description to help pick. Nothing else in the
+     workspace is interactive until this is set. ─────────────────────── */
+  .mn-note-type-dropdown { position: relative; max-width: 360px; z-index: 5; }
+  .mn-note-type-select {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
     font-family: inherit;
-    transition: color 0.15s;
-    white-space: nowrap;
+    color: #1e293b;
+    background: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    text-align: left;
   }
-  .workspace-tab:hover { color: #1e293b; }
-  .workspace-tab--active { color: #7c3aed; border-bottom-color: #7c3aed; font-weight: 600; }
+  .mn-note-type-select:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15); }
+  /* Unset is the state that needs attention — pick me — so it gets the
+     loud styling. Once chosen, the control settles into the calmer
+     look above; the greyed-out workspace below stays the quiet part. */
+  .mn-note-type-select--unset {
+    color: #6d28d9;
+    font-weight: 700;
+    border: 1.5px solid #7c3aed;
+    background: #f5f3ff;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  }
+  .mn-note-type-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.08);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .mn-note-type-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+  }
+  .mn-note-type-option:hover { background: #f1f5f9; }
+  .mn-note-type-option--active { background: #f5f3ff; }
+  .mn-note-type-option-label { font-size: 0.85rem; font-weight: 600; color: #1e293b; }
+  .mn-note-type-option-desc { font-size: 0.75rem; color: #64748b; line-height: 1.35; }
+  .mn-type-placeholder { color: #94a3b8; font-size: 0.78rem; margin: 0.5rem 0 0; }
+
+  /* Workspace body — greyed out and inert until a note type is chosen */
+  .mn-upload-form--disabled { opacity: 0.45; filter: grayscale(0.4); }
 
   .workspace-body { padding: 1.5rem; }
 
@@ -1110,7 +1201,6 @@
 
   .mn-card-title { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin: 0; }
   .mn-process-btn { width: 100%; }
-  .mn-info-hint { font-size: 0.78rem; color: #7c3aed; margin: 0; display: flex; align-items: center; gap: 0.3rem; }
 
   .mn-latest-card-inner { display: flex; flex-direction: column; gap: 0.4rem; height: 100%; }
   .mn-latest-card-top { display: flex; align-items: center; justify-content: space-between; }

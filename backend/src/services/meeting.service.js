@@ -160,11 +160,6 @@ export async function extractInsights(transcriptText, meetingType) {
 export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null, existingOpenActions = []) {
   const systemPrompt = await buildSystemPrompt();
 
-  // CPD records always use detailed length unless the caller explicitly chose custom
-  if (meetingType === 'cpd' && summaryType === 'brief') {
-    summaryType = 'detailed';
-  }
-
   const parts = [];
 
   let lengthInstruction;

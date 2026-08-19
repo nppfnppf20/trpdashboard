@@ -586,22 +586,6 @@
     <div class="mn-error">{error}</div>
   {:else}
 
-    {#if uploadNoteType === 'briefing'}
-      <!-- Meeting Guide card -->
-      <div class="mn-guide-card">
-        <div class="mn-guide-card-left">
-          <div class="mn-guide-icon"><i class="las la-clipboard-list"></i></div>
-          <div>
-            <div class="mn-guide-title">Meeting Guide</div>
-            <div class="mn-guide-desc">Structured agenda and talking points for your pre-application briefing meeting.</div>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" on:click={() => showMeetingGuide = true}>
-          <i class="las la-clipboard-list"></i> Open Meeting Guide
-        </button>
-      </div>
-    {/if}
-
     <!-- ── Top row ────────────────────────────────────────────────────── -->
     <div class="mn-top-row">
 
@@ -848,6 +832,22 @@
       </div>
 
     </div>
+
+    {#if uploadNoteType === 'briefing'}
+      <!-- Meeting Guide card -->
+      <div class="mn-guide-card">
+        <div class="mn-guide-card-left">
+          <div class="mn-guide-icon"><i class="las la-clipboard-list"></i></div>
+          <div>
+            <div class="mn-guide-title">Meeting Guide</div>
+            <div class="mn-guide-desc">Structured agenda and talking points for your project kick off meeting.</div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" on:click={() => showMeetingGuide = true}>
+          <i class="las la-clipboard-list"></i> Open Meeting Guide
+        </button>
+      </div>
+    {/if}
 
     <!-- ── All Notes ──────────────────────────────────────────────────── -->
     <div class="mn-section mn-section-muted">
@@ -1252,17 +1252,17 @@
      dropdown (button + floating list) rather than a native <select> so
      the closed control can show just the name while the open list shows
      the full description — a native select can't split those. */
-  .mn-note-type-dropdown { position: relative; }
+  .mn-note-type-dropdown { position: relative; z-index: 5; }
   .mn-note-type-select {
     width: 100%;
     padding: 0.6rem 0.75rem;
-    border: 1.5px solid #93c5fd;
+    border: 1.5px solid #cbd5e1;
     border-radius: 6px;
     font-size: 0.85rem;
     font-weight: 600;
     font-family: inherit;
     color: #1e293b;
-    background: #eff6ff;
+    background: #f8fafc;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1271,12 +1271,15 @@
     text-align: left;
   }
   .mn-note-type-select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+  /* Unset is the state that needs attention — pick me — so it gets the
+     loud styling. Once chosen, the control settles into the calmer
+     look above; the greyed-out form below stays the quiet part. */
   .mn-note-type-select--unset {
-    color: #64748b;
-    font-weight: 500;
-    border-style: dashed;
-    border-color: #cbd5e1;
-    background: #f8fafc;
+    color: #1d4ed8;
+    font-weight: 700;
+    border: 1.5px solid #3b82f6;
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
   }
   .mn-note-type-menu {
     position: absolute;

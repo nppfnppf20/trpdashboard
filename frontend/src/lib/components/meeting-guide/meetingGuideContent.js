@@ -68,7 +68,7 @@ export function buildGuide(guide, issueTracks = []) {
     issueSections = [{
       title: `${issueSectionNumber}. ${sectionLabel}`,
       feedsLabel,
-      headerNote: `Repeat this checklist for every issue on this project (for example: heritage, ecology, daylight/sunlight, landscape and visual, agricultural land, highways and access, noise) — however many issues that turns out to be.${countNote}`,
+      headerNote: `Repeat this checklist for every issue on this project (for example: heritage, ecology, daylight/sunlight, landscape and visual, agricultural land, highways and access, noise) - however many issues that turns out to be.${countNote}`,
       questions: [
         ...examples,
         ...issueQuestions
