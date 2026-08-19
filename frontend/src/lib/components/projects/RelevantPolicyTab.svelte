@@ -274,7 +274,7 @@
     {#if showTemplates}
       <div class="templates-panel">
         {#if !projectDevTypes.length}
-          <p class="templates-hint">This project has no Development Type set — only generic (non-dev-type-specific) templates are shown below. Set a development type on the project's info page to also see dev-type-specific ones.</p>
+          <p class="templates-hint">This project has no Development Type set - only generic (non-dev-type-specific) templates are shown below. Set a development type on the project's info page to also see dev-type-specific ones.</p>
         {/if}
         {#if matchingTemplates.length === 0}
           <p class="templates-empty">No matching snippet templates.</p>

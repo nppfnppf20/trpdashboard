@@ -113,7 +113,7 @@
     </div>
   {:else}
     <p class="tab-intro">
-      Rules decide which notices are kept when syncing — notices matching no rule are discarded, so
+      Rules decide which notices are kept when syncing - notices matching no rule are discarded, so
       broadening rules only affects future syncs (re-run a backfill to pick up older notices).
       The AI prompt then reviews kept notices and marks them relevant or irrelevant.
     </p>
@@ -168,7 +168,7 @@
           <button class="btn-secondary" on:click={() => (editingPrompt = false)}>Cancel</button>
         </div>
       {:else}
-        <p class="prompt-preview">{llmPromptRule?.value || 'No prompt configured — AI review will be skipped.'}</p>
+        <p class="prompt-preview">{llmPromptRule?.value || 'No prompt configured - AI review will be skipped.'}</p>
       {/if}
     </div>
 

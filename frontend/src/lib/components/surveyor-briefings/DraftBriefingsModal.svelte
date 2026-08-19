@@ -251,9 +251,9 @@
                         {suggestion.template.template_name}
                       </span>
                     {:else if suggestion.template}
-                      <span class="general-template-pill" title="No {suggestion.discipline}-specific template exists — using the general template instead. Review before sending.">
+                      <span class="general-template-pill" title="No {suggestion.discipline}-specific template exists - using the general template instead. Review before sending.">
                         <i class="las la-exclamation-triangle"></i>
-                        Using general template — review before sending
+                        Using general template - review before sending
                       </span>
                     {:else}
                       <span class="no-template-pill">No template, email will need to be written manually</span>
@@ -427,7 +427,7 @@
             {#if ds.template}
               <div class="detail-meta">
                 <i class="las la-file-alt"></i>
-                <span>Template: {ds.template.template_name}{#if !ds.hasSpecificTemplate} (general — no {ds.discipline}-specific template exists){/if}</span>
+                <span>Template: {ds.template.template_name}{#if !ds.hasSpecificTemplate} (general - no {ds.discipline}-specific template exists){/if}</span>
               </div>
             {/if}
 

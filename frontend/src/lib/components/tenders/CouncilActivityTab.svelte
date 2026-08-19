@@ -90,7 +90,7 @@
   {:else}
     <div class="empty-state">
       <i class="las la-landmark"></i>
-      <p>No council activity yet — run a sync from the Notices tab</p>
+      <p>No council activity yet - run a sync from the Notices tab</p>
     </div>
   {/if}
 </div>

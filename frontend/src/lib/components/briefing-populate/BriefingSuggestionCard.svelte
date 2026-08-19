@@ -57,7 +57,7 @@
       >
         <option value="">No template</option>
         {#each issueTypes as it}
-          <option value={it.id}>{it.label}{it.development_type ? ` — ${it.development_type}` : ' — generic'}</option>
+          <option value={it.id}>{it.label}{it.development_type ? ` - ${it.development_type}` : ' - generic'}</option>
         {/each}
       </select>
     </div>

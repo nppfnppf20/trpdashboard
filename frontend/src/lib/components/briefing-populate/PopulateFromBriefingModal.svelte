@@ -84,7 +84,7 @@
       ...s,
       matched_issue_type_id: issueTypeId,
       reason: matched
-        ? `New issue found in briefing note — will link to "${matched.label}" template`
+        ? `New issue found in briefing note - will link to "${matched.label}" template`
         : 'New issue found in briefing note'
     } : s);
   }

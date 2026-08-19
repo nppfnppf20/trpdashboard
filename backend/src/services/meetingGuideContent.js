@@ -537,6 +537,244 @@ const HLPV_V3_TAIL_SECTIONS = [
   }
 ];
 
+// Full topic-by-topic screening checklist for solar HLPVs, based directly on
+// TRP's internal solar HLPV guidance. Replaces the generic "Constraints and
+// Opportunities" catch-all section (built from HLPV_V3_ASSESSMENT_QUESTIONS)
+// with real, solar-specific substance when the project's development_types
+// includes 'Solar' — see issueSectionTopicsByDevType / resolveIssueSectionTopics
+// below. Condensed from prose into checklist bullets to match this guide's
+// format; specifics (grades, distances, survey windows) preserved as given.
+const HLPV_V3_SOLAR_TOPIC_SECTIONS = [
+  {
+    title: 'Planning Policy',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      "Check the local plan's renewables policy — does it simply follow the NPPF (support subject to criteria) or does it add anything unusual?",
+      'Are there any planning designations affecting the site — Green Belt, site allocations, or similar?',
+      'Check nearby applications, consents and refusals for comparable schemes.'
+    ]
+  },
+  {
+    title: 'Landscape and Visual',
+    feedsLabel: 'Constraints and Opportunities — Solar (often the main issue)',
+    questions: [
+      'Landscape: any designated landscapes nearby (AONB etc.)? What is the topography, field size, land cover, and surrounding land use — large, flat, well-screened fields read better than small, undulating ones. Any existing large-scale infrastructure nearby (pylons, turbines, industrial estates) that changes the baseline?',
+      'Visual: which public viewpoints can see the site — footpaths / PRoW (high sensitivity, avoid building too close), roads and railways (lower sensitivity but still relevant)? Any private receptors (residential properties) that raise objection risk?',
+      'Longer-range views (1–3km): use OS mapping to identify likely cross-valley or long-range views and any sensitive receptors within them (designated areas, listed buildings, long-distance footpaths, settlements).',
+      'A landscape and visual impact assessment plus photomontage / CGI will almost always be needed.',
+      'Green Belt sites: any particular openness issues or conflict with the five GB purposes? Any potential very special circumstances beyond the standard climate / renewable energy case (e.g. ecological benefits, PRoW improvements)? Any other constraint compounding the GB issue (e.g. hilly terrain)?'
+    ]
+  },
+  {
+    title: 'Heritage and Archaeology',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Heritage: identify listed buildings (and grade), registered parks and gardens, or scheduled monuments on or near the site. What constitutes their setting, and is there intervisibility with the site (views, topography, vegetation, PRoW passing through)? Many rural listed buildings are farms, where the farm itself may be the setting.',
+      'Archaeology: harder to assess without specialist data — check for obvious designations such as registered battlefields (which also carry a setting). A geophysical survey may be needed.',
+      'A heritage statement and/or archaeological assessment will normally be required where assets are identified as potentially affected.'
+    ]
+  },
+  {
+    title: 'Agricultural Land',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'NPPF requires non-agricultural / previously developed land in preference to agricultural land, then lower-grade land (3b, 4, 5) in preference to higher-grade (1, 2, 3a) unless there are "most compelling" reasons otherwise.',
+      "Natural England's mapping is crude and doesn't distinguish 3a from 3b — note the likely grade and BMV risk now; a site-specific Agricultural Land Classification survey will normally be required for the application."
+    ]
+  },
+  {
+    title: 'Flood Risk',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Ideally the site sits in flood zone 1; zones 2/3 are possible for solar as "essential infrastructure" subject to the sequential and exceptions tests — recommend a feasibility study if in zone 2/3.',
+      'Where zone 3 is directly adjacent to a river, check whether it is "functional floodplain" (3b, via the Council\'s Strategic Flood Risk Assessment) — higher risk of an Environment Agency objection.',
+      'A Flood Risk Assessment will always be required (sites are normally over 0.5ha).',
+      'Also check surface water flooding — panels are typically raised around 80cm so some surface flooding is tolerable, but keep inverters and transformers out of higher-risk areas.'
+    ]
+  },
+  {
+    title: 'Ecology',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Any designated sites on or near the site — SSSI, SPA, Ramsar, SAC, LNR? These should be avoided on-site; check what they are designated for, since some (e.g. birds) can extend the relevant habitat beyond the boundary. Ramsar sites are often around estuaries and worth flagging.',
+      'Check for ponds on or within 250m of the site — great crested newt surveys may be needed (survey window is April to late June, and mitigation can be costly if found); check Magic for recent surveys and results.',
+      'A Preliminary Ecological Appraisal will always be needed, often with follow-up GCN or skylark surveys.'
+    ]
+  },
+  {
+    title: 'Drinking Water and Source Protection',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Ideally avoid Source Protection Zones 1 and 2 (most sensitive); Safeguard Zones are less sensitive but still need extra pollution control measures.',
+      'Check with the client whether the proposed solar / BESS equipment contains PFAS — some water companies now require confirmation that panels and electrical equipment are PFAS-free.'
+    ]
+  },
+  {
+    title: 'Transport',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Operational traffic is negligible — the focus is construction traffic. Is access from the trunk road network suitable (few tight bends, no narrow sections, avoiding small villages), and is access to the fields themselves straightforward? Rarely a showstopper.',
+      'A Construction Traffic Management Plan is normally commissioned for the application.'
+    ]
+  },
+  {
+    title: 'Aviation and Glint & Glare',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Rarely a major issue since panels are designed to absorb rather than reflect light — but note proximity to obviously sensitive receptors such as airports or airfields.'
+    ]
+  },
+  {
+    title: 'Noise and Amenity',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Panels themselves are silent; transformers and inverters produce some daytime operational noise. Battery storage (BESS), if included, can be noisier and operate at night — more sensitive in quiet rural locations. Rule of thumb: unlikely to be an issue beyond around 250m from a receptor.'
+    ]
+  },
+  {
+    title: 'Trees',
+    feedsLabel: 'Constraints and Opportunities — Solar',
+    questions: [
+      'Layouts are almost always kept within existing field boundaries to avoid hedge / tree loss. Where trees need removing or pruning (e.g. for access), a tree survey may be required — form an initial view from aerial photography / Street View; note a topo survey (not Lidar or drone) will be needed if a tree survey proceeds.'
+    ]
+  },
+  {
+    title: 'Survey Requirements',
+    feedsLabel: 'Constraints and Opportunities — Solar, typical survey needs for the application',
+    questions: [
+      'Always needed: Landscape and Visual Impact Assessment; Preliminary Ecological Appraisal (plus any follow-up protected species surveys); Flood Risk Assessment.',
+      'Usually needed: archaeology and/or heritage assessment; Agricultural Land Classification survey; Construction Traffic Management Plan.',
+      'Sometimes needed: glint and glare assessment; noise assessment; contaminated land assessment.'
+    ]
+  }
+];
+
+// Full topic-by-topic screening checklist for urban-site HLPVs, based
+// directly on TRP's internal Urban Site HLPV process note. Applied to
+// Residential, Co-Living, Commercial, Mixed Use, Industrial and Change of
+// Use — the non-renewable dev types where the site sits in a settled/urban
+// context. Deliberately NOT applied to Agricultural (rural context, not
+// urban despite being non-renewable) or Other (no fixed profile) — see
+// issueSectionTopicsByDevType below. As with Solar, the source note's
+// opening "Overall Approach" (internal methodology) and closing "Output of
+// the Assessment" (drafting guidance for the finished document, already
+// covered by the Overall Preliminary View base section) aren't meeting
+// questions, so aren't included as their own sections here.
+const HLPV_V3_URBAN_TOPIC_SECTIONS = [
+  {
+    title: 'Site Allocations & Growth Area Context',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'Is the site specifically allocated, or within a growth, opportunity, regeneration or town-centre area?',
+      'Is it subject to any site-specific development guidance?',
+      'Where an allocation exists, what does it indicate for acceptable uses, development capacity, height and massing, access, public realm requirements, and site-specific constraints? Allocations often carry significant weight in establishing the principle of development.'
+    ]
+  },
+  {
+    title: 'Existing Use & Lawful Planning Position',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'What is the current lawful planning use of the site — from planning history, officer reports, decision notices, existing consents, or lawful development certificates?',
+      "Where lawful use can't be conclusively established, what working assumption is being made, and what evidence supports it? Flag it clearly as an assumption, not a confirmed fact."
+    ]
+  },
+  {
+    title: 'Principle of Development & Use Acceptability',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'Is the proposed use, or mix of uses, supported by strategic policy, the Local Plan, and any site allocation?',
+      'Does the existing use carry any policy protection, and is the proposal compatible with surrounding uses?',
+      'Are there any policy restrictions or land-use designations that count against it?',
+      "Where the use isn't clearly supported: which elements are problematic, would an alternative use be more policy-compliant, and could planning benefits help address the conflict?"
+    ]
+  },
+  {
+    title: 'Policy Framework',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'Which parts of the statutory development plan are actually relevant here — London Plan or equivalent strategic policy, Local Plan policies, SPDs, site allocations, emerging policy?',
+      "Where policies pull in different directions, what's the read on how that should be weighed?"
+    ]
+  },
+  {
+    title: 'Planning History and Lawful Fallback',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'For any previous consent on the site: was permission granted, was any Section 106 agreement completed, was it implemented, and does it establish a lawful fallback position?'
+    ]
+  },
+  {
+    title: 'Housing Delivery, 5YHLS & Tilted Balance',
+    feedsLabel: 'Constraints and Opportunities — Urban, residential / mixed-use schemes with a housing component only',
+    questions: [
+      'Does the LPA currently have a compliant five-year housing land supply, and is it passing the Housing Delivery Test? If not, the tilted balance may apply, affording greater weight to the benefits of housing in the planning balance.'
+    ]
+  },
+  {
+    title: 'Constraints, Height & Designations',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'What initial view can be formed on height, massing and site capacity — informed by allocation guidance, surrounding townscape, and nearby approved schemes?',
+      'Which constraints actually apply here: heritage, townscape, ecology and trees, amenity, transport and access, flood risk, contaminated land, air quality, noise, utilities and servicing?',
+      'Which of these are design-led and manageable, and which could materially affect the principle or deliverability of the scheme?'
+    ]
+  },
+  {
+    title: 'Amenity',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      "What's the likely impact on existing neighbours — daylight and sunlight, privacy and overlooking, noise, outlook, sense of enclosure?",
+      "What's the likely quality of accommodation for future occupiers — noise, air quality, access to light, relationship with neighbouring uses?"
+    ]
+  },
+  {
+    title: 'Transport & Highways',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      "What's the public transport accessibility — in London, the PTAL rating — and does it support a car-free or low-car approach?",
+      'What are the likely car parking expectations, servicing / delivery access, and pedestrian / cycle access?',
+      'Any highway safety concerns, and how does the scheme sit against local and strategic transport policy?'
+    ]
+  },
+  {
+    title: 'Surveys & Technical Work',
+    feedsLabel: 'Constraints and Opportunities — Urban, typical survey needs for the application',
+    questions: [
+      "Which of the following are likely needed, given the site's location, condition, surrounding uses and proposed development: ecology; arboriculture / trees; heritage; archaeology; townscape and visual impact; daylight and sunlight; highways and transport; flood risk and drainage; contaminated land; noise; air quality?"
+    ]
+  },
+  {
+    title: 'Nearby Consents and Appeals',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'Are there comparable nearby permissions or appeals — similar sites, similar uses, similar designations or constraints — that show how the LPA has interpreted policy in practice? What was the officer reasoning or appeal outcome?'
+    ]
+  },
+  {
+    title: 'CIL & PIL',
+    feedsLabel: 'Constraints and Opportunities — Urban',
+    questions: [
+      'Is the LPA a CIL charging authority? In London, does Mayoral CIL apply, and does Borough CIL also apply? What does the relevant charging schedule say?',
+      'Are there any PIL requirements to confirm where relevant?'
+    ]
+  }
+];
+
+// Wind and Synchronous condensers don't have their own written checklist —
+// reuse the Solar one (same land-take/rural-siting screening logic broadly
+// applies) but flagged with a caveat, since several Solar-specific points
+// (agricultural land grading, glint and glare, panel-specific noise) won't
+// map cleanly onto a turbine or grid-infrastructure scheme. Caveat attaches
+// to the first section only, not every one, to avoid repeating it 12 times.
+function withLeadingCaveat(sections, note) {
+  return sections.map((s, i) => i === 0 ? { ...s, headerNote: note } : s);
+}
+
+const HLPV_V3_SOLAR_CHECKLIST_WITH_CAVEAT = withLeadingCaveat(
+  HLPV_V3_SOLAR_TOPIC_SECTIONS,
+  'This checklist is written for solar development — it’s the closest fit we have, but not every point will be relevant here. Use judgement on which apply and skip the rest.'
+);
+
 export const DOC_TYPE_GUIDES = {
   planning_statement_v3: {
     label: 'Planning Statement',
@@ -563,6 +801,17 @@ export const DOC_TYPE_GUIDES = {
     issueSectionLabel: 'Constraints and Opportunities',
     issueSectionFeedsLabel: 'Constraints and Opportunities rows (per issue) — further work can only come from this meeting',
     issueSectionExamplesByDevType: HLPV_V3_DEV_TYPE_EXAMPLES,
+    issueSectionTopicsByDevType: {
+      Solar: HLPV_V3_SOLAR_TOPIC_SECTIONS,
+      Wind: HLPV_V3_SOLAR_CHECKLIST_WITH_CAVEAT,
+      'Synchronous condensers': HLPV_V3_SOLAR_CHECKLIST_WITH_CAVEAT,
+      Residential: HLPV_V3_URBAN_TOPIC_SECTIONS,
+      'Co-Living': HLPV_V3_URBAN_TOPIC_SECTIONS,
+      Commercial: HLPV_V3_URBAN_TOPIC_SECTIONS,
+      'Mixed Use': HLPV_V3_URBAN_TOPIC_SECTIONS,
+      Industrial: HLPV_V3_URBAN_TOPIC_SECTIONS,
+      'Change of Use': HLPV_V3_URBAN_TOPIC_SECTIONS,
+    },
     tailSections: HLPV_V3_TAIL_SECTIONS,
   }
 };
@@ -588,9 +837,30 @@ function resolveIssueSectionExamples(config, developmentTypes) {
 }
 
 /**
+ * Resolve full topic sections for the issue slot (e.g. hlpv_v3's Solar and
+ * Urban checklists) — real, substantive, dev-type-specific guidance rather
+ * than a one-line example. When a match exists, these REPLACE the generic
+ * single issue section entirely (avoids showing a generic catch-all
+ * alongside genuinely differentiated content for the same slot). Returns []
+ * when no dev type matches, so callers fall back to the generic single
+ * section.
+ *
+ * Several dev types share the same underlying section array (e.g.
+ * Residential and Commercial both point at HLPV_V3_URBAN_TOPIC_SECTIONS) —
+ * dedupe by array identity first, so a project with both set doesn't get
+ * the shared checklist twice.
+ */
+function resolveIssueSectionTopics(config, developmentTypes) {
+  if (!config?.issueSectionTopicsByDevType) return [];
+  const map = config.issueSectionTopicsByDevType;
+  const matchedArrays = [...new Set((developmentTypes ?? []).map(dt => map[dt]).filter(Boolean))];
+  return matchedArrays.flatMap(arr => arr);
+}
+
+/**
  * Resolve the guide content for a doc type, falling back to the generic
  * guide. developmentTypes: the project's development_types (plural) —
- * only consulted by doc types whose issue-section examples vary by dev
+ * only consulted by doc types whose issue-section content varies by dev
  * type (currently just hlpv_v3); ignored otherwise.
  */
 export function getGuideContent(docTypeSlug, developmentTypes = []) {
@@ -603,6 +873,7 @@ export function getGuideContent(docTypeSlug, developmentTypes = []) {
       issueSectionLabel: 'Key Issues',
       issueSectionFeedsLabel: 'Issue working notes, HLPV, planning statement assessment',
       issueSectionExamples: [],
+      issueSectionTopics: [],
       tailSections: TAIL_SECTIONS,
     };
   }
@@ -613,6 +884,7 @@ export function getGuideContent(docTypeSlug, developmentTypes = []) {
     issueSectionLabel: override.issueSectionLabel ?? 'Key Issues',
     issueSectionFeedsLabel: override.issueSectionFeedsLabel ?? 'Issue working notes, HLPV, planning statement assessment',
     issueSectionExamples: resolveIssueSectionExamples(override, developmentTypes),
+    issueSectionTopics: resolveIssueSectionTopics(override, developmentTypes),
     tailSections: override.tailSections ?? TAIL_SECTIONS,
   };
 }

@@ -631,7 +631,7 @@
                 {:else}
                   <span class:text-bold={track.is_key_issue}>{track.label || '—'}</span>
                   {#if track.issue_type_label}
-                    <span class="issue-type-badge" title="Linked snippet template">{track.issue_type_label}{track.issue_type_development_type ? ` — ${track.issue_type_development_type}` : ''}</span>
+                    <span class="issue-type-badge" title="Linked snippet template">{track.issue_type_label}{track.issue_type_development_type ? ` - ${track.issue_type_development_type}` : ''}</span>
                   {/if}
                 {/if}
                 {#if issueTypePickerTrackId === track.id}
@@ -644,7 +644,7 @@
                   >
                     <option value="">No issue type</option>
                     {#each issueTypes as it}
-                      <option value={it.id}>{it.label}{it.development_type ? ` — ${it.development_type}` : ''}</option>
+                      <option value={it.id}>{it.label}{it.development_type ? ` - ${it.development_type}` : ''}</option>
                     {/each}
                   </select>
                 {/if}

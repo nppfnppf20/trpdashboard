@@ -110,7 +110,7 @@
     <div class="context-meter">
       <div class="context-meter-label">
         ~{contextPct}% of context window used
-        {#if overBudget}<span class="context-warning">— untick some sources to make room</span>{/if}
+        {#if overBudget}<span class="context-warning">- untick some sources to make room</span>{/if}
       </div>
       <div class="context-track">
         <div class="context-fill" style="width:{contextPct}%; background:{contextColour};"></div>

@@ -10,12 +10,12 @@
   const STATUS_LABEL = {
     configurable: null,
     claude_only: 'Not yet configurable',
-    background: 'Background job — no per-request override',
+    background: 'Background job - no per-request override',
   };
   const STATUS_ORDER = { configurable: 0, claude_only: 1, background: 2 };
   const GROUP_LABEL = {
     configurable: 'Configurable now',
-    claude_only: 'Not yet configurable — hardcoded to Claude',
+    claude_only: 'Not yet configurable - hardcoded to Claude',
     background: 'Background jobs',
   };
 
@@ -66,7 +66,7 @@
     <h2><i class="las la-robot"></i> AI Providers</h2>
     <p>
       Sets the default LLM provider for each AI-assisted process. Some pages have their own
-      provider toggle for a single session — that always wins over this default until the
+      provider toggle for a single session - that always wins over this default until the
       browser is refreshed, after which it falls back to whatever is set here.
     </p>
   </div>

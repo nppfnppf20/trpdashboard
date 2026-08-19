@@ -338,7 +338,7 @@ export let selectedProject;
         <NoteSourcePicker
           bind:this={sourcePicker}
           projectUniqueId={selectedProject?.unique_id}
-          hint="Tick any briefing notes and meeting notes to use as source material — leave everything unticked to use the latest briefing note automatically."
+          hint="Tick any briefing notes and meeting notes to use as source material - leave everything unticked to use the latest briefing note automatically."
           bind:selectedSources={setupSources}
           bind:overBudget={setupOverBudget}
         />

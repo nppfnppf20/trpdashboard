@@ -591,33 +591,37 @@
     return Object.entries(tlAddReqIds).filter(([, on]) => on).map(([id]) => parseInt(id, 10));
   }
 
+  $: tlCanGenerate = !tlAddForm.summary.trim() && tlAddForm.full_text.trim().length > 0;
+  $: tlCanSave = tlAddForm.summary.trim().length > 0;
+
+  // Fill the blank summary from the source text (wording, reason and previous
+  // advancements are read server-side). No-ops once a summary is typed.
+  async function generateTlSummary() {
+    if (tlAddForm.summary.trim() || !tlAddForm.full_text.trim()) return;
+    tlAddGenerating = true;
+    tlAddError = null;
+    try {
+      const { suggestions } = await suggestConditionAdvancementSummaries(projectId, {
+        full_text: tlAddForm.full_text,
+        items: [{ condition_id: timelineConditionId, user_summary: null, requirement_ids: tlSelectedReqIds() }],
+      });
+      if (suggestions[0]?.summary) {
+        tlAddForm = { ...tlAddForm, summary: suggestions[0].summary };
+        tlAddGenerated = true;
+      } else {
+        tlAddError = 'Could not generate a summary - please type one.';
+      }
+    } catch (err) {
+      tlAddError = err.message;
+    } finally {
+      tlAddGenerating = false;
+    }
+  }
+
   async function saveTlAdd() {
-    // Blank summary: generate one from the source text (wording, reason and
-    // previous advancements are read server-side), then let the user confirm.
     if (!tlAddForm.summary.trim()) {
-      if (!tlAddForm.full_text.trim()) {
-        tlAddError = 'Type a summary, or paste the email trail / note text so one can be generated.';
-        return;
-      }
-      tlAddGenerating = true;
-      tlAddError = null;
-      try {
-        const { suggestions } = await suggestConditionAdvancementSummaries(projectId, {
-          full_text: tlAddForm.full_text,
-          items: [{ condition_id: timelineConditionId, user_summary: null, requirement_ids: tlSelectedReqIds() }],
-        });
-        if (suggestions[0]?.summary) {
-          tlAddForm = { ...tlAddForm, summary: suggestions[0].summary };
-          tlAddGenerated = true;
-        } else {
-          tlAddError = 'Could not generate a summary — please type one.';
-        }
-      } catch (err) {
-        tlAddError = err.message;
-      } finally {
-        tlAddGenerating = false;
-      }
-      return; // review the generated summary, then Save again
+      tlAddError = 'Type a summary, or use Generate & Fill Summary below.';
+      return;
     }
 
     tlAddSaving = true;
@@ -989,7 +993,7 @@
                 <div class="tl-quote-keydates">
                   <span class="tl-quote-keydates-label">Key dates</span>
                   {#each q.key_dates as kd (kd.id)}
-                    <span class="tl-quote-keydate">{kd.title} — {formatDate(kd.date)}</span>
+                    <span class="tl-quote-keydate">{kd.title} - {formatDate(kd.date)}</span>
                   {/each}
                 </div>
               {/if}
@@ -1057,17 +1061,33 @@
               </div>
             {/if}
             <textarea class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
-              placeholder="Summary — leave blank to auto-summarise from the text below…"></textarea>
+              placeholder="Summary - leave blank to auto-summarise from the text below…"></textarea>
             <textarea class="form-input tl-input" rows="5" bind:value={tlAddForm.full_text}
               placeholder={tlAddForm.source_type === 'email' ? 'Paste the email trail here…' : 'Fuller detail…'}></textarea>
+            <div class="tl-generate-row">
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                on:click={generateTlSummary}
+                disabled={!tlCanGenerate || tlAddGenerating || tlAddSaving}
+              >
+                {#if tlAddGenerating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Summary{/if}
+              </button>
+              <span class="tl-generate-hint">Fills the summary above from this text - leave it if you've already typed one</span>
+            </div>
             {#if tlAddGenerated}
-              <div class="tl-notice"><i class="las la-magic"></i> Summary generated — review or edit it, then Save.</div>
+              <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
             {/if}
             {#if tlAddError}<div class="tl-error">{tlAddError}</div>{/if}
             <div class="tl-add-btns">
               <button class="btn btn-ghost btn-sm" on:click={() => showTlAdd = false} disabled={tlAddSaving || tlAddGenerating}>Cancel</button>
-              <button class="btn btn-primary btn-sm" on:click={saveTlAdd} disabled={tlAddSaving || tlAddGenerating}>
-                {#if tlAddGenerating}Summarising…{:else if tlAddSaving}Saving…{:else if tlAddGenerated}Confirm & Save{:else}Save Advancement{/if}
+              <button
+                class="btn btn-primary btn-sm"
+                on:click={saveTlAdd}
+                disabled={tlAddSaving || tlAddGenerating || !tlCanSave}
+                title={!tlCanSave ? 'Type a summary or generate one first' : ''}
+              >
+                {tlAddSaving ? 'Saving…' : 'Save Advancement'}
               </button>
             </div>
           </div>
@@ -1245,7 +1265,7 @@
     <div class="ct-empty">
       <i class="las la-clipboard-list ct-empty-icon"></i>
       <p class="ct-empty-title">No conditions yet</p>
-      <p class="ct-empty-hint">Add the conditions from the decision notice — several at once, one per row.</p>
+      <p class="ct-empty-hint">Add the conditions from the decision notice - several at once, one per row.</p>
       <button class="btn btn-primary btn-sm" on:click={() => showAddConditions = true}><i class="las la-plus"></i> Add Conditions</button>
     </div>
   {:else}
@@ -1273,7 +1293,7 @@
             </th>
             <th class="ct-th ct-th-wording">Condition Wording</th>
             <th class="ct-th ct-th-reason">Reason</th>
-            <th class="ct-th ct-th-req" title="Where applicable — split a condition into its separate parts">Separated Condition Requirements</th>
+            <th class="ct-th ct-th-req" title="Where applicable - split a condition into its separate parts">Separated Condition Requirements</th>
             <th class="ct-th ct-th-reqtype">Req. Type</th>
             <th class="ct-th ct-th-reqstatus">Req. Status</th>
             <th class="ct-th ct-th-initial">TRP Internal Notes</th>
@@ -2067,6 +2087,18 @@
     justify-content: flex-end;
     gap: 0.5rem;
   }
+  .tl-generate-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .tl-generate-hint { font-size: 0.72rem; color: #94a3b8; }
+  .mini-spinner {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border: 2px solid #bae6fd;
+    border-top-color: #0369a1;
+    border-radius: 50%;
+    animation: adv-spin 0.6s linear infinite;
+  }
+  @keyframes adv-spin { to { transform: rotate(360deg); } }
   .tl-error {
     background: #fee2e2;
     color: #b91c1c;

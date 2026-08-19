@@ -713,7 +713,7 @@
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>Brief <span class="mn-type-sub">· 1 page</span></button>
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>Detailed <span class="mn-type-sub">· 3-4 pages</span></button>
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>Custom</button>
-          <select class="mn-provider-select" bind:value={uploadProvider} title="AI model used to generate this summary — Default uses the AI Providers admin setting">
+          <select class="mn-provider-select" bind:value={uploadProvider} title="AI model used to generate this summary - Default uses the AI Providers admin setting">
             <option value="">Default</option>
             <option value="anthropic">Claude</option>
             <option value="openai">GPT-5.6</option>

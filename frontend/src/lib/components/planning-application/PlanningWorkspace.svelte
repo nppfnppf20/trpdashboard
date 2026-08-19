@@ -844,7 +844,7 @@
                         {/each}
                       </select>
                     {/if}
-                    <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft — Default uses the AI Providers admin setting">
+                    <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft - Default uses the AI Providers admin setting">
                       <option value="">Default</option>
                       <option value="anthropic">Claude</option>
                       <option value="openai">GPT-5.6</option>
@@ -876,7 +876,7 @@
                       {/if}
                     </div>
                   {:else}
-                  <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft — Default uses the AI Providers admin setting">
+                  <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft - Default uses the AI Providers admin setting">
                     <option value="">Default</option>
                     <option value="anthropic">Claude</option>
                     <option value="openai">GPT-5.6</option>

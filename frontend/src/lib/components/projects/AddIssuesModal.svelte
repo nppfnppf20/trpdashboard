@@ -100,7 +100,7 @@
               </div>
               <div class="bulk-form-row">
                 <div class="field">
-                  <label>Sub-issues <span class="label-hint">optional — separate parts of this issue</span></label>
+                  <label>Sub-issues <span class="label-hint">optional - separate parts of this issue</span></label>
                   {#each row.sub_issues as _, si}
                     <div class="req-row">
                       <input type="text" bind:value={row.sub_issues[si]} placeholder="e.g. Impact on the listed barn's roofline" />

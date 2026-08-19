@@ -386,7 +386,7 @@
             {:else if precomputedCheck.status === 'ready' && !precomputedCheck.apiResult}
               <div class="check-status check-skipped">
                 <i class="las la-info-circle"></i>
-                Briefing note check skipped — no "Scope of Work" section found in this template
+                Briefing note check skipped - no "Scope of Work" section found in this template
               </div>
             {:else if precomputedCheck.status === 'ready' && precomputedCheck.apiResult.hasChanges}
               <div class="check-status check-applied">
@@ -396,7 +396,7 @@
             {:else if precomputedCheck.status === 'ready'}
               <div class="check-status check-none">
                 <i class="las la-check"></i>
-                Briefing note checked — nothing to add beyond the standard scope
+                Briefing note checked - nothing to add beyond the standard scope
               </div>
             {/if}
           {/if}
@@ -452,7 +452,7 @@
           {/if}
         </button>
         {#if stepTotal > 1}
-          <button class="btn btn-send-all" disabled title="Coming soon — send every drafted email in one go">
+          <button class="btn btn-send-all" disabled title="Coming soon - send every drafted email in one go">
             <i class="las la-paper-plane"></i> Send All
             <span class="soon-badge">Coming soon</span>
           </button>

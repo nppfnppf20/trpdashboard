@@ -520,34 +520,37 @@
     return Object.entries(tlAddSubIds).filter(([, on]) => on).map(([id]) => parseInt(id, 10));
   }
 
+  $: tlCanGenerate = !tlAddForm.summary.trim() && tlAddForm.full_text.trim().length > 0;
+  $: tlCanSave = tlAddForm.summary.trim().length > 0;
+
+  // Fill the blank summary from the pasted text (issue title/discipline and
+  // previous actions are read server-side). No-ops once a summary is typed.
+  async function generateTlSummary() {
+    if (tlAddForm.summary.trim() || !tlAddForm.full_text.trim()) return;
+    tlAddGenerating = true;
+    tlAddError = null;
+    try {
+      const { suggestions } = await suggestActionSummaries(projectId, {
+        full_text: tlAddForm.full_text,
+        items: [{ issue_id: timelineIssueId, user_summary: null }],
+      });
+      if (suggestions[0]?.summary) {
+        tlAddForm = { ...tlAddForm, summary: suggestions[0].summary };
+        tlAddGenerated = true;
+      } else {
+        tlAddError = 'Could not generate a summary - please type one.';
+      }
+    } catch (err) {
+      tlAddError = err.message;
+    } finally {
+      tlAddGenerating = false;
+    }
+  }
+
   async function saveTlAdd() {
-    // Blank summary: generate one from the pasted text (issue title/discipline
-    // and previous actions are read server-side), then let the user confirm —
-    // same two-step flow as Conditions Tracker's drawer.
     if (!tlAddForm.summary.trim()) {
-      if (!tlAddForm.full_text.trim()) {
-        tlAddError = 'Type a summary, or paste the email trail / note text so one can be generated.';
-        return;
-      }
-      tlAddGenerating = true;
-      tlAddError = null;
-      try {
-        const { suggestions } = await suggestActionSummaries(projectId, {
-          full_text: tlAddForm.full_text,
-          items: [{ issue_id: timelineIssueId, user_summary: null }],
-        });
-        if (suggestions[0]?.summary) {
-          tlAddForm = { ...tlAddForm, summary: suggestions[0].summary };
-          tlAddGenerated = true;
-        } else {
-          tlAddError = 'Could not generate a summary — please type one.';
-        }
-      } catch (err) {
-        tlAddError = err.message;
-      } finally {
-        tlAddGenerating = false;
-      }
-      return; // review the generated summary, then Save again
+      tlAddError = 'Type a summary, or use Generate & Fill Summary below.';
+      return;
     }
 
     tlAddSaving = true;
@@ -750,7 +753,7 @@
                 <div class="tl-quote-keydates">
                   <span class="tl-quote-keydates-label">Key dates</span>
                   {#each q.key_dates as kd (kd.id)}
-                    <span class="tl-quote-keydate">{kd.title} — {formatDate(kd.date)}</span>
+                    <span class="tl-quote-keydate">{kd.title} - {formatDate(kd.date)}</span>
                   {/each}
                 </div>
               {/if}
@@ -841,17 +844,33 @@
               </div>
             {/if}
             <textarea class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
-              placeholder="Summary — leave blank to auto-summarise from the text below…"></textarea>
+              placeholder="Summary - leave blank to auto-summarise from the text below…"></textarea>
             <textarea class="form-input tl-input" rows="4" bind:value={tlAddForm.full_text}
-              placeholder="Fuller detail — paste an email trail, notes, whatever you've got…"></textarea>
+              placeholder="Fuller detail - paste an email trail, notes, whatever you've got…"></textarea>
+            <div class="tl-generate-row">
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                on:click={generateTlSummary}
+                disabled={!tlCanGenerate || tlAddGenerating || tlAddSaving}
+              >
+                {#if tlAddGenerating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Summary{/if}
+              </button>
+              <span class="tl-generate-hint">Fills the summary above from this text - leave it if you've already typed one</span>
+            </div>
             {#if tlAddGenerated}
-              <div class="tl-notice"><i class="las la-magic"></i> Summary generated — review or edit it, then Save.</div>
+              <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
             {/if}
             {#if tlAddError}<div class="tl-error">{tlAddError}</div>{/if}
             <div class="tl-add-btns">
               <button class="btn btn-ghost btn-sm" on:click={() => showTlAdd = false} disabled={tlAddSaving || tlAddGenerating}>Cancel</button>
-              <button class="btn btn-primary btn-sm" on:click={saveTlAdd} disabled={tlAddSaving || tlAddGenerating}>
-                {#if tlAddGenerating}Summarising…{:else if tlAddSaving}Saving…{:else if tlAddGenerated}Confirm & Save{:else}Save Advancement{/if}
+              <button
+                class="btn btn-primary btn-sm"
+                on:click={saveTlAdd}
+                disabled={tlAddSaving || tlAddGenerating || !tlCanSave}
+                title={!tlCanSave ? 'Type a summary or generate one first' : ''}
+              >
+                {tlAddSaving ? 'Saving…' : 'Save Advancement'}
               </button>
             </div>
           </div>
@@ -1424,6 +1443,8 @@
   .tl-req-check { display: flex; align-items: flex-start; gap: 0.4rem; font-size: 0.78rem; color: #334155; cursor: pointer; }
   .tl-add-btns { display: flex; justify-content: flex-end; gap: 0.5rem; }
   .tl-notice { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: #0369a1; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 0.5rem 0.6rem; }
+  .tl-generate-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .tl-generate-hint { font-size: 0.72rem; color: #94a3b8; }
   .tl-error { font-size: 0.78rem; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 0.4rem 0.6rem; }
   .tl-empty { color: #94a3b8; font-size: 0.85rem; text-align: center; padding: 1rem 0; }
 

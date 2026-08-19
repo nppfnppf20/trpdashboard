@@ -275,7 +275,7 @@
   {:else}
     <div class="empty-state">
       <i class="las la-inbox"></i>
-      <p>No notices found — try a sync, or loosen the filters</p>
+      <p>No notices found - try a sync, or loosen the filters</p>
     </div>
   {/if}
 </div>

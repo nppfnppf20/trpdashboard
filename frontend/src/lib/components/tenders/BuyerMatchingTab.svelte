@@ -62,7 +62,7 @@
   {:else if buyers.length > 0}
     <p class="tab-intro">
       These buyers couldn't be automatically matched to a council. Many are legitimately not councils
-      (NHS trusts, universities, government departments) — leave those unmatched. Where a buyer <em>is</em>
+      (NHS trusts, universities, government departments) - leave those unmatched. Where a buyer <em>is</em>
       a council (or a body you want tracked against one, like a development corporation), pick it and match:
       existing and future notices from that buyer will be linked automatically.
     </p>
@@ -112,7 +112,7 @@
   {:else}
     <div class="empty-state">
       <i class="las la-check-circle"></i>
-      <p>No unmatched buyers — everything stored is linked or intentionally unlinked</p>
+      <p>No unmatched buyers - everything stored is linked or intentionally unlinked</p>
     </div>
   {/if}
 </div>

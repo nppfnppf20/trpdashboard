@@ -46,6 +46,17 @@
   }
 
   $: checkedCount = Object.values(selections).filter(s => s.checked).length;
+  $: hasBlankChecked = conditions.some(c => selections[c.id]?.checked && !selections[c.id].summary.trim());
+  $: canGenerate = hasBlankChecked && fullText.trim().length > 0;
+  $: canSave = checkedCount > 0 && !hasBlankChecked;
+  $: allChecked = conditions.length > 0 && conditions.every(c => selections[c.id]?.checked);
+
+  function toggleSelectAll() {
+    const next = !allChecked;
+    const updated = {};
+    for (const c of conditions) updated[c.id] = { ...selections[c.id], checked: next };
+    selections = updated;
+  }
 
   function conditionLabel(c) {
     return `${c.condition_number ? c.condition_number + '. ' : ''}${c.title}`;
@@ -100,8 +111,8 @@
     };
   }
 
-  async function save() {
-    const items = conditions
+  function buildItems() {
+    return conditions
       .filter(c => selections[c.id]?.checked)
       .map(c => ({
         condition_id: c.id,
@@ -111,56 +122,59 @@
           .map(([id]) => parseInt(id, 10)),
         quote_id: selections[c.id].quoteId || null,
       }));
+  }
+
+  // Fill blank ticked rows from the pasted text (condition wording, reason and
+  // previous advancements are read server-side). Typed summaries are left
+  // untouched — they take precedence. The model only fills blanks for
+  // conditions the text actually contains relevant new information for.
+  async function generateSummaries() {
+    const items = buildItems();
+    const blanks = items.filter(i => !i.summary);
+    if (!blanks.length || !fullText.trim()) return;
+
+    // Already generated for this exact text — don't hit the API again, just
+    // refresh which ticked rows are still unresolved.
+    if (fullText === lastGeneratedText) {
+      skippedLabels = conditions.filter(c => blanks.some(b => b.condition_id === c.id)).map(conditionLabel);
+      return;
+    }
+
+    generating = true;
+    error = null;
+    try {
+      const { suggestions } = await suggestConditionAdvancementSummaries(projectId, {
+        full_text: fullText,
+        items: items.map(i => ({
+          condition_id: i.condition_id,
+          user_summary: i.summary || null,
+          requirement_ids: i.requirement_ids,
+        })),
+      });
+      for (const s of suggestions) {
+        if (selections[s.condition_id]?.checked && !selections[s.condition_id].summary.trim()) {
+          selections[s.condition_id] = { ...selections[s.condition_id], summary: s.summary };
+        }
+      }
+      selections = { ...selections };
+      skippedLabels = conditions
+        .filter(c => selections[c.id]?.checked && !selections[c.id].summary.trim())
+        .map(conditionLabel);
+      lastGeneratedText = fullText;
+      generatedNotice = true;
+    } catch (err) {
+      error = err.message;
+    } finally {
+      generating = false;
+    }
+  }
+
+  async function save() {
+    const items = buildItems();
 
     if (!items.length) { error = 'Tick at least one condition this advancement applies to.'; return; }
     if (!advDate) { error = 'A date is required.'; return; }
-
-    // Blank summaries: generate them from the pasted text (condition wording,
-    // reason and previous advancements are read server-side). Typed summaries
-    // are left untouched — they take precedence. The model only fills blanks
-    // for conditions the text actually contains relevant new information for.
-    const blanks = items.filter(i => !i.summary);
-    if (blanks.length) {
-      if (!fullText.trim()) {
-        error = 'Paste the email trail / note text so summaries can be generated, or type a summary under each ticked condition.';
-        return;
-      }
-      // Already generated for this exact text and some ticked conditions came
-      // back with nothing relevant — don't regenerate in a loop
-      if (fullText === lastGeneratedText) {
-        const blankLabels = conditions.filter(c => blanks.some(b => b.condition_id === c.id)).map(conditionLabel);
-        error = `The pasted text had no relevant information for: ${blankLabels.join('; ')}. Untick them, type their summaries manually, or change the pasted text.`;
-        return;
-      }
-      generating = true;
-      error = null;
-      try {
-        const { suggestions } = await suggestConditionAdvancementSummaries(projectId, {
-          full_text: fullText,
-          items: items.map(i => ({
-            condition_id: i.condition_id,
-            user_summary: i.summary || null,
-            requirement_ids: i.requirement_ids,
-          })),
-        });
-        for (const s of suggestions) {
-          if (selections[s.condition_id]?.checked && !selections[s.condition_id].summary.trim()) {
-            selections[s.condition_id] = { ...selections[s.condition_id], summary: s.summary };
-          }
-        }
-        selections = { ...selections };
-        skippedLabels = conditions
-          .filter(c => selections[c.id]?.checked && !selections[c.id].summary.trim())
-          .map(conditionLabel);
-        lastGeneratedText = fullText;
-        generatedNotice = true;
-      } catch (err) {
-        error = err.message;
-      } finally {
-        generating = false;
-      }
-      return; // review the generated summaries, then Save again
-    }
+    if (items.some(i => !i.summary)) { error = 'Every ticked condition needs a summary - type one or use Generate & Fill Rows.'; return; }
 
     saving = true;
     error = null;
@@ -218,7 +232,7 @@
         <div class="field">
           <label>
             {sourceType === 'email' ? 'Email trail' : 'What happened'}
-            <span class="label-hint">{sourceType === 'email' ? 'paste the full trail — kept as the source record' : 'optional fuller detail behind the summaries'}</span>
+            <span class="label-hint">{sourceType === 'email' ? 'paste the full trail - kept as the source record' : 'optional fuller detail behind the summaries'}</span>
           </label>
           <textarea
             rows="7"
@@ -227,24 +241,36 @@
               ? 'Paste the email trail here…'
               : 'Type the full detail of what happened (optional)…'}
           ></textarea>
+          <div class="adv-generate-row">
+            <button
+              type="button"
+              class="btn-generate"
+              on:click={generateSummaries}
+              disabled={!canGenerate || generating || saving}
+            >
+              {#if generating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Rows{/if}
+            </button>
+            <span class="adv-generate-hint">Summarises text into ticked rows below. Rows must be selected first.</span>
+          </div>
         </div>
 
         {#if generatedNotice}
           <div class="adv-notice">
-            <i class="las la-magic"></i> Summaries generated from the pasted text — review or edit them, then press Save again.
+            <i class="las la-magic"></i> Summaries generated from the pasted text - review or edit them below.
           </div>
-          {#if skippedLabels.length}
-            <div class="adv-skip-notice">
-              <i class="las la-info-circle"></i>
-              No relevant information was found for: <strong>{skippedLabels.join('; ')}</strong> — untick them or type their summaries manually.
-            </div>
-          {/if}
+        {/if}
+        {#if skippedLabels.length}
+          <div class="adv-skip-notice">
+            <i class="las la-info-circle"></i>
+            No relevant information was found for: <strong>{skippedLabels.join('; ')}</strong> - untick them or type their summaries manually.
+          </div>
         {/if}
 
         <div class="field">
           <div class="adv-applies-header">
-            <label>Applies to <span class="label-hint">tick the conditions — leave a summary blank to auto-summarise from the pasted text</span></label>
+            <label>Applies to <span class="label-hint">tick the conditions - leave a summary blank to auto-summarise from the pasted text</span></label>
             <div class="sort-pills">
+              <button type="button" class="select-all-btn" on:click={toggleSelectAll}>{allChecked ? 'Deselect all' : 'Select all'}</button>
               <span class="sort-label">Sort:</span>
               <button type="button" class="sort-pill" class:active={sortBy === 'number'} on:click={() => sortBy = 'number'}>No.</button>
               <button type="button" class="sort-pill" class:active={sortBy === 'type'} on:click={() => sortBy = 'type'} title="Pre-Commencement first, then Action Required, Pre-Beneficial Use, Compliance, Informative">Type</button>
@@ -286,7 +312,7 @@
                   <textarea
                     class="adv-summary-input"
                     rows="2"
-                    placeholder="Optional — leave blank to auto-summarise; anything typed here takes precedence"
+                    placeholder="Optional - leave blank to auto-summarise; anything typed here takes precedence"
                     bind:value={selections[c.id].summary}
                   ></textarea>
                 {/if}
@@ -306,8 +332,13 @@
         <span class="adv-count-hint">{checkedCount} condition{checkedCount !== 1 ? 's' : ''} selected</span>
         <div class="adv-footer-actions">
           <button class="btn-cancel" on:click={close} disabled={saving || generating}>Cancel</button>
-          <button class="btn-save" on:click={save} disabled={saving || generating}>
-            {#if generating}Summarising…{:else if saving}Saving…{:else if generatedNotice}Confirm & Save{:else}Save Advancement{/if}
+          <button
+            class="btn-save"
+            on:click={save}
+            disabled={saving || generating || !canSave}
+            title={!canSave && checkedCount ? 'Every ticked row needs a summary before this can save' : ''}
+          >
+            {saving ? 'Saving…' : 'Save Advancement'}
           </button>
         </div>
       </div>
@@ -403,6 +434,40 @@
     box-shadow: 0 0 0 3px #f3e8ff;
   }
 
+  .adv-generate-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .btn-generate {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    background: #faf5ff;
+    color: #7e22ce;
+    border: 1px solid #e9d5ff;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .btn-generate:hover:not(:disabled) { background: #f3e8ff; }
+  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+  .adv-generate-hint { font-size: 0.74rem; color: #94a3b8; }
+  .mini-spinner {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border: 2px solid #e9d5ff;
+    border-top-color: #7e22ce;
+    border-radius: 50%;
+    animation: adv-spin 0.6s linear infinite;
+  }
+  @keyframes adv-spin { to { transform: rotate(360deg); } }
+
   /* Source toggle */
   .adv-source-toggle {
     display: flex;
@@ -460,6 +525,19 @@
     color: #7c3aed;
     font-weight: 600;
   }
+  .select-all-btn {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    font-family: inherit;
+    margin-right: 6px;
+  }
+  .select-all-btn:hover { color: #1e293b; background: #f1f5f9; }
 
   .adv-cond-type {
     font-size: 0.64rem;

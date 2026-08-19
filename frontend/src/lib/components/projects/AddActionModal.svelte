@@ -91,6 +91,9 @@
   }
 
   $: checkedCount = Object.values(selections).filter(s => s.checked).length;
+  $: hasBlankChecked = issues.some(iss => selections[iss.id]?.checked && !selections[iss.id].summary.trim());
+  $: canGenerate = hasBlankChecked && fullText.trim().length > 0;
+  $: canSave = checkedCount > 0 && !hasBlankChecked;
 
   function issueLabel(iss) {
     return iss.discipline ? `${iss.title} (${iss.discipline})` : iss.title;
@@ -105,8 +108,8 @@
     selections = { ...selections, [issueId]: { ...sel, subIds: { ...sel.subIds, [subId]: !sel.subIds[subId] } } };
   }
 
-  async function save() {
-    const items = issues
+  function buildItems() {
+    return issues
       .filter(iss => selections[iss.id]?.checked)
       .map(iss => ({
         issue_id: iss.id,
@@ -114,46 +117,52 @@
         sub_issue_ids: Object.entries(selections[iss.id].subIds).filter(([, on]) => on).map(([id]) => parseInt(id, 10)),
         quote_id: selections[iss.id].quoteId || null,
       }));
+  }
+
+  // Fill blank ticked rows from the pasted text. Typed summaries are left
+  // untouched — they take precedence. The model only fills blanks for issues
+  // the text actually contains relevant new information for.
+  async function generateSummaries() {
+    const items = buildItems();
+    const blanks = items.filter(i => !i.summary);
+    if (!blanks.length || !fullText.trim()) return;
+
+    if (fullText === lastGeneratedText) {
+      skippedLabels = issues.filter(iss => blanks.some(b => b.issue_id === iss.id)).map(issueLabel);
+      return;
+    }
+
+    generating = true;
+    error = null;
+    try {
+      const { suggestions } = await suggestActionSummaries(projectId, {
+        full_text: fullText,
+        items: items.map(i => ({ issue_id: i.issue_id, user_summary: i.summary || null })),
+      });
+      for (const s of suggestions) {
+        if (selections[s.issue_id]?.checked && !selections[s.issue_id].summary.trim()) {
+          selections[s.issue_id] = { ...selections[s.issue_id], summary: s.summary };
+        }
+      }
+      selections = { ...selections };
+      skippedLabels = issues
+        .filter(iss => selections[iss.id]?.checked && !selections[iss.id].summary.trim())
+        .map(issueLabel);
+      lastGeneratedText = fullText;
+      generatedNotice = true;
+    } catch (err) {
+      error = err.message;
+    } finally {
+      generating = false;
+    }
+  }
+
+  async function save() {
+    const items = buildItems();
 
     if (!items.length) { error = 'Tick at least one issue this action applies to.'; return; }
     if (!actionDate) { error = 'A date is required.'; return; }
-
-    const blanks = items.filter(i => !i.summary);
-    if (blanks.length) {
-      if (!fullText.trim()) {
-        error = 'Paste the email trail / note text so summaries can be generated, or type a summary under each ticked issue.';
-        return;
-      }
-      if (fullText === lastGeneratedText) {
-        const blankLabels = issues.filter(iss => blanks.some(b => b.issue_id === iss.id)).map(issueLabel);
-        error = `The pasted text had no relevant information for: ${blankLabels.join('; ')}. Untick them, type their summaries manually, or change the pasted text.`;
-        return;
-      }
-      generating = true;
-      error = null;
-      try {
-        const { suggestions } = await suggestActionSummaries(projectId, {
-          full_text: fullText,
-          items: items.map(i => ({ issue_id: i.issue_id, user_summary: i.summary || null })),
-        });
-        for (const s of suggestions) {
-          if (selections[s.issue_id]?.checked && !selections[s.issue_id].summary.trim()) {
-            selections[s.issue_id] = { ...selections[s.issue_id], summary: s.summary };
-          }
-        }
-        selections = { ...selections };
-        skippedLabels = issues
-          .filter(iss => selections[iss.id]?.checked && !selections[iss.id].summary.trim())
-          .map(issueLabel);
-        lastGeneratedText = fullText;
-        generatedNotice = true;
-      } catch (err) {
-        error = err.message;
-      } finally {
-        generating = false;
-      }
-      return;
-    }
+    if (items.some(i => !i.summary)) { error = 'Every ticked issue needs a summary - type one or use Generate & Fill Rows.'; return; }
 
     saving = true;
     error = null;
@@ -334,28 +343,39 @@
           </div>
 
           <div class="field">
-            <label>What happened <span class="label-hint">optional fuller detail behind the summaries — paste an email trail, notes, whatever you've got</span></label>
+            <label>What happened <span class="label-hint">optional fuller detail behind the summaries - paste an email trail, notes, whatever you've got</span></label>
             <textarea
               rows="7"
               bind:value={fullText}
               placeholder="Type or paste the detail here…"
             ></textarea>
+            <div class="adv-generate-row">
+              <button
+                type="button"
+                class="btn-generate"
+                on:click={generateSummaries}
+                disabled={!canGenerate || generating || saving}
+              >
+                {#if generating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Rows{/if}
+              </button>
+              <span class="adv-generate-hint">Summarises text into ticked rows below. Rows must be selected first.</span>
+            </div>
           </div>
 
           {#if generatedNotice}
             <div class="adv-notice">
-              <i class="las la-magic"></i> Summaries generated from the pasted text — review or edit them, then press Save again.
+              <i class="las la-magic"></i> Summaries generated from the pasted text - review or edit them below.
             </div>
-            {#if skippedLabels.length}
-              <div class="adv-skip-notice">
-                <i class="las la-info-circle"></i>
-                No relevant information was found for: <strong>{skippedLabels.join('; ')}</strong> — untick them or type their summaries manually.
-              </div>
-            {/if}
+          {/if}
+          {#if skippedLabels.length}
+            <div class="adv-skip-notice">
+              <i class="las la-info-circle"></i>
+              No relevant information was found for: <strong>{skippedLabels.join('; ')}</strong> - untick them or type their summaries manually.
+            </div>
           {/if}
 
           <div class="field">
-            <label>Applies to <span class="label-hint">tick the issues — leave a summary blank to auto-summarise from the pasted text</span></label>
+            <label>Applies to <span class="label-hint">tick the issues - leave a summary blank to auto-summarise from the pasted text</span></label>
             <div class="adv-cond-list">
               {#each issues as iss (iss.id)}
                 {@const sel = selections[iss.id]}
@@ -389,7 +409,7 @@
                     <textarea
                       class="adv-summary-input"
                       rows="2"
-                      placeholder="Optional — leave blank to auto-summarise; anything typed here takes precedence"
+                      placeholder="Optional - leave blank to auto-summarise; anything typed here takes precedence"
                       bind:value={selections[iss.id].summary}
                     ></textarea>
                   {/if}
@@ -409,8 +429,13 @@
           <span class="adv-count-hint">{checkedCount} issue{checkedCount !== 1 ? 's' : ''} selected</span>
           <div class="adv-footer-actions">
             <button class="btn-cancel" on:click={close} disabled={saving || generating}>Cancel</button>
-            <button class="btn-save" on:click={save} disabled={saving || generating}>
-              {#if generating}Summarising…{:else if saving}Saving…{:else if generatedNotice}Confirm & Save{:else}Save Advancement{/if}
+            <button
+              class="btn-save"
+              on:click={save}
+              disabled={saving || generating || !canSave}
+              title={!canSave && checkedCount ? 'Every ticked row needs a summary before this can save' : ''}
+            >
+              {saving ? 'Saving…' : 'Save Advancement'}
             </button>
           </div>
         </div>
@@ -647,6 +672,40 @@
     border-color: #0284c7;
     box-shadow: 0 0 0 3px #e0f2fe;
   }
+
+  .adv-generate-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .btn-generate {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    background: #f0f9ff;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .btn-generate:hover:not(:disabled) { background: #e0f2fe; }
+  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+  .adv-generate-hint { font-size: 0.74rem; color: #94a3b8; }
+  .mini-spinner {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border: 2px solid #bae6fd;
+    border-top-color: #0369a1;
+    border-radius: 50%;
+    animation: adv-spin 0.6s linear infinite;
+  }
+  @keyframes adv-spin { to { transform: rotate(360deg); } }
 
   .adv-cond-list {
     display: flex;

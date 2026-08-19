@@ -151,7 +151,7 @@
         <div class="field">
           <label>
             {sourceType === 'email' ? 'Email trail' : 'What happened'}
-            <span class="label-hint">{sourceType === 'email' ? 'paste the full trail — kept as the source record' : 'optional fuller detail behind the summaries'}</span>
+            <span class="label-hint">{sourceType === 'email' ? 'paste the full trail - kept as the source record' : 'optional fuller detail behind the summaries'}</span>
           </label>
           <textarea
             rows="7"
@@ -164,12 +164,12 @@
 
         {#if generatedNotice}
           <div class="adv-notice">
-            <i class="las la-magic"></i> Summaries generated from the pasted text — review or edit them, then press Save again.
+            <i class="las la-magic"></i> Summaries generated from the pasted text - review or edit them, then press Save again.
           </div>
         {/if}
 
         <div class="field">
-          <label>Applies to <span class="label-hint">tick the {noun}s — leave a summary blank to auto-summarise from the pasted text</span></label>
+          <label>Applies to <span class="label-hint">tick the {noun}s - leave a summary blank to auto-summarise from the pasted text</span></label>
           <div class="adv-cond-list">
             {#each quotes as q (q.id)}
               {@const sel = selections[q.id]}
@@ -182,7 +182,7 @@
                   <input
                     type="text"
                     class="adv-summary-input"
-                    placeholder="Optional — leave blank to auto-summarise; anything typed here takes precedence"
+                    placeholder="Optional - leave blank to auto-summarise; anything typed here takes precedence"
                     bind:value={selections[q.id].summary}
                   />
                 {/if}

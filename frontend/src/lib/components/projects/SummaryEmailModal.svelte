@@ -95,7 +95,7 @@
       <div class="modal-body">
         <p class="intro">
           Drafts a client progress email from the advancements logged in the period.
-          The draft only covers what the advancements actually say — treat it as a starting point.
+          The draft only covers what the advancements actually say - treat it as a starting point.
         </p>
 
         <div class="form-row">
@@ -128,7 +128,7 @@
           <div class="form-group grow">
             <label for="sem-body">
               Email draft
-              <span class="label-hint">drafted from {advancementCount} advancement{advancementCount === 1 ? '' : 's'} — edit freely</span>
+              <span class="label-hint">drafted from {advancementCount} advancement{advancementCount === 1 ? '' : 's'} - edit freely</span>
             </label>
             <textarea id="sem-body" class="text-input body-input" bind:value={body} rows="16"></textarea>
           </div>

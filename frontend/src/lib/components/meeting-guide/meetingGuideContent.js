@@ -12,9 +12,9 @@ const cache = new Map();
 
 /**
  * Fetch the guide content { label, baseSections, issueQuestions, issueSectionLabel,
- * issueSectionFeedsLabel, issueSectionExamples, tailSections } for a doc type, cached
- * per (docType, project). Section titles come back unnumbered — buildGuide() numbers
- * them by position, since doc types have different section counts.
+ * issueSectionFeedsLabel, issueSectionExamples, issueSectionTopics, tailSections } for
+ * a doc type, cached per (docType, project). Section titles come back unnumbered —
+ * buildGuide() numbers them by position, since doc types have different section counts.
  * docTypeSlug: omit for the generic guide (e.g. Stage 1, HLPV, or the standalone
  * Meeting Notes tab entry point).
  * projectId: when given, sections with a `coveredByDocType` match against this
@@ -45,29 +45,39 @@ export async function fetchGuideContent(docTypeSlug = null, projectId = null) {
  * separate repeated sub-section per real issue.
  */
 export function buildGuide(guide, issueTracks = []) {
-  const { baseSections, issueQuestions, tailSections, issueSectionLabel, issueSectionFeedsLabel, issueSectionExamples } = guide;
+  const { baseSections, issueQuestions, tailSections, issueSectionLabel, issueSectionFeedsLabel, issueSectionExamples, issueSectionTopics } = guide;
   const sectionLabel = issueSectionLabel ?? 'Key Issues';
   const feedsLabel = issueSectionFeedsLabel ?? 'Issue working notes, HLPV, planning statement assessment';
   const examples = issueSectionExamples ?? [];
+  const topics = issueSectionTopics ?? [];
 
   const numberedBase = baseSections.map((s, i) => ({ ...s, title: `${i + 1}. ${s.title}` }));
   const issueSectionNumber = baseSections.length + 1;
 
-  const countNote = issueTracks.length > 0
-    ? ` This project currently has ${issueTracks.length} issue(s) set up on the Drafting Issues tab.`
-    : '';
+  // When real, differentiated topic content exists for this project (e.g.
+  // hlpv_v3's Solar checklist), show those as their own numbered sections
+  // instead of the generic single "repeat this checklist" section — the two
+  // would otherwise say the same thing twice for no reason.
+  let issueSections;
+  if (topics.length > 0) {
+    issueSections = topics.map((t, i) => ({ ...t, title: `${issueSectionNumber + i}. ${t.title}` }));
+  } else {
+    const countNote = issueTracks.length > 0
+      ? ` This project currently has ${issueTracks.length} issue(s) set up on the Drafting Issues tab.`
+      : '';
+    issueSections = [{
+      title: `${issueSectionNumber}. ${sectionLabel}`,
+      feedsLabel,
+      headerNote: `Repeat this checklist for every issue on this project (for example: heritage, ecology, daylight/sunlight, landscape and visual, agricultural land, highways and access, noise) — however many issues that turns out to be.${countNote}`,
+      questions: [
+        ...examples,
+        ...issueQuestions
+      ]
+    }];
+  }
 
-  const issueSection = {
-    title: `${issueSectionNumber}. ${sectionLabel}`,
-    feedsLabel,
-    headerNote: `Repeat this checklist for every issue on this project (for example: heritage, ecology, daylight/sunlight, landscape and visual, agricultural land, highways and access, noise) — however many issues that turns out to be.${countNote}`,
-    questions: [
-      ...examples,
-      ...issueQuestions
-    ]
-  };
+  const tailStartNumber = issueSectionNumber + issueSections.length;
+  const numberedTail = tailSections.map((s, i) => ({ ...s, title: `${tailStartNumber + i}. ${s.title}` }));
 
-  const numberedTail = tailSections.map((s, i) => ({ ...s, title: `${issueSectionNumber + 1 + i}. ${s.title}` }));
-
-  return [...numberedBase, issueSection, ...numberedTail];
+  return [...numberedBase, ...issueSections, ...numberedTail];
 }

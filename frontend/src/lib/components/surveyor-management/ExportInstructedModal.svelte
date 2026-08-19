@@ -65,7 +65,7 @@
             </span>
           </label>
         </div>
-        <p class="pair-hint">Same underlying dates — pick either view, or both.</p>
+        <p class="pair-hint">Same underlying dates - pick either view, or both.</p>
       </div>
 
       <div class="modal-footer">

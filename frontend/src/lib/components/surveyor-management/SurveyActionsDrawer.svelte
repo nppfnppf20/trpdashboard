@@ -163,11 +163,11 @@
               </select>
             </div>
             <textarea class="tl-input" rows="2" bind:value={addForm.summary}
-              placeholder="Summary — leave blank to auto-summarise from the text below…"></textarea>
+              placeholder="Summary - leave blank to auto-summarise from the text below…"></textarea>
             <textarea class="tl-input" rows="5" bind:value={addForm.full_text}
               placeholder={addForm.source_type === 'email' ? 'Paste the email trail here…' : 'Fuller detail…'}></textarea>
             {#if addGenerated}
-              <div class="tl-notice"><i class="las la-magic"></i> Summary generated — review or edit it, then Save.</div>
+              <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it, then Save.</div>
             {/if}
             {#if addError}<div class="tl-error">{addError}</div>{/if}
             <div class="tl-add-btns">

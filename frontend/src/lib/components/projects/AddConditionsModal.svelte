@@ -114,7 +114,7 @@
       <div class="bulk-modal-body">
         {#each bulkRows as row, i (i)}
           <div class="bulk-row-card">
-            <div class="bulk-row-number" title="Condition number — assigned automatically">#{startNumber + i}</div>
+            <div class="bulk-row-number" title="Condition number - assigned automatically">#{startNumber + i}</div>
             <div class="bulk-row-fields">
               <div class="bulk-form-row two-col">
                 <div class="field">

@@ -160,7 +160,7 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
   <div class="modal-overlay" on:click|self={handleClose}>
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Fee Quote Request — {condition.condition_number ? `Condition ${condition.condition_number}` : condition.title}</h2>
+        <h2>Fee Quote Request - {condition.condition_number ? `Condition ${condition.condition_number}` : condition.title}</h2>
         <button class="close-btn" on:click={handleClose}>
           <i class="las la-times"></i>
         </button>
@@ -173,7 +173,7 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
             <input id="cem-to" type="email" class="text-input" bind:value={toEmail} placeholder="consultant@example.com" />
           </div>
           <div class="form-group grow">
-            <label for="cem-name">Name <span class="label-hint">(optional — used in the greeting)</span></label>
+            <label for="cem-name">Name <span class="label-hint">(optional - used in the greeting)</span></label>
             <div class="name-row">
               <input id="cem-name" type="text" class="text-input" bind:value={toName} placeholder="e.g. Jane" />
               <button class="btn btn-secondary btn-refresh" on:click={refreshTemplate} title="Rebuild the email with this greeting (discards edits)">

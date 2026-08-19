@@ -1483,6 +1483,7 @@ export async function getMeetingGuide(req, res) {
     issueSectionLabel: guide.issueSectionLabel,
     issueSectionFeedsLabel: guide.issueSectionFeedsLabel,
     issueSectionExamples: guide.issueSectionExamples,
+    issueSectionTopics: guide.issueSectionTopics,
     tailSections: guide.tailSections.map(annotate)
   });
 }

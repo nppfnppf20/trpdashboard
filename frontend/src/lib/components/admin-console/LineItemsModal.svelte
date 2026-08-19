@@ -42,7 +42,7 @@
   }
 
   function quoteLabel(q) {
-    const fee = q.total != null ? ` — £${Number(q.total).toLocaleString('en-GB')}` : '';
+    const fee = q.total != null ? ` - £${Number(q.total).toLocaleString('en-GB')}` : '';
     return `${q.discipline || 'Unknown discipline'} · ${q.surveyor_organisation || 'Unknown surveyor'}${fee}`;
   }
 

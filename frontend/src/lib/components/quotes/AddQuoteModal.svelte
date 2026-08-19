@@ -587,7 +587,7 @@
                   type="button"
                   class="batch-dot status-{q.status}"
                   class:active={i === currentIndex}
-                  title="{q.name} — {statusLabel(q.status)}"
+                  title="{q.name} - {statusLabel(q.status)}"
                   on:click={() => goToIndex(i)}
                 >
                   {#if q.status === 'extracting'}
@@ -651,7 +651,7 @@
           {#if currentItem?.extractNotice}
             <div class="extract-notice">
               <i class="las la-magic"></i>
-              Fields suggested from {currentItem?.file ? 'the document' : 'the pasted text'} — review everything before saving.
+              Fields suggested from {currentItem?.file ? 'the document' : 'the pasted text'} - review everything before saving.
               {#if currentItem.extractNotice.organisation}
                 Quote appears to be from <strong>{currentItem.extractNotice.organisation}</strong>; select the organisation and contact below.
               {/if}

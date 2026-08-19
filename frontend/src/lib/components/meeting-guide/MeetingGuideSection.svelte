@@ -25,7 +25,7 @@
 
   {#if open}
     {#if section.onFile}
-      <p class="section-note">A summary for this section is already saved for this project — use these questions to confirm nothing has changed rather than covering it from scratch.</p>
+      <p class="section-note">A summary for this section is already saved for this project - use these questions to confirm nothing has changed rather than covering it from scratch.</p>
     {:else if section.priorToolNote}
       <p class="section-note">{section.priorToolNote}</p>
     {/if}
