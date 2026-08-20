@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import '$lib/styles/buttons.css';
   import { processConsultationDoc, createConsultationResponse } from '$lib/api/consultation.js';
-  import { processPublicCommentDoc, createPublicComment } from '$lib/api/publicComments.js';
+  import { processPublicCommentDoc, splitPublicCommentBlock, createPublicComment } from '$lib/api/publicComments.js';
 
   export let show = false;
   export let projectId;
@@ -22,7 +22,7 @@
     nameLabel:       'Consultee',
     commentKey:      'comments',
     commentLabel:    'Comments',
-    extraFields:     [],
+    extraFields:     [{ key: 'action_required', label: 'Action Required' }],
   } : {
     title:           'Batch Import: Public Comments',
     processItem:     (item) => item.type === 'text'
@@ -35,6 +35,9 @@
     commentKey:      'comment',
     commentLabel:    'Comment Summary',
     extraFields:     [],
+    splitItem:       (item) => item.type === 'text'
+                       ? splitPublicCommentBlock(projectId, { text: item.text, fileName: item.label })
+                       : splitPublicCommentBlock(projectId, { file: item.file }),
   };
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -44,6 +47,8 @@
   let dragOver   = false;
   let saving     = false;
   let expandedIds = new Set();
+  let splitting  = false;
+  let detectMultiple = false; // when ticked, check each item for multiple concatenated comments before extracting
 
   // Paste form
   let pasteText  = '';
@@ -102,8 +107,42 @@
   function removeItem(id) { queue = queue.filter(q => q.id !== id); }
 
   // ── Processing ────────────────────────────────────────────────────────────
+  async function splitQueue() {
+    if (!cfg.splitItem || !detectMultiple) return;
+    splitting = true;
+    const expanded = [];
+    for (const item of queue) {
+      try {
+        const { segments } = await cfg.splitItem(item);
+        if (segments.length > 1) {
+          segments.forEach((text, i) => {
+            expanded.push({
+              id:       `${item.id}-${i}`,
+              type:     'text',
+              file:     null,
+              text,
+              label:    `${item.label} (${i + 1}/${segments.length})`,
+              status:   'pending',
+              fields:   {},
+              error:    null,
+              accepted: true,
+            });
+          });
+        } else {
+          expanded.push(item);
+        }
+      } catch (err) {
+        // If detection fails, fall back to treating it as a single comment rather than blocking the batch
+        expanded.push(item);
+      }
+    }
+    queue = expanded;
+    splitting = false;
+  }
+
   async function processAll() {
     phase = 'processing';
+    await splitQueue();
     for (const item of queue) {
       setStatus(item.id, 'processing');
       try {
@@ -190,6 +229,7 @@
     pasteLabel = '';
     pasteCount = 0;
     expandedIds = new Set();
+    detectMultiple = false;
     dispatch('close');
   }
 
@@ -332,12 +372,18 @@
       <!-- ── Phase: Processing ──────────────────────────────────────────── -->
       {:else if phase === 'processing'}
 
-        <div class="bi-progress-header">
-          <span class="bi-progress-label">Processing {doneCount + errorCount} of {totalCount}…</span>
-          <div class="bi-progress-bar-wrap">
-            <div class="bi-progress-bar" style="width:{Math.round(((doneCount + errorCount) / totalCount) * 100)}%"></div>
+        {#if splitting}
+          <div class="bi-progress-header">
+            <span class="bi-progress-label"><span class="bi-spinner bi-spinner-sm"></span> Checking for multiple comments in each item…</span>
           </div>
-        </div>
+        {:else}
+          <div class="bi-progress-header">
+            <span class="bi-progress-label">Processing {doneCount + errorCount} of {totalCount}…</span>
+            <div class="bi-progress-bar-wrap">
+              <div class="bi-progress-bar" style="width:{Math.round(((doneCount + errorCount) / totalCount) * 100)}%"></div>
+            </div>
+          </div>
+        {/if}
 
         <div class="bi-queue">
           {#each queue as item (item.id)}
@@ -494,6 +540,12 @@
       </button>
 
       {#if phase === 'upload'}
+        {#if cfg.splitItem}
+          <label class="bi-split-toggle">
+            <input type="checkbox" bind:checked={detectMultiple} />
+            One or more items has multiple comments in it
+          </label>
+        {/if}
         <button class="btn btn-primary" disabled={queue.length === 0} on:click={processAll}>
           <i class="las la-magic"></i> Process {queue.length} item{queue.length !== 1 ? 's' : ''}
         </button>
@@ -758,6 +810,13 @@
     border-top: 1px solid #e2e8f0;
     flex-shrink: 0;
   }
+  .bi-split-toggle {
+    display: flex; align-items: center; gap: 0.4rem;
+    margin-right: auto;
+    font-size: 0.82rem; color: #475569;
+    cursor: pointer; user-select: none;
+  }
+  .bi-split-toggle input { cursor: pointer; }
 
   /* Spinner */
   .bi-spinner {

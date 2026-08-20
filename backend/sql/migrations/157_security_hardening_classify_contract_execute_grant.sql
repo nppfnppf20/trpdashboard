@@ -1,0 +1,35 @@
+-- Security hardening: Finding 9's flagged-not-fixed item, public.classify_contract.
+-- See SUPABASE_SECURITY_ADVISOR_REPORT.md Finding 10 / Appendix F for the full
+-- investigation. Summary of what was checked before writing this fix:
+--
+-- 1. pg_stat_statements: 277 real calls to classify_contract, 100% as
+--    service_role, via RPC (JSON payload shape matches PostgREST's RPC
+--    call convention). Zero calls as anon or authenticated. DDL history
+--    also shows `GRANT EXECUTE ON FUNCTION public.classify_contract TO
+--    anon, authenticated` was run at some point -- that grant is what's
+--    being revoked here.
+-- 2. Repo check: zero references to classify_contract anywhere in
+--    frontend/src or backend/src. It isn't called by this app at all --
+--    the 277 service_role calls come from something external (almost
+--    certainly the same contract-scraping/classification pipeline that
+--    populates scraper.contracts_finder in the first place, given the
+--    "classify_contract" / "contracts_finder" naming and that it sets
+--    relevant/relevance_reason/confidence/reviewed_at -- an LLM
+--    classification result being persisted).
+-- 3. Decision: lock EXECUTE to service_role only. No `authenticated`
+--    grant added, unlike analyze_renewables/generate_chunk_search in 156
+--    -- there is no in-app (or any other legitimate) authenticated-user
+--    call path for this one, only the external service_role pipeline.
+--
+-- On SECURITY DEFINER and an internal auth.uid() check (both considered,
+-- neither changed): the function needs SECURITY DEFINER because its only
+-- legitimate caller reaches through to `scraper.contracts_finder`, and
+-- confirmed earlier in this audit that the `scraper` schema itself has no
+-- USAGE grant for anon/authenticated (so a plain SECURITY INVOKER version
+-- would be unusable by anyone other than the table owner anyway). Once
+-- EXECUTE is restricted to service_role -- a role that already bypasses
+-- RLS and grants entirely -- neither downgrading to SECURITY INVOKER nor
+-- adding an internal auth.uid() IS NOT NULL check would add anything: the
+-- function is no longer reachable by anyone the check would need to stop.
+REVOKE EXECUTE ON FUNCTION public.classify_contract(integer, boolean, text, text, timestamp with time zone) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.classify_contract(integer, boolean, text, text, timestamp with time zone) TO service_role, postgres;

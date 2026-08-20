@@ -1896,7 +1896,7 @@
 
   /* ── Status dropdown ─────────────────────────────────────────────────────── */
   .ct-td-status { vertical-align: middle; }
-  .ct-status-select {
+  select.ct-status-select {
     font-size: 0.72rem;
     font-weight: 600;
     font-family: inherit;
@@ -1906,11 +1906,11 @@
     cursor: pointer;
     width: 100%;
   }
-  .ct-status-notstarted  { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
-  .ct-status-inprogress  { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
-  .ct-status-submitted   { background: #dbeafe; color: #2563eb; border-color: #93c5fd; }
-  .ct-status-discharged  { background: #dcfce7; color: #16a34a; border-color: #86efac; }
-  .ct-status-notrequired { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }
+  select.ct-status-notstarted  { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+  select.ct-status-inprogress  { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
+  select.ct-status-submitted   { background: #dbeafe; color: #2563eb; border-color: #93c5fd; }
+  select.ct-status-discharged  { background: #dcfce7; color: #16a34a; border-color: #86efac; }
+  select.ct-status-notrequired { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }
 
   /* ── Type dropdown ───────────────────────────────────────────────────────── */
   .ct-td-type { vertical-align: top; }
@@ -2062,6 +2062,20 @@
     gap: 0.5rem;
   }
   .tl-add-row .tl-input { flex: 1; }
+  .form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: #fff;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .form-input:focus { outline: none; border-color: #0369a1; box-shadow: 0 0 0 3px rgba(3,105,161,0.1); }
+  textarea.form-input { resize: vertical; line-height: 1.5; }
   .tl-input {
     font-size: 0.8rem;
     padding: 5px 8px;

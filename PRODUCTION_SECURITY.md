@@ -19,28 +19,48 @@ This document tracks the security posture of the HLPV web application as it evol
 
 ## **✅ IMPLEMENTED (Current Security)**
 
-### **1. Database Security** ✅ COMPLETE
-**Status:** Production-ready  
-**Implemented:** January 18, 2026
+### **1. Database Security** ⚠️ WAS COMPLETE — NOW STALE, RE-AUDIT IN PROGRESS
+**Status:** Claim below was accurate January 18, 2026 only. Do not trust the checkmarks
+without reading the update.  
+**Implemented:** January 18, 2026 · **Re-audited:** August 19, 2026
 
-**What we have:**
-- ✅ Row-Level Security (RLS) enabled on ALL tables
-- ✅ User-based policies (users can only see their own data)
+**⚠️ Update (2026-08-19):** the "RLS enabled on ALL tables" claim was true when written,
+but the schema has grown substantially since (the `analysis_*`, `chat_*`, `ingestion_*`
+tables, and the entire `rag`/`admin_console`/`scraper` schemas — none of which existed in
+January) and RLS was not consistently applied as those were added. A fresh audit found
+19 views bypassing RLS entirely, several tables with RLS "on" but policies of
+`USING (true)` (equivalent to no protection), 23+ tables with RLS disabled outright
+(including `system_config` and, in other schemas, tables holding real application data),
+and 29+ `SECURITY DEFINER` functions with an unpinned `search_path`. Full findings and
+remediation: see `SUPABASE_SECURITY_ADVISOR_REPORT.md` and
+`backend/sql/migrations/151_security_hardening_search_path_and_system_config.sql` through
+`155_security_hardening_rag_admin_console_schemas.sql` (additional migration(s) pending
+from a broader cross-schema sweep). None of these have been applied yet as of this update.
+**Once applied, come back and update this section's checkmarks to match reality** — don't
+let this document go stale again as new tables/schemas get added.
+
+**What we have (original Jan 18 claims, now only partially accurate — see above):**
+- ⚠️ Row-Level Security (RLS) — enabled on tables that existed as of January; gaps found in
+  tables/schemas added since
+- ✅ User-based policies (users can only see their own data) — for the original table set
 - ✅ Admin policies (admins can manage all data)
 - ✅ `is_admin()` function to prevent RLS recursion
 - ✅ All reference tables (heritage, ecology, landscape) protected
 
-**Protection level:** ⭐⭐⭐⭐⭐
-- Users cannot access other users' projects
+**Protection level:** ⭐⭐⭐ (was ⭐⭐⭐⭐⭐ — downgraded pending the pending migrations above)
+- Users cannot access other users' projects (for tables covered by RLS)
 - SQL injection attacks blocked by Supabase parameterized queries
-- Direct database access properly restricted
+- Direct database access via `anon`/`authenticated` was broader than intended on
+  newer tables/views — see the security advisor report
 
 **Files:**
 - `backend/sql/migrations/007_create_user_roles.sql`
 - `backend/sql/migrations/008_enable_rls_all_tables.sql`
+- `backend/sql/migrations/151_security_hardening_search_path_and_system_config.sql` — `155_...` (pending)
 
 **Documentation:**
 - See `backend/PRODUCTION_RATE_LIMITING.md` for RLS details
+- See `SUPABASE_SECURITY_ADVISOR_REPORT.md` for the full 2026-08-19 audit and remediation status
 
 ---
 

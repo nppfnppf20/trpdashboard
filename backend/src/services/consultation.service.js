@@ -1,4 +1,4 @@
-import { callClaude } from './llm.shared.js';
+import { callClaude, noEmDash } from './llm.shared.js';
 import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Extract key information from a statutory consultation response document.
@@ -11,6 +11,9 @@ Return your response using EXACTLY these XML delimiters — nothing before <CONS
 <COMMENTS>
 Summary of the consultee's response here
 </COMMENTS>
+<ACTION_REQUIRED>
+Bullet points here, or leave the tags empty if nothing is required
+</ACTION_REQUIRED>
 
 CONSULTEE_NAME: Full name of the statutory consultee (e.g. "Natural England", "Environment Agency"). Leave blank if not determinable.
 
@@ -28,7 +31,12 @@ COMMENTS: Summarise the consultee's response, covering all of their issues and p
 Word limit: 500 words maximum.
 - If the response is short, write it naturally in prose.
 - If covering all points would exceed 500 words, switch to a brief bullet-point-style list (one short sentence per issue, no elaboration) so every point is still represented.
-- If detail has been condensed in this way, add the sentence "Further detail is contained in the full response." at the very end.`;
+- If detail has been condensed in this way, add the sentence "Further detail is contained in the full response." at the very end.
+
+ACTION_REQUIRED: What, as a direct result of this consultation response, the team or a consultant needs to provide to the council — e.g. further information, a specific technical report or survey, a revised drawing, written clarification on a point. This is NOT a restatement of the consultee's issues — it is the concrete deliverable(s) needed to address them.
+- Brief bullet points only, one per action, each starting on its own line with "- ".
+- If the response is pure support or no comment with nothing to action, leave the tags empty: <ACTION_REQUIRED></ACTION_REQUIRED>
+- Do not use em dashes (—) anywhere in this field.`;
 
 async function buildSystemPrompt(developmentType) {
   const brief = await getGuidingBrief('consultation_response', developmentType).catch(() => null);
@@ -184,9 +192,10 @@ export async function processConsultationResponse(text, fileName, developmentTyp
   }
 
   return {
-    consultee_name: extractTag(raw, 'CONSULTEE_NAME') || null,
-    date_received:  extractTag(raw, 'DATE_RECEIVED') || null,
-    position:       extractTag(raw, 'POSITION') || null,
+    consultee_name:  extractTag(raw, 'CONSULTEE_NAME') || null,
+    date_received:   extractTag(raw, 'DATE_RECEIVED') || null,
+    position:        extractTag(raw, 'POSITION') || null,
     comments,
+    action_required: noEmDash(extractTag(raw, 'ACTION_REQUIRED')) || null,
   };
 }

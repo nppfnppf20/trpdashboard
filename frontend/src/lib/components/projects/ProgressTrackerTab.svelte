@@ -1391,13 +1391,18 @@
   }
   .pt-progress-empty:hover { color: #9333ea; border-color: #c4b5fd; background: #faf5ff; }
 
-  .pt-status-select {
-    display: inline-block; width: auto; max-width: 100%;
-    font-size: 0.72rem; font-weight: 600; font-family: inherit;
-    padding: 0.2rem 0.5rem; border-radius: 999px; border: 1px solid transparent;
+  select.pt-status-select {
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    width: 100%;
   }
-  .pt-status-inprogress { background: #fef9c3; color: #a16207; }
-  .pt-status-complete { background: #dcfce7; color: #15803d; }
+  select.pt-status-inprogress { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
+  select.pt-status-complete   { background: #dcfce7; color: #16a34a; border-color: #86efac; }
 
   .pt-row-btns { display: flex; gap: 2px; }
 
@@ -1431,6 +1436,20 @@
 
   .tl-add-form { display: flex; flex-direction: column; gap: 0.6rem; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.85rem; background: #f8fafc; }
   .tl-add-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: #fff;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .form-input:focus { outline: none; border-color: #0369a1; box-shadow: 0 0 0 3px rgba(3,105,161,0.1); }
+  textarea.form-input { resize: vertical; line-height: 1.5; }
   .tl-input { font-size: 0.8rem; }
   .tl-stage-new-input { max-width: 160px; }
   .tl-stage-add-toggle {

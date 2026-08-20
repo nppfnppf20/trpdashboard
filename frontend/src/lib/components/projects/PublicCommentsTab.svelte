@@ -634,6 +634,20 @@
   }
 
   .ct-row-btns    { display: flex; gap: 0.25rem; }
+  .form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: #fff;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .form-input:focus { outline: none; border-color: #0369a1; box-shadow: 0 0 0 3px rgba(3,105,161,0.1); }
+  textarea.form-input { resize: vertical; line-height: 1.5; }
   .ct-cell-input  {
     width: 100%; border: 1px solid #cbd5e1; border-radius: 5px;
     padding: 4px 6px; font-size: 0.78rem; font-family: inherit;

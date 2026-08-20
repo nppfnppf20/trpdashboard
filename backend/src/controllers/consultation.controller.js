@@ -58,7 +58,7 @@ export async function getConsultationData(req, res) {
   try {
     const [{ rows: responses }, { rows: advancements }, { rows: meta }] = await Promise.all([
       pool.query(
-        `SELECT id, consultee_name, date_received, position, comments, status,
+        `SELECT id, consultee_name, date_received, position, comments, action_required, status,
                 discipline, original_consultant, original_consultant_email,
                 source_file_name, sort_order, created_at, updated_at
          FROM planning_applications.consultation_responses
@@ -139,14 +139,14 @@ export async function getConsultationData(req, res) {
 
 export async function createResponse(req, res) {
   const { projectId } = req.params;
-  const { consultee_name, date_received, position, comments, status, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
+  const { consultee_name, date_received, position, comments, action_required, status, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
   if (!consultee_name?.trim()) return res.status(400).json({ error: 'consultee_name is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.consultation_responses
-         (project_id, consultee_name, date_received, position, comments,
+         (project_id, consultee_name, date_received, position, comments, action_required,
           status, source_file_name, discipline, original_consultant, original_consultant_email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         projectId,
@@ -154,6 +154,7 @@ export async function createResponse(req, res) {
         date_received || null,
         position?.trim() || null,
         comments?.trim() || null,
+        action_required?.trim() || null,
         status?.trim() || 'In Progress',
         source_file_name?.trim() || null,
         discipline?.trim() || null,
@@ -174,7 +175,7 @@ export async function createResponse(req, res) {
 
 export async function updateResponse(req, res) {
   const { responseId } = req.params;
-  const { consultee_name, date_received, position, comments, status, discipline, original_consultant, original_consultant_email } = req.body;
+  const { consultee_name, date_received, position, comments, action_required, status, discipline, original_consultant, original_consultant_email } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.consultation_responses SET
@@ -182,10 +183,11 @@ export async function updateResponse(req, res) {
          date_received                = COALESCE($3, date_received),
          position                     = COALESCE($4, position),
          comments                     = COALESCE($5, comments),
-         status                       = COALESCE($6, status),
-         discipline                   = COALESCE($7, discipline),
-         original_consultant          = COALESCE($8, original_consultant),
-         original_consultant_email    = COALESCE($9, original_consultant_email),
+         action_required              = COALESCE($6, action_required),
+         status                       = COALESCE($7, status),
+         discipline                   = COALESCE($8, discipline),
+         original_consultant          = COALESCE($9, original_consultant),
+         original_consultant_email    = COALESCE($10, original_consultant_email),
          updated_at                   = NOW()
        WHERE id = $1 RETURNING *`,
       [
@@ -194,6 +196,7 @@ export async function updateResponse(req, res) {
         'date_received' in req.body ? (date_received || null) : null,
         'position' in req.body ? (position?.trim() || null) : null,
         'comments' in req.body ? (comments?.trim() || null) : null,
+        'action_required' in req.body ? (action_required?.trim() || null) : null,
         status?.trim() || null,
         'discipline' in req.body ? (discipline?.trim() || null) : null,
         'original_consultant' in req.body ? (original_consultant?.trim() || null) : null,

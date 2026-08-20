@@ -21,6 +21,25 @@ export async function processPublicCommentDoc(projectId, { file, text, fileName,
   return res.json();
 }
 
+export async function splitPublicCommentBlock(projectId, { file, text, fileName }) {
+  const formData = new FormData();
+  if (file) {
+    formData.append('file', file);
+  } else {
+    formData.append('text', text);
+    if (fileName) formData.append('file_name', fileName);
+  }
+  const res = await authFetch(`/api/public-comments/projects/${projectId}/split`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to split comments');
+  }
+  return res.json();
+}
+
 export async function getPublicCommentsData(projectId) {
   const res = await authFetch(`/api/public-comments/projects/${projectId}`);
   if (!res.ok) throw new Error('Failed to fetch public comments');

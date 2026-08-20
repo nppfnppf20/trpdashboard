@@ -1,6 +1,33 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processPublicComment, analysePublicComments } from '../services/public_comments.service.js';
+import { processPublicComment, splitPublicCommentBlock, analysePublicComments } from '../services/public_comments.service.js';
+
+export async function splitCommentBlock(req, res) {
+  try {
+    let text, fileName;
+
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+      fileName = req.file.originalname;
+      if (!text || text.trim().length < 30) {
+        return res.status(422).json({
+          error: 'Could not extract readable text from this PDF. It may be a scanned or image-based document, try pasting the text directly instead.',
+        });
+      }
+    } else if (req.body.text) {
+      text = req.body.text;
+      fileName = req.body.file_name || null;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    const segments = await splitPublicCommentBlock(text);
+    res.json({ segments, source_file_name: fileName });
+  } catch (err) {
+    console.error('public_comments.splitCommentBlock error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
 
 export async function processComment(req, res) {
   try {

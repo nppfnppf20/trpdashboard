@@ -162,7 +162,7 @@
   let fileInput;
 
   // ── Review form (post-LLM, pre-save) ─────────────────────────────────────
-  let reviewForm = { consultee_name: '', date_received: '', position: '', comments: '', discipline: [], original_consultant: '', original_consultant_email: '' };
+  let reviewForm = { consultee_name: '', date_received: '', position: '', comments: '', action_required: '', discipline: [], original_consultant: '', original_consultant_email: '' };
   let reviewSaving = false;
   let reviewSourceFile = null;
 
@@ -271,6 +271,11 @@
     return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
+  function actionRequiredLines(text) {
+    if (!text?.trim()) return [];
+    return text.split('\n').map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean);
+  }
+
   function positionClass(pos) {
     if (!pos) return 'ct-pos-none';
     const p = pos.toLowerCase();
@@ -330,6 +335,7 @@
         date_received:               result.suggestion.date_received  || '',
         position:                    result.suggestion.position       || '',
         comments:                    result.suggestion.comments       || '',
+        action_required:             result.suggestion.action_required || '',
         discipline:                  [],
         original_consultant:         '',
         original_consultant_email:   '',
@@ -351,6 +357,7 @@
         date_received:             reviewForm.date_received   || null,
         position:                  reviewForm.position?.trim()  || null,
         comments:                  reviewForm.comments?.trim()  || null,
+        action_required:           reviewForm.action_required?.trim() || null,
         discipline:                joinDisciplines(reviewForm.discipline) || null,
         original_consultant:       reviewForm.original_consultant?.trim() || null,
         original_consultant_email: reviewForm.original_consultant_email?.trim() || null,
@@ -376,6 +383,7 @@
       date_received:             r.date_received ? r.date_received.split('T')[0] : '',
       position:                  r.position ?? '',
       comments:                  r.comments ?? '',
+      action_required:           r.action_required ?? '',
       status:                    r.status ?? 'In Progress',
       discipline:                parseDisciplines(r.discipline),
       original_consultant:       r.original_consultant ?? '',
@@ -406,6 +414,7 @@
         date_received:             editForm.date_received  || null,
         position:                  editForm.position       || null,
         comments:                  editForm.comments       || null,
+        action_required:           editForm.action_required || null,
         status:                    editForm.status         || 'Open',
         discipline:                joinDisciplines(editForm.discipline) || null,
         original_consultant:       editForm.original_consultant  || null,
@@ -834,6 +843,10 @@ ${sections.join('<br>')}`;
             <label class="ct-label">Comments</label>
             <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.comments} rows="8"></textarea>
           </div>
+          <div class="ct-field">
+            <label class="ct-label">Action Required <span class="ct-label-hint">(what needs to be provided to the council)</span></label>
+            <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.action_required} rows="4" placeholder="- Further ecological survey&#10;- Written confirmation on drainage strategy"></textarea>
+          </div>
           <div class="ct-field-row">
             <div class="ct-field ct-field-grow">
               <label class="ct-label">Discipline</label>
@@ -1165,6 +1178,7 @@ ${sections.join('<br>')}`;
             <th class="ct-th ct-th-date">Date</th>
             <th class="ct-th ct-th-pos">Position</th>
             <th class="ct-th ct-th-comments">Comments</th>
+            <th class="ct-th ct-th-action-required">Action Required</th>
             <th class="ct-th ct-th-progress">Progress</th>
             <th class="ct-th ct-th-status">Status</th>
             <th class="ct-th ct-th-discipline">Discipline</th>
@@ -1233,6 +1247,22 @@ ${sections.join('<br>')}`;
                         {expanded ? 'Show less' : 'Show more'}
                       </button>
                     {/if}
+                  {:else}
+                    <span class="ct-cell-muted">—</span>
+                  {/if}
+                {/if}
+              </td>
+
+              <!-- Action Required -->
+              <td class="ct-td ct-td-action-required">
+                {#if editing}
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.action_required} rows="4" placeholder="- Further information…"></textarea>
+                {:else}
+                  {@const lines = actionRequiredLines(r.action_required)}
+                  {#if lines.length}
+                    <ul class="ct-action-list">
+                      {#each lines as line}<li>{line}</li>{/each}
+                    </ul>
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
@@ -1535,6 +1565,7 @@ ${sections.join('<br>')}`;
   .ct-th-date       { min-width: 100px; }
   .ct-th-pos        { min-width: 120px; }
   .ct-th-comments   { min-width: 220px; max-width: 320px; }
+  .ct-th-action-required { min-width: 180px; max-width: 260px; }
   .ct-th-discipline { min-width: 100px; }
   .ct-th-consultant { min-width: 140px; }
   .ct-th-progress   { min-width: 180px; }
@@ -2024,6 +2055,15 @@ ${sections.join('<br>')}`;
     color: #334155;
     white-space: pre-wrap;
   }
+  .ct-action-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: #334155;
+  }
+  .ct-action-list li { margin-bottom: 2px; }
+  .ct-action-list li:last-child { margin-bottom: 0; }
   .ct-expand-btn {
     display: inline-block;
     margin-top: 4px;
@@ -2068,6 +2108,20 @@ ${sections.join('<br>')}`;
   .ct-row-editing { background: #f0f7ff; }
   .ct-row-editing td { vertical-align: top; }
 
+  .form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: #fff;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .form-input:focus { outline: none; border-color: #0369a1; box-shadow: 0 0 0 3px rgba(3,105,161,0.1); }
+  textarea.form-input { resize: vertical; line-height: 1.5; }
   .ct-cell-input {
     font-size: 0.78rem;
     padding: 4px 6px;

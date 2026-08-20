@@ -20,6 +20,45 @@ function parseXmlField(text, tag) {
   return m ? m[1].trim() : null;
 }
 
+const SPLIT_PROMPT = `You are splitting a block of pasted or uploaded text into individual public consultation comments/submissions.
+
+The text may be ONE comment, or it may be MULTIPLE separate comments/submissions concatenated together (e.g. copied from several emails, a bundle of letters, or a list of responses pasted in one go).
+
+Your only job is to find genuine boundaries between distinct commenters/submissions. Do NOT summarise, reword, shorten, or correct anything — reproduce each comment's text VERBATIM, including all of its original content and formatting.
+
+Only split where there is a CLEAR, unambiguous boundary, such as:
+- A new named sender (a new "From:"/"Name:" line, or a signature introducing a different person)
+- A new date/subject header starting a new email or letter
+- Explicit numbering or separators the source text itself uses to distinguish separate responses
+
+If you are not confident that two parts come from different commenters, do NOT split them — keep them together. When in doubt, prefer not splitting. A single comment that happens to cover several topics or paragraphs is still ONE comment.
+
+Return each individual comment wrapped like this, in order, with nothing else before, between, or after:
+
+<COMMENT>
+(verbatim text of comment 1, unchanged)
+</COMMENT>
+<COMMENT>
+(verbatim text of comment 2, unchanged)
+</COMMENT>
+
+If the whole text is just one comment, return a single <COMMENT> block containing the entire original text, unchanged.`;
+
+function estimateSplitTokens(text) {
+  return Math.min(8000, Math.max(4096, Math.ceil(text.length / 3) + 1000));
+}
+
+export async function splitPublicCommentBlock(text) {
+  const raw = await callClaude(SPLIT_PROMPT, text, undefined, estimateSplitTokens(text));
+
+  const segments = [...raw.matchAll(/<COMMENT>([\s\S]*?)<\/COMMENT>/g)]
+    .map(m => m[1].trim())
+    .filter(Boolean);
+
+  // Fall back to the original, unsplit text if parsing failed or produced nothing usable
+  return segments.length ? segments : [text.trim()];
+}
+
 export async function processPublicComment(text, fileName, userNotes) {
   const userParts = [];
   if (fileName) userParts.push(`Document: ${fileName}`);
