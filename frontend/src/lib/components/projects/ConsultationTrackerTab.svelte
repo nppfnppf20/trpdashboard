@@ -162,7 +162,7 @@
   let fileInput;
 
   // ── Review form (post-LLM, pre-save) ─────────────────────────────────────
-  let reviewForm = { consultee_name: '', date_received: '', position: '', comments: '', action_required: '', discipline: [], original_consultant: '', original_consultant_email: '' };
+  let reviewForm = { consultee_name: '', date_received: '', position: '', comments: '', action_required: '', conditions_suggested: '', discipline: [], original_consultant: '', original_consultant_email: '' };
   let reviewSaving = false;
   let reviewSourceFile = null;
 
@@ -336,6 +336,7 @@
         position:                    result.suggestion.position       || '',
         comments:                    result.suggestion.comments       || '',
         action_required:             result.suggestion.action_required || '',
+        conditions_suggested:        result.suggestion.conditions_suggested || '',
         discipline:                  [],
         original_consultant:         '',
         original_consultant_email:   '',
@@ -358,6 +359,7 @@
         position:                  reviewForm.position?.trim()  || null,
         comments:                  reviewForm.comments?.trim()  || null,
         action_required:           reviewForm.action_required?.trim() || null,
+        conditions_suggested:      reviewForm.conditions_suggested?.trim() || null,
         discipline:                joinDisciplines(reviewForm.discipline) || null,
         original_consultant:       reviewForm.original_consultant?.trim() || null,
         original_consultant_email: reviewForm.original_consultant_email?.trim() || null,
@@ -384,6 +386,7 @@
       position:                  r.position ?? '',
       comments:                  r.comments ?? '',
       action_required:           r.action_required ?? '',
+      conditions_suggested:      r.conditions_suggested ?? '',
       status:                    r.status ?? 'In Progress',
       discipline:                parseDisciplines(r.discipline),
       original_consultant:       r.original_consultant ?? '',
@@ -415,6 +418,7 @@
         position:                  editForm.position       || null,
         comments:                  editForm.comments       || null,
         action_required:           editForm.action_required || null,
+        conditions_suggested:      editForm.conditions_suggested || null,
         status:                    editForm.status         || 'Open',
         discipline:                joinDisciplines(editForm.discipline) || null,
         original_consultant:       editForm.original_consultant  || null,
@@ -623,6 +627,11 @@
       .join('<br><br>');
   }
 
+  function actionRequiredHtml(actionRequired) {
+    const lines = actionRequiredLines(actionRequired);
+    return lines.length ? lines.map(l => `- ${l}`).join('<br>') : '';
+  }
+
   function buildStatutoryTableHtml() {
     const th = (t) => `<th style="text-align:left;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;font-size:11px;font-weight:600;">${t}</th>`;
     const td = (t) => `<td style="padding:6px 8px;border:1px solid #cbd5e1;vertical-align:top;font-size:12px;">${t || ''}</td>`;
@@ -631,13 +640,15 @@
       ${td(r.date_received ? formatDate(r.date_received) : '')}
       ${td(r.position || '')}
       ${td((r.comments || '').replace(/\n/g, '<br>'))}
+      ${td(actionRequiredHtml(r.action_required))}
+      ${td(actionRequiredHtml(r.conditions_suggested))}
       ${td(progressText(r.advancements))}
       ${td(r.status || '')}
     </tr>`).join('');
 
     return `<h2>Statutory Consultee Tracker</h2>
 <table style="border-collapse:collapse;width:100%;">
-  <thead><tr>${th('Consultee')}${th('Date Received')}${th('Position')}${th('Comments')}${th('Progress')}${th('Status')}</tr></thead>
+  <thead><tr>${th('Consultee')}${th('Date Received')}${th('Position')}${th('Comments')}${th('Action Required')}${th('Conditions Suggested')}${th('Progress')}${th('Status')}</tr></thead>
   <tbody>${rows}</tbody>
 </table>`;
   }
@@ -846,6 +857,10 @@ ${sections.join('<br>')}`;
           <div class="ct-field">
             <label class="ct-label">Action Required <span class="ct-label-hint">(what needs to be provided to the council)</span></label>
             <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.action_required} rows="4" placeholder="- Further ecological survey&#10;- Written confirmation on drainage strategy"></textarea>
+          </div>
+          <div class="ct-field">
+            <label class="ct-label">Conditions Suggested <span class="ct-label-hint">(proposed conditions, applied after approval)</span></label>
+            <textarea class="form-input ct-comments-textarea" bind:value={reviewForm.conditions_suggested} rows="4" placeholder="- Condition requiring a surface water drainage scheme&#10;- Condition restricting hours of construction"></textarea>
           </div>
           <div class="ct-field-row">
             <div class="ct-field ct-field-grow">
@@ -1179,6 +1194,7 @@ ${sections.join('<br>')}`;
             <th class="ct-th ct-th-pos">Position</th>
             <th class="ct-th ct-th-comments">Comments</th>
             <th class="ct-th ct-th-action-required">Action Required</th>
+            <th class="ct-th ct-th-conditions">Conditions Suggested</th>
             <th class="ct-th ct-th-progress">Progress</th>
             <th class="ct-th ct-th-status">Status</th>
             <th class="ct-th ct-th-discipline">Discipline</th>
@@ -1259,6 +1275,22 @@ ${sections.join('<br>')}`;
                   <textarea class="form-input ct-cell-input" bind:value={editForm.action_required} rows="4" placeholder="- Further information…"></textarea>
                 {:else}
                   {@const lines = actionRequiredLines(r.action_required)}
+                  {#if lines.length}
+                    <ul class="ct-action-list">
+                      {#each lines as line}<li>{line}</li>{/each}
+                    </ul>
+                  {:else}
+                    <span class="ct-cell-muted">—</span>
+                  {/if}
+                {/if}
+              </td>
+
+              <!-- Conditions Suggested -->
+              <td class="ct-td ct-td-conditions">
+                {#if editing}
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.conditions_suggested} rows="4" placeholder="- Condition requiring…"></textarea>
+                {:else}
+                  {@const lines = actionRequiredLines(r.conditions_suggested)}
                   {#if lines.length}
                     <ul class="ct-action-list">
                       {#each lines as line}<li>{line}</li>{/each}
@@ -1566,6 +1598,7 @@ ${sections.join('<br>')}`;
   .ct-th-pos        { min-width: 120px; }
   .ct-th-comments   { min-width: 220px; max-width: 320px; }
   .ct-th-action-required { min-width: 180px; max-width: 260px; }
+  .ct-th-conditions { min-width: 180px; max-width: 260px; }
   .ct-th-discipline { min-width: 100px; }
   .ct-th-consultant { min-width: 140px; }
   .ct-th-progress   { min-width: 180px; }

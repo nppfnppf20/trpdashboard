@@ -18,17 +18,29 @@ function progressText(advancements) {
     .join('\n\n');
 }
 
+function actionRequiredText(actionRequired) {
+  if (!actionRequired?.trim()) return '';
+  return actionRequired
+    .split('\n')
+    .map(l => l.replace(/^[-•*]\s*/, '').trim())
+    .filter(Boolean)
+    .map(l => `- ${l}`)
+    .join('\n');
+}
+
 export function drawConsultationSection(doc, { project, responses, margin, pageWidth, pageHeight, totalPagesExp }) {
   const projectLine = projectLineFor(project);
   const cursorY = drawTitleBlock(doc, { title: 'Consultation Tracker', projectLine, margin, pageWidth });
 
-  const head = [['Consultee', 'Date Received', 'Position', 'Comments', 'Progress', 'Status']];
+  const head = [['Consultee', 'Date Received', 'Position', 'Comments', 'Action Required', 'Conditions Suggested', 'Progress', 'Status']];
 
   const body = responses.map(r => [
     r.consultee_name || '',
     r.date_received ? formatDate(r.date_received) : '',
     r.position || '',
     r.comments || '',
+    actionRequiredText(r.action_required),
+    actionRequiredText(r.conditions_suggested),
     progressText(r.advancements),
     r.status || '',
   ]);
@@ -58,12 +70,14 @@ export function drawConsultationSection(doc, { project, responses, margin, pageW
       lineColor: [203, 213, 225],
     },
     columnStyles: {
-      0: { cellWidth: 34 },
-      1: { cellWidth: 24 },
-      2: { cellWidth: 26 },
-      3: { cellWidth: 80 },
-      4: { cellWidth: 80 },
-      5: { cellWidth: 24 },
+      0: { cellWidth: 30 },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 22 },
+      3: { cellWidth: 52 },
+      4: { cellWidth: 32 },
+      5: { cellWidth: 32 },
+      6: { cellWidth: 52 },
+      7: { cellWidth: 20 },
     },
     didDrawPage: (data) => {
       drawPageFooter(doc, { pageWidth, pageHeight, margin, projectLine, pageNumber: data.pageNumber, totalPagesExp });

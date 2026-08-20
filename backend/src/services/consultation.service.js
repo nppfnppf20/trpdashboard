@@ -3,7 +3,7 @@ import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Extract key information from a statutory consultation response document.
 
-Return your response using EXACTLY these XML delimiters — nothing before <CONSULTEE_NAME> and nothing after </COMMENTS>:
+Return your response using EXACTLY these XML delimiters — nothing before <CONSULTEE_NAME> and nothing after </CONDITIONS_SUGGESTED>:
 
 <CONSULTEE_NAME>name of the consultee organisation or body</CONSULTEE_NAME>
 <DATE_RECEIVED>YYYY-MM-DD or leave blank</DATE_RECEIVED>
@@ -14,6 +14,9 @@ Summary of the consultee's response here
 <ACTION_REQUIRED>
 Bullet points here, or leave the tags empty if nothing is required
 </ACTION_REQUIRED>
+<CONDITIONS_SUGGESTED>
+Bullet points here, or leave the tags empty if none are suggested
+</CONDITIONS_SUGGESTED>
 
 CONSULTEE_NAME: Full name of the statutory consultee (e.g. "Natural England", "Environment Agency"). Leave blank if not determinable.
 
@@ -33,10 +36,17 @@ Word limit: 500 words maximum.
 - If covering all points would exceed 500 words, switch to a brief bullet-point-style list (one short sentence per issue, no elaboration) so every point is still represented.
 - If detail has been condensed in this way, add the sentence "Further detail is contained in the full response." at the very end.
 
-ACTION_REQUIRED: What, as a direct result of this consultation response, the team or a consultant needs to provide to the council — e.g. further information, a specific technical report or survey, a revised drawing, written clarification on a point. This is NOT a restatement of the consultee's issues — it is the concrete deliverable(s) needed to address them.
+ACTION_REQUIRED: What, as a direct result of this consultation response, the team or a consultant needs to provide to the council BEFORE a decision can be made — e.g. further information, a specific technical report or survey, a revised drawing, written clarification on a point. This is NOT a restatement of the consultee's issues — it is the concrete deliverable(s) needed to address them. Do not include planning conditions here — those go in CONDITIONS_SUGGESTED.
 - Brief bullet points only, one per action, each starting on its own line with "- ".
 - If the response is pure support or no comment with nothing to action, leave the tags empty: <ACTION_REQUIRED></ACTION_REQUIRED>
-- Do not use em dashes (—) anywhere in this field.`;
+- Do not use em dashes (—) anywhere in this field.
+
+CONDITIONS_SUGGESTED: Any planning conditions the consultee has proposed or recommended be attached to the decision if approved — these apply AFTER approval, distinct from ACTION_REQUIRED which is about what's needed BEFORE a decision.
+
+VERBATIM RULE — this is critical, follow it exactly: each condition must be copied word for word from the document, character for character. Do NOT paraphrase, summarise, reword, condense, or "clean up" the wording in any way. Do not correct punctuation, spelling, or grammar. If a condition spans several sentences in the source, copy all of them exactly as written. If you cannot find the consultee's own exact wording for a condition, do not invent or reconstruct wording — leave it out rather than approximate it.
+- One condition per bullet, each starting on its own line with "- ", followed by the exact quoted text and nothing else (no added commentary, no paragraph/section references, no reasoning).
+- If the consultee has not suggested any conditions in their own words, leave the tags empty: <CONDITIONS_SUGGESTED></CONDITIONS_SUGGESTED>
+- This field is copied text, not authored text — reproduce the source exactly as it appears, including any punctuation such as em dashes, rather than altering it.`;
 
 async function buildSystemPrompt(developmentType) {
   const brief = await getGuidingBrief('consultation_response', developmentType).catch(() => null);
@@ -192,10 +202,12 @@ export async function processConsultationResponse(text, fileName, developmentTyp
   }
 
   return {
-    consultee_name:  extractTag(raw, 'CONSULTEE_NAME') || null,
-    date_received:   extractTag(raw, 'DATE_RECEIVED') || null,
-    position:        extractTag(raw, 'POSITION') || null,
+    consultee_name:        extractTag(raw, 'CONSULTEE_NAME') || null,
+    date_received:         extractTag(raw, 'DATE_RECEIVED') || null,
+    position:              extractTag(raw, 'POSITION') || null,
     comments,
-    action_required: noEmDash(extractTag(raw, 'ACTION_REQUIRED')) || null,
+    action_required:       noEmDash(extractTag(raw, 'ACTION_REQUIRED')) || null,
+    // Verbatim quotes from the source document — must not be altered, not even to strip em dashes.
+    conditions_suggested:  extractTag(raw, 'CONDITIONS_SUGGESTED') || null,
   };
 }

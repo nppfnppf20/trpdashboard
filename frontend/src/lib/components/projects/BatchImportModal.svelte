@@ -22,7 +22,10 @@
     nameLabel:       'Consultee',
     commentKey:      'comments',
     commentLabel:    'Comments',
-    extraFields:     [{ key: 'action_required', label: 'Action Required' }],
+    extraFields:     [
+                       { key: 'action_required',      label: 'Action Required' },
+                       { key: 'conditions_suggested',  label: 'Conditions Suggested' },
+                     ],
   } : {
     title:           'Batch Import: Public Comments',
     processItem:     (item) => item.type === 'text'
@@ -583,7 +586,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 700;
+    z-index: 2000;
     padding: 1.5rem 1rem;
   }
   .bi-modal {
