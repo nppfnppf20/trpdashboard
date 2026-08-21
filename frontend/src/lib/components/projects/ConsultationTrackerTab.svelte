@@ -272,11 +272,6 @@
     return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
-  function actionRequiredLines(text) {
-    if (!text?.trim()) return [];
-    return text.split('\n').map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean);
-  }
-
   function positionClass(pos) {
     if (!pos) return 'ct-pos-none';
     const p = pos.toLowerCase();
@@ -629,8 +624,7 @@
   }
 
   function actionRequiredHtml(actionRequired) {
-    const lines = actionRequiredLines(actionRequired);
-    return lines.length ? lines.map(l => `- ${l}`).join('<br>') : '';
+    return (actionRequired || '').replace(/\n/g, '<br>');
   }
 
   function buildStatutoryTableHtml() {
@@ -1273,13 +1267,19 @@ ${sections.join('<br>')}`;
               <!-- Action Required -->
               <td class="ct-td ct-td-action-required">
                 {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.action_required} rows="4" placeholder="- Further information…"></textarea>
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.action_required} rows="4" placeholder="Further information…"></textarea>
                 {:else}
-                  {@const lines = actionRequiredLines(r.action_required)}
-                  {#if lines.length}
-                    <ul class="ct-action-list">
-                      {#each lines as line}<li>{line}</li>{/each}
-                    </ul>
+                  {#if r.action_required}
+                    {@const expanded = expandedIds.has('ar' + r.id)}
+                    {@const needsTrunc = r.action_required.length > 280}
+                    <p class="ct-comments-text">
+                      {expanded || !needsTrunc ? r.action_required : r.action_required.slice(0, 280) + '…'}
+                    </p>
+                    {#if needsTrunc}
+                      <button class="ct-expand-btn" on:click={() => toggleExpand('ar' + r.id)}>
+                        {expanded ? 'Show less' : 'Show more'}
+                      </button>
+                    {/if}
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
@@ -1289,13 +1289,19 @@ ${sections.join('<br>')}`;
               <!-- Conditions Suggested -->
               <td class="ct-td ct-td-conditions">
                 {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.conditions_suggested} rows="4" placeholder="- Condition requiring…"></textarea>
+                  <textarea class="form-input ct-cell-input" bind:value={editForm.conditions_suggested} rows="4" placeholder="Condition requiring…"></textarea>
                 {:else}
-                  {@const lines = actionRequiredLines(r.conditions_suggested)}
-                  {#if lines.length}
-                    <ul class="ct-action-list">
-                      {#each lines as line}<li>{line}</li>{/each}
-                    </ul>
+                  {#if r.conditions_suggested}
+                    {@const expanded = expandedIds.has('cs' + r.id)}
+                    {@const needsTrunc = r.conditions_suggested.length > 280}
+                    <p class="ct-comments-text">
+                      {expanded || !needsTrunc ? r.conditions_suggested : r.conditions_suggested.slice(0, 280) + '…'}
+                    </p>
+                    {#if needsTrunc}
+                      <button class="ct-expand-btn" on:click={() => toggleExpand('cs' + r.id)}>
+                        {expanded ? 'Show less' : 'Show more'}
+                      </button>
+                    {/if}
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
@@ -2089,15 +2095,6 @@ ${sections.join('<br>')}`;
     color: #334155;
     white-space: pre-wrap;
   }
-  .ct-action-list {
-    margin: 0;
-    padding-left: 1.1rem;
-    font-size: 0.78rem;
-    line-height: 1.5;
-    color: #334155;
-  }
-  .ct-action-list li { margin-bottom: 2px; }
-  .ct-action-list li:last-child { margin-bottom: 0; }
   .ct-expand-btn {
     display: inline-block;
     margin-top: 4px;

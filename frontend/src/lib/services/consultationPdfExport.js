@@ -18,16 +18,6 @@ function progressText(advancements) {
     .join('\n\n');
 }
 
-function actionRequiredText(actionRequired) {
-  if (!actionRequired?.trim()) return '';
-  return actionRequired
-    .split('\n')
-    .map(l => l.replace(/^[-•*]\s*/, '').trim())
-    .filter(Boolean)
-    .map(l => `- ${l}`)
-    .join('\n');
-}
-
 export function drawConsultationSection(doc, { project, responses, margin, pageWidth, pageHeight, totalPagesExp }) {
   const projectLine = projectLineFor(project);
   const cursorY = drawTitleBlock(doc, { title: 'Consultation Tracker', projectLine, margin, pageWidth });
@@ -39,8 +29,8 @@ export function drawConsultationSection(doc, { project, responses, margin, pageW
     r.date_received ? formatDate(r.date_received) : '',
     r.position || '',
     r.comments || '',
-    actionRequiredText(r.action_required),
-    actionRequiredText(r.conditions_suggested),
+    r.action_required || '',
+    r.conditions_suggested || '',
     progressText(r.advancements),
     r.status || '',
   ]);

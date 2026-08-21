@@ -86,16 +86,6 @@
       <span class="btn-label">New Project</span>
     </button>
 
-    <!-- Header Section -->
-    <div class="home-header">
-      <h1 class="home-title">
-        Planning Assessment Tools
-      </h1>
-      <p class="home-subtitle">
-        Comprehensive planning and development assessment tools for informed decision-making
-      </p>
-    </div>
-
     <!-- Tools Grid -->
     <div class="tools-grid">
 
@@ -107,12 +97,8 @@
           </div>
 
           <h2 class="card-title">
-            Project Information
+            Projects
           </h2>
-
-          <p class="card-description">
-            View and manage all your projects in one place. Access a comprehensive table of project information and visualize your projects alongside scraped planning data on an interactive map.
-          </p>
 
           <div class="features-list">
             <div class="feature-item">
@@ -152,12 +138,6 @@
             Renewables HLPV Tool (beta)
           </h2>
 
-          <p class="card-description">
-            Provisional heritage, landscape, planning, and viability assessment tool. Analyses sites for
-            heritage constraints, landscape impacts, agricultural land quality, renewable energy potential, and ecology
-            considerations.
-          </p>
-
           <div class="features-list">
             <div class="feature-item">
               <i class="las la-check-circle feature-icon-check"></i>
@@ -196,10 +176,6 @@
             Surveyor Management
           </h2>
 
-          <p class="card-description">
-            Manage external surveyors, track quotes and instructed work, monitor project programme with Gantt charts, and review surveyor performance across projects.
-          </p>
-
           <div class="features-list">
             <div class="feature-item">
               <i class="las la-file-invoice-dollar feature-icon-indigo"></i>
@@ -234,17 +210,13 @@
           </div>
 
           <h2 class="card-title">
-            Planning Application Tool
+            Planning Deliverables
           </h2>
-
-          <p class="card-description">
-            Structure and develop your planning argument issue by issue, with AI-powered document review and live editable drafts.
-          </p>
 
           <div class="features-list">
             <div class="feature-item">
               <i class="las la-magic feature-icon-blue"></i>
-              <span>AI-Generated Starting Argument</span>
+              <span>Generated Starting Argument</span>
             </div>
             <div class="feature-item">
               <i class="las la-file-upload feature-icon-blue"></i>
@@ -278,14 +250,10 @@
             Meeting Notes
           </h2>
 
-          <p class="card-description">
-            Process meeting transcripts and CPD records with AI-generated summaries and action tracking. Manage project meetings, internal team meetings, and CPD records in one place.
-          </p>
-
           <div class="features-list">
             <div class="feature-item">
               <i class="las la-magic feature-icon-violet"></i>
-              <span>AI Summary &amp; Action Extraction</span>
+              <span>Summary &amp; Action Extraction</span>
             </div>
             <div class="feature-item">
               <i class="las la-users-cog feature-icon-violet"></i>
@@ -318,10 +286,6 @@
           <h2 class="card-title">
             Marketing <span class="beta-tag">Beta</span>
           </h2>
-
-          <p class="card-description">
-            Generate project-specific marketing content (LinkedIn posts and newsletters) from project data, with AI-powered drafting and a live rich-text editor.
-          </p>
 
           <div class="features-list">
             <div class="feature-item">
@@ -359,10 +323,6 @@
           <h2 class="card-title">
             Policy &amp; Industry Updates
           </h2>
-
-          <p class="card-description">
-            Upload and summarise policy documents, guidance notes, and industry updates. Policy updates from internal meetings and CPDs feed in automatically.
-          </p>
 
           <div class="features-list">
             <div class="feature-item">
@@ -425,10 +385,6 @@
             Web Scraper Data
           </h2>
 
-          <p class="card-description">
-            View and analyze scraped planning application data from across the UK. Access comprehensive information on renewable energy projects and data centre developments.
-          </p>
-
           <div class="features-list">
             <div class="feature-item">
               <i class="las la-solar-panel feature-icon-orange"></i>
@@ -465,11 +421,6 @@
           <h2 class="card-title">
             Tenders <span class="beta-tag">Beta</span>
           </h2>
-
-          <p class="card-description">
-            Track public procurement opportunities from Find a Tender, automatically filtered for
-            planning, regeneration and socio-economic consultancy work, with council activity insights.
-          </p>
 
           <div class="features-list">
             <div class="feature-item">
@@ -508,10 +459,6 @@
             Admin Console
           </h2>
 
-          <p class="card-description">
-            Administrative tools for managing surveyor organisations, contacts, and system configuration. View performance ratings and manage surveyor data.
-          </p>
-
           <div class="features-list">
             <div class="feature-item">
               <i class="las la-users feature-icon-slate"></i>
@@ -548,11 +495,6 @@
           <h2 class="card-title">
             Socioeconomics Tool
           </h2>
-
-          <p class="card-description">
-            Analyse socioeconomic data including demographics, employment patterns, transportation methods,
-            health statistics, and educational qualifications to understand community characteristics.
-          </p>
 
           <div class="features-list">
             <div class="feature-item">
@@ -714,6 +656,7 @@
     grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
     gap: 1.25rem;
     margin-bottom: 4rem;
+    padding-top: 3.5rem;
   }
 
   /* --- Cards --- */
@@ -793,7 +736,7 @@
     font-size: 1.125rem;
     font-weight: 600;
     color: #111827;
-    margin: 0 0 0.625rem 0;
+    margin: 0 0 1.5rem 0;
     letter-spacing: -0.015em;
   }
 

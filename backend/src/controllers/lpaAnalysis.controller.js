@@ -45,6 +45,14 @@ async function getPolicies(client, projectId) {
   return rows;
 }
 
+async function getBriefingNote(client, projectId) {
+  const { rows } = await client.query(
+    `SELECT briefing_note FROM lpa_decision_analysis WHERE project_id = $1`,
+    [projectId]
+  );
+  return rows[0]?.briefing_note ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Relevant Policies
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,14 +262,15 @@ export async function uploadLpaDocument(req, res) {
     );
     const docId = docRows[0].id;
 
-    // Fetch project context and policies for the prompt
-    const [projectContext, policies] = await Promise.all([
+    // Fetch project context, policies, and briefing note for the prompt
+    const [projectContext, policies, briefingNote] = await Promise.all([
       getProjectContext(client, projectId),
-      getPolicies(client, projectId)
+      getPolicies(client, projectId),
+      getBriefingNote(client, projectId)
     ]);
 
     // Run LLM analysis
-    const docSummary = await analyseLpaDocument(rawText, projectContext, policies);
+    const docSummary = await analyseLpaDocument(rawText, projectContext, policies, briefingNote);
 
     // Store result
     await client.query(
@@ -272,7 +281,7 @@ export async function uploadLpaDocument(req, res) {
     );
 
     // Auto-trigger synthesis with updated document set
-    await runSynthesis(client, projectId, projectContext, policies);
+    await runSynthesis(client, projectId, projectContext, policies, briefingNote);
 
     const { rows: finalDoc } = await client.query(
       `SELECT id, project_id, filename, token_estimate, parse_warning, doc_summary, status, uploaded_at
@@ -315,11 +324,12 @@ export async function deleteLpaDocument(req, res) {
         [projectId]
       );
     } else {
-      const [projectContext, policies] = await Promise.all([
+      const [projectContext, policies, briefingNote] = await Promise.all([
         getProjectContext(client, projectId),
-        getPolicies(client, projectId)
+        getPolicies(client, projectId),
+        getBriefingNote(client, projectId)
       ]);
-      await runSynthesis(client, projectId, projectContext, policies);
+      await runSynthesis(client, projectId, projectContext, policies, briefingNote);
     }
 
     res.json({ success: true });
@@ -335,7 +345,7 @@ export async function deleteLpaDocument(req, res) {
 // Synthesis
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function runSynthesis(client, projectId, projectContext, policies) {
+async function runSynthesis(client, projectId, projectContext, policies, briefingNote = null) {
   const { rows: docs } = await client.query(
     `SELECT filename, doc_summary FROM lpa_decision_documents
      WHERE project_id = $1 AND status = 'complete'
@@ -345,7 +355,7 @@ async function runSynthesis(client, projectId, projectContext, policies) {
 
   if (!docs.length) return;
 
-  const fullReport = await synthesiseLpaAnalysis(projectContext, policies, docs);
+  const fullReport = await synthesiseLpaAnalysis(projectContext, policies, docs, briefingNote);
 
   await client.query(
     `INSERT INTO lpa_decision_analysis (project_id, full_report, documents_processed, last_synthesised_at)
@@ -362,7 +372,7 @@ export async function getLpaAnalysis(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT full_report, documents_processed, last_synthesised_at
+      `SELECT full_report, documents_processed, last_synthesised_at, briefing_note
        FROM lpa_decision_analysis WHERE project_id = $1`,
       [projectId]
     );
@@ -373,17 +383,60 @@ export async function getLpaAnalysis(req, res) {
   }
 }
 
+// Upserts the free-text scheme context used to frame LPA decision analysis —
+// works even before any document has been uploaded. If a report already
+// exists, re-synthesises immediately so it reflects the new note.
+export async function saveBriefingNote(req, res) {
+  const { projectId } = req.params;
+  const { briefing_note } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO lpa_decision_analysis (project_id, briefing_note)
+       VALUES ($1, $2)
+       ON CONFLICT (project_id) DO UPDATE SET briefing_note = EXCLUDED.briefing_note`,
+      [projectId, briefing_note?.trim() || null]
+    );
+
+    const { rows: complete } = await client.query(
+      `SELECT COUNT(*) AS cnt FROM lpa_decision_documents WHERE project_id = $1 AND status = 'complete'`,
+      [projectId]
+    );
+    if (parseInt(complete[0].cnt, 10) > 0) {
+      const [projectContext, policies, briefingNote] = await Promise.all([
+        getProjectContext(client, projectId),
+        getPolicies(client, projectId),
+        getBriefingNote(client, projectId)
+      ]);
+      await runSynthesis(client, projectId, projectContext, policies, briefingNote);
+    }
+
+    const { rows } = await client.query(
+      `SELECT full_report, documents_processed, last_synthesised_at, briefing_note
+       FROM lpa_decision_analysis WHERE project_id = $1`,
+      [projectId]
+    );
+    res.json(rows[0] ?? null);
+  } catch (err) {
+    console.error('saveBriefingNote error:', err);
+    res.status(500).json({ error: 'Failed to save briefing note' });
+  } finally {
+    client.release();
+  }
+}
+
 export async function triggerSynthesis(req, res) {
   const { projectId } = req.params;
   const client = await pool.connect();
   try {
-    const [projectContext, policies] = await Promise.all([
+    const [projectContext, policies, briefingNote] = await Promise.all([
       getProjectContext(client, projectId),
-      getPolicies(client, projectId)
+      getPolicies(client, projectId),
+      getBriefingNote(client, projectId)
     ]);
-    await runSynthesis(client, projectId, projectContext, policies);
+    await runSynthesis(client, projectId, projectContext, policies, briefingNote);
     const { rows } = await client.query(
-      `SELECT full_report, documents_processed, last_synthesised_at
+      `SELECT full_report, documents_processed, last_synthesised_at, briefing_note
        FROM lpa_decision_analysis WHERE project_id = $1`,
       [projectId]
     );

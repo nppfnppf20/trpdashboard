@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getLpaDocuments, uploadLpaDocument, deleteLpaDocument, getLpaAnalysis, triggerSynthesis } from '$lib/api/lpaAnalysis.js';
+  import { getLpaDocuments, uploadLpaDocument, deleteLpaDocument, getLpaAnalysis, saveBriefingNote, triggerSynthesis } from '$lib/api/lpaAnalysis.js';
 
   export let project;
   $: projectId = project?.id;
@@ -10,10 +10,17 @@
   let loading = true;
   let error = null;
 
-  // Upload state
-  let uploading = false;
+  // Upload queue state — files are staged here first, nothing uploads until
+  // "Process" is clicked, then each is analysed (and saved) one at a time.
+  let queue = []; // { id, file, status: 'pending'|'processing'|'done'|'error', error }
+  let queueProcessing = false;
+  let queueDone = 0;
   let uploadError = null;
-  let uploadProgress = null; // label shown during upload
+
+  // Briefing note state
+  let briefingNoteDraft = null; // null = not yet loaded from analysis
+  let briefingNoteSaving = false;
+  let showBriefingNote = false;
 
   // Synthesis state
   let synthesising = false;
@@ -32,6 +39,7 @@
         getLpaDocuments(projectId),
         getLpaAnalysis(projectId)
       ]);
+      if (briefingNoteDraft === null) briefingNoteDraft = analysis?.briefing_note || '';
     } catch (err) {
       error = err.message;
     } finally {
@@ -39,43 +47,68 @@
     }
   }
 
-  async function handleFileSelect(e) {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    e.target.value = ''; // reset input
-    for (const file of files) {
-      await processUpload(file);
+  async function saveBriefingNoteNow() {
+    briefingNoteSaving = true;
+    try {
+      analysis = await saveBriefingNote(projectId, briefingNoteDraft);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      briefingNoteSaving = false;
     }
   }
 
-  async function handleDrop(e) {
+  let queueIdCounter = 0;
+  function addFilesToQueue(files) {
+    const items = files.map(file => ({ id: ++queueIdCounter, file, status: 'pending', error: null }));
+    queue = [...queue, ...items];
+  }
+
+  function handleFileSelect(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // reset input
+    if (files.length) addFilesToQueue(files);
+  }
+
+  function handleDrop(e) {
     e.preventDefault();
     isDragOver = false;
     const files = Array.from(e.dataTransfer?.files || []);
-    for (const file of files) {
-      await processUpload(file);
-    }
+    if (files.length) addFilesToQueue(files);
   }
 
-  async function processUpload(file) {
-    uploading = true;
+  function removeFromQueue(id) {
+    queue = queue.filter(item => item.id !== id);
+  }
+
+  function clearFinishedQueue() {
+    queue = queue.filter(item => item.status === 'pending' || item.status === 'processing');
+  }
+
+  async function processQueue() {
+    queueProcessing = true;
     uploadError = null;
-    uploadProgress = `Uploading ${file.name}…`;
+    queueDone = 0;
+    const toProcess = queue.filter(item => item.status === 'pending');
     try {
-      uploadProgress = `Extracting text from ${file.name}…`;
-      const result = await uploadLpaDocument(projectId, file);
-      documents = [...documents, result.document];
-      // Reload analysis (synthesis runs automatically on backend)
-      uploadProgress = 'Updating analysis…';
-      analysis = await getLpaAnalysis(projectId);
-      if (result.parseWarning) {
-        uploadError = `Note: ${result.parseWarning}`;
+      for (const item of toProcess) {
+        queue = queue.map(q => q.id === item.id ? { ...q, status: 'processing' } : q);
+        try {
+          const result = await uploadLpaDocument(projectId, item.file);
+          documents = [...documents, result.document];
+          if (result.parseWarning) uploadError = `Note: ${result.parseWarning}`;
+          queue = queue.map(q => q.id === item.id ? { ...q, status: 'done' } : q);
+        } catch (err) {
+          queue = queue.map(q => q.id === item.id ? { ...q, status: 'error', error: err.message } : q);
+        }
+        queueDone += 1;
       }
-    } catch (err) {
-      uploadError = err.message;
+      // Refresh analysis once at the end, not after every file — the backend
+      // already re-synthesises on each upload, so this just fetches the
+      // final result instead of every intermediate one.
+      analysis = await getLpaAnalysis(projectId);
     } finally {
-      uploading = false;
-      uploadProgress = null;
+      queueProcessing = false;
     }
   }
 
@@ -170,29 +203,85 @@
     <!-- Documents section -->
     {#if activeSection === 'documents'}
       <div class="documents-section">
+        <!-- Briefing note -->
+        <div class="briefing-note-card">
+          <button class="briefing-note-toggle" on:click={() => showBriefingNote = !showBriefingNote}>
+            <i class="las la-sticky-note"></i> Briefing Note
+            {#if briefingNoteDraft}<span class="count">set</span>{/if}
+            <i class="las {showBriefingNote ? 'la-angle-up' : 'la-angle-down'}" style="margin-left: auto;"></i>
+          </button>
+          {#if showBriefingNote}
+            <div class="briefing-note-body">
+              <p class="sub">
+                Give the AI scheme-specific context, e.g. "we're proposing 40 units, the site abuts a Conservation Area, the
+                key sensitivity is heritage impact". This is used to frame both individual document analysis and the report below.
+              </p>
+              <textarea rows="4" placeholder="e.g. Key facts about our scheme the AI should keep in mind…" bind:value={briefingNoteDraft}></textarea>
+              <button class="btn-regen" on:click={saveBriefingNoteNow} disabled={briefingNoteSaving}>
+                {#if briefingNoteSaving}<div class="spinner-sm"></div> Saving…{:else}<i class="las la-save"></i> Save{/if}
+              </button>
+            </div>
+          {/if}
+        </div>
+
         <!-- Upload area -->
         <div
           class="upload-zone"
           class:drag-over={isDragOver}
-          class:uploading
           role="button"
           tabindex="0"
           on:dragover|preventDefault={() => isDragOver = true}
           on:dragleave={() => isDragOver = false}
           on:drop={handleDrop}
         >
-          {#if uploading}
-            <div class="upload-progress">
-              <div class="spinner"></div>
-              <p>{uploadProgress || 'Analysing document…'}</p>
-              <p class="sub">This may take a minute, the AI is reading the document against your project context and policies.</p>
-            </div>
-          {:else}
-            <i class="las la-cloud-upload-alt"></i>
-            <p>Drop documents here or <label class="browse-link">browse<input type="file" accept=".pdf,.docx,.txt,.md" multiple on:change={handleFileSelect} /></label></p>
-            <p class="sub">PDF, Word, .txt or .md: decision notices, officer reports, appeal decisions, supporting documents</p>
-          {/if}
+          <i class="las la-cloud-upload-alt"></i>
+          <p>Drop documents here or <label class="browse-link">browse<input type="file" accept=".pdf,.docx,.txt,.md" multiple on:change={handleFileSelect} /></label></p>
+          <p class="sub">PDF, Word, .txt or .md: decision notices, officer reports, appeal decisions, supporting documents</p>
         </div>
+
+        {#if queue.length > 0}
+          <div class="upload-queue">
+            <div class="queue-header">
+              <span>{queue.length} file{queue.length === 1 ? '' : 's'} queued</span>
+              {#if !queueProcessing}
+                <div class="queue-header-actions">
+                  <button class="btn-cancel-sm" on:click={clearFinishedQueue}>Clear finished</button>
+                  <button class="btn-regen" on:click={processQueue} disabled={!queue.some(i => i.status === 'pending')}>
+                    <i class="las la-play"></i> Process {queue.filter(i => i.status === 'pending').length} file{queue.filter(i => i.status === 'pending').length === 1 ? '' : 's'}
+                  </button>
+                </div>
+              {/if}
+            </div>
+
+            {#if queueProcessing}
+              <div class="queue-progress-bar">
+                <div class="queue-progress-fill" style="width: {(queueDone / queue.length) * 100}%"></div>
+              </div>
+              <p class="queue-progress-label">Processing {Math.min(queueDone + 1, queue.length)} of {queue.length}… the AI is reading each document against your project context, policies, and briefing note.</p>
+            {/if}
+
+            <div class="queue-list">
+              {#each queue as item (item.id)}
+                <div class="queue-item" class:queue-item--error={item.status === 'error'}>
+                  {#if item.status === 'pending'}
+                    <i class="las la-file queue-icon"></i>
+                  {:else if item.status === 'processing'}
+                    <div class="spinner-sm"></div>
+                  {:else if item.status === 'done'}
+                    <i class="las la-check-circle queue-icon queue-icon--done"></i>
+                  {:else}
+                    <i class="las la-times-circle queue-icon queue-icon--error"></i>
+                  {/if}
+                  <span class="queue-item-name">{item.file.name}</span>
+                  {#if item.status === 'error'}<span class="queue-item-error">{item.error}</span>{/if}
+                  {#if item.status === 'pending'}
+                    <button class="queue-remove-btn" on:click={() => removeFromQueue(item.id)} title="Remove"><i class="las la-times"></i></button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
 
         {#if uploadError}
           <div class="upload-notice" class:warning={uploadError.startsWith('Note:')}>
@@ -400,7 +489,6 @@
     border-color: #9333ea;
     background: #faf5ff;
   }
-  .upload-zone.uploading { cursor: default; border-color: #9333ea; background: #faf5ff; }
   .upload-zone i { font-size: 2.5rem; color: #9333ea; display: block; margin-bottom: 0.5rem; }
   .upload-zone p { margin: 0 0 0.25rem; }
   .upload-zone .sub { font-size: 0.78rem; color: #94a3b8; }
@@ -412,14 +500,121 @@
   }
   .browse-link input { display: none; }
 
-  .upload-progress {
+  /* Briefing note */
+  .briefing-note-card {
+    border: 1px solid #e9d5ff;
+    border-radius: 10px;
+    background: #faf5ff;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .briefing-note-toggle {
     display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 0.5rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #7e22ce;
+    font-family: inherit;
   }
-  .upload-progress p { margin: 0; font-weight: 500; }
-  .upload-progress .sub { font-size: 0.78rem; color: #94a3b8; }
+  .briefing-note-body {
+    padding: 0 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .briefing-note-body .sub { margin: 0; font-size: 0.78rem; color: #64748b; line-height: 1.5; }
+  .briefing-note-body textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: #1e293b;
+    background: white;
+    resize: vertical;
+  }
+  .briefing-note-body textarea:focus {
+    outline: none;
+    border-color: #9333ea;
+    box-shadow: 0 0 0 3px #f3e8ff;
+  }
+  .briefing-note-body .btn-regen { align-self: flex-end; }
+
+  /* Upload queue */
+  .upload-queue {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    flex-shrink: 0;
+  }
+  .queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .queue-header-actions { display: flex; align-items: center; gap: 0.5rem; }
+  .btn-cancel-sm {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid #d1d5db;
+    background: white;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+    color: #64748b;
+  }
+  .btn-cancel-sm:hover { background: #f8fafc; }
+
+  .queue-progress-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #f1f5f9;
+    overflow: hidden;
+  }
+  .queue-progress-fill {
+    height: 100%;
+    background: #9333ea;
+    transition: width 0.25s ease;
+  }
+  .queue-progress-label { margin: 0; font-size: 0.78rem; color: #64748b; }
+
+  .queue-list { display: flex; flex-direction: column; gap: 0.4rem; }
+  .queue-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    background: #f8fafc;
+    border-radius: 6px;
+    font-size: 0.82rem;
+  }
+  .queue-item--error { background: #fef2f2; }
+  .queue-icon { font-size: 1rem; color: #94a3b8; flex-shrink: 0; }
+  .queue-icon--done { color: #16a34a; }
+  .queue-icon--error { color: #dc2626; }
+  .queue-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; }
+  .queue-item-error { font-size: 0.75rem; color: #dc2626; flex-shrink: 0; }
+  .queue-remove-btn {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; background: none; cursor: pointer;
+    border-radius: 5px; color: #94a3b8; font-size: 0.85rem; flex-shrink: 0;
+  }
+  .queue-remove-btn:hover { background: #f1f5f9; color: #dc2626; }
 
   .upload-notice {
     padding: 0.6rem 0.85rem;

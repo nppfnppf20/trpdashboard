@@ -5,7 +5,10 @@
  */
 
 import { chunkText } from './parser.service.js';
-import { callClaude, parseJSON, MAX_CHUNKS, MODEL_SONNET, buildFullDocumentBlock, checkDocumentSize } from './llm.shared.js';
+import {
+  callClaude, parseJSON, MAX_CHUNKS, MODEL_SONNET, buildFullDocumentBlock, checkDocumentSize,
+  PLANNING_TIER_LABELS, PLANNING_TIER_ORDER
+} from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants
@@ -24,9 +27,10 @@ const LPA_DOC_ANALYSIS_PROMPT = `You are analysing a planning document to extrac
 
 ## Live Project Context
 {{PROJECT_CONTEXT}}
-
+{{BRIEFING_NOTE}}
 ## Relevant Planning Policies We Are Tracking
-{{POLICIES_LIST}}
+Each policy below is given in full, verbatim, where its wording has been recorded — use the actual wording, not just the reference, when assessing how a document treats it.
+{{POLICIES_BLOCK}}
 
 ## Document to Analyse
 <document>
@@ -67,9 +71,10 @@ const LPA_SYNTHESIS_PROMPT = `You are producing a strategic LPA decision analysi
 
 ## Live Project Context
 {{PROJECT_CONTEXT}}
-
+{{BRIEFING_NOTE}}
 ## Relevant Planning Policies We Are Tracking
-{{POLICIES_LIST}}
+Each policy below is given in full, verbatim, where its wording has been recorded — ground your assessment of how it has been treated in the actual wording, not just its name.
+{{POLICIES_BLOCK}}
 
 ## Individual Document Analyses
 The following documents have been reviewed. Each entry contains the document type, outcome, and key findings:
@@ -97,10 +102,10 @@ A narrative assessment of the LPA's decision-making pattern across these cases:
 ## How Our Relevant Policies Have Been Treated
 For each policy in our tracking list that appears across the documents, write a dedicated section:
 - **[Policy Reference]: [Policy Name]**
-  - How has this policy been applied across the cases?
+  - How has this policy been applied across the cases, based on its actual wording (not just its name)?
   - Has it been used to support refusal, justify approval, or treated as a neutral factor?
   - Are there any notable interpretations or weightings by the LPA or Inspector?
-  - What does this mean for our project's position against this policy?
+  - Close with 1-2 sentences of concrete, scheme-specific lessons: given our site, use type, description, and any briefing note above, what does this policy's treatment across these documents mean for how we should approach it on our own scheme? Be specific to our project, not generic.
 
 Only include policies that genuinely feature in the reviewed documents. If a tracked policy does not appear, note it briefly at the end under "Policies Not Yet Evidenced".`;
 
@@ -211,30 +216,55 @@ export async function extractPoliciesFromDocument(rawText) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Exports
+// Shared prompt-block builders
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function analyseLpaDocument(rawText, projectContext, policies) {
-  const chunks = chunkText(rawText).slice(0, MAX_CHUNKS);
-  const fullText = chunks.join('\n\n---\n\n');
-
-  const projectBlock = [
+function buildProjectBlock(projectContext) {
+  return [
     projectContext.name && `Project: ${projectContext.name}`,
     projectContext.site_address && `Site: ${projectContext.site_address}`,
     projectContext.lpa && `LPA: ${projectContext.lpa}`,
     projectContext.use_type && `Use type: ${projectContext.use_type}`,
     projectContext.description && `Description: ${projectContext.description}`
   ].filter(Boolean).join('\n');
+}
 
-  const policiesList = policies.length
-    ? policies.map(p =>
-        `- ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name} (${p.policy_type})${p.is_key_policy ? ' [KEY POLICY]' : ''}`
-      ).join('\n')
-    : 'No specific policies have been entered yet.';
+function buildBriefingNoteBlock(briefingNote) {
+  return briefingNote?.trim()
+    ? `\n## Scheme Context / Briefing Note\n${briefingNote.trim()}\n`
+    : '';
+}
+
+// Full verbatim policy text (not just reference/name) grouped by tier, so
+// treatment/interpretation is grounded in what each policy actually says —
+// mirrors the linkedPoliciesBlock pattern in llm.shared.js's
+// buildExtractPointsPrompt.
+function buildPoliciesBlock(policies) {
+  if (!policies.length) return 'No specific policies have been entered yet.';
+
+  return PLANNING_TIER_ORDER
+    .flatMap(tier => policies.filter(p => p.policy_type === tier))
+    .map(p => {
+      const header = `### ${PLANNING_TIER_LABELS[p.policy_type] ?? p.policy_type}: ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name}${p.is_key_policy ? ' [KEY POLICY]' : ''}`;
+      const policyText = p.policy_text?.trim() ? `Policy wording:\n${p.policy_text.trim()}` : '(No policy wording recorded)';
+      const support = p.relevant_supporting_text?.trim() ? `\nRelevant context/guidance:\n${p.relevant_supporting_text.trim()}` : '';
+      return `${header}\n${policyText}${support}`;
+    })
+    .join('\n\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function analyseLpaDocument(rawText, projectContext, policies, briefingNote = null) {
+  const chunks = chunkText(rawText).slice(0, MAX_CHUNKS);
+  const fullText = chunks.join('\n\n---\n\n');
 
   const userPrompt = LPA_DOC_ANALYSIS_PROMPT
-    .replace('{{PROJECT_CONTEXT}}', projectBlock)
-    .replace('{{POLICIES_LIST}}', policiesList)
+    .replace('{{PROJECT_CONTEXT}}', buildProjectBlock(projectContext))
+    .replace('{{BRIEFING_NOTE}}', buildBriefingNoteBlock(briefingNote))
+    .replace('{{POLICIES_BLOCK}}', buildPoliciesBlock(policies))
     .replace('{{DOCUMENT_TEXT}}', fullText);
 
   const raw = await callClaude(LPA_DOC_ANALYSIS_SYSTEM, userPrompt, MODEL_SONNET);
@@ -254,21 +284,7 @@ export async function analyseLpaDocument(rawText, projectContext, policies) {
   }
 }
 
-export async function synthesiseLpaAnalysis(projectContext, policies, documents) {
-  const projectBlock = [
-    projectContext.name && `Project: ${projectContext.name}`,
-    projectContext.site_address && `Site: ${projectContext.site_address}`,
-    projectContext.lpa && `LPA: ${projectContext.lpa}`,
-    projectContext.use_type && `Use type: ${projectContext.use_type}`,
-    projectContext.description && `Description: ${projectContext.description}`
-  ].filter(Boolean).join('\n');
-
-  const policiesList = policies.length
-    ? policies.map(p =>
-        `- ${p.policy_reference ? p.policy_reference + ': ' : ''}${p.policy_name} (${p.policy_type})${p.is_key_policy ? ' [KEY POLICY]' : ''}`
-      ).join('\n')
-    : 'No specific policies have been entered yet.';
-
+export async function synthesiseLpaAnalysis(projectContext, policies, documents, briefingNote = null) {
   const docSummaries = documents.map((d, i) => {
     const s = d.doc_summary || {};
     return [
@@ -285,8 +301,9 @@ export async function synthesiseLpaAnalysis(projectContext, policies, documents)
   }).join('\n\n---\n\n');
 
   const userPrompt = LPA_SYNTHESIS_PROMPT
-    .replace('{{PROJECT_CONTEXT}}', projectBlock)
-    .replace('{{POLICIES_LIST}}', policiesList)
+    .replace('{{PROJECT_CONTEXT}}', buildProjectBlock(projectContext))
+    .replace('{{BRIEFING_NOTE}}', buildBriefingNoteBlock(briefingNote))
+    .replace('{{POLICIES_BLOCK}}', buildPoliciesBlock(policies))
     .replace('{{DOC_SUMMARIES}}', docSummaries);
 
   return (await callClaude(LPA_SYNTHESIS_SYSTEM, userPrompt, MODEL_SONNET)).trim();

@@ -16,6 +16,7 @@ import {
   uploadLpaDocument,
   deleteLpaDocument,
   getLpaAnalysis,
+  saveBriefingNote,
   triggerSynthesis
 } from '../controllers/lpaAnalysis.controller.js';
 
@@ -50,6 +51,7 @@ router.delete('/projects/:projectId/lpa-documents/:docId', deleteLpaDocument);
 
 // Analysis synthesis
 router.get('/projects/:projectId/lpa-analysis', getLpaAnalysis);
+router.put('/projects/:projectId/lpa-analysis/briefing-note', saveBriefingNote);
 router.post('/projects/:projectId/lpa-analysis/synthesise', triggerSynthesis);
 
 export default router;

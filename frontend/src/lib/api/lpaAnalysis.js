@@ -114,6 +114,16 @@ export async function getLpaAnalysis(projectId) {
   return res.json();
 }
 
+export async function saveBriefingNote(projectId, briefing_note) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/lpa-analysis/briefing-note`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ briefing_note })
+  });
+  if (!res.ok) throw new Error('Failed to save briefing note');
+  return res.json();
+}
+
 export async function triggerSynthesis(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/lpa-analysis/synthesise`, {
     method: 'POST'
