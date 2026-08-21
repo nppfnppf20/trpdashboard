@@ -29,6 +29,10 @@
   let editingOurTake = null;
   let ourTakeSaving = false;
 
+  // Editing card content — { sourceType, id, title, summary_html, key_points, implications }
+  let editingItem = null;
+  let itemSaving = false;
+
   // Confirm delete — { sourceType, id }
   let confirmDelete = null;
 
@@ -111,6 +115,48 @@
       alert('Failed to save: ' + err.message);
     } finally {
       ourTakeSaving = false;
+    }
+  }
+
+  // ── Edit card content ────────────────────────────────────────────────────
+  function isEditingItem(item) {
+    return editingItem?.sourceType === item.source_type && editingItem?.id === item.id;
+  }
+
+  function startEditItem(item) {
+    editingOurTake = null;
+    editingItem = {
+      sourceType: item.source_type,
+      id: item.id,
+      title: item.title ?? '',
+      summary_html: item.summary_html ?? '',
+      key_points: item.key_points ?? '',
+      implications: item.implications ?? '',
+    };
+  }
+
+  async function saveItem() {
+    if (!editingItem) return;
+    itemSaving = true;
+    try {
+      const fields = { title: editingItem.title.trim(), summary_html: editingItem.summary_html };
+      if (editingItem.sourceType === 'document') {
+        fields.key_points = editingItem.key_points;
+        fields.implications = editingItem.implications;
+        await updatePolicyDocument(editingItem.id, fields);
+      } else {
+        await updatePolicyInsight(editingItem.id, fields);
+      }
+      items = items.map(it =>
+        it.source_type === editingItem.sourceType && it.id === editingItem.id
+          ? { ...it, ...fields }
+          : it
+      );
+      editingItem = null;
+    } catch (err) {
+      alert('Failed to save: ' + err.message);
+    } finally {
+      itemSaving = false;
     }
   }
 
@@ -278,51 +324,83 @@
               <div class="policy-card-header-left">
                 <span class="source-badge {sourceBadgeClass(item)}">{sourceLabel(item)}</span>
                 {#if item.superseded}<span class="superseded-badge">Superseded</span>{/if}
-                <h3 class="policy-title">{item.title}</h3>
+                {#if isEditingItem(item)}
+                  <input class="form-input title-edit-input" bind:value={editingItem.title} placeholder="Title" />
+                {:else}
+                  <h3 class="policy-title">{item.title}</h3>
+                {/if}
                 <span class="policy-date">{formatDate(item.created_at)}</span>
               </div>
               <div class="policy-card-header-right">
-                <label class="superseded-toggle" title="Mark as superseded">
-                  <input
-                    type="checkbox"
-                    checked={item.superseded}
-                    on:change={() => toggleSuperseded(item)}
-                  />
-                  <span>Superseded</span>
-                </label>
-                {#if confirmDelete?.sourceType === item.source_type && confirmDelete?.id === item.id}
-                  <span class="confirm-del">
-                    Delete?
-                    <button class="btn-danger-sm" on:click={doDelete}>Yes</button>
-                    <button class="btn-cancel-sm" on:click={() => confirmDelete = null}>No</button>
-                  </span>
-                {:else}
-                  <button class="icon-btn" title="Delete" on:click={() => confirmDelete = { sourceType: item.source_type, id: item.id }}>
-                    <i class="las la-trash"></i>
+                {#if isEditingItem(item)}
+                  <button class="btn btn-secondary btn-sm" on:click={() => editingItem = null} disabled={itemSaving}>Cancel</button>
+                  <button class="btn btn-primary btn-sm" on:click={saveItem} disabled={itemSaving}>
+                    {itemSaving ? 'Saving…' : 'Save'}
                   </button>
+                {:else}
+                  <label class="superseded-toggle" title="Mark as superseded">
+                    <input
+                      type="checkbox"
+                      checked={item.superseded}
+                      on:change={() => toggleSuperseded(item)}
+                    />
+                    <span>Superseded</span>
+                  </label>
+                  <button class="icon-btn" title="Edit" on:click={() => startEditItem(item)}>
+                    <i class="las la-pen"></i>
+                  </button>
+                  {#if confirmDelete?.sourceType === item.source_type && confirmDelete?.id === item.id}
+                    <span class="confirm-del">
+                      Delete?
+                      <button class="btn-danger-sm" on:click={doDelete}>Yes</button>
+                      <button class="btn-cancel-sm" on:click={() => confirmDelete = null}>No</button>
+                    </span>
+                  {:else}
+                    <button class="icon-btn" title="Delete" on:click={() => confirmDelete = { sourceType: item.source_type, id: item.id }}>
+                      <i class="las la-trash"></i>
+                    </button>
+                  {/if}
                 {/if}
               </div>
             </div>
 
-            <!-- Summary -->
-            {#if item.summary_html}
-              <div class="policy-summary md-body">{@html item.summary_html}</div>
-            {/if}
-
-            <!-- Key points (documents only) -->
-            {#if item.key_points}
+            {#if isEditingItem(item)}
+              <!-- Edit mode: raw HTML source for summary/key points/implications -->
               <div class="policy-section">
-                <div class="policy-section-label">Key Points</div>
-                <div class="policy-key-points md-body">{@html item.key_points}</div>
+                <div class="policy-section-label">Summary <span class="optional">(HTML)</span></div>
+                <textarea class="form-input" bind:value={editingItem.summary_html} rows="4"></textarea>
               </div>
-            {/if}
+              {#if editingItem.sourceType === 'document'}
+                <div class="policy-section">
+                  <div class="policy-section-label">Key Points <span class="optional">(HTML)</span></div>
+                  <textarea class="form-input" bind:value={editingItem.key_points} rows="4"></textarea>
+                </div>
+                <div class="policy-section">
+                  <div class="policy-section-label">Implications for our work <span class="optional">(HTML)</span></div>
+                  <textarea class="form-input" bind:value={editingItem.implications} rows="4"></textarea>
+                </div>
+              {/if}
+            {:else}
+              <!-- Summary -->
+              {#if item.summary_html}
+                <div class="policy-summary md-body">{@html item.summary_html}</div>
+              {/if}
 
-            <!-- Implications (documents only) -->
-            {#if item.implications}
-              <div class="policy-section">
-                <div class="policy-section-label">Implications for our work</div>
-                <div class="policy-implications md-body">{@html item.implications}</div>
-              </div>
+              <!-- Key points (documents only) -->
+              {#if item.key_points}
+                <div class="policy-section">
+                  <div class="policy-section-label">Key Points</div>
+                  <div class="policy-key-points md-body">{@html item.key_points}</div>
+                </div>
+              {/if}
+
+              <!-- Implications (documents only) -->
+              {#if item.implications}
+                <div class="policy-section">
+                  <div class="policy-section-label">Implications for our work</div>
+                  <div class="policy-implications md-body">{@html item.implications}</div>
+                </div>
+              {/if}
             {/if}
 
             <!-- Raised by (insights only) -->
@@ -507,6 +585,7 @@
   }
 
   .policy-title { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0; line-height: 1.3; }
+  .title-edit-input { font-size: 0.9rem; font-weight: 600; max-width: 420px; }
   .policy-date { font-size: 0.75rem; color: #94a3b8; }
 
   .policy-card-header-right {

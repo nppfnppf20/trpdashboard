@@ -95,21 +95,32 @@ export async function uploadPolicyDocument(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Update a policy document (our_take, title)
+// Update a policy document (title, summary, key points, implications, our_take)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function updatePolicyDocument(req, res) {
   const { id } = req.params;
-  const { our_take, title, superseded } = req.body;
+  const { our_take, title, summary_html, key_points, implications, superseded } = req.body;
   try {
     const { rows: [doc] } = await pool.query(
       `UPDATE admin_console.policy_documents
-         SET our_take   = COALESCE($2, our_take),
-             title      = COALESCE($3, title),
-             superseded = COALESCE($4, superseded),
-             updated_at = NOW()
+         SET our_take     = COALESCE($2, our_take),
+             title        = COALESCE($3, title),
+             summary_html = COALESCE($4, summary_html),
+             key_points   = COALESCE($5, key_points),
+             implications = COALESCE($6, implications),
+             superseded   = COALESCE($7, superseded),
+             updated_at   = NOW()
        WHERE id = $1 RETURNING *`,
-      [id, our_take ?? null, title?.trim() || null, superseded ?? null]
+      [
+        id,
+        our_take ?? null,
+        title?.trim() || null,
+        summary_html ?? null,
+        key_points ?? null,
+        implications ?? null,
+        superseded ?? null,
+      ]
     );
     if (!doc) return res.status(404).json({ error: 'Not found' });
     res.json(doc);
@@ -135,19 +146,21 @@ export async function deletePolicyDocument(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Update an extracted insight (our_take)
+// Update an extracted insight (title/topic, detail, our_take)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function updatePolicyInsight(req, res) {
   const { id } = req.params;
-  const { our_take, superseded } = req.body;
+  const { our_take, title, summary_html, superseded } = req.body;
   try {
     const { rows: [insight] } = await pool.query(
       `UPDATE admin_console.extracted_insights
          SET our_take   = COALESCE($2, our_take),
-             superseded = COALESCE($3, superseded)
+             topic      = COALESCE($3, topic),
+             detail     = COALESCE($4, detail),
+             superseded = COALESCE($5, superseded)
        WHERE id = $1 RETURNING *`,
-      [id, our_take ?? null, superseded ?? null]
+      [id, our_take ?? null, title?.trim() || null, summary_html ?? null, superseded ?? null]
     );
     if (!insight) return res.status(404).json({ error: 'Not found' });
     res.json(insight);
