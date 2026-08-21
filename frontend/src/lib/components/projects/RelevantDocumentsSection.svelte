@@ -25,6 +25,12 @@
 
   onMount(() => { if (projectId) load(); });
 
+  // Called by the parent (ProjectViewModal) after it creates plan documents
+  // directly via the extract-from-document flow, so this list picks them up.
+  export function refresh() {
+    return load();
+  }
+
   async function load() {
     loading = true;
     error = null;

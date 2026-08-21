@@ -435,13 +435,12 @@
 
                   <div class="form-group">
                     <label for="project_type">Project Type</label>
-                    <select id="project_type" value={formData.project_type} disabled>
+                    <select id="project_type" bind:value={formData.project_type}>
                       <option value="">Not set</option>
                       {#each projectTypeOptions as option}
                         <option value={option}>{option}</option>
                       {/each}
                     </select>
-                    <span class="field-hint">Project type cannot be changed after creation.</span>
                   </div>
 
                   <div class="form-group">

@@ -71,6 +71,22 @@
     catch (err) { console.error('Failed to load national policy precedents:', err); }
   }
 
+  // Called by the parent (ProjectViewModal) after it creates plan documents
+  // via the extract-from-document flow, so the Parent Plan dropdown here
+  // (in both the single form and the bulk-add modal) picks them up.
+  export async function refreshPlanDocs() {
+    planDocs = await getPolicyDocuments(projectId);
+  }
+
+  // Called by the parent to hand off extracted policies (with plan_id already
+  // matched against the plan documents it just created) into the existing
+  // bulk-review table, so the user reviews/edits everything before saving.
+  export function reviewExtractedPolicies(rows, warning = null) {
+    bulkRows = rows;
+    bulkError = warning || null;
+    showBulkModal = true;
+  }
+
   // Copies only the portable parts (reference/name/verbatim text) — never
   // relevant_supporting_text or is_key_policy, which are the other project's
   // own judgment calls, not facts that should carry across.
@@ -186,7 +202,8 @@
       policy_text: '',
       relevant_supporting_text: '',
       notes: '',
-      is_key_policy: false
+      is_key_policy: false,
+      plan_id: ''
     };
   }
 
@@ -227,7 +244,8 @@
         policy_text: r.policy_text.trim() || null,
         relevant_supporting_text: r.relevant_supporting_text.trim() || null,
         notes: r.notes.trim() || null,
-        is_key_policy: r.is_key_policy
+        is_key_policy: r.is_key_policy,
+        plan_id: r.plan_id || null
       })));
       await load();
       closeBulkModal();
@@ -505,10 +523,19 @@
                   </label>
                 </div>
               </div>
-              <div class="bulk-form-row">
+              <div class="bulk-form-row two-col">
                 <div class="field">
                   <label>Policy Name <span class="required">*</span></label>
                   <input type="text" bind:value={row.policy_name} />
+                </div>
+                <div class="field">
+                  <label>Parent Plan <span class="optional">(optional)</span></label>
+                  <select bind:value={row.plan_id}>
+                    <option value="">None</option>
+                    {#each planDocs as doc (doc.id)}
+                      <option value={doc.id}>{planLabel(doc)}</option>
+                    {/each}
+                  </select>
                 </div>
               </div>
               <div class="bulk-form-row two-col">
@@ -592,13 +619,14 @@
 
   .tab-header {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     align-items: center;
     gap: 0.5rem;
     padding: 0.75rem 1.25rem;
   }
 
-  .tab-header-actions { display: flex; align-items: center; gap: 0.5rem; }
+  .tab-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
   .btn-templates {
     display: flex;
@@ -606,8 +634,8 @@
     gap: 0.4rem;
     padding: 0.5rem 1rem;
     background: white;
-    color: #475569;
-    border: 1px solid #e2e8f0;
+    color: #9333ea;
+    border: 1px solid #9333ea;
     border-radius: 6px;
     font-size: 0.85rem;
     font-weight: 500;
@@ -616,7 +644,7 @@
     font-family: inherit;
     flex-shrink: 0;
   }
-  .btn-templates:hover { background: #f8fafc; border-color: #cbd5e1; }
+  .btn-templates:hover { background: #faf5ff; }
 
   .templates-panel {
     margin: 0 1.25rem 0.5rem;

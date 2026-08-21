@@ -8,7 +8,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { analyseLpaDocument, synthesiseLpaAnalysis } from '../services/llm.service.js';
+import { analyseLpaDocument, synthesiseLpaAnalysis, extractPoliciesFromDocument } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -133,6 +133,33 @@ export async function listNationalPolicyPrecedents(req, res) {
   } catch (err) {
     console.error('listNationalPolicyPrecedents error:', err);
     res.status(500).json({ error: 'Failed to fetch national policy precedents' });
+  }
+}
+
+// Parses an uploaded file OR pasted text and asks the LLM to pull out the
+// policies it cites, verbatim, for review before anything is saved — see
+// [[project_policy_extraction_from_document]].
+export async function extractPolicies(req, res) {
+  try {
+    let rawText;
+
+    if (req.file) {
+      const { text, warning } = await parseFile(req.file.buffer, req.file.originalname);
+      rawText = text;
+      if (!rawText?.trim()) {
+        return res.status(400).json({ error: warning || 'Could not extract any text from that file' });
+      }
+    } else if (req.body.text?.trim()) {
+      rawText = req.body.text;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    const { policies, plans, sizeWarning } = await extractPoliciesFromDocument(rawText);
+    res.json({ policies, plans, warning: sizeWarning || null });
+  } catch (err) {
+    console.error('extractPolicies error:', err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to extract policies from document' });
   }
 }
 

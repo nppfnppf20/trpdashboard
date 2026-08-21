@@ -173,6 +173,7 @@ async function updateProject(req, res) {
   const {
     project_id,
     project_name,
+    project_type,
     local_planning_authority,
     project_lead,
     project_manager,
@@ -251,7 +252,8 @@ async function updateProject(req, res) {
            eot_date = $31,
            six_months_appeal_window_date = $32,
            comments = $33,
-           about_applicant = $34
+           about_applicant = $34,
+           project_type = COALESCE($36, project_type)
        WHERE id = $35
        RETURNING *`,
       [
@@ -280,7 +282,8 @@ async function updateProject(req, res) {
         six_months_appeal_window_date || null,
         comments || null,
         about_applicant || null,
-        id
+        id,
+        project_type || null
       ]
     );
 

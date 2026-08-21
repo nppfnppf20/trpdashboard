@@ -46,6 +46,26 @@ export async function deletePolicy(policyId) {
   return res.json();
 }
 
+export async function extractPoliciesFromDocument(projectId, { file, text } = {}) {
+  let body;
+  if (file) {
+    body = new FormData();
+    body.append('file', file);
+  } else {
+    body = JSON.stringify({ text });
+  }
+  const res = await authFetch(`${BASE}/projects/${projectId}/policies/extract`, {
+    method: 'POST',
+    ...(file ? {} : { headers: { 'Content-Type': 'application/json' } }),
+    body
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to extract policies');
+  }
+  return res.json();
+}
+
 export async function getNationalPolicyPrecedents(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/national-policy-precedents`);
   if (!res.ok) throw new Error('Failed to fetch national policy precedents');
