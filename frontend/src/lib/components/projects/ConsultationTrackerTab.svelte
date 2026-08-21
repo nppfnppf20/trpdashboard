@@ -200,8 +200,9 @@
     const projectLine = [project?.project_id, project?.site_name || project?.project_name].filter(Boolean).join(', ');
 
     return `<p>${greeting}</p>
-<p>We have received a statutory consultation response from <strong>${r.consultee_name || 'the consultee'}</strong>${projectLine ? ` in relation to <strong>${projectLine}</strong>` : ''}. Please find this attached for your reference.</p>
-<p>We would be grateful if you could review the key issues raised below and provide your suggested response in the right-hand column. <strong>Please note this is not an exhaustive list</strong>: if you identify any additional issues not captured here, please add them as further rows.</p>
+<p>We have received a statutory consultation response from <strong>${r.consultee_name || 'the consultee'}</strong>${projectLine ? ` in relation to <strong>${projectLine}</strong>` : ''}. Please find the full response attached for your reference.</p>
+<p>We would be grateful if you could review the comments and provide your thoughts on the most appropriate approach to responding. We have summarised some of the key issues raised in the table below. If possible, it would be helpful if you could add your suggested response in the right-hand column.</p>
+<p>Please note that the table is not intended to be exhaustive. If you identify any additional points or issues that have not been captured, please feel free to add these below. Any further thoughts or observations would also be very welcome.</p>
 <table style="border-collapse:collapse;width:100%;">
   <thead><tr>${th('Issue Raised')}${th('Your Response (please complete)')}</tr></thead>
   <tbody>${dataRows}${blankRows}</tbody>
