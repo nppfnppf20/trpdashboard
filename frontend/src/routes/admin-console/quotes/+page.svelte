@@ -242,12 +242,12 @@
   .header-content h1 {
     margin: 0 0 0.5rem 0;
     font-size: 2rem;
-    color: #2d3748;
+    color: var(--color-slate-700);
   }
 
   .header-content p {
     margin: 0;
-    color: #718096;
+    color: var(--color-slate-500);
   }
 
   .btn {
@@ -265,12 +265,12 @@
   }
 
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
   }
 
   .btn-primary:hover {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .btn i {
@@ -282,21 +282,21 @@
     padding: 4rem 2rem;
     background: white;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
     margin-top: 2rem;
   }
-  
+
   .empty-state i, .error-state i {
     font-size: 3rem;
-    color: #cbd5e0;
+    color: var(--color-slate-300);
     margin-bottom: 1rem;
   }
-  
+
   .loading-state .spinner {
     width: 40px;
     height: 40px;
-    border: 4px solid #e2e8f0;
-    border-top-color: #3182ce;
+    border: 4px solid var(--color-slate-200);
+    border-top-color: var(--color-primary-500);
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
@@ -317,19 +317,19 @@
     background: white;
     padding: 1.5rem;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
   }
-  
+
   .summary-label {
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--color-slate-500);
     margin-bottom: 0.5rem;
   }
-  
+
   .summary-value {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--color-slate-700);
   }
   
   .quotes-list {
@@ -341,35 +341,35 @@
   .quote-card {
     background: white;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
   }
-  
+
   .quote-header {
     display: flex;
     justify-content: space-between;
     align-items: start;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
-  
+
   .quote-main-info h3 {
     margin: 0 0 0.5rem 0;
     font-size: 1.125rem;
-    color: #2d3748;
+    color: var(--color-slate-700);
   }
-  
+
   .quote-meta {
     display: flex;
     gap: 1rem;
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--color-slate-500);
   }
-  
+
   .quote-amount {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--color-slate-700);
   }
   
   .quote-body {
@@ -387,18 +387,18 @@
   
   .quote-contact i {
     font-size: 1.25rem;
-    color: #718096;
+    color: var(--color-slate-500);
     margin-top: 0.25rem;
   }
-  
+
   .contact-name {
     font-weight: 600;
-    color: #2d3748;
+    color: var(--color-slate-700);
   }
-  
+
   .contact-email {
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--color-slate-500);
   }
   
   .quote-statuses {
@@ -416,54 +416,54 @@
   
   .quote-line-items {
     padding: 1rem 1.5rem;
-    background: #f7fafc;
-    border-top: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-top: 1px solid var(--color-slate-200);
   }
-  
+
   .line-items-header {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #4a5568;
+    color: var(--color-slate-600);
     margin-bottom: 0.75rem;
   }
-  
+
   .line-item {
     display: flex;
     justify-content: space-between;
     align-items: start;
     padding: 0.5rem 0;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
-  
+
   .line-item:last-child {
     border-bottom: none;
   }
-  
+
   .line-item-name {
     font-weight: 500;
-    color: #2d3748;
+    color: var(--color-slate-700);
     margin-bottom: 0.25rem;
   }
-  
+
   .line-item-detail {
     font-size: 0.875rem;
-    color: #718096;
+    color: var(--color-slate-500);
   }
-  
+
   .line-item-cost {
     font-weight: 600;
-    color: #2d3748;
+    color: var(--color-slate-700);
     white-space: nowrap;
   }
-  
+
   .quote-notes {
     display: flex;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    background: #fffbeb;
-    border-top: 1px solid #e2e8f0;
+    background: var(--color-badge-warning-bg);
+    border-top: 1px solid var(--color-slate-200);
     font-size: 0.875rem;
-    color: #78350f;
+    color: var(--color-badge-warning-fg);
   }
   
   .quote-notes i {

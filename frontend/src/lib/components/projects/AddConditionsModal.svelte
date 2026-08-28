@@ -202,7 +202,7 @@
   .bulk-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -211,14 +211,14 @@
   }
 
   .bulk-modal {
-    background: white;
+    background: var(--color-white);
     border-radius: 12px;
     width: 95%;
     max-width: 900px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
 
@@ -227,27 +227,27 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
   .bulk-modal-header h3 {
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
   .bulk-close-btn {
     background: none;
     border: none;
     font-size: 1.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     line-height: 1;
     padding: 0;
     width: 2rem;
     height: 2rem;
   }
-  .bulk-close-btn:hover { color: #1e293b; }
+  .bulk-close-btn:hover { color: var(--color-slate-800); }
 
   .bulk-modal-body {
     flex: 1;
@@ -262,8 +262,8 @@
     display: flex;
     gap: 0.75rem;
     align-items: flex-start;
-    background: #faf5ff;
-    border: 1px solid #e9d5ff;
+    background: var(--color-violet-50);
+    border: 1px solid var(--color-violet-200);
     border-radius: 10px;
     padding: 1rem;
     position: relative;
@@ -272,8 +272,8 @@
   .bulk-row-number {
     font-size: 0.7rem;
     font-weight: 700;
-    color: #9333ea;
-    background: #f3e8ff;
+    color: var(--color-primary-600);
+    background: var(--color-primary-100);
     border-radius: 20px;
     padding: 0.15rem 0.5rem;
     flex-shrink: 0;
@@ -299,11 +299,11 @@
     border: none;
     background: none;
     cursor: pointer;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     border-radius: 6px;
     margin-top: 0.15rem;
   }
-  .bulk-remove-btn:hover { background: #fef2f2; color: #dc2626; }
+  .bulk-remove-btn:hover { background: var(--color-red-50); color: var(--color-red-600); }
 
   .bulk-form-row {
     display: flex;
@@ -322,23 +322,23 @@
   label {
     font-size: 0.78rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
   }
-  .label-hint { font-weight: 400; color: #94a3b8; }
+  .label-hint { font-weight: 400; color: var(--color-slate-400); }
   input[type="text"], select, textarea {
     padding: 0.5rem 0.65rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.85rem;
     font-family: inherit;
-    color: #1e293b;
-    background: white;
+    color: var(--color-slate-800);
+    background: var(--color-white);
     resize: vertical;
   }
   input[type="text"]:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: #9333ea;
-    box-shadow: 0 0 0 3px #f3e8ff;
+    border-color: var(--color-primary-600);
+    box-shadow: var(--focus-ring-blue);
   }
 
   /* Requirements list within a row */
@@ -362,10 +362,10 @@
     border: none;
     background: none;
     cursor: pointer;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     border-radius: 6px;
   }
-  .req-remove-btn:hover { background: #fef2f2; color: #dc2626; }
+  .req-remove-btn:hover { background: var(--color-red-50); color: var(--color-red-600); }
   .add-req-btn {
     align-self: flex-start;
     display: flex;
@@ -374,23 +374,23 @@
     padding: 0.25rem 0.5rem;
     border: none;
     background: none;
-    color: #9333ea;
+    color: var(--color-primary-600);
     font-size: 0.78rem;
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
     border-radius: 6px;
   }
-  .add-req-btn:hover { background: #f3e8ff; }
+  .add-req-btn:hover { background: var(--color-primary-100); }
 
   .bulk-add-row-btn {
     display: flex;
     align-items: center;
     gap: 0.4rem;
     padding: 0.6rem 1.25rem;
-    border: 2px dashed #c4b5fd;
-    background: white;
-    color: #9333ea;
+    border: 2px dashed var(--color-violet-300);
+    background: var(--color-white);
+    color: var(--color-primary-600);
     border-radius: 8px;
     font-size: 0.875rem;
     font-weight: 500;
@@ -398,15 +398,15 @@
     font-family: inherit;
     justify-content: center;
   }
-  .bulk-add-row-btn:hover { background: #faf5ff; border-color: #9333ea; }
+  .bulk-add-row-btn:hover { background: var(--color-violet-50); border-color: var(--color-primary-600); }
   .bulk-add-row-btn i { font-size: 1.1rem; }
 
   .bulk-error {
     margin: 0 1.5rem;
     font-size: 0.8rem;
-    color: #dc2626;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    color: var(--color-red-600);
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
     flex-shrink: 0;
@@ -417,12 +417,12 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
   .bulk-count-hint {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
   .bulk-footer-actions {
     display: flex;
@@ -430,19 +430,19 @@
   }
   .btn-cancel {
     padding: 0.45rem 1rem;
-    border: 1px solid #d1d5db;
-    background: white;
+    border: 1px solid var(--color-slate-300);
+    background: var(--color-white);
     border-radius: 6px;
     font-size: 0.85rem;
     font-family: inherit;
     cursor: pointer;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
-  .btn-cancel:hover { background: #f8fafc; }
+  .btn-cancel:hover { background: var(--color-slate-50); }
   .btn-save {
     padding: 0.45rem 1.1rem;
-    background: #9333ea;
-    color: white;
+    background: var(--color-primary-600);
+    color: var(--color-white);
     border: none;
     border-radius: 6px;
     font-size: 0.85rem;
@@ -450,6 +450,6 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .btn-save:hover:not(:disabled) { background: #7e22ce; }
+  .btn-save:hover:not(:disabled) { background: var(--color-primary-700); }
   .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

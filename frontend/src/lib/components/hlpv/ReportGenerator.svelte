@@ -1071,12 +1071,12 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .report-header h2 {
     margin: 0;
-    color: #1f2937;
+    color: var(--color-slate-800);
     font-size: 1.5rem;
   }
 
@@ -1094,12 +1094,12 @@
   }
 
   .report-placeholder h3 {
-    color: #374151;
+    color: var(--color-slate-700);
     margin-bottom: 1rem;
   }
 
   .report-placeholder p {
-    color: #6b7280;
+    color: var(--color-slate-500);
     margin-bottom: 2rem;
   }
 
@@ -1108,10 +1108,10 @@
   }
 
   .report-section h3 {
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 1.25rem;
     margin-bottom: 1rem;
-    border-bottom: 2px solid #e5e7eb;
+    border-bottom: 2px solid var(--color-slate-200);
     padding-bottom: 0.5rem;
   }
 
@@ -1142,20 +1142,20 @@
 
   .subsection h4 {
     margin-bottom: 0.75rem;
-    color: #4b5563;
+    color: var(--color-slate-600);
     font-size: 1rem;
     font-weight: 600;
   }
 
   .summary-disclaimer {
-    background: #f3f4f6;
-    border-left: 4px solid #6b7280;
+    background: var(--color-slate-100);
+    border-left: 4px solid var(--color-slate-500);
     border-radius: 6px;
     padding: 1rem 1.25rem;
     margin-bottom: 1.5rem;
     font-size: 0.95rem;
     line-height: 1.6;
-    color: #374151;
+    color: var(--color-slate-700);
   }
 
   .summary-disclaimer p {
@@ -1167,7 +1167,7 @@
   }
 
   .discipline-risk-list {
-    background: #f9fafb;
+    background: var(--color-slate-50);
     border-radius: 8px;
     padding: 1rem;
   }
@@ -1185,7 +1185,7 @@
 
   .discipline-name {
     font-weight: 500;
-    color: #374151;
+    color: var(--color-slate-700);
   }
 
   .risk-badge-small {
@@ -1197,7 +1197,7 @@
   }
 
   .discipline-section {
-    border-top: 2px solid #e5e7eb;
+    border-top: 2px solid var(--color-slate-200);
     padding-top: 1.5rem;
   }
 
@@ -1217,7 +1217,7 @@
   .predicted-risk-label {
     font-size: 0.8rem;
     font-weight: 400;
-    color: #9ca3af;
+    color: var(--color-slate-400);
     white-space: nowrap;
   }
 
@@ -1235,11 +1235,11 @@
 
   .placeholder {
     font-style: italic;
-    color: #6b7280;
-    background: #f3f4f6;
+    color: var(--color-slate-500);
+    background: var(--color-slate-100);
     padding: 1rem;
     border-radius: 6px;
-    border-left: 4px solid #d1d5db;
+    border-left: 4px solid var(--color-slate-300);
   }
 
 
@@ -1250,8 +1250,8 @@
   }
 
   .rule-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
     border-left: 4px solid;
     border-radius: 8px;
     padding: 1.5rem;
@@ -1266,7 +1266,7 @@
 
   .rule-title {
     margin: 0;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 1.125rem;
   }
 
@@ -1280,7 +1280,7 @@
 
   .rule-content p {
     margin-bottom: 0.75rem;
-    color: #4b5563;
+    color: var(--color-slate-600);
     line-height: 1.5;
   }
 
@@ -1290,11 +1290,11 @@
 
 
   .no-rules {
-    color: #059669;
+    color: var(--color-emerald-600);
     font-style: italic;
     text-align: center;
     padding: 1rem;
-    background: #ecfdf5;
+    background: var(--color-slate-100);
     border-radius: 8px;
   }
 
@@ -1306,16 +1306,16 @@
 
   .recommendations-list li {
     margin-bottom: 0.5rem;
-    color: #374151;
+    color: var(--color-slate-700);
     line-height: 1.5;
   }
 
   .no-recommendations {
-    color: #6b7280;
+    color: var(--color-slate-500);
     font-style: italic;
     text-align: center;
     padding: 1rem;
-    background: #f9fafb;
+    background: var(--color-slate-50);
     border-radius: 8px;
   }
 
@@ -1324,13 +1324,13 @@
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    background: #f3f4f6;
-    border: 1px solid #e5e7eb;
+    background: var(--color-slate-100);
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
     font-size: 0.9375rem;
     font-weight: 600;
-    color: #4b5563;
+    color: var(--color-slate-600);
     cursor: pointer;
     text-align: left;
     font-family: inherit;
@@ -1338,24 +1338,24 @@
   }
 
   .rec-toggle-header:hover {
-    background: #e5e7eb;
+    background: var(--color-slate-200);
   }
 
   .rec-toggle-arrow {
     font-size: 0.7rem;
-    color: #9ca3af;
+    color: var(--color-slate-400);
     flex-shrink: 0;
   }
 
   .metadata {
-    background: #f9fafb;
+    background: var(--color-slate-50);
     border-radius: 8px;
     padding: 1rem;
   }
 
   .metadata p {
     margin-bottom: 0.5rem;
-    color: #4b5563;
+    color: var(--color-slate-600);
     font-size: 0.875rem;
   }
 
@@ -1383,7 +1383,7 @@
     justify-content: flex-end;
     gap: 1rem;
     padding: 1.5rem;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--color-slate-200);
   }
 
   .btn-secondary,
@@ -1396,9 +1396,9 @@
   }
 
   .btn-secondary {
-    background: #f3f4f6;
-    color: #374151;
-    border: 1px solid #d1d5db;
+    background: var(--color-slate-100);
+    color: var(--color-slate-700);
+    border: 1px solid var(--color-slate-300);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -1406,7 +1406,7 @@
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #e5e7eb;
+    background: var(--color-slate-200);
   }
 
   .btn-secondary:disabled {
@@ -1419,18 +1419,18 @@
   }
 
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
-    border: 1px solid #3b82f6;
+    border: 1px solid var(--color-primary-500);
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .btn-primary:disabled {
-    background: #9ca3af;
-    border-color: #9ca3af;
+    background: var(--color-slate-400);
+    border-color: var(--color-slate-400);
     cursor: not-allowed;
   }
 
@@ -1439,7 +1439,7 @@
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
-    background: #f9fafb;
+    background: var(--color-slate-50);
     border-radius: 8px;
     padding: 1.25rem;
   }
@@ -1452,23 +1452,23 @@
 
   .flood-label {
     font-weight: 600;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 0.9rem;
   }
 
   .flood-select {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #374151;
+    color: var(--color-slate-700);
     background: white;
     max-width: 280px;
   }
 
   .flood-select:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--color-primary-500);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
   }
 
@@ -1482,7 +1482,7 @@
     align-items: center;
     gap: 0.375rem;
     font-size: 0.875rem;
-    color: #374151;
+    color: var(--color-slate-700);
     cursor: pointer;
     font-weight: 400;
   }
@@ -1504,7 +1504,7 @@
     align-items: center;
     gap: 0.375rem;
     font-size: 0.875rem;
-    color: #374151;
+    color: var(--color-slate-700);
     cursor: pointer;
     min-width: 110px;
     font-weight: 400;
@@ -1519,34 +1519,34 @@
   .flood-percent {
     width: 70px;
     padding: 0.35rem 0.5rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #374151;
+    color: var(--color-slate-700);
     text-align: right;
   }
 
   .flood-percent:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--color-primary-500);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
   }
 
   .flood-percent-sign {
     font-size: 0.8rem;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   .flood-findings {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-left: 4px solid #3b82f6;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
+    border-left: 4px solid var(--color-primary-500);
     border-radius: 8px;
     padding: 1.25rem;
   }
 
   .flood-finding-paragraph {
-    color: #374151;
+    color: var(--color-slate-700);
     line-height: 1.6;
     margin-bottom: 0.75rem;
   }
@@ -1556,16 +1556,16 @@
   }
 
   .flood-finding-check {
-    color: #b45309;
+    color: var(--color-orange-700);
     font-style: italic;
-    background: #fffbeb;
+    background: var(--color-red-50);
     padding: 0.5rem 0.75rem;
     border-radius: 4px;
-    border-left: 3px solid #f59e0b;
+    border-left: 3px solid var(--color-amber-500);
   }
 
   .flood-hint {
-    color: #6b7280;
+    color: var(--color-slate-500);
     font-style: italic;
     text-align: center;
     padding: 0.75rem;
@@ -1575,13 +1575,13 @@
 
   /* Aviation styles */
   .aviation-note {
-    background: #eff6ff;
-    border-left: 4px solid #3b82f6;
+    background: var(--color-primary-50);
+    border-left: 4px solid var(--color-primary-500);
     border-radius: 6px;
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
     font-size: 0.875rem;
-    color: #1e40af;
+    color: var(--color-primary-800);
     line-height: 1.5;
   }
 
@@ -1595,30 +1595,30 @@
   }
 
   .disabled-input {
-    background: #f3f4f6 !important;
-    color: #6b7280 !important;
+    background: var(--color-slate-100) !important;
+    color: var(--color-slate-500) !important;
     cursor: not-allowed !important;
-    border-color: #e5e7eb !important;
+    border-color: var(--color-slate-200) !important;
   }
 
   .disabled-label {
-    color: #6b7280 !important;
+    color: var(--color-slate-500) !important;
   }
 
   .edit-hint {
     font-size: 0.75rem;
-    color: #9ca3af;
+    color: var(--color-slate-400);
     font-style: italic;
     margin-top: 0.25rem;
   }
 
   .edit-hint-banner {
-    background: #eff6ff;
-    border-left: 3px solid #3b82f6;
+    background: var(--color-primary-50);
+    border-left: 3px solid var(--color-primary-500);
     padding: 0.5rem 0.75rem;
     margin-bottom: 1rem;
     font-size: 0.8rem;
-    color: #1e40af;
+    color: var(--color-primary-800);
     border-radius: 0 4px 4px 0;
   }
 
@@ -1629,7 +1629,7 @@
 
   input[type="radio"]:disabled + span,
   input[type="checkbox"]:disabled + span {
-    color: #9ca3af;
+    color: var(--color-slate-400);
   }
 
   /* Responsive adjustments for modal positioning */

@@ -289,7 +289,7 @@
 
 <style>
   .rich-text-editor {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 8px;
     background: white;
     overflow: hidden;
@@ -300,8 +300,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.75rem;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
     flex-wrap: wrap;
   }
 
@@ -313,7 +313,7 @@
   .toolbar-divider {
     width: 1px;
     height: 1.5rem;
-    background: #cbd5e1;
+    background: var(--color-slate-300);
   }
 
   .toolbar-btn {
@@ -324,21 +324,21 @@
     justify-content: center;
     border: 1px solid transparent;
     background: transparent;
-    color: #475569;
+    color: var(--color-slate-600);
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s;
   }
 
   .toolbar-btn:hover {
-    background: #e2e8f0;
-    border-color: #cbd5e1;
+    background: var(--color-slate-200);
+    border-color: var(--color-slate-300);
   }
 
   .toolbar-btn.active {
-    background: #dbeafe;
-    border-color: #93c5fd;
-    color: #1e40af;
+    background: var(--color-primary-100);
+    border-color: var(--color-primary-200);
+    color: var(--color-primary-800);
   }
 
   .toolbar-btn i {
@@ -362,13 +362,13 @@
     font-family: 'Calibri', 'Arial', sans-serif;
     font-size: 0.9375rem; /* 11pt equivalent */
     line-height: 1.6;
-    color: #000000;
+    color: var(--color-black);
     outline: none;
   }
 
   .editor-content:empty:before {
     content: attr(data-placeholder);
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
   }
 
@@ -378,26 +378,26 @@
   }
 
   .editor-content::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
   }
 
   .editor-content::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--color-slate-300);
     border-radius: 4px;
   }
 
   .editor-content::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--color-slate-400);
   }
 
   :global(.llm-generated) {
-    color: #6b7280 !important;
-    border-left: 2px solid #d1d5db;
+    color: var(--color-slate-500) !important;
+    border-left: 2px solid var(--color-slate-300);
     padding-left: 0.75rem;
     margin-left: -0.75rem;
   }
   :global(.llm-generated *) {
-    color: #6b7280 !important;
+    color: var(--color-slate-500) !important;
   }
 </style>
 

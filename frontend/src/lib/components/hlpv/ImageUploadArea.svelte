@@ -180,20 +180,20 @@
   .image-upload-section {
     margin: 20px 0;
     padding: 16px;
-    background: #f9fafb;
+    background: var(--color-slate-50);
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--color-slate-200);
   }
 
   .image-upload-section h4 {
     margin: 0 0 16px 0;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 16px;
     font-weight: 600;
   }
 
   .drop-zone {
-    border: 2px dashed #d1d5db;
+    border: 2px dashed var(--color-slate-300);
     border-radius: 8px;
     padding: 12px 16px;
     text-align: center;
@@ -205,28 +205,28 @@
 
   .drop-zone.compact {
     padding: 12px 16px;
-    border: 1px dashed #d1d5db;
+    border: 1px dashed var(--color-slate-300);
   }
 
   .drop-zone:focus {
     outline: none;
-    border-color: #3b82f6;
-    background: #f0f9ff;
+    border-color: var(--color-primary-500);
+    background: var(--color-primary-50);
   }
 
   .drop-zone.drag-over {
-    border-color: #3b82f6;
-    background: #f0f9ff;
+    border-color: var(--color-primary-500);
+    background: var(--color-primary-50);
     transform: scale(1.02);
   }
 
   .drop-zone-content {
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   .paste-text {
     font-size: 14px;
-    color: #6b7280;
+    color: var(--color-slate-500);
     font-weight: 500;
   }
 
@@ -241,8 +241,8 @@
     background: white;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e5e7eb;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-slate-200);
   }
 
   .image-container {
@@ -287,14 +287,14 @@
   .image-caption input {
     width: 100%;
     padding: 6px 8px;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 4px;
     font-size: 14px;
   }
 
   .image-caption input:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--color-primary-500);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   }
 </style>

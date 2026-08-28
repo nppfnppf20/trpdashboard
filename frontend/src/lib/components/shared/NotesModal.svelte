@@ -79,7 +79,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -102,21 +102,21 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .modal-header h3 {
     margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.25rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     display: flex;
@@ -127,8 +127,8 @@
   }
 
   .close-btn:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
   }
 
   .modal-body {
@@ -142,11 +142,11 @@
     width: 100%;
     min-height: 150px;
     padding: 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 0.875rem;
-    color: #334155;
+    color: var(--color-slate-700);
     resize: vertical;
     transition: border-color 0.15s, box-shadow 0.15s;
     box-sizing: border-box;
@@ -156,18 +156,18 @@
 
   textarea:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-blue-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   textarea::placeholder {
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .char-count {
     text-align: right;
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     margin-top: 0.5rem;
   }
 
@@ -176,8 +176,8 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-top: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
     border-radius: 0 0 8px 8px;
   }
 
@@ -195,21 +195,21 @@
   }
 
   .btn-primary {
-    background: #3b82f6;
-    color: white;
+    background: var(--color-blue-500);
+    color: var(--color-white);
   }
 
   .btn-primary:hover {
-    background: #2563eb;
+    background: var(--color-blue-600);
   }
 
   .btn-secondary {
-    background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    background: var(--color-white);
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
 
   .btn-secondary:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 </style>

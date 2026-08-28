@@ -83,15 +83,15 @@
   }
   
   .star-rating i {
-    color: #fbbf24;
+    color: var(--color-amber-500);
   }
-  
+
   .star-rating i.filled {
-    color: #f59e0b;
+    color: var(--color-amber-500);
   }
-  
+
   .star-rating i.empty {
-    color: #d1d5db;
+    color: var(--color-slate-300);
   }
   
   /* Interactive mode */

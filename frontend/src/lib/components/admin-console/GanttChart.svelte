@@ -203,91 +203,91 @@
 <style>
   .gantt-container {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     overflow-x: auto;
   }
-  
+
   .gantt-header {
     display: flex;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
     position: sticky;
     top: 0;
     z-index: 10;
   }
-  
+
   .gantt-sidebar-header {
     width: 150px;
     min-width: 150px;
     padding: 0.5rem 0.5rem;
     font-weight: 600;
-    color: #475569;
-    border-right: 1px solid #e2e8f0;
+    color: var(--color-slate-600);
+    border-right: 1px solid var(--color-slate-200);
     font-size: 0.75rem;
   }
-  
+
   .gantt-timeline-header {
     display: flex;
     flex: 1;
     overflow-x: auto;
   }
-  
+
   .week-col {
     flex: 0 0 35px;
     width: 35px;
     padding: 0.375rem 0.125rem;
     text-align: center;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     font-size: 0.5625rem;
-    border-right: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-right: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
-  
+
   .week-col:last-child {
     border-right: none;
   }
-  
+
   .gantt-section-title {
     padding: 0.375rem 0.75rem;
-    background: #f1f5f9;
+    background: var(--color-slate-100);
     font-weight: 600;
-    color: #334155;
+    color: var(--color-slate-700);
     font-size: 0.75rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
-  
+
   .gantt-row {
     display: flex;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     min-height: 40px;
   }
-  
+
   .gantt-row.project-row {
-    background: #fef3c7;
+    background: var(--color-badge-warning-bg);
   }
-  
+
   .gantt-sidebar {
     width: 150px;
     min-width: 150px;
     padding: 0.5rem;
-    border-right: 1px solid #e2e8f0;
+    border-right: 1px solid var(--color-slate-200);
     display: flex;
     flex-direction: column;
     justify-content: center;
   }
-  
+
   .row-title {
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.75rem;
     margin-bottom: 0.125rem;
   }
-  
+
   .row-subtitle {
     font-size: 0.6875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin-bottom: 0.25rem;
   }
   
@@ -305,42 +305,42 @@
   }
   
   .mini-badge.status-pending {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
   }
-  
+
   .mini-badge.status-instructed {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-badge-info-bg);
+    color: var(--color-badge-info-fg);
   }
-  
+
   .mini-badge.status-in-progress {
-    background: #e0e7ff;
-    color: #3730a3;
+    background: var(--color-badge-indigo-bg);
+    color: var(--color-badge-indigo-fg);
   }
-  
+
   .mini-badge.status-completed {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
-  
+
   .mini-badge.status-not-started {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
   }
-  
+
   .gantt-timeline {
     flex: 1;
     position: relative;
     min-height: 40px;
   }
-  
+
   .week-separator {
     position: absolute;
     top: 0;
     bottom: 0;
     width: 1px;
-    background: #e2e8f0;
+    background: var(--color-slate-200);
     z-index: 1;
   }
   
@@ -371,15 +371,15 @@
     top: -28px;
     left: 50%;
     transform: translateX(-50%);
-    background: #1e293b;
+    background: var(--color-slate-800);
     color: white;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
     font-size: 0.6875rem;
     white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
-  
+
   .milestone-label::after {
     content: '';
     position: absolute;
@@ -387,19 +387,19 @@
     left: 50%;
     transform: translateX(-50%);
     border: 4px solid transparent;
-    border-top-color: #1e293b;
+    border-top-color: var(--color-slate-800);
   }
-  
+
   .milestone.site-visit {
-    background-color: #3b82f6;
+    background-color: var(--color-primary-500);
   }
-  
+
   .milestone.report-draft {
-    background-color: #8b5cf6;
+    background-color: var(--color-violet-600);
   }
-  
+
   .milestone.custom {
-    background-color: #f59e0b;
+    background-color: var(--color-amber-500);
   }
 </style>
 

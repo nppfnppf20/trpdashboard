@@ -90,7 +90,7 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .topbar {
@@ -101,8 +101,8 @@
     height: 52px;
     padding: 0 1rem;
     background: white;
-    border-bottom: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border-bottom: 1px solid var(--color-slate-200);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     z-index: 10;
   }
 
@@ -113,18 +113,18 @@
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    color: #475569;
+    color: var(--color-slate-600);
     text-decoration: none;
     font-size: 1.1rem;
     flex-shrink: 0;
     transition: background 0.15s, color 0.15s;
   }
-  .home-btn:hover { background: #f1f5f9; color: #1e293b; }
+  .home-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
 
   .topbar-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     flex-shrink: 0;
   }
 
@@ -133,31 +133,31 @@
     align-items: center;
     gap: 0.5rem;
     padding-left: 1rem;
-    border-left: 1px solid #e2e8f0;
+    border-left: 1px solid var(--color-slate-200);
     margin-left: 1rem;
   }
 
   .picker-label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
     white-space: nowrap;
   }
 
   .picker-loading {
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .picker-select {
     height: 32px;
     padding: 0 0.625rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.8rem;
     font-family: inherit;
     background: white;
-    color: #1e293b;
+    color: var(--color-slate-800);
     cursor: pointer;
     min-width: 240px;
     max-width: 380px;
@@ -165,8 +165,8 @@
   }
   .picker-select:focus {
     outline: none;
-    border-color: #0369a1;
-    box-shadow: 0 0 0 2px rgba(3,105,161,0.12);
+    border-color: var(--color-teal-600);
+    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.12);
   }
 
   .new-project-btn {
@@ -176,17 +176,17 @@
     height: 32px;
     padding: 0 0.75rem;
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.78rem;
     font-weight: 600;
-    color: #374151;
+    color: var(--color-slate-700);
     cursor: pointer;
     font-family: inherit;
     transition: all 0.15s;
     flex-shrink: 0;
   }
-  .new-project-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+  .new-project-btn:hover { background: var(--color-slate-50); border-color: var(--color-slate-300); }
 
   .main {
     flex: 1;
@@ -220,7 +220,7 @@
     align-items: center;
     justify-content: center;
     gap: 1rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
   }
 

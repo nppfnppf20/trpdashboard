@@ -21,7 +21,7 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .topbar {
@@ -32,8 +32,8 @@
     height: 52px;
     padding: 0 1rem;
     background: white;
-    border-bottom: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    border-bottom: 1px solid var(--color-slate-200);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     z-index: 10;
   }
 
@@ -44,18 +44,18 @@
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    color: #475569;
+    color: var(--color-slate-600);
     text-decoration: none;
     font-size: 1.1rem;
     flex-shrink: 0;
     transition: background 0.15s, color 0.15s;
   }
-  .home-btn:hover { background: #f1f5f9; color: #1e293b; }
+  .home-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
 
   .topbar-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -69,8 +69,8 @@
     letter-spacing: 0.06em;
     padding: 0.15rem 0.4rem;
     border-radius: 4px;
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-amber-100);
+    color: var(--color-amber-800);
   }
 
   .main {

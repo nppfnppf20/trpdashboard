@@ -25,7 +25,7 @@
 <style>
   .narrative-panel {
     margin-top: 1.25rem;
-    border: 1px solid #e0e7ff;
+    border: 1px solid var(--color-indigo-100);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -35,8 +35,8 @@
     align-items: center;
     gap: 0.625rem;
     padding: 0.4rem 0.75rem;
-    background: #eef2ff;
-    border-bottom: 1px solid #e0e7ff;
+    background: var(--color-primary-50);
+    border-bottom: 1px solid var(--color-indigo-100);
   }
 
   .narrative-tag {
@@ -44,11 +44,11 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #4f46e5;
+    color: var(--color-violet-700);
   }
 
   .narrative-hint {
     font-size: 0.72rem;
-    color: #818cf8;
+    color: var(--color-slate-400);
   }
 </style>

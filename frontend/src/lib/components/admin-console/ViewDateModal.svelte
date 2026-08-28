@@ -1,6 +1,5 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import '$lib/styles/buttons.css';
 
   export let show = false;
   export let date = null;
@@ -86,7 +85,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -108,21 +107,21 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .modal-header h3 {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.25rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     width: 28px;
@@ -135,8 +134,8 @@
   }
 
   .close-btn:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
   }
 
   .modal-body {
@@ -148,7 +147,7 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 0.5rem 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
   }
 
   .info-row:last-child {
@@ -158,14 +157,14 @@
   .label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-transform: uppercase;
     letter-spacing: 0.025em;
   }
 
   .value {
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     text-align: right;
   }
 
@@ -174,8 +173,8 @@
     justify-content: flex-end;
     gap: 0.5rem;
     padding: 1rem 1.25rem;
-    border-top: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-top: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
   .btn-modal {

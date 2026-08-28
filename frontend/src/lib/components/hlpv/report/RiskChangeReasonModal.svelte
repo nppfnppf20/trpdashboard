@@ -152,7 +152,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -161,14 +161,14 @@
   }
 
   .modal-content {
-    background: white;
-    border-radius: 12px;
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
     max-width: 500px;
     width: 100%;
     max-height: 85vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-modal);
   }
 
   .modal-header {
@@ -176,14 +176,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-gray-200);
     flex-shrink: 0;
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 1.125rem;
-    color: #1f2937;
+    color: var(--color-gray-800);
     font-weight: 500;
   }
 
@@ -191,19 +191,19 @@
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: #6b7280;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition: all 0.15s ease;
   }
 
   .close-button:hover {
-    background: #f3f4f6;
-    color: #374151;
+    background: var(--color-slate-100);
+    color: var(--color-slate-700);
   }
 
   .modal-body {
@@ -218,7 +218,7 @@
 
   .change-intro {
     margin: 0 0 1rem 0;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 0.95rem;
   }
 
@@ -226,9 +226,9 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    background: #f9fafb;
+    background: var(--color-gray-50);
     padding: 1rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
   }
 
   .change-item {
@@ -239,13 +239,13 @@
 
   .change-label {
     font-size: 0.75rem;
-    color: #6b7280;
+    color: var(--color-slate-500);
     text-transform: uppercase;
     font-weight: 500;
   }
 
   .change-arrow {
-    color: #9ca3af;
+    color: var(--color-gray-400);
     font-size: 1.25rem;
   }
 
@@ -259,8 +259,8 @@
   }
 
   .risk-badge.not-set {
-    background: #f3f4f6;
-    color: #6b7280;
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
   }
 
   .reason-input {
@@ -271,15 +271,15 @@
 
   .reason-input label {
     font-weight: 500;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 0.95rem;
   }
 
   .reason-input textarea {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
+    border: 1px solid var(--color-gray-300);
+    border-radius: var(--radius-md);
     font-size: 0.95rem;
     font-family: inherit;
     resize: vertical;
@@ -288,24 +288,24 @@
 
   .reason-input textarea:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .reason-input textarea::placeholder {
-    color: #9ca3af;
+    color: var(--color-gray-400);
   }
 
   .reason-hint {
     margin: 0;
     font-size: 0.8rem;
-    color: #6b7280;
+    color: var(--color-slate-500);
     font-style: italic;
   }
 
   .modal-footer {
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--color-gray-200);
     display: flex;
     justify-content: flex-end;
     gap: 0.75rem;
@@ -323,28 +323,28 @@
   }
 
   .btn-cancel {
-    background: #f3f4f6;
-    color: #374151;
-    border: 1px solid #d1d5db;
+    background: var(--color-slate-100);
+    color: var(--color-slate-700);
+    border: 1px solid var(--color-gray-300);
   }
 
   .btn-cancel:hover {
-    background: #e5e7eb;
+    background: var(--color-gray-200);
   }
 
   .btn-confirm {
-    background: #3b82f6;
-    color: white;
-    border: 1px solid #3b82f6;
+    background: var(--color-primary-500);
+    color: var(--color-white);
+    border: 1px solid var(--color-primary-500);
   }
 
   .btn-confirm:hover:not(:disabled) {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .btn-confirm:disabled {
-    background: #9ca3af;
-    border-color: #9ca3af;
+    background: var(--color-gray-400);
+    border-color: var(--color-gray-400);
     cursor: not-allowed;
   }
 </style>

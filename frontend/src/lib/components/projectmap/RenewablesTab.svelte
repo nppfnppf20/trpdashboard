@@ -228,14 +228,14 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .spinner {
     width: 2.5rem;
     height: 2.5rem;
-    border: 3px solid #f3f4f6;
-    border-top: 3px solid #3b82f6;
+    border: 3px solid var(--color-slate-100);
+    border-top: 3px solid var(--color-primary-500);
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 1rem;
@@ -245,8 +245,8 @@
     display: inline-block;
     width: 0.875rem;
     height: 0.875rem;
-    border: 2px solid #d1d5db;
-    border-top-color: #6366f1;
+    border: 2px solid var(--color-slate-300);
+    border-top-color: var(--color-primary-500);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     vertical-align: middle;
@@ -264,7 +264,7 @@
     justify-content: center;
     height: 100%;
     text-align: center;
-    color: #991b1b;
+    color: var(--color-red-800);
     padding: 2rem;
   }
 
@@ -278,14 +278,14 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .empty-state i { font-size: 3rem; margin-bottom: 1rem; }
 
   .table-header {
     padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     display: flex;
     flex-direction: column;
     gap: 0.625rem;
@@ -301,10 +301,10 @@
     margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
-  .record-count { font-size: 0.875rem; color: #64748b; }
+  .record-count { font-size: 0.875rem; color: var(--color-slate-500); }
 
   .filter-toolbar {
     display: flex;
@@ -327,40 +327,40 @@
   }
 
   .btn-filter {
-    background: #6366f1;
+    background: var(--color-primary-500);
     color: white;
-    border-color: #6366f1;
+    border-color: var(--color-primary-500);
   }
-  .btn-filter:hover:not(:disabled) { background: #4f46e5; }
+  .btn-filter:hover:not(:disabled) { background: var(--color-violet-700); }
   .btn-filter:disabled { opacity: 0.6; cursor: not-allowed; }
 
   .btn-clear {
-    background: #f1f5f9;
-    color: #475569;
-    border-color: #e2e8f0;
+    background: var(--color-slate-100);
+    color: var(--color-slate-600);
+    border-color: var(--color-slate-200);
   }
-  .btn-clear:hover { background: #e2e8f0; }
+  .btn-clear:hover { background: var(--color-slate-200); }
 
   .btn-edit-prompt {
     background: white;
-    color: #64748b;
-    border-color: #e2e8f0;
+    color: var(--color-slate-500);
+    border-color: var(--color-slate-200);
   }
-  .btn-edit-prompt:hover { background: #f8fafc; color: #334155; }
+  .btn-edit-prompt:hover { background: var(--color-slate-50); color: var(--color-slate-700); }
 
   .toggle-label {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
     font-size: 0.8rem;
-    color: #475569;
+    color: var(--color-slate-600);
     cursor: pointer;
   }
 
   .filter-error {
     margin: 0;
     font-size: 0.8rem;
-    color: #991b1b;
+    color: var(--color-red-800);
   }
 
   .prompt-editor {
@@ -372,10 +372,10 @@
   .prompt-editor textarea {
     width: 100%;
     padding: 0.5rem 0.625rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 0.375rem;
     font-size: 0.8rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     resize: vertical;
     font-family: inherit;
     box-sizing: border-box;
@@ -386,10 +386,10 @@
     gap: 0.5rem;
   }
 
-  .btn-save { background: #10b981; color: white; border-color: #10b981; }
-  .btn-save:hover { background: #059669; }
-  .btn-cancel { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-  .btn-cancel:hover { background: #e2e8f0; }
+  .btn-save { background: var(--color-emerald-500); color: white; border-color: var(--color-emerald-500); }
+  .btn-save:hover { background: var(--color-emerald-600); }
+  .btn-cancel { background: var(--color-slate-100); color: var(--color-slate-600); border-color: var(--color-slate-200); }
+  .btn-cancel:hover { background: var(--color-slate-200); }
 
   .table-wrapper {
     flex: 1;
@@ -405,7 +405,7 @@
   .data-table thead {
     position: sticky;
     top: 0;
-    background: #f8fafc;
+    background: var(--color-slate-50);
     z-index: 10;
   }
 
@@ -413,30 +413,30 @@
     text-align: left;
     padding: 0.5rem 0.75rem;
     font-weight: 600;
-    color: #475569;
-    border-bottom: 2px solid #e2e8f0;
+    color: var(--color-slate-600);
+    border-bottom: 2px solid var(--color-slate-200);
     white-space: nowrap;
     font-size: 0.75rem;
   }
 
   .data-table tbody tr {
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
     transition: background-color 0.15s;
   }
 
-  .data-table tbody tr:hover { background-color: #f8fafc; }
+  .data-table tbody tr:hover { background-color: var(--color-slate-50); }
 
   .data-table tbody tr.dismissed {
-    background-color: #f1f5f9;
+    background-color: var(--color-slate-100);
     opacity: 0.6;
   }
 
   .data-table tbody tr.relevant {
-    border-left: 3px solid #10b981;
-    background-color: #f0fdf4;
+    border-left: 3px solid var(--color-emerald-500);
+    background-color: var(--color-slate-100);
   }
 
-  .data-table tbody tr.relevant:hover { background-color: #dcfce7; }
+  .data-table tbody tr.relevant:hover { background-color: var(--color-emerald-100); }
 
   .data-table tbody tr.not-relevant {
     opacity: 0.35;
@@ -444,13 +444,13 @@
 
   .data-table td {
     padding: 0.4rem 0.75rem;
-    color: #334155;
+    color: var(--color-slate-700);
   }
 
   .cell-dismiss { width: 80px; text-align: center; }
   .cell-dismiss input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; }
 
-  .cell-name { font-weight: 500; color: #1e293b; max-width: 200px; }
+  .cell-name { font-weight: 500; color: var(--color-slate-800); max-width: 200px; }
 
   .cell-description { max-width: 500px; }
   .cell-description span {
@@ -471,10 +471,10 @@
     cursor: help;
   }
 
-  .cell-date { white-space: nowrap; color: #64748b; }
+  .cell-date { white-space: nowrap; color: var(--color-slate-500); }
 
   .cell-link { text-align: center; width: 60px; }
 
-  .link-button { color: #3b82f6; text-decoration: none; font-size: 1.125rem; transition: color 0.15s; }
-  .link-button:hover { color: #2563eb; }
+  .link-button { color: var(--color-primary-500); text-decoration: none; font-size: 1.125rem; transition: color 0.15s; }
+  .link-button:hover { color: var(--color-primary-600); }
 </style>

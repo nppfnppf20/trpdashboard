@@ -125,13 +125,13 @@
   .header-text h2 {
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 0.25rem;
   }
 
   .header-text p {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0;
   }
 
@@ -144,10 +144,10 @@
 
   .filename-input {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     width: 180px;
     background: white;
     transition: border-color 0.15s;
@@ -155,19 +155,19 @@
 
   .filename-input:focus {
     outline: none;
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
   }
 
   .filename-input::placeholder {
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .template-select {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
     cursor: pointer;
     transition: border-color 0.15s;
@@ -175,7 +175,7 @@
 
   .template-select:focus {
     outline: none;
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
   }
 
   .btn-export {
@@ -183,7 +183,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1.25rem;
-    background: #1F4E78;
+    background: var(--color-sky-900);
     color: white;
     border: none;
     border-radius: 6px;
@@ -195,7 +195,7 @@
   }
 
   .btn-export:hover:not(:disabled) {
-    background: #163d5e;
+    background: var(--color-sky-900);
   }
 
   .btn-export:disabled {
@@ -207,11 +207,11 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 8px;
     padding: 0.75rem 1rem;
-    color: #dc2626;
+    color: var(--color-red-600);
     font-size: 0.875rem;
   }
 
@@ -224,7 +224,7 @@
     display: inline-block;
     width: 0.875rem;
     height: 0.875rem;
-    border: 2px solid rgba(255,255,255,0.4);
+    border: 2px solid rgba(255, 255, 255, 0.4);
     border-top-color: white;
     border-radius: 50%;
     animation: spin 0.7s linear infinite;

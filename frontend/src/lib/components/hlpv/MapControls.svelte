@@ -471,9 +471,9 @@
 <style>
   /* Risk Filter Control Styles */
   :global(.risk-filter-control) {
-    background: white;
+    background: var(--color-white);
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
     padding: 12px;
     font-family: Arial, sans-serif;
     font-size: 12px;
@@ -497,15 +497,15 @@
     padding: 4px 0;
     font-size: 14px;
     font-weight: 600;
-    color: #374151;
+    color: var(--color-slate-700);
     width: 100%;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--color-slate-200);
     padding-top: 6px;
     margin-top: 4px;
   }
 
   :global(.risk-filter-control .risk-filter-toggle:hover) {
-    color: #1f2937;
+    color: var(--color-slate-800);
   }
 
   :global(.risk-filter-control .risk-filter-toggle .toggle-icon) {
@@ -531,7 +531,7 @@
     align-items: center;
     cursor: pointer;
     font-size: 11px;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   :global(.risk-filter-control .risk-filter-item input[type="checkbox"]) {
@@ -545,38 +545,38 @@
   }
 
   :global(.risk-filter-control .risk-label.showstopper) {
-    color: #dc2626;
+    color: var(--color-red-600);
   }
 
   :global(.risk-filter-control .risk-label.extremely-high) {
-    color: #b91c1c;
+    color: var(--color-red-800);
   }
 
   :global(.risk-filter-control .risk-label.high) {
-    color: #ea580c;
+    color: var(--color-orange-700);
   }
 
   :global(.risk-filter-control .risk-label.medium-high) {
-    color: #d97706;
+    color: var(--color-amber-600);
   }
 
   :global(.risk-filter-control .risk-label.medium) {
-    color: #f59e0b;
+    color: var(--color-amber-500);
   }
 
   :global(.risk-filter-control .risk-label.medium-low) {
-    color: #84cc16;
+    color: var(--color-green-500);
   }
 
   :global(.risk-filter-control .risk-label.low) {
-    color: #059669;
+    color: var(--color-emerald-600);
   }
 
   /* Grouped Layer Control Styles */
   :global(.grouped-layer-control) {
-    background: white;
+    background: var(--color-white);
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
     padding: 12px;
     font-family: Arial, sans-serif;
     font-size: 12px;
@@ -589,22 +589,22 @@
     margin: 0 0 12px 0;
     font-size: 14px;
     font-weight: 600;
-    color: #374151;
-    border-bottom: 1px solid #e5e7eb;
+    color: var(--color-slate-700);
+    border-bottom: 1px solid var(--color-slate-200);
     padding-bottom: 6px;
   }
 
   :global(.grouped-layer-control .base-layers-section) {
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   :global(.grouped-layer-control .base-layers-section h5) {
     margin: 0 0 6px 0;
     font-size: 12px;
     font-weight: 600;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   :global(.grouped-layer-control .discipline-group) {
@@ -625,12 +625,12 @@
     padding: 4px 0;
     font-size: 12px;
     font-weight: 600;
-    color: #374151;
+    color: var(--color-slate-700);
     width: 100%;
   }
 
   :global(.grouped-layer-control .group-toggle:hover) {
-    color: #1f2937;
+    color: var(--color-slate-800);
   }
 
   :global(.grouped-layer-control .toggle-icon) {
@@ -646,7 +646,7 @@
 
   :global(.grouped-layer-control .discipline-layers) {
     margin-left: 12px;
-    border-left: 2px solid #f3f4f6;
+    border-left: 2px solid var(--color-slate-100);
     padding-left: 8px;
   }
 
@@ -656,12 +656,12 @@
     cursor: pointer;
     padding: 2px 0;
     font-size: 11px;
-    color: #6b7280;
+    color: var(--color-slate-500);
     gap: 8px;
   }
 
   :global(.grouped-layer-control .layer-item:hover) {
-    color: #374151;
+    color: var(--color-slate-700);
   }
 
   :global(.grouped-layer-control .layer-item input[type="checkbox"],
@@ -703,7 +703,7 @@
     align-items: center;
     gap: 6px;
     font-size: 10px;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   :global(.grouped-layer-control .legend-label) {

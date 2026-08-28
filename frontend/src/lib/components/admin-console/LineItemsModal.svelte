@@ -164,7 +164,7 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -175,7 +175,7 @@
   .modal-content {
     background: white;
     border-radius: 12px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-modal);
     max-width: 800px;
     width: 90%;
     max-height: 80vh;
@@ -195,20 +195,20 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .modal-subtitle {
     margin: 0.25rem 0 0 0;
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .header-actions {
@@ -222,9 +222,9 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.4rem 0.85rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     background: white;
-    color: #475569;
+    color: var(--color-slate-600);
     border-radius: 6px;
     font-size: 0.82rem;
     font-weight: 500;
@@ -235,16 +235,16 @@
   }
 
   .compare-btn:hover {
-    border-color: #3b82f6;
-    color: #2563eb;
-    background: #eff6ff;
+    border-color: var(--color-primary-500);
+    color: var(--color-primary-600);
+    background: var(--color-primary-50);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     line-height: 1;
@@ -252,7 +252,7 @@
   }
 
   .close-btn:hover {
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .modal-body {
@@ -276,7 +276,7 @@
   .compare-col {
     flex: 1 1 0;
     min-width: 380px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 10px;
     overflow: hidden;
     display: flex;
@@ -288,8 +288,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 0.75rem;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
     min-height: 2.9rem;
     box-sizing: border-box;
   }
@@ -297,7 +297,7 @@
   .compare-col-title {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -313,24 +313,24 @@
     flex: 1;
     min-width: 0;
     padding: 0.35rem 0.5rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.82rem;
     font-family: inherit;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
   }
 
   .compare-select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px #dbeafe;
+    border-color: var(--color-primary-500);
+    box-shadow: 0 0 0 3px var(--color-primary-100);
   }
 
   .compare-close {
     background: none;
     border: none;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 1.1rem;
     cursor: pointer;
     padding: 0.15rem 0.3rem;
@@ -340,21 +340,21 @@
   }
 
   .compare-close:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
   }
 
   .compare-placeholder {
     margin: 0;
     padding: 3rem 1rem;
     text-align: center;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-size: 0.875rem;
     line-height: 1.8;
   }
 
   .compare-placeholder i {
     font-size: 2rem;
-    color: #cbd5e1;
+    color: var(--color-slate-300);
   }
 </style>

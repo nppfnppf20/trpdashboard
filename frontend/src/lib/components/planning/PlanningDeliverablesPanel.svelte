@@ -323,25 +323,25 @@
     padding: 4rem 2rem;
     background: white;
     border-radius: 12px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
   }
 
   .loading i, .error i {
     font-size: 3rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin-bottom: 1rem;
   }
 
   .loading p, .error p {
     font-size: 1.125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0;
   }
 
   .retry-btn {
     margin-top: 1rem;
     padding: 0.5rem 1.5rem;
-    background: #0d9488;
+    background: var(--color-teal-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -350,7 +350,7 @@
   }
 
   .retry-btn:hover {
-    background: #0f766e;
+    background: var(--color-emerald-600);
   }
 
   .panel-header {
@@ -361,19 +361,19 @@
     background: white;
     padding: 1.5rem;
     border-radius: 12px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
   }
 
   .project-info h2 {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 0.25rem 0;
   }
 
   .project-id {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0;
   }
 
@@ -382,7 +382,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.75rem 1.5rem;
-    background: #0d9488;
+    background: var(--color-teal-600);
     color: white;
     border: none;
     border-radius: 8px;
@@ -393,7 +393,7 @@
   }
 
   .create-btn:hover {
-    background: #0f766e;
+    background: var(--color-emerald-600);
     transform: translateY(-1px);
   }
 
@@ -408,7 +408,7 @@
   .section-title {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 1rem 0;
     display: flex;
     align-items: center;
@@ -417,7 +417,7 @@
 
   .section-title i {
     font-size: 1.5rem;
-    color: #0d9488;
+    color: var(--color-teal-600);
   }
 
   .empty-deliverables {
@@ -425,24 +425,24 @@
     padding: 3rem 2rem;
     background: white;
     border-radius: 12px;
-    border: 2px dashed #cbd5e1;
+    border: 2px dashed var(--color-slate-300);
   }
 
   .empty-deliverables i {
     font-size: 4rem;
-    color: #cbd5e1;
+    color: var(--color-slate-300);
     margin-bottom: 1rem;
   }
 
   .empty-deliverables p {
     font-size: 1.125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0;
   }
 
   .empty-hint {
     font-size: 0.875rem !important;
-    color: #94a3b8 !important;
+    color: var(--color-slate-400) !important;
     margin-top: 0.5rem !important;
   }
 
@@ -454,14 +454,14 @@
 
   .deliverable-card {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 12px;
     padding: 1.5rem;
     transition: all 0.2s;
   }
 
   .deliverable-card:hover {
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
     box-shadow: 0 4px 12px rgba(13, 148, 136, 0.1);
   }
 
@@ -475,7 +475,7 @@
   .card-icon {
     width: 3rem;
     height: 3rem;
-    background: #ccfbf1;
+    background: var(--color-teal-100);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -484,7 +484,7 @@
 
   .card-icon i {
     font-size: 1.5rem;
-    color: #0d9488;
+    color: var(--color-teal-600);
   }
 
   .card-status {
@@ -502,19 +502,19 @@
   .deliverable-name {
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 0.5rem 0;
   }
 
   .template-type {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0 0 0.5rem 0;
   }
 
   .meta-info {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     margin: 0;
     display: flex;
     align-items: center;
@@ -537,18 +537,18 @@
     justify-content: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     background: white;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .action-btn:hover {
-    border-color: #0d9488;
-    color: #0d9488;
+    border-color: var(--color-teal-600);
+    color: var(--color-teal-600);
   }
 
   .delete-btn {
@@ -556,9 +556,9 @@
   }
 
   .delete-btn:hover {
-    border-color: #dc2626;
-    color: #dc2626;
-    background: #fef2f2;
+    border-color: var(--color-red-600);
+    color: var(--color-red-600);
+    background: var(--color-red-50);
   }
 
   .templates-grid {
@@ -569,7 +569,7 @@
 
   .template-card {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1rem;
     display: flex;
@@ -593,7 +593,7 @@
     justify-content: center;
     padding: 0;
     background: transparent;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     border: none;
     border-radius: 4px;
     font-size: 1rem;
@@ -603,8 +603,8 @@
   }
 
   .template-edit-btn:hover {
-    background: #f1f5f9;
-    color: #0d9488;
+    background: var(--color-slate-100);
+    color: var(--color-teal-600);
   }
 
   .template-card:hover .template-edit-btn {
@@ -612,21 +612,21 @@
   }
 
   .template-card.clickable:hover {
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
     box-shadow: 0 2px 8px rgba(13, 148, 136, 0.1);
     transform: translateY(-1px);
   }
 
   .template-card.clickable:focus {
     outline: none;
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
     box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
   }
 
   .template-icon {
     width: 2.5rem;
     height: 2.5rem;
-    background: #f1f5f9;
+    background: var(--color-slate-100);
     border-radius: 6px;
     display: flex;
     align-items: center;
@@ -636,19 +636,19 @@
 
   .template-icon i {
     font-size: 1.25rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .template-info h4 {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 0.25rem 0;
   }
 
   .template-info p {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0;
     line-height: 1.4;
   }

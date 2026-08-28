@@ -4,8 +4,6 @@
   import ContactModal from '$lib/components/admin-console/ContactModal.svelte';
   import NotesModal from '$lib/components/shared/NotesModal.svelte';
   import { updateQuoteReview } from '$lib/api/quotes.js';
-  import '$lib/styles/tables.css';
-  import '$lib/styles/buttons.css';
 
   export let quotes = [];
   export let loading = false;
@@ -295,9 +293,9 @@
 
 <style>
   .content-panel {
-    background: white;
+    background: var(--color-white);
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -308,7 +306,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .header-left {
@@ -321,12 +319,12 @@
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .saving-indicator {
     font-size: 0.75rem;
-    color: #3b82f6;
+    color: var(--color-primary-500);
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -334,7 +332,7 @@
 
   .last-saved {
     font-size: 0.75rem;
-    color: #10b981;
+    color: var(--color-emerald-500);
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -349,7 +347,7 @@
   .contact-link {
     background: none;
     border: none;
-    color: #3b82f6;
+    color: var(--color-primary-500);
     cursor: pointer;
     font-size: inherit;
     padding: 0;
@@ -361,7 +359,7 @@
   }
 
   .contact-link:hover {
-    color: #2563eb;
+    color: var(--color-primary-600);
   }
 
   .contact-link i {
@@ -374,14 +372,14 @@
     align-items: center;
     justify-content: center;
     padding: 3rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid #e2e8f0;
-    border-top-color: #3b82f6;
+    border: 3px solid var(--color-slate-200);
+    border-top-color: var(--color-primary-500);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin-bottom: 1rem;
@@ -392,7 +390,7 @@
   }
 
   .text-muted {
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .notes-cell-compact {
@@ -401,8 +399,8 @@
 
   .notes-link {
     background: white;
-    border: 1px solid #e2e8f0;
-    color: #1e293b;
+    border: 1px solid var(--color-slate-200);
+    color: var(--color-slate-800);
     cursor: pointer;
     font-size: 0.875rem;
     padding: 0.5rem 0.75rem;
@@ -415,20 +413,20 @@
   }
 
   .notes-link:hover {
-    background: #f8fafc;
-    border-color: #3b82f6;
-    color: #3b82f6;
+    background: var(--color-slate-50);
+    border-color: var(--color-primary-500);
+    color: var(--color-primary-500);
   }
 
   .notes-link.empty {
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
     border-style: dashed;
   }
 
   .notes-link.empty:hover {
-    background: #f8fafc;
-    color: #3b82f6;
+    background: var(--color-slate-50);
+    color: var(--color-primary-500);
     font-style: normal;
     border-style: solid;
   }
@@ -457,13 +455,13 @@
     align-items: center;
     justify-content: center;
     padding: 0.375rem 0.5rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     background: white;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s;
     font-size: 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin-right: 0.25rem;
   }
 
@@ -472,12 +470,12 @@
   }
 
   :global(.action-btn:hover) {
-    background: #f8fafc;
-    border-color: #cbd5e1;
+    background: var(--color-slate-50);
+    border-color: var(--color-slate-300);
   }
 
   :global(.reset-btn:hover) {
-    color: #f59e0b;
-    border-color: #f59e0b;
+    color: var(--color-amber-500);
+    border-color: var(--color-amber-500);
   }
 </style>

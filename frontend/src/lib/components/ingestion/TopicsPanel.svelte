@@ -172,12 +172,12 @@
     justify-content: space-between;
     gap: 1rem;
   }
-  .panel-header h3 { margin: 0 0 0.25rem 0; font-size: 1rem; font-weight: 600; color: #1e293b; }
-  .panel-subtext { margin: 0; font-size: 0.8rem; color: #64748b; }
+  .panel-header h3 { margin: 0 0 0.25rem 0; font-size: 1rem; font-weight: 600; color: var(--color-slate-800); }
+  .panel-subtext { margin: 0; font-size: 0.8rem; color: var(--color-slate-500); }
 
   .add-form, .edit-form {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1rem;
     display: flex;
@@ -187,29 +187,29 @@
 
   .form-row { display: flex; gap: 0.75rem; align-items: flex-start; }
   .form-group { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
-  .form-group label { font-size: 0.78rem; font-weight: 600; color: #475569; }
-  .hint { font-weight: 400; color: #94a3b8; }
-  .required { color: #ef4444; }
+  .form-group label { font-size: 0.78rem; font-weight: 600; color: var(--color-slate-600); }
+  .hint { font-weight: 400; color: var(--color-slate-400); }
+  .required { color: var(--color-red-500); }
 
   .form-input {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
     font-family: inherit;
     background: white;
-    color: #1e293b;
+    color: var(--color-slate-800);
     outline: none;
     transition: border-color 0.15s;
   }
-  .form-input:focus { border-color: #9333ea; }
+  .form-input:focus { border-color: var(--color-purple-600); }
 
   .form-actions { display: flex; gap: 0.5rem; }
 
   .topic-list { display: flex; flex-direction: column; gap: 0.5rem; }
 
   .topic-card {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     background: white;
     overflow: hidden;
@@ -225,8 +225,8 @@
   .code-badge {
     font-size: 0.7rem;
     font-weight: 700;
-    background: #f3e8ff;
-    color: #7e22ce;
+    background: var(--color-violet-100);
+    color: var(--color-purple-700);
     padding: 0.2rem 0.5rem;
     border-radius: 4px;
     white-space: nowrap;
@@ -235,17 +235,17 @@
   }
 
   .topic-content { flex: 1; min-width: 0; }
-  .topic-title { font-size: 0.9rem; font-weight: 600; color: #1e293b; }
-  .topic-desc { font-size: 0.8rem; color: #64748b; margin-top: 0.2rem; }
+  .topic-title { font-size: 0.9rem; font-weight: 600; color: var(--color-slate-800); }
+  .topic-desc { font-size: 0.8rem; color: var(--color-slate-500); margin-top: 0.2rem; }
 
   .keyword-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
   .chip {
     font-size: 0.7rem;
-    background: #f1f5f9;
-    color: #475569;
+    background: var(--color-slate-100);
+    color: var(--color-slate-600);
     padding: 0.15rem 0.5rem;
     border-radius: 20px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
   }
 
   .empty-state {
@@ -254,16 +254,16 @@
     align-items: center;
     gap: 0.5rem;
     padding: 2.5rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
   }
   .empty-state i { font-size: 2.5rem; }
   .empty-state p { margin: 0; font-size: 0.875rem; }
 
   .error-banner {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    color: #991b1b;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
+    color: var(--color-red-800);
     padding: 0.75rem 1rem;
     border-radius: 6px;
     font-size: 0.875rem;
@@ -274,7 +274,7 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.5rem 1rem;
-    background: #9333ea;
+    background: var(--color-purple-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -285,33 +285,33 @@
     white-space: nowrap;
     transition: background 0.15s;
   }
-  .btn-primary:hover:not(:disabled) { background: #7e22ce; }
+  .btn-primary:hover:not(:disabled) { background: var(--color-purple-700); }
   .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
   .btn-primary.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
 
   .btn-ghost {
     padding: 0.5rem 1rem;
     background: none;
-    color: #64748b;
-    border: 1px solid #e2e8f0;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
     cursor: pointer;
     font-family: inherit;
     transition: background 0.15s;
   }
-  .btn-ghost:hover { background: #f8fafc; }
+  .btn-ghost:hover { background: var(--color-slate-50); }
   .btn-ghost.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
 
   .btn-icon {
     background: none;
     border: none;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 4px;
     transition: color 0.15s;
     flex-shrink: 0;
   }
-  .btn-icon:hover { color: #7e22ce; }
+  .btn-icon:hover { color: var(--color-purple-700); }
 </style>

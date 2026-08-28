@@ -168,18 +168,18 @@
   .corner-cell {
     font-size: 0.7rem;
     font-weight: 700;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 0.6rem 0.875rem;
-    border-bottom: 2px solid #e2e8f0;
-    border-right: 1px solid #e2e8f0;
+    border-bottom: 2px solid var(--color-slate-200);
+    border-right: 1px solid var(--color-slate-200);
   }
 
   .stage-header {
     padding: 0;
-    border-bottom: 2px solid #e2e8f0;
-    border-right: 1px solid #f1f5f9;
+    border-bottom: 2px solid var(--color-slate-200);
+    border-right: 1px solid var(--color-slate-100);
     min-width: 160px;
     vertical-align: bottom;
   }
@@ -194,39 +194,39 @@
   .stage-name {
     font-size: 0.8rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     display: flex;
     align-items: center;
     gap: 0.3rem;
   }
-  .preset-icon { font-size: 0.7rem; color: #9333ea; }
-  .stage-date { font-size: 0.7rem; color: #94a3b8; }
+  .preset-icon { font-size: 0.7rem; color: var(--color-purple-600); }
+  .stage-date { font-size: 0.7rem; color: var(--color-slate-400); }
 
-  .summary-row { background: #faf5ff; }
+  .summary-row { background: var(--color-purple-50); }
 
   .summary-label-cell {
     font-size: 0.7rem;
     font-weight: 600;
-    color: #7e22ce;
+    color: var(--color-purple-700);
     padding: 0.5rem 0.875rem;
-    border-right: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
+    border-right: 1px solid var(--color-slate-200);
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .summary-cell {
     padding: 0.5rem 0.875rem;
-    border-right: 1px solid #f1f5f9;
-    border-bottom: 1px solid #e2e8f0;
+    border-right: 1px solid var(--color-slate-100);
+    border-bottom: 1px solid var(--color-slate-200);
     cursor: pointer;
     max-width: 200px;
     transition: background 0.1s;
     vertical-align: top;
   }
-  .summary-cell:hover { background: #f3e8ff; }
+  .summary-cell:hover { background: var(--color-violet-100); }
 
   .summary-snippet {
     font-size: 0.75rem;
-    color: #475569;
+    color: var(--color-slate-600);
     white-space: normal;
     line-height: 1.4;
     display: -webkit-box;
@@ -234,12 +234,12 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .no-summary { font-size: 0.75rem; color: #d1d5db; }
+  .no-summary { font-size: 0.75rem; color: var(--color-slate-300); }
 
   .issue-label-cell {
     padding: 0.6rem 0.875rem;
-    border-right: 1px solid #e2e8f0;
-    border-bottom: 1px solid #f1f5f9;
+    border-right: 1px solid var(--color-slate-200);
+    border-bottom: 1px solid var(--color-slate-100);
     vertical-align: middle;
     display: flex;
     align-items: center;
@@ -250,8 +250,8 @@
   .issue-code {
     font-size: 0.65rem;
     font-weight: 700;
-    background: #f3e8ff;
-    color: #7e22ce;
+    background: var(--color-violet-100);
+    color: var(--color-purple-700);
     padding: 0.15rem 0.4rem;
     border-radius: 3px;
     flex-shrink: 0;
@@ -259,21 +259,21 @@
   .issue-title {
     font-size: 0.8rem;
     font-weight: 500;
-    color: #374151;
+    color: var(--color-slate-700);
     white-space: normal;
     line-height: 1.3;
   }
 
   .data-cell {
     padding: 0.5rem 0.875rem;
-    border-right: 1px solid #f1f5f9;
-    border-bottom: 1px solid #f1f5f9;
+    border-right: 1px solid var(--color-slate-100);
+    border-bottom: 1px solid var(--color-slate-100);
     text-align: center;
     vertical-align: middle;
     min-width: 130px;
   }
   .data-cell.clickable { cursor: pointer; transition: background 0.1s; }
-  .data-cell.clickable:hover { background: #f8fafc; }
+  .data-cell.clickable:hover { background: var(--color-slate-50); }
 
   .sentiment-pill {
     font-size: 0.7rem;
@@ -288,7 +288,7 @@
     display: block;
     width: 24px;
     height: 24px;
-    border: 1.5px dashed #e2e8f0;
+    border: 1.5px dashed var(--color-slate-200);
     border-radius: 50%;
     margin: auto;
   }
@@ -300,7 +300,7 @@
     justify-content: center;
     gap: 0.75rem;
     padding: 3rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
     flex: 1;
   }

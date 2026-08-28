@@ -384,8 +384,8 @@
     margin: 0 0 8px 0;
     font-size: 14px;
     font-weight: 600;
-    color: #374151;
-    border-bottom: 1px solid #e5e7eb;
+    color: var(--color-slate-700);
+    border-bottom: 1px solid var(--color-slate-200);
     padding-bottom: 4px;
   }
 
@@ -399,7 +399,7 @@
 
   :global(.map-legend .legend-title) {
     font-weight: 600;
-    color: #4b5563;
+    color: var(--color-slate-600);
     margin-bottom: 6px;
     font-size: 11px;
     text-transform: uppercase;
@@ -410,7 +410,7 @@
     display: flex;
     align-items: center;
     margin-bottom: 4px;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   :global(.map-legend .legend-item:last-child) {
@@ -433,7 +433,7 @@
 
   :global(.map-legend .legend-note) {
     font-size: 10px;
-    color: #9ca3af;
+    color: var(--color-slate-400);
     margin-bottom: 6px;
     font-style: italic;
     line-height: 1.3;
@@ -462,8 +462,8 @@
     margin: 0 0 8px 0;
     font-size: 14px;
     font-weight: 600;
-    color: #374151;
-    border-bottom: 1px solid #e5e7eb;
+    color: var(--color-slate-700);
+    border-bottom: 1px solid var(--color-slate-200);
     padding-bottom: 4px;
   }
 
@@ -478,7 +478,7 @@
     align-items: center;
     cursor: pointer;
     font-size: 11px;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   :global(.risk-filter-control .risk-filter-item input[type="checkbox"]) {
@@ -492,31 +492,31 @@
   }
 
   :global(.risk-filter-control .risk-label.showstopper) {
-    color: #dc2626;
+    color: var(--color-red-600);
   }
 
   :global(.risk-filter-control .risk-label.extremely-high) {
-    color: #b91c1c;
+    color: var(--color-red-800);
   }
 
   :global(.risk-filter-control .risk-label.high) {
-    color: #ea580c;
+    color: var(--color-amber-600);
   }
 
   :global(.risk-filter-control .risk-label.medium-high) {
-    color: #d97706;
+    color: var(--color-amber-600);
   }
 
   :global(.risk-filter-control .risk-label.medium) {
-    color: #f59e0b;
+    color: var(--color-amber-500);
   }
 
   :global(.risk-filter-control .risk-label.medium-low) {
-    color: #84cc16;
+    color: var(--color-amber-600);
   }
 
   :global(.risk-filter-control .risk-label.low) {
-    color: #059669;
+    color: var(--color-emerald-600);
   }
 
 </style>

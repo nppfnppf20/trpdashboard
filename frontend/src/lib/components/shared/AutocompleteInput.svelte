@@ -216,24 +216,24 @@
   input {
     width: 100%;
     padding: 0.625rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
     font-family: inherit;
     box-sizing: border-box;
     transition: border-color 0.2s;
-    background: white;
-    color: #1e293b;
+    background: var(--color-white);
+    color: var(--color-slate-800);
   }
 
   input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-blue-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   input:disabled {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
     cursor: not-allowed;
   }
 
@@ -243,10 +243,10 @@
     left: 0;
     right: 0;
     margin-top: 0.25rem;
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-dropdown);
     max-height: 200px;
     overflow-y: auto;
     z-index: 1000;
@@ -262,11 +262,11 @@
     font-family: inherit;
     cursor: pointer;
     transition: background 0.1s;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .suggestion-item:hover,
   .suggestion-item.highlighted {
-    background: #eff6ff;
+    background: var(--color-blue-50);
   }
 </style>

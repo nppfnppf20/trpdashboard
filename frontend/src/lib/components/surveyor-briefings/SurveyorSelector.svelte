@@ -71,13 +71,13 @@
   }
 
   .empty {
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
     padding: 2rem;
   }
 
   .discipline-group {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     overflow: hidden;
   }
@@ -85,11 +85,11 @@
   .discipline-header {
     margin: 0;
     padding: 0.75rem 1rem;
-    background: #f8fafc;
-    color: #475569;
+    background: var(--color-slate-50);
+    color: var(--color-slate-600);
     font-size: 0.875rem;
     font-weight: 600;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .surveyor-list {
@@ -107,29 +107,29 @@
   }
 
   .surveyor-item:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .surveyor-item:not(:last-child) {
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
   }
 
   .surveyor-item input[type="checkbox"] {
     width: 18px;
     height: 18px;
     cursor: pointer;
-    accent-color: #3b82f6;
+    accent-color: var(--color-primary-500);
   }
 
   .surveyor-name {
     flex: 1;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-weight: 500;
   }
 
   .surveyor-location {
     font-size: 0.8125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 </style>

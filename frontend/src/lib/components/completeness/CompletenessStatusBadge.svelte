@@ -27,17 +27,17 @@
   }
 
   .badge-complete {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
 
   .badge-partial {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
   }
 
   .badge-missing {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--color-badge-danger-bg);
+    color: var(--color-badge-danger-fg);
   }
 </style>

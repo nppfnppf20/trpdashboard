@@ -155,7 +155,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -171,7 +171,7 @@
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 50px var(--overlay-bg);
   }
 
   .modal-header {
@@ -179,13 +179,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .modal-header h2 {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0;
     display: flex;
     align-items: center;
@@ -194,7 +194,7 @@
 
   .modal-header h2 i {
     font-size: 1.75rem;
-    color: #0d9488;
+    color: var(--color-teal-600);
   }
 
   .close-btn {
@@ -202,7 +202,7 @@
     height: 2rem;
     border: none;
     background: transparent;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.2s;
@@ -212,8 +212,8 @@
   }
 
   .close-btn:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
   }
 
   .close-btn i {
@@ -226,8 +226,8 @@
   }
 
   .project-info-banner {
-    background: #f0fdfa;
-    border: 1px solid #99f6e4;
+    background: var(--color-slate-100);
+    border: 1px solid var(--color-sky-200);
     border-radius: 8px;
     padding: 1rem;
     display: flex;
@@ -238,7 +238,7 @@
 
   .project-info-banner i {
     font-size: 2rem;
-    color: #0d9488;
+    color: var(--color-teal-600);
   }
 
   .project-info-banner div {
@@ -248,12 +248,12 @@
   }
 
   .project-info-banner strong {
-    color: #0f766e;
+    color: var(--color-emerald-600);
     font-size: 1rem;
   }
 
   .project-info-banner span {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
   }
 
@@ -265,35 +265,35 @@
     display: block;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin-bottom: 0.5rem;
   }
 
   .template-select, .text-input {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 8px;
     font-size: 1rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     transition: all 0.2s;
   }
 
   .template-select:focus, .text-input:focus {
     outline: none;
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
     box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
   }
 
   .help-text {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0.5rem 0 0 0;
   }
 
   .template-preview {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1rem;
     margin-bottom: 1.5rem;
@@ -302,7 +302,7 @@
   .template-preview h3 {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 0.75rem 0;
   }
 
@@ -319,20 +319,20 @@
   }
 
   .preview-item strong {
-    color: #475569;
+    color: var(--color-slate-600);
     min-width: 90px;
   }
 
   .preview-item span {
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .error-message {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 8px;
     padding: 0.75rem;
-    color: #dc2626;
+    color: var(--color-red-600);
     font-size: 0.875rem;
     display: flex;
     align-items: center;
@@ -348,7 +348,7 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
   }
 
   .cancel-btn, .create-btn {
@@ -366,22 +366,22 @@
 
   .cancel-btn {
     background: white;
-    border: 1px solid #cbd5e1;
-    color: #64748b;
+    border: 1px solid var(--color-slate-300);
+    color: var(--color-slate-500);
   }
 
   .cancel-btn:hover:not(:disabled) {
-    background: #f8fafc;
-    border-color: #94a3b8;
+    background: var(--color-slate-50);
+    border-color: var(--color-slate-400);
   }
 
   .create-btn {
-    background: #0d9488;
+    background: var(--color-teal-600);
     color: white;
   }
 
   .create-btn:hover:not(:disabled) {
-    background: #0f766e;
+    background: var(--color-emerald-600);
     transform: translateY(-1px);
   }
 

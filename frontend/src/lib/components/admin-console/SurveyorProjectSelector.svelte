@@ -120,32 +120,32 @@
   .project-select {
     flex: 1;
     padding: 0.625rem 1rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
     font-family: inherit;
     background: white;
     cursor: pointer;
     transition: all 0.2s;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .project-select:hover {
-    border-color: #94a3b8;
+    border-color: var(--color-slate-400);
   }
 
   .project-select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .clear-btn {
     padding: 0.5rem;
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
+    background: var(--color-slate-100);
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
@@ -155,9 +155,9 @@
   }
 
   .clear-btn:hover {
-    background: #fee2e2;
-    border-color: #fca5a5;
-    color: #ef4444;
+    background: var(--color-red-100);
+    border-color: var(--color-red-200);
+    color: var(--color-red-500);
   }
 
   .inline-loading,
@@ -173,26 +173,26 @@
   }
 
   .inline-loading {
-    background: #f8fafc;
-    color: #64748b;
+    background: var(--color-slate-50);
+    color: var(--color-slate-500);
   }
 
   .inline-error {
-    background: #fef2f2;
-    color: #ef4444;
-    border: 1px solid #fecaca;
+    background: var(--color-red-50);
+    color: var(--color-red-500);
+    border: 1px solid var(--color-red-200);
   }
 
   .inline-empty {
-    background: #f8fafc;
-    color: #94a3b8;
+    background: var(--color-slate-50);
+    color: var(--color-slate-400);
   }
 
   .spinner {
     width: 1rem;
     height: 1rem;
-    border: 2px solid #e5e7eb;
-    border-top: 2px solid #3b82f6;
+    border: 2px solid var(--color-slate-200);
+    border-top: 2px solid var(--color-primary-500);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -205,18 +205,18 @@
     margin-left: auto;
     padding: 0.25rem 0.5rem;
     background: white;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 4px;
     cursor: pointer;
-    color: #64748b;
+    color: var(--color-slate-500);
     display: flex;
     align-items: center;
     transition: all 0.2s;
   }
 
   .retry-btn:hover {
-    background: #3b82f6;
-    border-color: #3b82f6;
+    background: var(--color-primary-500);
+    border-color: var(--color-primary-500);
     color: white;
   }
 

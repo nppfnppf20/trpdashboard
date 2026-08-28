@@ -5,8 +5,6 @@
   import AddProjectModal from './projects/AddProjectModal.svelte';
   import WorkflowNotificationCentre from '$lib/components/workflow/WorkflowNotificationCentre.svelte';
   import { user } from '$lib/stores/auth.js';
-  import '../styles/tables.css';
-  import '../styles/buttons.css';
 
   let activeTab = 'table'; // 'table' | 'map'
   let showAddProjectModal = false;
@@ -118,10 +116,10 @@
 
   .navbar {
     background: white;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     padding: 1rem 1.5rem;
     flex-shrink: 0;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     position: relative;
   }
 
@@ -143,18 +141,18 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .home-button:hover {
-    background: #f1f5f9;
-    border-color: #cbd5e1;
+    background: var(--color-slate-100);
+    border-color: var(--color-slate-300);
   }
 
   .home-button i {
@@ -169,7 +167,7 @@
     z-index: 10;
     width: 2.5rem;
     height: 2.5rem;
-    background: #9333ea;
+    background: var(--color-purple-600);
     border: none;
     border-radius: 0.375rem;
     cursor: pointer;
@@ -181,7 +179,7 @@
   }
 
   .create-project-btn:hover {
-    background: #7e22ce;
+    background: var(--color-purple-700);
     transform: translateY(-50%) translateY(-2px);
     box-shadow: 0 4px 12px rgba(147, 51, 234, 0.4);
   }
@@ -197,7 +195,7 @@
   .navbar-title {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0;
   }
 
@@ -206,7 +204,7 @@
     gap: 1rem;
     padding: 1rem 1.5rem 0;
     background: white;
-    border-bottom: 2px solid #e2e8f0;
+    border-bottom: 2px solid var(--color-slate-200);
   }
 
   .tab-button {
@@ -220,17 +218,17 @@
     cursor: pointer;
     font-size: 1rem;
     font-weight: 500;
-    color: #64748b;
+    color: var(--color-slate-500);
     transition: all 0.2s;
   }
 
   .tab-button:hover {
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .tab-button.active {
-    color: #9333ea;
-    border-bottom-color: #9333ea;
+    color: var(--color-purple-600);
+    border-bottom-color: var(--color-purple-600);
   }
 
   .tab-button i {
@@ -242,7 +240,7 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .table-panel {

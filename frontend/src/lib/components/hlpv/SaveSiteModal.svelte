@@ -259,7 +259,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -269,7 +269,7 @@
   .modal-content {
     background: white;
     border-radius: 12px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-modal);
     width: 90%;
     max-width: 600px;
     max-height: 90vh;
@@ -295,12 +295,12 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .modal-header h3 {
     margin: 0;
-    color: #1f2937;
+    color: var(--color-slate-800);
     font-size: 1.25rem;
     font-weight: 600;
   }
@@ -309,7 +309,7 @@
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: #6b7280;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     line-height: 1;
@@ -318,8 +318,8 @@
   }
 
   .close-button:hover {
-    color: #374151;
-    background: #f3f4f6;
+    color: var(--color-slate-700);
+    background: var(--color-slate-100);
   }
 
   .modal-body {
@@ -330,7 +330,7 @@
   }
 
   .modal-description {
-    color: #6b7280;
+    color: var(--color-slate-500);
     margin-bottom: 1.5rem;
     line-height: 1.5;
   }
@@ -342,7 +342,7 @@
   .form-group label {
     display: block;
     margin-bottom: 0.5rem;
-    color: #374151;
+    color: var(--color-slate-700);
     font-weight: 500;
     font-size: 0.875rem;
   }
@@ -350,7 +350,7 @@
   .site-name-input {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 1rem;
     transition: all 0.2s ease;
@@ -359,22 +359,22 @@
 
   .site-name-input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .site-name-input:disabled {
-    background: #f9fafb;
-    color: #6b7280;
+    background: var(--color-slate-50);
+    color: var(--color-slate-500);
   }
 
   .error-message {
-    color: #dc2626;
+    color: var(--color-red-600);
     font-size: 0.875rem;
     margin-top: 0.5rem;
     padding: 0.5rem;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 4px;
   }
 
@@ -383,8 +383,8 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1.5rem;
-    border-top: 1px solid #e5e7eb;
-    background: #f9fafb;
+    border-top: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
   .btn-secondary,
@@ -400,12 +400,12 @@
 
   .btn-secondary {
     background: white;
-    color: #374151;
-    border-color: #d1d5db;
+    color: var(--color-slate-700);
+    border-color: var(--color-slate-300);
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #f9fafb;
+    background: var(--color-slate-50);
   }
 
   .btn-secondary:disabled {
@@ -414,19 +414,19 @@
   }
 
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
-    border-color: #3b82f6;
+    border-color: var(--color-primary-500);
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #2563eb;
-    border-color: #2563eb;
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-600);
   }
 
   .btn-primary:disabled {
-    background: #9ca3af;
-    border-color: #9ca3af;
+    background: var(--color-slate-400);
+    border-color: var(--color-slate-400);
     cursor: not-allowed;
   }
 
@@ -443,7 +443,7 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 1rem;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--color-slate-200);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -451,13 +451,13 @@
   }
 
   .option-card:hover {
-    border-color: #d1d5db;
-    background: #f9fafb;
+    border-color: var(--color-slate-300);
+    background: var(--color-slate-50);
   }
 
   .option-card.selected {
-    border-color: #3b82f6;
-    background: #eff6ff;
+    border-color: var(--color-primary-500);
+    background: var(--color-primary-50);
   }
 
   .option-card input[type="radio"] {
@@ -481,15 +481,15 @@
 
   .option-title {
     font-weight: 600;
-    color: #1f2937;
+    color: var(--color-slate-800);
     font-size: 0.9375rem;
   }
 
   .option-badge {
     font-size: 0.6875rem;
     font-weight: 600;
-    color: #3b82f6;
-    background: #dbeafe;
+    color: var(--color-primary-500);
+    background: var(--color-primary-100);
     padding: 0.125rem 0.5rem;
     border-radius: 9999px;
     text-transform: uppercase;
@@ -498,7 +498,7 @@
 
   .option-description {
     margin: 0;
-    color: #6b7280;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     line-height: 1.4;
   }
@@ -507,7 +507,7 @@
   .project-select {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 1rem;
     transition: all 0.2s ease;
@@ -517,13 +517,13 @@
 
   .project-select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .project-select:disabled {
-    background: #f9fafb;
-    color: #6b7280;
+    background: var(--color-slate-50);
+    color: var(--color-slate-500);
   }
 
   /* Info Box */
@@ -531,21 +531,21 @@
     display: flex;
     gap: 0.75rem;
     padding: 1rem;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
+    background: var(--color-primary-50);
+    border: 1px solid var(--color-primary-200);
     border-radius: 6px;
     margin-top: 1rem;
   }
 
   .info-box i {
     font-size: 1.25rem;
-    color: #3b82f6;
+    color: var(--color-primary-500);
     flex-shrink: 0;
   }
 
   .info-box p {
     margin: 0;
-    color: #1e40af;
+    color: var(--color-primary-800);
     font-size: 0.875rem;
     line-height: 1.5;
   }
@@ -554,7 +554,7 @@
   .field-hint {
     margin: 0.375rem 0 0 0;
     font-size: 0.75rem;
-    color: #6b7280;
+    color: var(--color-slate-500);
     font-style: italic;
   }
 
@@ -562,9 +562,9 @@
   .loading-text {
     padding: 0.75rem;
     text-align: center;
-    color: #6b7280;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
-    background: #f9fafb;
+    background: var(--color-slate-50);
     border-radius: 6px;
   }
 </style>

@@ -38,7 +38,7 @@
   .guidance-button {
     background: none;
     border: none;
-    color: #6b7280;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     display: inline-flex;
@@ -52,12 +52,12 @@
   }
 
   .guidance-button:hover {
-    background: #f3f4f6;
-    color: #3b82f6;
+    background: var(--color-slate-100);
+    color: var(--color-primary-500);
   }
 
   .guidance-button:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    box-shadow: var(--focus-ring-blue);
   }
 </style>

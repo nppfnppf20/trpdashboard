@@ -226,8 +226,8 @@
   }
 
   .warnings {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
+    background: var(--color-amber-100);
+    border: 1px solid var(--color-amber-500);
     border-radius: 4px;
     padding: 1rem;
     margin-bottom: 1rem;
@@ -235,14 +235,14 @@
 
   .warnings h4 {
     margin: 0 0 0.5rem 0;
-    color: #856404;
+    color: var(--color-amber-800);
     font-size: 1rem;
   }
 
   .warnings ul {
     margin: 0;
     padding-left: 1.5rem;
-    color: #856404;
+    color: var(--color-amber-800);
   }
 
   .warnings li {

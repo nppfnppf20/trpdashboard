@@ -39,7 +39,7 @@
   .nudge-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -63,12 +63,12 @@
   .nudge-icon {
     width: 56px;
     height: 56px;
-    background: #f3e8ff;
+    background: var(--color-violet-100);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #9333ea;
+    color: var(--color-purple-600);
     margin-bottom: 0.25rem;
   }
 
@@ -76,13 +76,13 @@
     margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .nudge-body {
     margin: 0;
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.6;
   }
 
@@ -90,12 +90,12 @@
     display: inline-flex;
     align-items: center;
     vertical-align: middle;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-100);
+    border: 1px solid var(--color-slate-200);
     border-radius: 4px;
     padding: 1px 5px;
     margin: 0 2px;
-    color: #475569;
+    color: var(--color-slate-600);
   }
 
   .nudge-actions {
@@ -108,7 +108,7 @@
 
   .btn-draw {
     padding: 0.75rem 1.5rem;
-    background: #9333ea;
+    background: var(--color-purple-600);
     color: white;
     border: none;
     border-radius: 0.375rem;
@@ -119,14 +119,14 @@
   }
 
   .btn-draw:hover {
-    background: #7e22ce;
+    background: var(--color-purple-700);
   }
 
   .btn-skip {
     padding: 0.75rem 1.5rem;
     background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
     border-radius: 0.375rem;
     font-size: 0.875rem;
     font-weight: 500;
@@ -135,7 +135,7 @@
   }
 
   .btn-skip:hover {
-    background: #f8fafc;
-    border-color: #94a3b8;
+    background: var(--color-slate-50);
+    border-color: var(--color-slate-400);
   }
 </style>

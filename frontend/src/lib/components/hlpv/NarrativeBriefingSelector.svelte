@@ -70,11 +70,11 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.4rem 0.75rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.8rem;
-    color: #475569;
+    color: var(--color-slate-600);
     cursor: pointer;
     font-family: inherit;
     white-space: nowrap;
@@ -82,26 +82,26 @@
   }
 
   .briefing-trigger:hover {
-    background: #f1f5f9;
-    border-color: #cbd5e1;
+    background: var(--color-slate-100);
+    border-color: var(--color-slate-300);
   }
 
   .briefing-trigger-name {
     max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-weight: 500;
   }
 
   .briefing-trigger-placeholder {
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
   }
 
   .briefing-chevron {
     font-size: 0.6rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     flex-shrink: 0;
   }
 
@@ -111,7 +111,7 @@
     left: 0;
     min-width: 240px;
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     z-index: 100;
@@ -127,9 +127,9 @@
     padding: 0.5rem 0.75rem;
     background: transparent;
     border: none;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
     font-size: 0.8rem;
-    color: #374151;
+    color: var(--color-slate-700);
     cursor: pointer;
     font-family: inherit;
     transition: background 0.1s;
@@ -140,12 +140,12 @@
   }
 
   .briefing-option:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .briefing-option--active {
-    background: #eff6ff;
-    color: #1d4ed8;
+    background: var(--color-primary-50);
+    color: var(--color-primary-700);
   }
 
   .briefing-option-title {
@@ -154,13 +154,13 @@
 
   .briefing-option-date {
     font-size: 0.72rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .briefing-empty {
     padding: 0.6rem 0.75rem;
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
   }
 </style>

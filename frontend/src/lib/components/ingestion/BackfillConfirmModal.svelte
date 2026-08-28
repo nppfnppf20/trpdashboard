@@ -41,7 +41,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -55,36 +55,36 @@
     padding: 2rem;
     max-width: 440px;
     width: 100%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
     text-align: center;
   }
 
   .modal-icon {
     font-size: 2.5rem;
-    color: #9333ea;
+    color: var(--color-purple-600);
     margin-bottom: 0.75rem;
   }
 
-  h3 { margin: 0 0 1rem 0; font-size: 1.1rem; color: #1e293b; }
+  h3 { margin: 0 0 1rem 0; font-size: 1.1rem; color: var(--color-slate-800); }
 
   p {
     margin: 0 0 0.75rem 0;
     font-size: 0.875rem;
-    color: #475569;
+    color: var(--color-slate-600);
     line-height: 1.5;
   }
 
   .warning {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-amber-200);
     border-radius: 6px;
     padding: 0.75rem;
-    color: #92400e;
+    color: var(--color-amber-800);
   }
 
   .skip-note {
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .actions {
@@ -100,7 +100,7 @@
     justify-content: center;
     gap: 0.4rem;
     padding: 0.65rem 1.25rem;
-    background: #9333ea;
+    background: var(--color-purple-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -110,13 +110,13 @@
     font-family: inherit;
     transition: background 0.15s;
   }
-  .btn-primary:hover { background: #7e22ce; }
+  .btn-primary:hover { background: var(--color-purple-700); }
 
   .btn-secondary {
     padding: 0.65rem 1.25rem;
-    background: #f1f5f9;
-    color: #475569;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-100);
+    color: var(--color-slate-600);
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
     font-weight: 500;
@@ -124,16 +124,16 @@
     font-family: inherit;
     transition: background 0.15s;
   }
-  .btn-secondary:hover { background: #e2e8f0; }
+  .btn-secondary:hover { background: var(--color-slate-200); }
 
   .btn-ghost {
     padding: 0.5rem;
     background: none;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     border: none;
     font-size: 0.8rem;
     cursor: pointer;
     font-family: inherit;
   }
-  .btn-ghost:hover { color: #64748b; }
+  .btn-ghost:hover { color: var(--color-slate-500); }
 </style>

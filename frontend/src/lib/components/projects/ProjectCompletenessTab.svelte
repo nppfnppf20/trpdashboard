@@ -145,17 +145,17 @@
     justify-content: center;
     gap: 0.75rem;
     padding: 3rem 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-align: center;
   }
 
-  .error { color: #dc2626; }
+  .error { color: var(--color-red-600); }
 
   .spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid #e2e8f0;
-    border-top-color: #7c3aed;
+    border: 3px solid var(--color-slate-200);
+    border-top-color: var(--color-violet-600);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -191,13 +191,13 @@
 
   .ring-bg {
     fill: none;
-    stroke: #e2e8f0;
+    stroke: var(--color-slate-200);
     stroke-width: 3;
   }
 
   .ring-fill {
     fill: none;
-    stroke: #7c3aed;
+    stroke: var(--color-violet-600);
     stroke-width: 3;
     stroke-linecap: round;
     transition: stroke-dasharray 0.6s ease;
@@ -211,20 +211,20 @@
     justify-content: center;
     font-size: 0.75rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .heading {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .subheading {
     margin: 0.15rem 0 0;
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .header-actions {
@@ -238,11 +238,11 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
+    background: var(--color-primary-50);
+    border: 1px solid var(--color-primary-200);
     border-radius: 6px;
     font-size: 0.825rem;
-    color: #1e40af;
+    color: var(--color-primary-800);
   }
 
   .briefing-prompt i {
@@ -270,17 +270,17 @@
   }
 
   .btn-primary {
-    background: #7c3aed;
+    background: var(--color-violet-600);
     color: white;
   }
 
-  .btn-primary:hover { background: #6d28d9; }
+  .btn-primary:hover { background: var(--color-violet-700); }
 
   .btn-secondary {
     background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
 
-  .btn-secondary:hover { background: #f8fafc; }
+  .btn-secondary:hover { background: var(--color-slate-50); }
 </style>

@@ -242,13 +242,13 @@
   .tl-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--overlay-bg);
     z-index: 9999;
     display: flex;
     justify-content: flex-end;
   }
   .tl-drawer {
-    background: #fff;
+    background: var(--color-white);
     width: 100%;
     max-width: 520px;
     height: 100%;
@@ -262,20 +262,20 @@
     justify-content: space-between;
     gap: 0.75rem;
     padding: 1.125rem 1.25rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
   .tl-title {
     margin: 0;
     font-size: 0.95rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     line-height: 1.4;
   }
   .tl-subtitle {
     margin: 2px 0 0;
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
   .tl-body {
     flex: 1;
@@ -292,23 +292,23 @@
     justify-content: center;
     gap: 0.4rem;
     padding: 0.5rem 1rem;
-    border: 2px dashed #c4b5fd;
+    border: 2px dashed var(--color-violet-300);
     background: white;
-    color: #9333ea;
+    color: var(--color-purple-600);
     border-radius: 8px;
     font-size: 0.82rem;
     font-weight: 500;
     cursor: pointer;
     font-family: inherit;
   }
-  .tl-add-btn:hover { background: #faf5ff; border-color: #9333ea; }
+  .tl-add-btn:hover { background: var(--color-purple-50); border-color: var(--color-purple-600); }
 
   .tl-add-form {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    border: 1px solid #e9d5ff;
-    background: #faf5ff;
+    border: 1px solid var(--color-violet-200);
+    background: var(--color-purple-50);
     border-radius: 10px;
     padding: 0.875rem;
   }
@@ -322,16 +322,16 @@
     padding: 5px 8px;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-family: inherit;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
   }
   .tl-input:focus {
     outline: none;
-    border-color: #9333ea;
-    box-shadow: 0 0 0 3px #f3e8ff;
+    border-color: var(--color-purple-600);
+    box-shadow: 0 0 0 3px var(--color-violet-100);
   }
   textarea.tl-input { font-family: inherit; resize: vertical; }
   .tl-add-btns {
@@ -340,8 +340,8 @@
     gap: 0.5rem;
   }
   .tl-error {
-    background: #fee2e2;
-    color: #b91c1c;
+    background: var(--color-red-100);
+    color: var(--color-red-800);
     border-radius: 6px;
     padding: 0.4rem 0.6rem;
     font-size: 0.78rem;
@@ -351,9 +351,9 @@
     align-items: center;
     gap: 0.4rem;
     font-size: 0.78rem;
-    color: #7e22ce;
-    background: #fff;
-    border: 1px solid #e9d5ff;
+    color: var(--color-purple-700);
+    background: var(--color-white);
+    border: 1px solid var(--color-violet-200);
     border-radius: 6px;
     padding: 0.4rem 0.6rem;
   }
@@ -361,7 +361,7 @@
     margin: 0;
     text-align: center;
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     padding: 1rem 0;
   }
 
@@ -376,24 +376,24 @@
     border: 1px solid transparent;
   }
   .tl-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-  .tl-btn-primary { background: #9333ea; color: white; border-color: #9333ea; }
-  .tl-btn-primary:hover:not(:disabled) { background: #7e22ce; }
-  .tl-btn-ghost { background: transparent; color: #64748b; border-color: #d1d5db; }
-  .tl-btn-ghost:hover:not(:disabled) { background: #f8fafc; }
+  .tl-btn-primary { background: var(--color-purple-600); color: white; border-color: var(--color-purple-600); }
+  .tl-btn-primary:hover:not(:disabled) { background: var(--color-purple-700); }
+  .tl-btn-ghost { background: transparent; color: var(--color-slate-500); border-color: var(--color-slate-300); }
+  .tl-btn-ghost:hover:not(:disabled) { background: var(--color-slate-50); }
   .tl-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: none;
     border: none;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     font-size: 1rem;
     padding: 2px 4px;
     border-radius: 4px;
   }
-  .tl-icon-btn:hover { background: #f1f5f9; color: #1e293b; }
-  .tl-icon-btn-danger:hover { background: #fef2f2; color: #dc2626; }
+  .tl-icon-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
+  .tl-icon-btn-danger:hover { background: var(--color-red-50); color: var(--color-red-600); }
 
   /* Entries */
   .tl-entries {
@@ -410,7 +410,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #9333ea;
+    background: var(--color-purple-600);
     flex-shrink: 0;
     margin-top: 5px;
     position: relative;
@@ -423,7 +423,7 @@
     top: 14px;
     bottom: -4px;
     width: 2px;
-    background: #ede9fe;
+    background: var(--color-violet-100);
   }
   .tl-entry-content {
     flex: 1;
@@ -440,7 +440,7 @@
   .tl-entry-date {
     font-size: 0.78rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
   .tl-source-badge {
     display: inline-flex;
@@ -448,19 +448,19 @@
     gap: 3px;
     font-size: 0.68rem;
     font-weight: 600;
-    color: #64748b;
-    background: #f1f5f9;
+    color: var(--color-slate-500);
+    background: var(--color-slate-100);
     border-radius: 100px;
     padding: 1px 8px;
   }
-  .tl-source-email { color: #2563eb; background: #dbeafe; }
+  .tl-source-email { color: var(--color-primary-600); background: var(--color-primary-100); }
   .tl-stage-badge {
     display: inline-flex;
     align-items: center;
     font-size: 0.68rem;
     font-weight: 600;
-    color: #b45309;
-    background: #fef3c7;
+    color: var(--color-orange-700);
+    background: var(--color-amber-100);
     border-radius: 100px;
     padding: 1px 8px;
   }
@@ -475,24 +475,24 @@
     margin: 0;
     font-size: 0.8rem;
     line-height: 1.55;
-    color: #334155;
+    color: var(--color-slate-700);
     white-space: pre-wrap;
   }
   .tl-full-text summary {
     font-size: 0.72rem;
-    color: #9333ea;
+    color: var(--color-purple-600);
     cursor: pointer;
     user-select: none;
   }
   .tl-full-text-body {
     margin: 6px 0 0;
     padding: 0.625rem 0.75rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     font-size: 0.74rem;
     line-height: 1.55;
-    color: #475569;
+    color: var(--color-slate-600);
     white-space: pre-wrap;
     word-break: break-word;
     font-family: inherit;

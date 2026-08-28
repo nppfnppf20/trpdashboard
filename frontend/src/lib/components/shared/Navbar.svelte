@@ -41,20 +41,20 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     z-index: 10;
   }
 
   .home-button:hover {
-    background: #f1f5f9;
-    border-color: #cbd5e1;
+    background: var(--color-slate-100);
+    border-color: var(--color-slate-300);
   }
 
   .home-button i {

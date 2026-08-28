@@ -156,7 +156,7 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.45);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -171,7 +171,7 @@
     display: flex;
     flex-direction: column;
     max-height: 82vh;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   }
 
   .modal-link-items { max-width: 520px; }
@@ -181,11 +181,11 @@
     align-items: center;
     justify-content: space-between;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
 
-  .modal-title { font-size: 0.9375rem; font-weight: 700; color: #1e293b; }
+  .modal-title { font-size: 0.9375rem; font-weight: 700; color: var(--color-slate-800); }
 
   .modal-close {
     display: flex;
@@ -195,12 +195,12 @@
     height: 1.75rem;
     border: none;
     background: transparent;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     border-radius: 4px;
     font-size: 1.1rem;
   }
-  .modal-close:hover { background: #f1f5f9; color: #374151; }
+  .modal-close:hover { background: var(--color-slate-100); color: var(--color-slate-700); }
 
   .modal-body {
     flex: 1;
@@ -217,19 +217,19 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .lc-loading {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     padding: 1.5rem 0;
   }
   .lc-spinner {
-    width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #2563eb;
+    width: 16px; height: 16px; border: 2px solid var(--color-slate-200); border-top-color: var(--color-primary-600);
     border-radius: 50%; animation: lc-spin 0.8s linear infinite;
   }
   @keyframes lc-spin { to { transform: rotate(360deg); } }
@@ -238,7 +238,7 @@
     margin: 0;
     padding: 0.5rem 0;
     font-size: 0.82rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .lc-list {
@@ -247,7 +247,7 @@
     gap: 0.3rem;
     max-height: 160px;
     overflow-y: auto;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     padding: 0.4rem 0.5rem;
   }
@@ -259,16 +259,16 @@
     border-radius: 6px;
     cursor: pointer;
   }
-  .lc-row:hover { background: #f8fafc; }
+  .lc-row:hover { background: var(--color-slate-50); }
   .lc-row input { margin-top: 2px; }
-  .lc-row-text { font-size: 0.85rem; color: #1e293b; line-height: 1.4; }
-  .lc-row-number { font-weight: 600; color: #475569; margin-right: 2px; }
+  .lc-row-text { font-size: 0.85rem; color: var(--color-slate-800); line-height: 1.4; }
+  .lc-row-number { font-weight: 600; color: var(--color-slate-600); margin-right: 2px; }
 
   .lc-error {
     font-size: 0.8rem;
-    color: #dc2626;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    color: var(--color-red-600);
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
   }
@@ -278,23 +278,23 @@
     justify-content: flex-end;
     gap: 0.5rem;
     padding: 1rem 1.25rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
   .btn-cancel {
     padding: 0.45rem 1rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     background: white;
     border-radius: 6px;
     font-size: 0.85rem;
     font-family: inherit;
     cursor: pointer;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
-  .btn-cancel:hover { background: #f8fafc; }
+  .btn-cancel:hover { background: var(--color-slate-50); }
   .btn-save {
     padding: 0.45rem 1.1rem;
-    background: #2563eb;
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -303,6 +303,6 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .btn-save:hover:not(:disabled) { background: #1d4ed8; }
+  .btn-save:hover:not(:disabled) { background: var(--color-primary-700); }
   .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

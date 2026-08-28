@@ -52,8 +52,8 @@
   /* Tab Navigation */
   .tab-navigation {
     display: flex;
-    background: #f8fafc;
-    border-bottom: 1px solid #e5e7eb;
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
 
@@ -68,7 +68,7 @@
     border: none;
     font-size: 0.875rem;
     font-weight: 500;
-    color: #6b7280;
+    color: var(--color-slate-500);
     cursor: pointer;
     transition: all 0.2s ease;
     border-bottom: 2px solid transparent;
@@ -79,14 +79,14 @@
   }
 
   .tab-button:hover:not(.active) {
-    color: #374151;
-    background: #f3f4f6;
+    color: var(--color-slate-700);
+    background: var(--color-slate-100);
   }
 
   .tab-button.active {
-    color: #9333ea;
+    color: var(--color-purple-600);
     background: white;
-    border-bottom-color: #9333ea;
+    border-bottom-color: var(--color-purple-600);
   }
 
   /* Tab Content */

@@ -45,12 +45,12 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .group-count {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .group-cards {

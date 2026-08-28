@@ -78,7 +78,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -89,7 +89,7 @@
   .modal {
     background: white;
     border-radius: 8px;
-    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
     width: 100%;
     max-width: 720px;
     max-height: 90vh;
@@ -103,7 +103,7 @@
     justify-content: space-between;
     gap: 1rem;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
 
@@ -111,7 +111,7 @@
     display: flex;
     align-items: flex-start;
     gap: 0.625rem;
-    color: #7c3aed;
+    color: var(--color-violet-600);
   }
 
   .header-left i {
@@ -123,14 +123,14 @@
     margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .doc-type-tag {
     font-size: 0.75rem;
     font-weight: 500;
-    color: #7c3aed;
-    background: #f3e8ff;
+    color: var(--color-violet-600);
+    background: var(--color-violet-100);
     padding: 0.15rem 0.5rem;
     border-radius: 999px;
     vertical-align: middle;
@@ -139,7 +139,7 @@
   .project-name {
     margin: 0.1rem 0 0;
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .header-actions {
@@ -153,7 +153,7 @@
     background: none;
     border: none;
     font-size: 1.25rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 4px;
@@ -161,7 +161,7 @@
     align-items: center;
   }
 
-  .close-btn:hover { color: #1e293b; }
+  .close-btn:hover { color: var(--color-slate-800); }
 
   .modal-body {
     overflow-y: auto;
@@ -174,14 +174,14 @@
   .intro {
     margin: 0;
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.5;
   }
 
   .guide-error {
     margin: 0;
     font-size: 0.85rem;
-    color: #dc2626;
+    color: var(--color-red-600);
   }
 
   .sections {
@@ -204,11 +204,11 @@
 
   .btn-secondary {
     background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
 
-  .btn-secondary:hover { background: #f8fafc; }
+  .btn-secondary:hover { background: var(--color-slate-50); }
 
   @media print {
     :global(.overlay) { position: static; background: none; }

@@ -137,11 +137,11 @@
         <h3>Green Belt</h3>
         <p class="summary-value">{greenBeltStatus}</p>
         {#if greenBeltStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             On site
           </p>
         {:else if greenBeltStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {/if}
@@ -151,15 +151,15 @@
         <h3>AONB</h3>
         <p class="summary-value">{aonbStatus}</p>
         {#if aonbStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             On site
           </p>
         {:else if aonbStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {:else if aonbNearest}
-          <p style="font-size: 0.875rem; color: #6b7280; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-slate-500); margin: 0.25rem 0 0 0;">
             Nearest: {aonbNearest.distance_m}m away
           </p>
         {/if}
@@ -169,15 +169,15 @@
         <h3>National Parks</h3>
         <p class="summary-value">{nationalParksStatus}</p>
         {#if nationalParksStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             On site
           </p>
         {:else if nationalParksStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {:else if nationalParksNearest}
-          <p style="font-size: 0.875rem; color: #6b7280; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-slate-500); margin: 0.25rem 0 0 0;">
             Nearest: {nationalParksNearest.distance_m}m away
           </p>
         {/if}

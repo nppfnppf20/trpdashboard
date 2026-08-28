@@ -221,7 +221,7 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
     position: fixed;
     top: 0; left: 0;
     width: 100vw; height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -246,21 +246,21 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0;
     width: 32px; height: 32px;
@@ -270,7 +270,7 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
     border-radius: 4px;
     transition: all 0.2s;
   }
-  .close-btn:hover { background: #f1f5f9; color: #1e293b; }
+  .close-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
 
   .modal-body {
     flex: 1;
@@ -295,23 +295,23 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
 
   .form-group label {
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     font-size: 0.875rem;
   }
-  .label-hint { font-weight: 400; color: #94a3b8; font-size: 0.78rem; }
+  .label-hint { font-weight: 400; color: var(--color-slate-400); font-size: 0.78rem; }
 
   .text-input {
     padding: 0.625rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
     font-family: inherit;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
     width: 100%;
     box-sizing: border-box;
   }
-  .text-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+  .text-input:focus { outline: none; border-color: var(--color-primary-500); box-shadow: var(--focus-ring-blue); }
 
   .name-row {
     display: flex;
@@ -325,7 +325,7 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
   }
 
   .btn {
@@ -344,23 +344,23 @@ ${reason ? `<p><em>Reason: "${reason}"</em></p>` : ''}
   .btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .btn-secondary {
     background: white;
-    color: #475569;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-600);
+    border: 1px solid var(--color-slate-300);
   }
-  .btn-secondary:hover:not(:disabled) { background: #f8fafc; }
+  .btn-secondary:hover:not(:disabled) { background: var(--color-slate-50); }
   .btn-send {
-    background: #9333ea;
+    background: var(--color-purple-600);
     color: white;
   }
-  .btn-send:hover:not(:disabled) { background: #7e22ce; }
+  .btn-send:hover:not(:disabled) { background: var(--color-purple-700); }
   .btn-confirm-sent {
-    background: #16a34a;
+    background: var(--color-emerald-600);
     color: white;
   }
-  .btn-confirm-sent:hover:not(:disabled) { background: #15803d; }
+  .btn-confirm-sent:hover:not(:disabled) { background: var(--color-green-800); }
   .btn-confirm-sent.is-sent {
-    background: #dcfce7;
-    color: #16a34a;
+    background: var(--color-emerald-100);
+    color: var(--color-emerald-600);
     opacity: 1;
   }
 </style>

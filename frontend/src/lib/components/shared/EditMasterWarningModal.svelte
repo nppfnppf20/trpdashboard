@@ -77,7 +77,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     z-index: 1001;
     display: flex;
     align-items: center;
@@ -91,14 +91,14 @@
     width: 100%;
     max-width: 480px;
     padding: 2rem;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 50px var(--overlay-bg);
     text-align: center;
   }
 
   .modal-icon {
     width: 4rem;
     height: 4rem;
-    background: #fef3c7;
+    background: var(--color-amber-100);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -108,26 +108,26 @@
 
   .modal-icon i {
     font-size: 2rem;
-    color: #f59e0b;
+    color: var(--color-amber-500);
   }
 
   .modal-title {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 0.5rem 0;
   }
 
   .item-name {
     font-size: 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0 0 1.5rem 0;
     font-style: italic;
   }
 
   .modal-message {
     text-align: left;
-    background: #f8fafc;
+    background: var(--color-slate-50);
     border-radius: 8px;
     padding: 1rem 1.25rem;
     margin-bottom: 1.5rem;
@@ -135,7 +135,7 @@
 
   .modal-message p {
     font-size: 0.9375rem;
-    color: #475569;
+    color: var(--color-slate-600);
     margin: 0 0 0.75rem 0;
     line-height: 1.5;
   }
@@ -147,7 +147,7 @@
 
   .modal-message li {
     font-size: 0.9375rem;
-    color: #475569;
+    color: var(--color-slate-600);
     margin-bottom: 0.375rem;
     line-height: 1.5;
   }
@@ -156,12 +156,12 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    background: #ecfdf5;
+    background: var(--color-slate-100);
     border-radius: 6px;
     padding: 0.75rem;
     margin: 0;
     font-size: 0.875rem;
-    color: #047857;
+    color: var(--color-emerald-800);
   }
 
   .modal-message .note i {
@@ -174,19 +174,19 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    background: #eff6ff;
+    background: var(--color-blue-50);
     border-radius: 6px;
     padding: 0.75rem;
     margin: 0.75rem 0 0 0;
     font-size: 0.875rem;
-    color: #1e40af;
+    color: var(--color-blue-800);
   }
 
   .modal-message .hint i {
     font-size: 1.125rem;
     margin-top: 0.0625rem;
     flex-shrink: 0;
-    color: #3b82f6;
+    color: var(--color-blue-500);
   }
 
   .modal-actions {
@@ -210,22 +210,22 @@
   }
 
   .btn-cancel {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
   }
 
   .btn-cancel:hover {
-    background: #e2e8f0;
-    color: #475569;
+    background: var(--color-slate-200);
+    color: var(--color-slate-600);
   }
 
   .btn-continue {
-    background: #f59e0b;
-    color: white;
+    background: var(--color-amber-500);
+    color: var(--color-white);
   }
 
   .btn-continue:hover {
-    background: #d97706;
+    background: var(--color-amber-600);
   }
 
   .btn-continue i {

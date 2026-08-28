@@ -110,31 +110,31 @@
   }
 
   .line-items-table thead tr {
-    background: #f8fafc;
-    border-bottom: 2px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-bottom: 2px solid var(--color-slate-200);
   }
 
   .line-items-table th {
     padding: 0.75rem;
     text-align: left;
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
 
   .line-items-table tbody tr {
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .line-items-table tbody tr:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .line-items-table td {
     padding: 0.875rem 0.75rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .item-name {
@@ -142,7 +142,7 @@
   }
 
   .item-description {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
   }
 
@@ -154,15 +154,15 @@
   .vat-column {
     text-align: center;
     white-space: nowrap;
-    color: #16a34a;
+    color: var(--color-emerald-600);
   }
 
   .line-items-table tfoot {
-    border-top: 2px solid #e2e8f0;
+    border-top: 2px solid var(--color-slate-200);
   }
 
   .total-row {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .total-row td {
@@ -172,7 +172,7 @@
 
   .total-label {
     text-align: right;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-transform: uppercase;
     font-size: 0.875rem;
     letter-spacing: 0.05em;
@@ -180,12 +180,12 @@
 
   .total-amount {
     font-size: 1.125rem;
-    color: #0f172a;
+    color: var(--color-slate-900);
   }
 
   .no-items {
     text-align: center;
-    color: #64748b;
+    color: var(--color-slate-500);
     padding: 2rem;
     font-style: italic;
   }
@@ -206,8 +206,8 @@
   }
 
   .status-badge.instructed {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
 
   .status-badge.instructed i {
@@ -215,8 +215,8 @@
   }
 
   .status-badge.not-instructed {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
   }
 
   tr.not-instructed {
@@ -224,11 +224,11 @@
   }
 
   tr.not-instructed td {
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .subtotal-row {
-    background: #ecfdf5;
+    background: var(--color-badge-success-bg);
   }
 
   .subtotal-row td {
@@ -237,7 +237,7 @@
   }
 
   .subtotal-amount {
-    color: #065f46;
+    color: var(--color-badge-success-fg);
     font-weight: 600;
   }
 

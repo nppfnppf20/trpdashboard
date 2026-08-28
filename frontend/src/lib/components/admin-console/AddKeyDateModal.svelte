@@ -249,14 +249,14 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
     padding: 1rem;
   }
-  
+
   .modal-content {
     background: white;
     border-radius: 12px;
@@ -264,29 +264,29 @@
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-modal);
   }
-  
+
   .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
-  
+
   .modal-header h2 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
-  
+
   .close-btn {
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     display: flex;
@@ -295,10 +295,10 @@
     border-radius: 4px;
     transition: all 0.2s;
   }
-  
+
   .close-btn:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
   }
   
   .form-body {
@@ -317,35 +317,35 @@
     display: block;
     margin-bottom: 0.5rem;
     font-weight: 500;
-    color: #334155;
+    color: var(--color-slate-700);
     font-size: 0.875rem;
   }
-  
+
   .required {
-    color: #ef4444;
+    color: var(--color-red-500);
   }
-  
+
   input[type="text"],
   input[type="date"],
   select,
   textarea {
     width: 100%;
     padding: 0.625rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
     transition: border-color 0.2s, box-shadow 0.2s;
   }
-  
+
   input[type="text"]:focus,
   input[type="date"]:focus,
   select:focus,
   textarea:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
-  
+
   textarea {
     resize: vertical;
     font-family: inherit;
@@ -353,11 +353,11 @@
 
   .read-only-field {
     padding: 0.625rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
   
   .color-picker {
@@ -385,17 +385,17 @@
   }
   
   .color-option.selected {
-    border-color: #1e293b;
+    border-color: var(--color-slate-800);
     box-shadow: 0 0 0 3px rgba(30, 41, 59, 0.1);
   }
-  
+
   .modal-footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-top: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
   
   .btn {
@@ -413,22 +413,22 @@
   
   .btn-secondary {
     background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
-  
+
   .btn-secondary:hover {
-    background: #f8fafc;
-    border-color: #94a3b8;
+    background: var(--color-slate-50);
+    border-color: var(--color-slate-400);
   }
-  
+
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
   }
-  
+
   .btn-primary:hover {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 </style>
 

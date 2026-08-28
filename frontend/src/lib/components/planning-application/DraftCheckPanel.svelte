@@ -311,44 +311,44 @@
   .check-panel-header {
     position: sticky; top: 0; z-index: 2;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0.75rem 1rem; border-bottom: 1px solid #e2e8f0; background: white;
+    padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-slate-200); background: white;
   }
-  .check-panel-title { font-size: 0.8rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
+  .check-panel-title { font-size: 0.8rem; font-weight: 700; color: var(--color-slate-800); display: flex; align-items: center; gap: 0.375rem; }
   .check-panel-actions { display: flex; align-items: center; gap: 0.5rem; }
   .check-rerun-all {
     display: flex; align-items: center; gap: 0.3rem;
-    background: white; border: 1px solid #e2e8f0; border-radius: 6px;
-    padding: 0.3rem 0.6rem; font-size: 0.72rem; font-weight: 600; color: #475569;
+    background: white; border: 1px solid var(--color-slate-200); border-radius: 6px;
+    padding: 0.3rem 0.6rem; font-size: 0.72rem; font-weight: 600; color: var(--color-slate-600);
     cursor: pointer; font-family: inherit; transition: all 0.12s;
   }
-  .check-rerun-all:hover:not(:disabled) { background: #f8fafc; color: #1e293b; }
+  .check-rerun-all:hover:not(:disabled) { background: var(--color-slate-50); color: var(--color-slate-800); }
   .check-rerun-all:disabled { opacity: 0.5; cursor: default; }
-  .check-panel-close { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0.2rem; font-size: 1rem; line-height: 1; }
-  .check-panel-close:hover { color: #374151; }
+  .check-panel-close { background: none; border: none; color: var(--color-slate-400); cursor: pointer; padding: 0.2rem; font-size: 1rem; line-height: 1; }
+  .check-panel-close:hover { color: var(--color-slate-700); }
 
   .check-panel-body { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
 
   .check-empty-note {
     display: flex; align-items: center; gap: 0.5rem;
     padding: 0.625rem 0.875rem; border-radius: 7px;
-    background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-size: 0.78rem;
+    background: var(--color-primary-50); border: 1px solid var(--color-primary-200); color: var(--color-primary-700); font-size: 0.78rem;
   }
 
-  .check-section { border: 1px solid #e2e8f0; border-radius: 7px; overflow: hidden; background: white; }
+  .check-section { border: 1px solid var(--color-slate-200); border-radius: 7px; overflow: hidden; background: white; }
   .check-section--placeholder { opacity: 0.75; }
 
   .check-section-header {
     display: flex; align-items: center;
-    background: #f8fafc; border: none;
+    background: var(--color-slate-50); border: none;
   }
   .check-section-toggle {
     flex: 1; display: flex; align-items: center; gap: 0.5rem;
     padding: 0.625rem 0.75rem; background: none; border: none;
     cursor: pointer; font-family: inherit; text-align: left; transition: background 0.12s;
   }
-  .check-section-toggle:hover { background: #f1f5f9; }
-  .check-section-label { flex: 1; font-size: 0.8rem; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 0.375rem; }
-  .check-chevron { font-size: 0.7rem; color: #94a3b8; flex-shrink: 0; }
+  .check-section-toggle:hover { background: var(--color-slate-100); }
+  .check-section-label { flex: 1; font-size: 0.8rem; font-weight: 600; color: var(--color-slate-800); display: flex; align-items: center; gap: 0.375rem; }
+  .check-chevron { font-size: 0.7rem; color: var(--color-slate-400); flex-shrink: 0; }
 
   .check-section-btns {
     display: flex; align-items: center; gap: 0.25rem;
@@ -356,24 +356,24 @@
   }
   .check-prompt-btn, .check-run-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 26px; height: 26px; border-radius: 5px; border: 1px solid #e2e8f0;
-    background: white; color: #64748b; cursor: pointer; font-size: 0.8rem;
+    width: 26px; height: 26px; border-radius: 5px; border: 1px solid var(--color-slate-200);
+    background: white; color: var(--color-slate-500); cursor: pointer; font-size: 0.8rem;
     transition: all 0.12s;
   }
-  .check-prompt-btn:hover { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }
-  .check-run-btn:hover:not(:disabled) { background: #eff6ff; color: #0369a1; border-color: #bae6fd; }
+  .check-prompt-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); border-color: var(--color-slate-300); }
+  .check-run-btn:hover:not(:disabled) { background: var(--color-primary-50); color: var(--color-teal-600); border-color: var(--color-sky-200); }
   .check-run-btn:disabled { opacity: 0.5; cursor: default; }
 
   .check-badge { font-size: 0.68rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 4px; flex-shrink: 0; }
-  .check-badge--ok { background: #dcfce7; color: #15803d; }
-  .check-badge--issues { background: #fef3c7; color: #b45309; }
-  .check-badge--error { background: #fee2e2; color: #dc2626; }
-  .check-badge--soon { background: #f1f5f9; color: #64748b; }
-  .check-badge--idle { background: #f1f5f9; color: #94a3b8; }
+  .check-badge--ok { background: var(--color-emerald-100); color: var(--color-green-800); }
+  .check-badge--issues { background: var(--color-amber-100); color: var(--color-orange-700); }
+  .check-badge--error { background: var(--color-red-100); color: var(--color-red-600); }
+  .check-badge--soon { background: var(--color-slate-100); color: var(--color-slate-500); }
+  .check-badge--idle { background: var(--color-slate-100); color: var(--color-slate-400); }
 
-  .check-section-body { padding: 0.5rem 0.625rem; display: flex; flex-direction: column; gap: 0.375rem; border-top: 1px solid #e2e8f0; }
-  .check-section-loading { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; font-size: 0.78rem; color: #64748b; }
-  .check-section-empty { margin: 0; padding: 0.375rem 0.25rem; font-size: 0.78rem; color: #94a3b8; font-style: italic; line-height: 1.5; }
+  .check-section-body { padding: 0.5rem 0.625rem; display: flex; flex-direction: column; gap: 0.375rem; border-top: 1px solid var(--color-slate-200); }
+  .check-section-loading { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; font-size: 0.78rem; color: var(--color-slate-500); }
+  .check-section-empty { margin: 0; padding: 0.375rem 0.25rem; font-size: 0.78rem; color: var(--color-slate-400); font-style: italic; line-height: 1.5; }
 
   .check-item {
     display: flex; align-items: flex-start; gap: 0.625rem;
@@ -384,43 +384,43 @@
     cursor: pointer; transition: box-shadow 0.12s;
   }
   button.check-item:disabled { cursor: default; }
-  button.check-item:not(:disabled):hover { box-shadow: inset 0 0 0 1px #cbd5e1; }
+  button.check-item:not(:disabled):hover { box-shadow: inset 0 0 0 1px var(--color-slate-300); }
   .check-item-locate-icon {
     flex-shrink: 0; margin-left: auto; margin-top: 0.05rem;
-    font-size: 0.85rem; color: #94a3b8; opacity: 0;
+    font-size: 0.85rem; color: var(--color-slate-400); opacity: 0;
     transition: opacity 0.12s;
   }
   button.check-item:not(:disabled):hover .check-item-locate-icon { opacity: 1; }
-  .check-item-notfound { color: #b45309; font-size: 0.72rem; font-style: italic; }
-  .check-item--present { background: #f0fdf4; }
-  .check-item--partial { background: #fffbeb; }
-  .check-item--missing { background: #fef2f2; }
-  .check-item--neutral { background: #f8fafc; }
+  .check-item-notfound { color: var(--color-orange-700); font-size: 0.72rem; font-style: italic; }
+  .check-item--present { background: var(--color-slate-100); }
+  .check-item--partial { background: var(--color-red-50); }
+  .check-item--missing { background: var(--color-red-50); }
+  .check-item--neutral { background: var(--color-slate-50); }
   .check-item-icon { flex-shrink: 0; font-size: 1rem; margin-top: 0.05rem; }
-  .check-item--present .check-item-icon { color: #16a34a; }
-  .check-item--partial .check-item-icon { color: #ca8a04; }
-  .check-item--missing .check-item-icon { color: #dc2626; }
-  .check-item--neutral .check-item-icon { color: #94a3b8; }
+  .check-item--present .check-item-icon { color: var(--color-emerald-600); }
+  .check-item--partial .check-item-icon { color: var(--color-amber-600); }
+  .check-item--missing .check-item-icon { color: var(--color-red-600); }
+  .check-item--neutral .check-item-icon { color: var(--color-slate-400); }
   .check-item-text { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
-  .check-item-topic { font-weight: 600; color: #1e293b; }
-  .check-item-question { color: #334155; line-height: 1.5; }
-  .check-item-detail { color: #475569; line-height: 1.5; }
-  .check-item-excerpt { color: #64748b; font-style: italic; line-height: 1.5; }
+  .check-item-topic { font-weight: 600; color: var(--color-slate-800); }
+  .check-item-question { color: var(--color-slate-700); line-height: 1.5; }
+  .check-item-detail { color: var(--color-slate-600); line-height: 1.5; }
+  .check-item-excerpt { color: var(--color-slate-500); font-style: italic; line-height: 1.5; }
   .check-item-compare { display: flex; flex-direction: column; gap: 0.1rem; line-height: 1.5; }
-  .check-compare-expected { color: #15803d; }
-  .check-compare-found { color: #dc2626; }
+  .check-compare-expected { color: var(--color-green-800); }
+  .check-compare-found { color: var(--color-red-600); }
 
   .check-retry-btn {
     align-self: flex-start; display: flex; align-items: center; gap: 0.3rem;
-    margin-top: 0.25rem; background: white; border: 1px solid #e2e8f0; border-radius: 5px;
-    padding: 0.25rem 0.55rem; font-size: 0.72rem; font-weight: 600; color: #475569;
+    margin-top: 0.25rem; background: white; border: 1px solid var(--color-slate-200); border-radius: 5px;
+    padding: 0.25rem 0.55rem; font-size: 0.72rem; font-weight: 600; color: var(--color-slate-600);
     cursor: pointer; font-family: inherit;
   }
-  .check-retry-btn:hover { background: #f8fafc; }
+  .check-retry-btn:hover { background: var(--color-slate-50); }
 
   .check-mini-spinner {
     width: 13px; height: 13px; flex-shrink: 0;
-    border: 2px solid #e2e8f0; border-top-color: #475569; border-radius: 50%;
+    border: 2px solid var(--color-slate-200); border-top-color: var(--color-slate-600); border-radius: 50%;
     animation: check-spin 0.7s linear infinite;
   }
   @keyframes check-spin { to { transform: rotate(360deg); } }

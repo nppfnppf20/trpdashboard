@@ -103,7 +103,7 @@
   .sub-tabs {
     display: flex;
     gap: 0;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
     padding: 0 0.5rem;
   }
@@ -118,21 +118,21 @@
     border-bottom: 2px solid transparent;
     font-size: 0.85rem;
     font-weight: 500;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     font-family: inherit;
     transition: color 0.15s, border-color 0.15s;
     white-space: nowrap;
     position: relative;
   }
-  .sub-tab.active { color: #9333ea; border-bottom-color: #9333ea; }
-  .sub-tab:hover:not(.active) { color: #1e293b; }
+  .sub-tab.active { color: var(--color-purple-600); border-bottom-color: var(--color-purple-600); }
+  .sub-tab:hover:not(.active) { color: var(--color-slate-800); }
 
   .count-badge {
     font-size: 0.65rem;
     font-weight: 700;
-    background: #f3e8ff;
-    color: #7e22ce;
+    background: var(--color-violet-100);
+    color: var(--color-purple-700);
     padding: 0.1rem 0.4rem;
     border-radius: 20px;
     min-width: 16px;
@@ -166,7 +166,7 @@
 
   .divider {
     height: 1px;
-    background: #e2e8f0;
+    background: var(--color-slate-200);
     margin: 1.25rem 0;
   }
 
@@ -177,18 +177,18 @@
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     padding: 3rem;
   }
-  .error-state i { font-size: 2rem; color: #ef4444; }
+  .error-state i { font-size: 2rem; color: var(--color-red-500); }
   .error-state button {
-    padding: 0.5rem 1rem; background: #9333ea; color: white;
+    padding: 0.5rem 1rem; background: var(--color-purple-600); color: white;
     border: none; border-radius: 6px; cursor: pointer; font-family: inherit;
   }
 
   .spinner {
     width: 2.5rem; height: 2.5rem;
-    border: 3px solid #f3f4f6; border-top-color: #9333ea;
+    border: 3px solid var(--color-slate-100); border-top-color: var(--color-purple-600);
     border-radius: 50%; animation: spin 1s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -199,7 +199,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 2rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
   }
   .empty-docs i { font-size: 2rem; }

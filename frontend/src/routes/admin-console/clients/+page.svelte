@@ -1,7 +1,6 @@
 <script>
   import { onMount } from 'svelte';
   import { getAllClientOrganisations } from '$lib/api/clientOrganisations.js';
-  import '$lib/styles/tables.css';
   import EditClientModal from '$lib/components/admin-console/EditClientModal.svelte';
   import DeleteClientModal from '$lib/components/admin-console/DeleteClientModal.svelte';
 
@@ -272,12 +271,12 @@
   .page-header h1 {
     margin: 0 0 0.5rem 0;
     font-size: 2rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .page-header p {
     margin: 0;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .btn {
@@ -294,12 +293,12 @@
   }
 
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
   }
 
   .btn-primary:hover {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .empty-state .btn {
@@ -312,11 +311,11 @@
 
   .contact-name {
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .contact-email {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.8125rem;
   }
 
@@ -331,13 +330,13 @@
     align-items: center;
     justify-content: center;
     padding: 0.375rem 0.5rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     background: white;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s;
     font-size: 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin-right: 0.25rem;
   }
 
@@ -346,17 +345,17 @@
   }
 
   .action-btn:hover {
-    background: #f8fafc;
-    border-color: #cbd5e1;
+    background: var(--color-slate-50);
+    border-color: var(--color-slate-300);
   }
 
   .edit-btn:hover {
-    color: #3b82f6;
-    border-color: #3b82f6;
+    color: var(--color-primary-500);
+    border-color: var(--color-primary-500);
   }
 
   .delete-btn:hover {
-    color: #ef4444;
-    border-color: #ef4444;
+    color: var(--color-red-500);
+    border-color: var(--color-red-500);
   }
 </style>

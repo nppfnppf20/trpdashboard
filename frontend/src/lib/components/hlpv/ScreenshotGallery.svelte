@@ -142,14 +142,14 @@
   .screenshot-gallery {
     margin: 20px 0;
     padding: 16px;
-    background: #f9fafb;
+    background: var(--color-slate-50);
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--color-slate-200);
   }
 
   .screenshot-gallery h4 {
     margin: 0 0 16px 0;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 16px;
     font-weight: 600;
   }
@@ -157,7 +157,7 @@
   .no-screenshots {
     text-align: center;
     padding: 32px 16px;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   .no-screenshots p {
@@ -179,15 +179,15 @@
     background: white;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e5e7eb;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-slate-200);
   }
 
   .screenshot-image {
     width: 100%;
     height: 160px;
     overflow: hidden;
-    background: #f3f4f6;
+    background: var(--color-slate-100);
   }
 
   .screenshot-image img {
@@ -207,21 +207,21 @@
     align-items: center;
     margin-bottom: 8px;
     font-size: 12px;
-    color: #6b7280;
+    color: var(--color-slate-500);
   }
 
   .caption {
     margin: 0 0 8px 0;
     font-size: 14px;
     line-height: 1.4;
-    color: #374151;
+    color: var(--color-slate-700);
     word-wrap: break-word;
   }
 
   .caption-input {
     width: 100%;
     padding: 6px 8px;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 4px;
     font-size: 14px;
     margin-bottom: 8px;
@@ -229,7 +229,7 @@
 
   .caption-input:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--color-primary-500);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   }
 
@@ -253,38 +253,38 @@
   }
 
   .edit-btn {
-    background: #f3f4f6;
-    color: #374151;
+    background: var(--color-slate-100);
+    color: var(--color-slate-700);
   }
 
   .edit-btn:hover {
-    background: #e5e7eb;
+    background: var(--color-slate-200);
   }
 
   .delete-btn {
-    background: #fee2e2;
-    color: #dc2626;
+    background: var(--color-red-100);
+    color: var(--color-red-600);
   }
 
   .delete-btn:hover {
-    background: #fecaca;
+    background: var(--color-red-200);
   }
 
   .save-btn {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--color-primary-100);
+    color: var(--color-primary-700);
   }
 
   .save-btn:hover {
-    background: #bfdbfe;
+    background: var(--color-primary-200);
   }
 
   .cancel-btn {
-    background: #f3f4f6;
-    color: #6b7280;
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
   }
 
   .cancel-btn:hover {
-    background: #e5e7eb;
+    background: var(--color-slate-200);
   }
 </style>

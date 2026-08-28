@@ -46,11 +46,11 @@
         <h3>Drinking Water Protected Areas</h3>
         <p class="summary-value">{drinkingWaterStatus}</p>
         {#if drinkingWaterStatus === 'High Coverage'}
-          <p style="font-size: 0.875rem; color: #dc2626; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-red-600); margin: 0.25rem 0 0 0;">
             {cappedCoverage.toFixed(1)}% coverage
           </p>
         {:else if drinkingWaterStatus === 'Partial'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             {cappedCoverage.toFixed(1)}% coverage
           </p>
         {/if}

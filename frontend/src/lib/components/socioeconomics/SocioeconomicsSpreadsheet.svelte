@@ -557,7 +557,7 @@
     background: white;
     border-radius: 8px;
     padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     margin-bottom: 1.5rem;
   }
 
@@ -571,7 +571,7 @@
 
   h2 {
     margin: 0 0 1rem 0;
-    color: #2c3e50;
+    color: var(--color-slate-700);
     font-size: 1.5rem;
     font-weight: 600;
   }
@@ -587,8 +587,8 @@
 
   .copy-button {
     padding: 0.5rem 1rem;
-    border: 1px solid #2196f3;
-    background: #2196f3;
+    border: 1px solid var(--color-primary-500);
+    background: var(--color-primary-500);
     color: white;
     border-radius: 4px;
     cursor: pointer;
@@ -598,14 +598,14 @@
   }
 
   .copy-button:hover {
-    background: #1976d2;
-    border-color: #1976d2;
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-600);
   }
 
   .export-button {
     padding: 0.5rem 1rem;
-    border: 1px solid #4caf50;
-    background: #4caf50;
+    border: 1px solid var(--color-green-500);
+    background: var(--color-green-500);
     color: white;
     border-radius: 4px;
     cursor: pointer;
@@ -615,14 +615,14 @@
   }
 
   .export-button:hover {
-    background: #45a049;
-    border-color: #45a049;
+    background: var(--color-green-500);
+    border-color: var(--color-green-500);
   }
 
   .charts-button {
     padding: 0.5rem 1rem;
-    border: 1px solid #ff9800;
-    background: #ff9800;
+    border: 1px solid var(--color-amber-500);
+    background: var(--color-amber-500);
     color: white;
     border-radius: 4px;
     cursor: pointer;
@@ -632,14 +632,14 @@
   }
 
   .charts-button:hover {
-    background: #f57c00;
-    border-color: #f57c00;
+    background: var(--color-amber-600);
+    border-color: var(--color-amber-600);
   }
 
   .save-button {
     padding: 0.5rem 1rem;
-    border: 1px solid #9333ea;
-    background: #9333ea;
+    border: 1px solid var(--color-purple-600);
+    background: var(--color-purple-600);
     color: white;
     border-radius: 4px;
     cursor: pointer;
@@ -649,8 +649,8 @@
   }
 
   .save-button:hover:not(:disabled) {
-    background: #7e22ce;
-    border-color: #7e22ce;
+    background: var(--color-purple-700);
+    border-color: var(--color-purple-700);
   }
 
   .save-button:disabled {
@@ -659,50 +659,50 @@
   }
 
   .save-error {
-    color: #c33;
+    color: var(--color-red-600);
     font-size: 0.85rem;
   }
 
   .results-loading {
     text-align: center;
     padding: 2rem;
-    color: #7f8c8d;
+    color: var(--color-slate-500);
   }
 
   .results-error {
-    background: #fee;
-    border: 1px solid #fcc;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 4px;
     padding: 1rem;
-    color: #c33;
+    color: var(--color-red-600);
     margin-bottom: 1rem;
   }
 
   .summary {
-    background: #f8f9fa;
+    background: var(--color-slate-50);
     padding: 1rem;
     border-radius: 4px;
     margin-bottom: 1.5rem;
-    border-left: 4px solid #3498db;
+    border-left: 4px solid var(--color-primary-500);
   }
 
   .summary p {
     margin: 0.5rem 0;
-    color: #2c3e50;
+    color: var(--color-slate-700);
   }
 
   .no-data {
     text-align: center;
     padding: 3rem 2rem;
-    background: #f8f9fa;
+    background: var(--color-slate-50);
     border-radius: 4px;
-    color: #7f8c8d;
+    color: var(--color-slate-500);
   }
 
   .table-container {
     overflow: auto;
     max-height: 500px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--color-slate-200);
     border-radius: 4px;
   }
 
@@ -713,13 +713,13 @@
   }
 
   .results-table th {
-    background: #f8f9fa;
+    background: var(--color-slate-50);
     padding: 0.75rem 0.5rem;
     text-align: left;
-    border-bottom: 2px solid #dee2e6;
-    border-right: 1px solid #dee2e6;
+    border-bottom: 2px solid var(--color-slate-200);
+    border-right: 1px solid var(--color-slate-200);
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--color-slate-700);
     position: sticky;
     top: 0;
     z-index: 2;
@@ -727,17 +727,17 @@
 
   .results-table td {
     padding: 0.5rem;
-    border-bottom: 1px solid #dee2e6;
-    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid var(--color-slate-200);
+    border-right: 1px solid var(--color-slate-200);
     vertical-align: top;
     max-width: 200px;
     word-wrap: break-word;
-    color: #495057;
-    background: #fafbfc;
+    color: var(--color-slate-600);
+    background: var(--color-slate-50);
   }
 
   .results-table tr:hover td {
-    background: #f1f3f5;
+    background: var(--color-slate-100);
   }
 
   /* Sticky first column (layer_name) */
@@ -750,23 +750,23 @@
     width: 150px !important;
     min-width: 150px !important;
     max-width: 150px !important;
-    border-right: 1px solid #dee2e6 !important;
+    border-right: 1px solid var(--color-slate-200) !important;
     box-sizing: border-box !important;
   }
 
   .results-table th:first-child {
     z-index: 100;
-    background: #f8f9fa !important;
+    background: var(--color-slate-50) !important;
   }
 
   .results-table td:first-child {
     z-index: 50;
-    background: #fafbfc !important;
+    background: var(--color-slate-50) !important;
     font-weight: 500;
   }
 
   .results-table tr:hover td:first-child {
-    background: #f1f3f5 !important;
+    background: var(--color-slate-100) !important;
   }
 
   /* Sticky second column (geo_name) - Absolutely positioned */
@@ -781,25 +781,25 @@
     max-width: 200px !important;
     z-index: 98;
     box-sizing: border-box !important;
-    border-left: 1px solid #dee2e6 !important;
-    border-right: 1px solid #dee2e6 !important;
+    border-left: 1px solid var(--color-slate-200) !important;
+    border-right: 1px solid var(--color-slate-200) !important;
     transform: translateX(0) translateY(0) translateZ(0) !important;
     position-sticky: supported !important;
   }
 
   .results-table th:nth-child(2) {
     z-index: 99 !important;
-    background: #f8f9fa !important;
+    background: var(--color-slate-50) !important;
   }
 
   .results-table td:nth-child(2) {
     z-index: 98 !important;
-    background: #fafbfc !important;
+    background: var(--color-slate-50) !important;
     font-weight: 500;
   }
 
   .results-table tr:hover td:nth-child(2) {
-    background: #f1f3f5 !important;
+    background: var(--color-slate-100) !important;
   }
 
   /* Sticky second column (geo_name) - Absolutely positioned */
@@ -814,25 +814,25 @@
     max-width: 200px !important;
     z-index: 98;
     box-sizing: border-box !important;
-    border-left: 1px solid #dee2e6 !important;
-    border-right: 1px solid #dee2e6 !important;
+    border-left: 1px solid var(--color-slate-200) !important;
+    border-right: 1px solid var(--color-slate-200) !important;
     transform: translateX(0) translateY(0) translateZ(0) !important;
     position-sticky: supported !important;
   }
 
   .results-table th:nth-child(2) {
     z-index: 99 !important;
-    background: #f8f9fa !important;
+    background: var(--color-slate-50) !important;
   }
 
   .results-table td:nth-child(2) {
     z-index: 98 !important;
-    background: #fafbfc !important;
+    background: var(--color-slate-50) !important;
     font-weight: 500;
   }
 
   .results-table tr:hover td:nth-child(2) {
-    background: #f1f3f5 !important;
+    background: var(--color-slate-100) !important;
   }
 
   .title-section {
@@ -848,12 +848,12 @@
   }
 
   .stat {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
   }
 
   .stat strong {
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-weight: 600;
   }
 </style>

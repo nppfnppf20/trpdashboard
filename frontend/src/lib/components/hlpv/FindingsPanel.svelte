@@ -192,13 +192,13 @@
     height: 100%;
     text-align: center;
     padding: 2rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin-top: -60px; /* Move up to account for navbar height */
   }
 
   .findings-empty h3 {
     margin: 0 0 0.5rem 0;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 1.5rem;
     font-weight: 600;
   }
@@ -229,8 +229,8 @@
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    background: #3b82f6;
-    color: white;
+    background: var(--color-primary-500);
+    color: var(--color-white);
     border-radius: 50%;
     font-weight: 600;
     font-size: 0.875rem;
@@ -239,7 +239,7 @@
 
   .step-text {
     font-size: 0.875rem;
-    color: #4b5563;
+    color: var(--color-slate-600);
     line-height: 1.4;
     flex: 1;
   }
@@ -251,7 +251,7 @@
   /* Scroll styling for findings panel */
   .findings-panel {
     scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 #f1f5f9;
+    scrollbar-color: var(--color-slate-300) var(--color-slate-100);
   }
 
   .findings-panel::-webkit-scrollbar {
@@ -259,15 +259,15 @@
   }
 
   .findings-panel::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
   }
 
   .findings-panel::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--color-slate-300);
     border-radius: 3px;
   }
 
   .findings-panel::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--color-slate-400);
   }
 </style>

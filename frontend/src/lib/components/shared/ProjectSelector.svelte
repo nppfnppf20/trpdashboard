@@ -176,8 +176,8 @@
 
 <style>
   .project-selector {
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1.5rem;
@@ -186,7 +186,7 @@
 
   .project-selector.disabled {
     opacity: 0.6;
-    background: #fafafa;
+    background: var(--color-slate-50);
     pointer-events: none;
   }
 
@@ -201,7 +201,7 @@
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   /* Mode Selection */
@@ -218,25 +218,25 @@
     justify-content: center;
     gap: 0.375rem;
     padding: 0.625rem 0.5rem;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--color-slate-200);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
-    background: white;
+    background: var(--color-white);
     font-family: inherit;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .mode-option:hover {
-    border-color: #d1d5db;
-    background: #f9fafb;
+    border-color: var(--color-slate-300);
+    background: var(--color-slate-50);
   }
 
   .mode-option.selected {
-    border-color: #9333ea;
-    background: #faf5ff;
+    border-color: var(--color-primary-500);
+    background: var(--color-primary-50);
   }
 
   .mode-option input[type="radio"] {
@@ -254,13 +254,13 @@
   .mode-option span {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .clear-btn {
     background: none;
     border: none;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     font-size: 1.25rem;
@@ -268,7 +268,7 @@
   }
 
   .clear-btn:hover {
-    color: #ef4444;
+    color: var(--color-red-500);
   }
 
   .loading-state,
@@ -281,34 +281,34 @@
     gap: 0.75rem;
     padding: 1rem;
     border-radius: 6px;
-    background: #f8fafc;
-    color: #64748b;
+    background: var(--color-slate-50);
+    color: var(--color-slate-500);
     font-size: 0.875rem;
   }
 
   .oneoff-state {
-    background: #faf5ff;
-    border: 1px solid #e9d5ff;
+    background: var(--color-primary-50);
+    border: 1px solid var(--color-primary-100);
   }
 
   .oneoff-state i {
     font-size: 1.25rem;
-    color: #9333ea;
+    color: var(--color-primary-500);
   }
 
   .oneoff-state p {
     margin: 0;
-    color: #7e22ce;
+    color: var(--color-primary-600);
   }
 
   .disabled-state {
-    background: #f1f5f9;
-    border: 1px dashed #cbd5e1;
+    background: var(--color-slate-100);
+    border: 1px dashed var(--color-slate-300);
   }
 
   .disabled-state i {
     font-size: 1.25rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .loading-state {
@@ -318,8 +318,8 @@
   .spinner {
     width: 1.25rem;
     height: 1.25rem;
-    border: 2px solid #f3f4f6;
-    border-top: 2px solid #9333ea;
+    border: 2px solid var(--color-slate-100);
+    border-top: 2px solid var(--color-primary-500);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
@@ -332,7 +332,7 @@
   .error-state i,
   .empty-state i {
     font-size: 1.5rem;
-    color: #ef4444;
+    color: var(--color-red-500);
   }
 
   .empty-state {
@@ -343,19 +343,19 @@
 
   .empty-state i {
     font-size: 2.5rem;
-    color: #cbd5e1;
+    color: var(--color-slate-300);
   }
 
   .empty-state p {
     margin: 0;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .retry-btn {
     margin-left: auto;
     padding: 0.375rem 0.75rem;
-    background: #9333ea;
-    color: white;
+    background: var(--color-primary-500);
+    color: var(--color-white);
     border: none;
     border-radius: 4px;
     font-size: 0.875rem;
@@ -363,7 +363,7 @@
   }
 
   .retry-btn:hover {
-    background: #7e22ce;
+    background: var(--color-primary-600);
   }
 
   .selector-wrapper {
@@ -375,19 +375,19 @@
   .project-select {
     width: 100%;
     padding: 0.75rem 1rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
     font-family: inherit;
-    background: white;
+    background: var(--color-white);
     cursor: pointer;
     transition: border-color 0.2s;
   }
 
   .project-select:focus {
     outline: none;
-    border-color: #9333ea;
-    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .divider {
@@ -403,15 +403,15 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: #e2e8f0;
+    background: var(--color-slate-200);
   }
 
   .divider span {
     position: relative;
     display: inline-block;
     padding: 0 1rem;
-    background: white;
-    color: #64748b;
+    background: var(--color-white);
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     font-weight: 500;
   }

@@ -269,7 +269,7 @@
   .adv-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -284,7 +284,7 @@
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 60px var(--overlay-bg);
     overflow: hidden;
   }
 
@@ -293,27 +293,27 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
   .adv-header h3 {
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
   .adv-close-btn {
     background: none;
     border: none;
     font-size: 1.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     line-height: 1;
     padding: 0;
     width: 2rem;
     height: 2rem;
   }
-  .adv-close-btn:hover { color: #1e293b; }
+  .adv-close-btn:hover { color: var(--color-slate-800); }
 
   .adv-body {
     flex: 1;
@@ -333,24 +333,24 @@
   label {
     font-size: 0.78rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
   }
-  .label-hint { font-weight: 400; color: #94a3b8; }
+  .label-hint { font-weight: 400; color: var(--color-slate-400); }
 
   input[type="date"], input[type="text"], textarea {
     padding: 0.5rem 0.65rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.85rem;
     font-family: inherit;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
     resize: vertical;
   }
   input:focus, textarea:focus {
     outline: none;
-    border-color: #0284c7;
-    box-shadow: 0 0 0 3px #e0f2fe;
+    border-color: var(--color-primary-600);
+    box-shadow: 0 0 0 3px var(--color-sky-100);
   }
 
   .adv-generate-row {
@@ -364,24 +364,24 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.4rem 0.85rem;
-    background: #f0f9ff;
-    color: #0369a1;
-    border: 1px solid #bae6fd;
+    background: var(--color-primary-50);
+    color: var(--color-teal-600);
+    border: 1px solid var(--color-sky-200);
     border-radius: 6px;
     font-size: 0.8rem;
     font-weight: 600;
     font-family: inherit;
     cursor: pointer;
   }
-  .btn-generate:hover:not(:disabled) { background: #e0f2fe; }
+  .btn-generate:hover:not(:disabled) { background: var(--color-sky-100); }
   .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
-  .adv-generate-hint { font-size: 0.74rem; color: #94a3b8; }
+  .adv-generate-hint { font-size: 0.74rem; color: var(--color-slate-400); }
   .mini-spinner {
     display: inline-block;
     width: 0.8rem;
     height: 0.8rem;
-    border: 2px solid #bae6fd;
-    border-top-color: #0369a1;
+    border: 2px solid var(--color-sky-200);
+    border-top-color: var(--color-teal-600);
     border-radius: 50%;
     animation: adv-spin 0.6s linear infinite;
   }
@@ -390,7 +390,7 @@
   /* Source toggle */
   .adv-source-toggle {
     display: flex;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     overflow: hidden;
     align-self: flex-start;
@@ -402,14 +402,14 @@
     padding: 0.45rem 0.9rem;
     font-size: 0.8rem;
     font-weight: 500;
-    color: #64748b;
-    background: #f8fafc;
+    color: var(--color-slate-500);
+    background: var(--color-slate-50);
     border: none;
     cursor: pointer;
     font-family: inherit;
   }
-  .adv-source-btn:not(:last-child) { border-right: 1px solid #e2e8f0; }
-  .adv-source-btn.active { color: #0284c7; background: #f0f9ff; font-weight: 600; }
+  .adv-source-btn:not(:last-child) { border-right: 1px solid var(--color-slate-200); }
+  .adv-source-btn.active { color: var(--color-primary-600); background: var(--color-primary-50); font-weight: 600; }
 
   /* Applies-to header */
   .adv-applies-header {
@@ -419,18 +419,18 @@
     gap: 0.75rem;
   }
   .select-all-btn {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 999px;
     padding: 2px 10px;
     font-size: 0.72rem;
     font-weight: 500;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     font-family: inherit;
     flex-shrink: 0;
   }
-  .select-all-btn:hover { color: #1e293b; background: #f1f5f9; }
+  .select-all-btn:hover { color: var(--color-slate-800); background: var(--color-slate-100); }
 
   .adv-cond-type {
     font-size: 0.64rem;
@@ -440,15 +440,15 @@
     flex-shrink: 0;
     white-space: nowrap;
     margin-left: auto;
-    color: #0369a1;
-    background: #e0f2fe;
+    color: var(--color-teal-600);
+    background: var(--color-sky-100);
   }
 
   /* Response tick list */
   .adv-cond-list {
     display: flex;
     flex-direction: column;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -457,10 +457,10 @@
     flex-direction: column;
     gap: 0.4rem;
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
   }
   .adv-cond-row:last-child { border-bottom: none; }
-  .adv-cond-row.checked { background: #f0f9ff; }
+  .adv-cond-row.checked { background: var(--color-primary-50); }
   .adv-cond-check {
     display: flex;
     align-items: center;
@@ -470,7 +470,7 @@
   }
   .adv-cond-label {
     font-size: 0.83rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-weight: 500;
   }
   .adv-summary-input {
@@ -483,7 +483,7 @@
     margin: 0;
     padding: 0.75rem;
     font-size: 0.82rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
   }
 
@@ -492,9 +492,9 @@
     align-items: center;
     gap: 0.4rem;
     font-size: 0.8rem;
-    color: #0369a1;
-    background: #f0f9ff;
-    border: 1px solid #bae6fd;
+    color: var(--color-teal-600);
+    background: var(--color-primary-50);
+    border: 1px solid var(--color-sky-200);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
   }
@@ -504,9 +504,9 @@
     gap: 0.4rem;
     font-size: 0.78rem;
     line-height: 1.5;
-    color: #92400e;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    color: var(--color-amber-800);
+    background: var(--color-red-50);
+    border: 1px solid var(--color-amber-200);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
   }
@@ -514,9 +514,9 @@
   .adv-error {
     margin: 0 1.5rem;
     font-size: 0.8rem;
-    color: #dc2626;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    color: var(--color-red-600);
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
     flex-shrink: 0;
@@ -527,25 +527,25 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
-  .adv-count-hint { font-size: 0.8rem; color: #64748b; }
+  .adv-count-hint { font-size: 0.8rem; color: var(--color-slate-500); }
   .adv-footer-actions { display: flex; gap: 0.5rem; }
   .btn-cancel {
     padding: 0.45rem 1rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     background: white;
     border-radius: 6px;
     font-size: 0.85rem;
     font-family: inherit;
     cursor: pointer;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
-  .btn-cancel:hover { background: #f8fafc; }
+  .btn-cancel:hover { background: var(--color-slate-50); }
   .btn-save {
     padding: 0.45rem 1.1rem;
-    background: #0284c7;
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -554,6 +554,6 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .btn-save:hover:not(:disabled) { background: #0369a1; }
+  .btn-save:hover:not(:disabled) { background: var(--color-teal-600); }
   .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

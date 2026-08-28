@@ -195,33 +195,33 @@
   input {
     width: 100%;
     padding: 0.625rem 2rem 0.625rem 0.875rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 0.375rem;
     font-size: 0.875rem;
     font-family: inherit;
     box-sizing: border-box;
     transition: border-color 0.2s;
-    background: white;
+    background: var(--color-white);
   }
 
   input:focus {
     outline: none;
-    border-color: #9333ea;
+    border-color: var(--color-primary-500);
   }
 
   .disabled input {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
     cursor: not-allowed;
   }
 
   .error input {
-    border-color: #ef4444;
+    border-color: var(--color-red-500);
   }
 
   .chevron {
     position: absolute;
     right: 0.75rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     cursor: pointer;
     transition: transform 0.2s;
     font-size: 1rem;
@@ -229,7 +229,7 @@
   }
 
   .chevron:hover {
-    color: #9333ea;
+    color: var(--color-primary-500);
   }
 
   .chevron.open {
@@ -241,7 +241,7 @@
     right: 0.5rem;
     background: none;
     border: none;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 1.25rem;
     cursor: pointer;
     padding: 0 0.25rem;
@@ -249,7 +249,7 @@
   }
 
   .clear-btn:hover {
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .spinner {
@@ -257,8 +257,8 @@
     right: 0.75rem;
     width: 1rem;
     height: 1rem;
-    border: 2px solid #e2e8f0;
-    border-top-color: #9333ea;
+    border: 2px solid var(--color-slate-200);
+    border-top-color: var(--color-primary-500);
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
   }
@@ -273,10 +273,10 @@
     left: 0;
     right: 0;
     margin-top: 0.25rem;
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-dropdown);
     max-height: 200px;
     overflow-y: auto;
     z-index: 1000;
@@ -296,17 +296,17 @@
 
   .dropdown-item:hover,
   .dropdown-item.highlighted {
-    background: #f3e8ff;
+    background: var(--color-violet-100);
   }
 
   .dropdown-item.selected {
-    background: #ede9fe;
+    background: var(--color-primary-100);
     font-weight: 500;
   }
 
   .no-results {
     padding: 0.625rem 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     display: flex;
     flex-direction: column;
@@ -315,6 +315,6 @@
 
   .no-results .hint {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 </style>

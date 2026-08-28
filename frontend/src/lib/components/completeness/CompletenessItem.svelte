@@ -24,7 +24,7 @@
     justify-content: space-between;
     gap: 1rem;
     padding: 0.5rem 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
   }
 
   .item:last-child {
@@ -33,7 +33,7 @@
 
   .item-label {
     font-size: 0.85rem;
-    color: #334155;
+    color: var(--color-slate-700);
   }
 
   .item-right {
@@ -47,7 +47,7 @@
     background: none;
     border: none;
     font-size: 0.75rem;
-    color: #7c3aed;
+    color: var(--color-primary-500);
     cursor: pointer;
     padding: 0;
     display: flex;

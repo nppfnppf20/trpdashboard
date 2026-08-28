@@ -2,19 +2,22 @@
  * Reusable styles for consistent table design across the app
  */
 
-/* Base table font - inherited by all table cells */
+/* Base table font - inherited by all table cells
+ * Font stack differs slightly from app.css's --font-sans (no emoji fallbacks),
+ * so it stays its own token rather than being merged.
+ */
 :root {
   --table-font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --table-font-size: 0.875rem;
-  --table-color: #334155;
-  --table-color-muted: #64748b;
-  --table-color-heading: #475569;
+  --table-font-size: var(--font-size-sm);
+  --table-color: var(--color-slate-700);
+  --table-color-muted: var(--color-slate-500);
+  --table-color-heading: var(--color-slate-600);
 }
 
 .table-container {
-  background: white;
+  background: var(--color-white);
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -23,7 +26,7 @@
 
 .table-wrapper {
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
 }
 
@@ -37,8 +40,8 @@
 }
 
 .data-table thead {
-  background: #f8fafc;
-  border-bottom: 2px solid #e2e8f0;
+  background: var(--color-slate-50);
+  border-bottom: 2px solid var(--color-slate-200);
 }
 
 .data-table th {
@@ -55,11 +58,11 @@
 }
 
 .data-table th:hover {
-  background: #f1f5f9;
+  background: var(--color-slate-100);
 }
 
 .data-table th.sorted {
-  color: #9333ea;
+  color: var(--color-primary-500);
 }
 
 .data-table th i {
@@ -68,12 +71,12 @@
 }
 
 .data-table tbody tr {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--color-slate-200);
   transition: background-color 0.15s;
 }
 
 .data-table tbody tr:hover {
-  background: #f8fafc;
+  background: var(--color-slate-50);
 }
 
 .data-table td {
@@ -88,7 +91,7 @@
 .data-table td.text-bold,
 .data-table .text-bold {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--color-slate-800);
 }
 
 .data-table td.text-muted,
@@ -99,25 +102,25 @@
 /* Table links - inherit base font, add link styling */
 .data-table a,
 .data-table .table-link {
-  color: #3b82f6;
+  color: var(--color-primary-500);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .data-table a:hover,
 .data-table .table-link:hover {
-  color: #2563eb;
+  color: var(--color-primary-600);
 }
 
 .project-id-cell {
   font-family: 'Courier New', monospace;
   font-weight: 500;
-  color: #9333ea;
+  color: var(--color-primary-500);
 }
 
 .bold-cell {
   font-weight: 500;
-  color: #1e293b;
+  color: var(--color-slate-800);
 }
 
 .date-cell {
@@ -136,7 +139,7 @@
 }
 
 .notes-cell:hover {
-  color: #3b82f6;
+  color: var(--color-primary-500);
 }
 
 .notes-cell.empty {
@@ -155,7 +158,7 @@
 }
 
 .notes-cell-short:hover {
-  color: #3b82f6;
+  color: var(--color-primary-500);
 }
 
 .notes-cell-short.empty {
@@ -173,23 +176,23 @@
 }
 
 .status-pending {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--color-badge-warning-bg);
+  color: var(--color-badge-warning-fg);
 }
 
 .status-instructed {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--color-badge-info-bg);
+  color: var(--color-badge-info-fg);
 }
 
 .status-completed {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--color-badge-success-bg);
+  color: var(--color-badge-success-fg);
 }
 
 .status-in-progress {
-  background: #e0e7ff;
-  color: #3730a3;
+  background: var(--color-badge-indigo-bg);
+  color: var(--color-badge-indigo-fg);
 }
 
 .loading-state,
@@ -197,7 +200,7 @@
 .empty-state {
   text-align: center;
   padding: 3rem 2rem;
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 .loading-state i,
@@ -206,12 +209,12 @@
   font-size: 3rem;
   margin-bottom: 1rem;
   display: block;
-  color: #cbd5e1;
+  color: var(--color-slate-300);
 }
 
 .spinner {
-  border: 3px solid #f3f4f6;
-  border-top: 3px solid #9333ea;
+  border: 3px solid var(--color-slate-100);
+  border-top: 3px solid var(--color-primary-500);
   border-radius: 50%;
   width: 40px;
   height: 40px;
@@ -249,23 +252,23 @@
 .table-search input {
   width: 100%;
   padding: 0.625rem 1rem 0.625rem 2.5rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   font-family: var(--table-font);
   font-size: var(--table-font-size);
   color: var(--table-color);
-  background: white;
+  background: var(--color-white);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .table-search input:focus {
   outline: none;
-  border-color: #9333ea;
-  box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+  border-color: var(--color-primary-500);
+  box-shadow: var(--focus-ring-blue);
 }
 
 .table-search input::placeholder {
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .table-search-icon {
@@ -273,7 +276,7 @@
   left: 0.875rem;
   top: 50%;
   transform: translateY(-50%);
-  color: #94a3b8;
+  color: var(--color-slate-400);
   pointer-events: none;
   font-size: 1rem;
 }
@@ -286,14 +289,14 @@
 }
 
 .data-table th.sortable:hover {
-  background: #f1f5f9;
-  color: #9333ea;
+  background: var(--color-slate-100);
+  color: var(--color-primary-500);
 }
 
 .data-table th.sortable.sorted-asc,
 .data-table th.sortable.sorted-desc {
-  color: #9333ea;
-  background: #f5f3ff;
+  color: var(--color-primary-500);
+  background: var(--color-primary-50);
 }
 
 .sort-indicator {
@@ -323,7 +326,7 @@
 }
 
 .data-table th.no-sort:hover {
-  background: #f8fafc;
+  background: var(--color-slate-50);
 }
 
 /* Search results count */
@@ -340,7 +343,7 @@
 .no-results-row td {
   text-align: center;
   padding: 2rem 1rem;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-style: italic;
 }
 

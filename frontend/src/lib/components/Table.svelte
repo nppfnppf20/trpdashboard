@@ -70,14 +70,14 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .spinner {
     width: 2.5rem;
     height: 2.5rem;
-    border: 3px solid #f3f4f6;
-    border-top: 3px solid #3b82f6;
+    border: 3px solid var(--color-slate-100);
+    border-top: 3px solid var(--color-primary-500);
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 1rem;
@@ -94,7 +94,7 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .empty-state i {
@@ -107,20 +107,20 @@
     align-items: center;
     justify-content: space-between;
     padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
   .table-header h3 {
     margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .record-count {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-weight: 500;
   }
 
@@ -146,8 +146,8 @@
     padding: 0.5rem 0.75rem;
     text-align: left;
     font-weight: 600;
-    color: #475569;
-    border-bottom: 2px solid #e2e8f0;
+    color: var(--color-slate-600);
+    border-bottom: 2px solid var(--color-slate-200);
     background: white;
     white-space: nowrap;
     font-size: 0.75rem;
@@ -155,19 +155,19 @@
 
   .data-table td {
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid #f1f5f9;
-    color: #334155;
+    border-bottom: 1px solid var(--color-slate-100);
+    color: var(--color-slate-700);
     vertical-align: top;
   }
 
   .data-table tbody tr:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   /* Cell type classes that can be applied via cellClass */
   :global(.cell-name) {
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   :global(.cell-description) {
@@ -180,7 +180,7 @@
 
   :global(.cell-date) {
     white-space: nowrap;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   :global(.cell-link) {
@@ -192,15 +192,15 @@
     align-items: center;
     justify-content: center;
     padding: 0.25rem 0.5rem;
-    color: #3b82f6;
+    color: var(--color-primary-500);
     text-decoration: none;
     border-radius: 4px;
     transition: all 0.2s;
   }
 
   :global(.link-button:hover) {
-    background: #dbeafe;
-    color: #2563eb;
+    background: var(--color-primary-100);
+    color: var(--color-primary-600);
   }
 
   :global(.link-button i) {

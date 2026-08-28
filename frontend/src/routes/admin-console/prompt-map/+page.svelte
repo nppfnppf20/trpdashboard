@@ -144,9 +144,9 @@
     gap: 0.5rem;
     padding: 0.5rem 1rem;
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
@@ -154,15 +154,15 @@
   }
 
   .tool-tab:hover {
-    background: #f1f5f9;
-    color: #1e293b;
-    border-color: #cbd5e1;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
+    border-color: var(--color-slate-300);
   }
 
   .tool-tab.active {
-    background: #1e293b;
+    background: var(--color-slate-800);
     color: white;
-    border-color: #1e293b;
+    border-color: var(--color-slate-800);
   }
 
   .tool-tab i {
@@ -178,7 +178,7 @@
     margin: 0 0 0.25rem;
     font-size: 1.125rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -187,7 +187,7 @@
   .tool-header p {
     margin: 0;
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   /* ── Operation cards ───────────────────────────────────── */
@@ -199,7 +199,7 @@
 
   .operation-card {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.5rem;
     overflow: hidden;
   }
@@ -214,7 +214,7 @@
     border: none;
     cursor: pointer;
     text-align: left;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.875rem;
     font-weight: 600;
     transition: background 0.15s;
@@ -222,7 +222,7 @@
   }
 
   .operation-header:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .op-left {
@@ -234,13 +234,13 @@
 
   .chevron {
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .op-output {
     font-size: 0.775rem;
     font-weight: 400;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: right;
     white-space: nowrap;
     overflow: hidden;
@@ -250,7 +250,7 @@
 
   /* ── Operation body ────────────────────────────────────── */
   .operation-body {
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--color-slate-100);
     padding: 1.25rem;
     display: flex;
     flex-direction: column;
@@ -262,7 +262,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     margin-bottom: 0.625rem;
   }
 
@@ -274,8 +274,8 @@
   }
 
   .variable-box {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
     max-width: 280px;
@@ -284,7 +284,7 @@
   .var-label {
     font-size: 0.8rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     display: flex;
     align-items: center;
     gap: 0.375rem;
@@ -293,25 +293,25 @@
 
   .var-label i {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .var-desc {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.5;
   }
 
   /* ── Prompt text ───────────────────────────────────────── */
   .prompt-text {
     font-size: 0.775rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     line-height: 1.7;
     white-space: pre-wrap;
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     margin: 0;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
     padding: 1rem;
     overflow-x: auto;

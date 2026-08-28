@@ -123,7 +123,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: 4rem 2rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
   }
 
@@ -161,14 +161,14 @@
     margin: 0;
     font-size: 1.125rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .discipline-tag {
     font-size: 0.75rem;
     font-weight: 600;
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
     padding: 0.15rem 0.5rem;
     border-radius: 4px;
     white-space: nowrap;
@@ -194,16 +194,16 @@
     flex-shrink: 0;
   }
 
-  .note-status.saving { color: #94a3b8; }
-  .note-status.saved  { color: #16a34a; }
+  .note-status.saving { color: var(--color-slate-400); }
+  .note-status.saved  { color: var(--color-emerald-600); }
 
   .linked-policies {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
     padding: 0.625rem 0.75rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
   }
 
@@ -212,7 +212,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .linked-policy-list {
@@ -240,14 +240,14 @@
   .policy-ref {
     font-size: 0.8rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     white-space: nowrap;
     flex-shrink: 0;
   }
 
   .policy-name {
     font-size: 0.8rem;
-    color: #475569;
+    color: var(--color-slate-600);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -263,19 +263,19 @@
   .note-label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .notes-field {
     width: 100%;
     box-sizing: border-box;
     padding: 0.625rem 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
     font-family: inherit;
-    color: #374151;
-    background: #f8fafc;
+    color: var(--color-slate-700);
+    background: var(--color-slate-50);
     resize: none;
     overflow: hidden;
     line-height: 1.5;
@@ -285,19 +285,19 @@
 
   .notes-field:focus {
     outline: none;
-    border-color: #0369a1;
+    border-color: var(--color-teal-600);
     background: white;
-    box-shadow: 0 0 0 3px rgba(3,105,161,0.07);
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.07);
   }
 
-  .notes-field::placeholder { color: #94a3b8; }
+  .notes-field::placeholder { color: var(--color-slate-400); }
 
   .mini-spinner {
     display: inline-block;
     width: 0.75rem;
     height: 0.75rem;
-    border: 1.5px solid #cbd5e1;
-    border-top-color: #94a3b8;
+    border: 1.5px solid var(--color-slate-300);
+    border-top-color: var(--color-slate-400);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }

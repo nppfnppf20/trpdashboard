@@ -120,25 +120,25 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.625rem 0.875rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 0.375rem;
-    background: white;
+    background: var(--color-white);
     font-size: 0.875rem;
     font-family: inherit;
     cursor: pointer;
     text-align: left;
     transition: border-color 0.2s;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .msd-trigger.msd-has-values {
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .msd-trigger.msd-open,
   .msd-trigger:focus {
     outline: none;
-    border-color: #9333ea;
+    border-color: var(--color-primary-500);
   }
 
   .msd-trigger:disabled {
@@ -157,7 +157,7 @@
     flex-shrink: 0;
     margin-left: 0.5rem;
     transition: transform 0.2s;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .msd-chevron.rotated {
@@ -169,8 +169,8 @@
     top: calc(100% + 4px);
     left: 0;
     right: 0;
-    background: white;
-    border: 1px solid #cbd5e1;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-300);
     border-radius: 0.375rem;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     z-index: 100;
@@ -179,13 +179,13 @@
 
   .msd-search {
     padding: 0.5rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
   }
 
   .msd-search input {
     width: 100%;
     padding: 0.375rem 0.625rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.25rem;
     font-size: 0.8125rem;
     font-family: inherit;
@@ -194,7 +194,7 @@
 
   .msd-search input:focus {
     outline: none;
-    border-color: #9333ea;
+    border-color: var(--color-primary-500);
   }
 
   .msd-options {
@@ -209,18 +209,18 @@
     padding: 0.5rem 0.875rem;
     cursor: pointer;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     transition: background 0.1s;
   }
 
   .msd-option:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .msd-option input[type="checkbox"] {
     width: 15px;
     height: 15px;
-    accent-color: #9333ea;
+    accent-color: var(--color-primary-500);
     flex-shrink: 0;
     cursor: pointer;
   }
@@ -228,7 +228,7 @@
   .msd-empty {
     padding: 0.75rem 0.875rem;
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-align: center;
   }
 
@@ -237,15 +237,15 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 0.875rem;
-    border-top: 1px solid #f1f5f9;
-    background: #fafafa;
+    border-top: 1px solid var(--color-slate-100);
+    background: var(--color-slate-50);
   }
 
   .msd-clear {
     background: none;
     border: none;
     font-size: 0.75rem;
-    color: #9333ea;
+    color: var(--color-primary-500);
     cursor: pointer;
     padding: 0;
     font-family: inherit;
@@ -257,6 +257,6 @@
 
   .msd-count {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 </style>

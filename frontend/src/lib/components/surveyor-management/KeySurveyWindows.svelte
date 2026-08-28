@@ -156,8 +156,8 @@
 
 <style>
   .key-windows-panel {
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
     flex-shrink: 0;
   }
 
@@ -177,15 +177,15 @@
     cursor: pointer;
     font-size: 0.8rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     padding: 0.2rem 0.5rem;
     border-radius: 4px;
     transition: background 0.15s, color 0.15s;
   }
 
   .toggle-btn:hover {
-    background: #e2e8f0;
-    color: #1e293b;
+    background: var(--color-slate-200);
+    color: var(--color-slate-800);
   }
 
   .toggle-btn i {
@@ -193,8 +193,8 @@
   }
 
   .badge {
-    background: #e2e8f0;
-    color: #64748b;
+    background: var(--color-slate-200);
+    color: var(--color-slate-500);
     font-size: 0.7rem;
     font-weight: 700;
     padding: 1px 6px;
@@ -203,20 +203,20 @@
 
   .hint {
     font-size: 0.7rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
   }
 
   .windows-body {
     display: flex;
-    border-top: 1px solid #e2e8f0;
-    background: white;
+    border-top: 1px solid var(--color-slate-200);
+    background: var(--color-white);
   }
 
   .label-col {
     flex-shrink: 0;
-    border-right: 2px solid #cbd5e1;
-    background: white;
+    border-right: 2px solid var(--color-slate-300);
+    background: var(--color-white);
   }
 
   .window-label {
@@ -226,8 +226,8 @@
     padding: 0 0.75rem;
     font-size: 0.72rem;
     font-weight: 500;
-    color: #475569;
-    border-bottom: 1px solid #f1f5f9;
+    color: var(--color-slate-600);
+    border-bottom: 1px solid var(--color-slate-100);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -244,7 +244,7 @@
     flex: 1;
     overflow: hidden; /* no scrollbar — driven by GanttGrid scroll */
     position: relative;
-    background: white;
+    background: var(--color-white);
   }
 
   .timeline-inner {

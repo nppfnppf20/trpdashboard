@@ -408,14 +408,14 @@ export let selectedProject;
     align-items: center;
     padding: 1.5rem;
     background: white;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .panel-header h2 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .header-actions {
@@ -429,23 +429,23 @@ export let selectedProject;
     align-items: center;
     gap: 0.375rem;
     padding: 0.5rem 0.875rem;
-    background: #faf5ff;
-    border: 1px solid #d8b4fe;
+    background: var(--color-purple-50);
+    border: 1px solid var(--color-violet-300);
     border-radius: 6px;
-    color: #7c3aed;
+    color: var(--color-violet-600);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
   }
-  .btn-draft-main:hover:not(:disabled) { background: #f3e8ff; border-color: #a855f7; }
+  .btn-draft-main:hover:not(:disabled) { background: var(--color-violet-100); border-color: var(--color-purple-600); }
   .btn-draft-main:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Setup modal */
   .setup-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.45);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -456,7 +456,7 @@ export let selectedProject;
   .setup-modal {
     background: white;
     border-radius: 10px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
     width: 100%;
     max-width: 400px;
     display: flex;
@@ -477,8 +477,8 @@ export let selectedProject;
     align-items: center;
     justify-content: space-between;
     padding: 1.125rem 1.25rem;
-    border-bottom: 1px solid #e2e8f0;
-    color: #7c3aed;
+    border-bottom: 1px solid var(--color-slate-200);
+    color: var(--color-violet-600);
   }
 
   .setup-header-left {
@@ -493,14 +493,14 @@ export let selectedProject;
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .setup-close {
     background: none;
     border: none;
     font-size: 1.1rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 4px;
@@ -508,7 +508,7 @@ export let selectedProject;
     align-items: center;
     transition: color 0.15s;
   }
-  .setup-close:hover { color: #1e293b; }
+  .setup-close:hover { color: var(--color-slate-800); }
 
   .setup-body {
     padding: 1.25rem;
@@ -526,27 +526,27 @@ export let selectedProject;
   .setup-field label {
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #374151;
+    color: var(--color-slate-700);
   }
 
   .setup-field select {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
     cursor: pointer;
     font-family: inherit;
   }
-  .setup-field select:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+  .setup-field select:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
 
   .setup-footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.625rem;
     padding: 1rem 1.25rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
   }
 
   .btn-draft-go {
@@ -554,7 +554,7 @@ export let selectedProject;
     align-items: center;
     gap: 0.4rem;
     padding: 0.5rem 1.25rem;
-    background: #7c3aed;
+    background: var(--color-violet-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -563,13 +563,13 @@ export let selectedProject;
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-draft-go:hover:not(:disabled) { background: #6d28d9; }
+  .btn-draft-go:hover:not(:disabled) { background: var(--color-violet-700); }
   .btn-draft-go:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
   .briefing-dropdown-date {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -588,12 +588,12 @@ export let selectedProject;
   }
 
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
   }
 
   .btn-primary:hover {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .loading, .error {
@@ -602,18 +602,18 @@ export let selectedProject;
     align-items: center;
     justify-content: center;
     padding: 3rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .error {
-    color: #ef4444;
+    color: var(--color-red-500);
   }
 
   .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid #e2e8f0;
-    border-top-color: #3b82f6;
+    border: 3px solid var(--color-slate-200);
+    border-top-color: var(--color-primary-500);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin-bottom: 1rem;
@@ -631,7 +631,7 @@ export let selectedProject;
     margin: 0 0 1rem 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
   }
 
   .template-cards {
@@ -644,15 +644,15 @@ export let selectedProject;
     display: flex;
     gap: 1rem;
     padding: 1.25rem;
-    background: #f8fafc;
-    border: 2px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 2px solid var(--color-slate-200);
     border-radius: 8px;
     transition: all 0.2s;
     position: relative;
   }
 
   .template-card:hover {
-    border-color: #3b82f6;
+    border-color: var(--color-primary-500);
     background: white;
     transform: translateY(-2px);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -665,9 +665,9 @@ export let selectedProject;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #e0e7ff;
+    background: var(--color-indigo-100);
     border-radius: 8px;
-    color: #3b82f6;
+    color: var(--color-primary-500);
     font-size: 1.5rem;
   }
 
@@ -680,15 +680,15 @@ export let selectedProject;
     margin: 0 0 0.5rem 0;
     font-size: 0.9375rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .discipline-badge {
     display: inline-block;
     margin: 0 0 0.5rem 0;
     padding: 0.125rem 0.5rem;
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-primary-100);
+    color: var(--color-primary-800);
     border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 500;
@@ -697,7 +697,7 @@ export let selectedProject;
   .description {
     margin: 0;
     font-size: 0.8125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.4;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -717,7 +717,7 @@ export let selectedProject;
     justify-content: center;
     padding: 0;
     background: transparent;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     border: none;
     border-radius: 4px;
     font-size: 1.125rem;
@@ -727,8 +727,8 @@ export let selectedProject;
   }
 
   .edit-btn:hover {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
     opacity: 1;
   }
 

@@ -249,15 +249,15 @@
   .spinner {
     width: 3rem;
     height: 3rem;
-    border: 3px solid #f3f4f6;
-    border-top: 3px solid #16a34a;
+    border: 3px solid var(--color-slate-100);
+    border-top: 3px solid var(--color-emerald-600);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
 
   .loading-spinner p {
     margin: 0;
-    color: #374151;
+    color: var(--color-slate-700);
     font-weight: 500;
     font-size: 1rem;
   }

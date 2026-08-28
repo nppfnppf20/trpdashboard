@@ -193,7 +193,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -209,7 +209,7 @@
     height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 50px var(--overlay-bg);
   }
 
   .editor-header {
@@ -217,8 +217,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
   .header-left {
@@ -230,14 +230,14 @@
 
   .header-icon {
     font-size: 1.5rem;
-    color: #0d9488;
+    color: var(--color-teal-600);
   }
 
   .name-input {
     width: 100%;
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     border: 1px solid transparent;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
@@ -252,7 +252,7 @@
   .name-input:focus {
     outline: none;
     background: white;
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
     box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
   }
 
@@ -267,15 +267,15 @@
   }
 
   .unsaved-badge {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-amber-100);
+    color: var(--color-amber-800);
     padding: 0.25rem 0.625rem;
     border-radius: 4px;
     font-weight: 500;
   }
 
   .saved-text {
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .btn {
@@ -292,28 +292,28 @@
   }
 
   .save-btn {
-    background: #0d9488;
+    background: var(--color-teal-600);
     color: white;
   }
 
   .save-btn:hover:not(:disabled) {
-    background: #0f766e;
+    background: var(--color-emerald-600);
   }
 
   .save-btn:disabled {
-    background: #94a3b8;
+    background: var(--color-slate-400);
     cursor: not-allowed;
   }
 
   .close-btn {
     background: transparent;
-    color: #64748b;
+    color: var(--color-slate-500);
     padding: 0.5rem;
   }
 
   .close-btn:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
   }
 
   .editor-body {
@@ -330,7 +330,7 @@
     justify-content: center;
     height: 100%;
     gap: 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .loading-state i,
@@ -339,12 +339,12 @@
   }
 
   .error-state {
-    color: #ef4444;
+    color: var(--color-red-500);
   }
 
   .editor-info-banner {
-    background: #f0fdfa;
-    border: 1px solid #99f6e4;
+    background: var(--color-slate-100);
+    border: 1px solid var(--color-sky-200);
     border-radius: 8px;
     padding: 0.75rem 1rem;
     margin-bottom: 1.5rem;
@@ -352,12 +352,12 @@
     align-items: center;
     gap: 0.75rem;
     font-size: 0.875rem;
-    color: #134e4a;
+    color: var(--color-emerald-800);
   }
 
   .editor-info-banner i {
     font-size: 1.25rem;
-    color: #0d9488;
+    color: var(--color-teal-600);
   }
 
   .form-field {
@@ -367,7 +367,7 @@
   .form-field label {
     display: block;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     font-size: 0.875rem;
     margin-bottom: 0.5rem;
   }
@@ -375,16 +375,16 @@
   .form-field input {
     width: 100%;
     padding: 0.625rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
   }
 
   .form-field input:focus {
     outline: none;
-    border-color: #0d9488;
+    border-color: var(--color-teal-600);
     box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
   }
 
@@ -396,7 +396,7 @@
 
   .editor-container label {
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     font-size: 0.875rem;
   }
 

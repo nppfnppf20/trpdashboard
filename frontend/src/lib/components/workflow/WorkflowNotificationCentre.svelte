@@ -73,7 +73,7 @@
     gap: 1rem;
     flex-wrap: wrap;
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 0.875rem 1.25rem;
   }
@@ -81,7 +81,7 @@
   .scope-toggle {
     display: flex;
     gap: 0.5rem;
-    border-right: 1px solid #e2e8f0;
+    border-right: 1px solid var(--color-slate-200);
     padding-right: 1rem;
   }
 </style>

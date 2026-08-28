@@ -175,7 +175,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -191,7 +191,7 @@
     height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 50px var(--overlay-bg);
   }
 
   .modal-header {
@@ -199,8 +199,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
   .header-left {
@@ -211,20 +211,20 @@
 
   .header-icon {
     font-size: 1.5rem;
-    color: #3b82f6;
+    color: var(--color-primary-500);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .close-btn {
     background: transparent;
     border: none;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.5rem;
     display: flex;
@@ -236,8 +236,8 @@
   }
 
   .close-btn:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
   }
 
   .modal-body {
@@ -257,14 +257,14 @@
 
   .email-field label {
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     font-size: 0.875rem;
   }
 
   .recipient-info {
     padding: 1rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     display: flex;
     flex-direction: column;
@@ -280,12 +280,12 @@
 
   .recipient-name {
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.95rem;
   }
 
   .recipient-email {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
   }
 
@@ -300,15 +300,15 @@
     display: inline-flex;
     align-items: center;
     padding: 0.25rem 0.625rem;
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-primary-100);
+    color: var(--color-primary-800);
     border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 500;
   }
 
   .org-name {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
   }
 
@@ -322,7 +322,7 @@
 
   .editor-section label {
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     font-size: 0.875rem;
   }
 
@@ -331,7 +331,7 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
   }
 
   .btn {
@@ -353,21 +353,21 @@
   }
 
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .btn-secondary {
     background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 </style>

@@ -67,7 +67,7 @@
 <style>
   .webscraper-page {
     min-height: 100vh;
-    background: #f8fafc;
+    background: var(--color-slate-50);
     padding: 2rem 1rem;
     position: relative;
   }
@@ -81,19 +81,19 @@
     gap: 0.5rem;
     padding: 0.5rem 1rem;
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.875rem;
     text-decoration: none;
     transition: all 0.2s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     z-index: 10;
   }
 
   .home-button:hover {
-    background: #f1f5f9;
-    border-color: #cbd5e1;
+    background: var(--color-slate-100);
+    border-color: var(--color-slate-300);
   }
 
   .home-button i {
@@ -113,13 +113,13 @@
   .page-title {
     font-size: 2.5rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin: 0 0 0.75rem 0;
   }
 
   .page-subtitle {
     font-size: 1.125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin: 0;
   }
 
@@ -127,7 +127,7 @@
     display: flex;
     gap: 1rem;
     margin-bottom: 2rem;
-    border-bottom: 2px solid #e2e8f0;
+    border-bottom: 2px solid var(--color-slate-200);
     justify-content: center;
   }
 
@@ -142,17 +142,17 @@
     cursor: pointer;
     font-size: 1.125rem;
     font-weight: 500;
-    color: #64748b;
+    color: var(--color-slate-500);
     transition: all 0.2s;
   }
 
   .tab-button:hover {
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .tab-button.active {
-    color: #f97316;
-    border-bottom-color: #f97316;
+    color: var(--color-amber-600);
+    border-bottom-color: var(--color-amber-600);
   }
 
   .tab-button i {
@@ -163,7 +163,7 @@
     background: white;
     border-radius: 12px;
     padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
   }
 
   @media (max-width: 768px) {
@@ -178,13 +178,13 @@
 
     .tab-button {
       padding: 0.75rem 1rem;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid var(--color-slate-200);
       border-left: 3px solid transparent;
     }
 
     .tab-button.active {
-      border-bottom-color: #e2e8f0;
-      border-left-color: #f97316;
+      border-bottom-color: var(--color-slate-200);
+      border-left-color: var(--color-amber-600);
     }
   }
 </style>

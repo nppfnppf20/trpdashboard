@@ -3,7 +3,6 @@
   import { getAllSurveyorOrganisations } from '$lib/api/surveyorOrganisations.js';
   import AddEditSurveyorModal from '$lib/components/admin-console/AddEditSurveyorModal.svelte';
   import DeleteSurveyorModal from '$lib/components/admin-console/DeleteSurveyorModal.svelte';
-  import '$lib/styles/tables.css';
 
   let surveyors = [];
   let loading = true;
@@ -376,7 +375,7 @@
     overflow-y: hidden;
     height: 12px;
     margin-bottom: 2px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 4px 4px 0 0;
     border-bottom: none;
   }
@@ -395,12 +394,12 @@
   .page-header h1 {
     margin: 0 0 0.5rem 0;
     font-size: 2rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .page-header p {
     margin: 0;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .btn-add {
@@ -408,7 +407,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.625rem 1.25rem;
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
     border: none;
     border-radius: 6px;
@@ -420,7 +419,7 @@
   }
 
   .btn-add:hover {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .actions-cell {
@@ -431,7 +430,7 @@
 
   .action-btn {
     background: none;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 4px;
     padding: 0.3rem 0.5rem;
     cursor: pointer;
@@ -442,29 +441,29 @@
   }
 
   .edit-btn {
-    color: #3b82f6;
+    color: var(--color-primary-500);
   }
 
   .edit-btn:hover {
-    background: #eff6ff;
-    border-color: #3b82f6;
+    background: var(--color-primary-50);
+    border-color: var(--color-primary-500);
   }
 
   .delete-btn {
-    color: #ef4444;
+    color: var(--color-red-500);
   }
 
   .delete-btn:hover {
-    background: #fef2f2;
-    border-color: #ef4444;
+    background: var(--color-red-50);
+    border-color: var(--color-red-500);
   }
 
   /* Surveyor-specific styles */
   .discipline-badge {
     display: inline-block;
     padding: 0.25rem 0.75rem;
-    background: #ebf8ff;
-    color: #2c5282;
+    background: var(--color-badge-info-bg);
+    color: var(--color-badge-info-fg);
     border-radius: 12px;
     font-size: 0.875rem;
     font-weight: 500;
@@ -476,11 +475,11 @@
 
   .contact-name {
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .contact-email {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.8125rem;
   }
 
@@ -505,18 +504,18 @@
   }
 
   .status-approved {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
 
   .status-rejected {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--color-badge-danger-bg);
+    color: var(--color-badge-danger-fg);
   }
 
   .status-unknown {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
   }
 </style>
 

@@ -82,11 +82,11 @@
         <h3>Ancient Woodland</h3>
         <p class="summary-value">{ancientWoodlandStatus}</p>
         {#if ancientWoodlandStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSiteAncientWoodland} on site
           </p>
         {:else if ancientWoodlandStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 500m
           </p>
         {/if}
@@ -160,14 +160,14 @@
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
   }
 
   .analysis-results h2 {
     margin: 0 0 1rem 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .results-summary {
@@ -178,8 +178,8 @@
   }
 
   .summary-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1rem;
     text-align: center;
@@ -189,7 +189,7 @@
     margin: 0 0 0.5rem 0;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -198,11 +198,11 @@
     margin: 0;
     font-size: 1.5rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .results-section {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     margin-bottom: 1rem;
     overflow: hidden;
@@ -213,8 +213,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 1rem;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .section-header.clickable {
@@ -223,7 +223,7 @@
   }
 
   .section-header.clickable:hover {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
   }
 
   .section-header-content {
@@ -240,18 +240,18 @@
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .section-subtitle {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     margin-left: 0.5rem;
   }
 
   .expand-icon {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .results-grid {
@@ -261,8 +261,8 @@
   }
 
   .result-item {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1rem;
   }
@@ -279,7 +279,7 @@
     margin: 0;
     font-size: 0.9375rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .status-badges {
@@ -298,23 +298,23 @@
   }
 
   .badge-on-site {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--color-emerald-100);
+    color: var(--color-green-800);
   }
 
   .badge-nearby {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-amber-100);
+    color: var(--color-amber-800);
   }
 
   .badge-distant {
-    background: #e2e8f0;
-    color: #475569;
+    background: var(--color-slate-200);
+    color: var(--color-slate-600);
   }
 
   .badge-direction {
-    background: #e0e7ff;
-    color: #3730a3;
+    background: var(--color-indigo-100);
+    color: var(--color-indigo-800);
   }
 
   .item-details {
@@ -330,18 +330,18 @@
   }
 
   .detail-label {
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .detail-value {
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-weight: 500;
   }
 
   .results-empty {
     text-align: center;
     padding: 2rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .results-empty p {
@@ -351,14 +351,14 @@
   .results-loading {
     text-align: center;
     padding: 2rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .results-error {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 8px;
     padding: 1rem;
-    color: #dc2626;
+    color: var(--color-red-600);
   }
 </style>

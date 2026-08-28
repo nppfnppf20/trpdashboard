@@ -88,15 +88,15 @@
   }
 
   .discipline-section {
-    border-top: 2px solid #e5e7eb;
+    border-top: 2px solid var(--color-gray-200);
     padding-top: 1.5rem;
   }
 
   .report-section h3 {
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 1.25rem;
     margin-bottom: 1rem;
-    border-bottom: 2px solid #e5e7eb;
+    border-bottom: 2px solid var(--color-gray-200);
     padding-bottom: 0.5rem;
   }
 
@@ -104,8 +104,8 @@
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
-    background: #f9fafb;
-    border-radius: 8px;
+    background: var(--color-gray-50);
+    border-radius: var(--radius-md);
     padding: 1.25rem;
   }
 
@@ -117,31 +117,31 @@
 
   .flood-label {
     font-weight: 600;
-    color: #374151;
+    color: var(--color-slate-700);
     font-size: 0.9rem;
   }
 
   .flood-select {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-gray-300);
     border-radius: 6px;
     font-size: 0.875rem;
-    color: #374151;
-    background: white;
+    color: var(--color-slate-700);
+    background: var(--color-white);
     max-width: 280px;
   }
 
   .flood-select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .flood-select.disabled {
-    background: #f3f4f6;
-    color: #9ca3af;
+    background: var(--color-slate-100);
+    color: var(--color-gray-400);
     cursor: not-allowed;
-    border-color: #e5e7eb;
+    border-color: var(--color-gray-200);
   }
 
   .subsection {
@@ -150,7 +150,7 @@
 
   .subsection h4 {
     margin-bottom: 0.75rem;
-    color: #4b5563;
+    color: var(--color-slate-600);
     font-size: 1rem;
     font-weight: 600;
   }

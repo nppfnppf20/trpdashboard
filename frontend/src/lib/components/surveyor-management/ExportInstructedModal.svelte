@@ -82,7 +82,7 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -91,9 +91,9 @@
   }
 
   .modal {
-    background: white;
+    background: var(--color-white);
     border-radius: 10px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-lg);
     width: 100%;
     max-width: 440px;
     display: flex;
@@ -105,7 +105,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 1.125rem 1.25rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .modal-header h3 {
@@ -115,18 +115,18 @@
     gap: 0.5rem;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .modal-header h3 i {
-    color: #dc2626;
+    color: var(--color-red-600);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.1rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 4px;
@@ -134,7 +134,7 @@
     align-items: center;
     transition: color 0.15s;
   }
-  .close-btn:hover { color: #1e293b; }
+  .close-btn:hover { color: var(--color-slate-800); }
 
   .modal-body {
     padding: 1.25rem;
@@ -146,7 +146,7 @@
   .hint {
     margin: 0;
     font-size: 0.8125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.5;
   }
 
@@ -155,12 +155,12 @@
     align-items: flex-start;
     gap: 0.625rem;
     padding: 0.625rem 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.15s;
   }
-  .option-row:hover { border-color: #cbd5e1; background: #f8fafc; }
+  .option-row:hover { border-color: var(--color-slate-300); background: var(--color-slate-50); }
 
   .option-pair {
     display: flex;
@@ -175,7 +175,7 @@
   .pair-hint {
     margin: -0.5rem 0 0;
     font-size: 0.7rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
   }
 
@@ -183,7 +183,7 @@
     margin-top: 0.15rem;
     width: 1rem;
     height: 1rem;
-    accent-color: #3b82f6;
+    accent-color: var(--color-primary-500);
     cursor: pointer;
     flex-shrink: 0;
   }
@@ -197,12 +197,12 @@
   .option-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .option-desc {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.4;
   }
 
@@ -211,7 +211,7 @@
     justify-content: flex-end;
     gap: 0.625rem;
     padding: 1rem 1.25rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
   }
 
   .btn {
@@ -229,16 +229,16 @@
   }
 
   .btn-primary {
-    background: #3b82f6;
-    color: white;
+    background: var(--color-primary-500);
+    color: var(--color-white);
   }
-  .btn-primary:hover:not(:disabled) { background: #2563eb; }
+  .btn-primary:hover:not(:disabled) { background: var(--color-primary-600); }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .btn-secondary {
-    background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    background: var(--color-white);
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
-  .btn-secondary:hover { background: #f8fafc; }
+  .btn-secondary:hover { background: var(--color-slate-50); }
 </style>

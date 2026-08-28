@@ -194,7 +194,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -202,9 +202,9 @@
   }
 
   .modal-content {
-    background: white;
+    background: var(--color-white);
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
     max-width: 95%;
     max-height: 90vh;
     width: 1200px;
@@ -218,12 +218,12 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #dee2e6;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   h2 {
     margin: 0;
-    color: #2c3e50;
+    color: var(--color-slate-800);
     font-size: 1.5rem;
     font-weight: 600;
   }
@@ -235,10 +235,10 @@
   }
 
   .copy-button {
-    background: white;
-    border: 1px solid #d1d5db;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-300);
     border-radius: 0.375rem;
-    color: #6b7280;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.375rem 0.75rem;
     display: inline-flex;
@@ -250,8 +250,8 @@
   }
 
   .copy-button:hover:not(:disabled) {
-    background: #f9fafb;
-    color: #1f2937;
+    background: var(--color-slate-50);
+    color: var(--color-slate-800);
   }
 
   .copy-button:disabled {
@@ -267,7 +267,7 @@
     background: none;
     border: none;
     font-size: 2rem;
-    color: #6c757d;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0;
     width: 2rem;
@@ -277,7 +277,7 @@
   }
 
   .close-button:hover {
-    color: #2c3e50;
+    color: var(--color-slate-800);
   }
 
   .modal-body {
@@ -307,19 +307,19 @@
   .chart-placeholder {
     width: 100%;
     height: 600px;
-    background: #f8f9fa;
-    border: 2px dashed #dee2e6;
+    background: var(--color-slate-50);
+    border: 2px dashed var(--color-slate-200);
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #6c757d;
+    color: var(--color-slate-500);
     font-size: 1.2rem;
   }
 
   .nav-button {
     background: transparent;
-    color: #6c757d;
+    color: var(--color-slate-500);
     border: none;
     width: 50px;
     height: 50px;
@@ -333,7 +333,7 @@
   }
 
   .nav-button:hover:not(:disabled) {
-    color: #2c3e50;
+    color: var(--color-slate-800);
     transform: scale(1.2);
   }
 
@@ -342,7 +342,7 @@
   }
 
   .nav-button:disabled {
-    color: #dee2e6;
+    color: var(--color-slate-200);
     cursor: not-allowed;
   }
 

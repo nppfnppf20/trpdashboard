@@ -332,24 +332,24 @@
     justify-content: center;
     gap: 0.75rem;
     padding: 3rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
-  .error-state i { font-size: 2rem; color: #ef4444; }
+  .error-state i { font-size: 2rem; color: var(--color-red-500); }
   .error-state button {
-    padding: 0.5rem 1rem; background: #9333ea; color: white;
+    padding: 0.5rem 1rem; background: var(--color-purple-600); color: white;
     border: none; border-radius: 6px; cursor: pointer; font-family: inherit;
   }
   .spinner {
     width: 2rem; height: 2rem;
-    border: 3px solid #f3f4f6; border-top-color: #9333ea;
+    border: 3px solid var(--color-slate-100); border-top-color: var(--color-purple-600);
     border-radius: 50%; animation: spin 1s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Form */
   .ph-form-card {
-    background: #faf5ff;
-    border: 1px solid #e9d5ff;
+    background: var(--color-purple-50);
+    border: 1px solid var(--color-violet-200);
     border-radius: 10px;
     padding: 1.25rem;
     display: flex;
@@ -359,7 +359,7 @@
   .form-title {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #7e22ce;
+    color: var(--color-purple-700);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -367,8 +367,8 @@
   .form-section-badge {
     font-size: 0.7rem;
     font-weight: 600;
-    background: #e9d5ff;
-    color: #7e22ce;
+    background: var(--color-violet-200);
+    color: var(--color-purple-700);
     padding: 0.15rem 0.5rem;
     border-radius: 20px;
     text-transform: uppercase;
@@ -378,26 +378,26 @@
   .form-row.two-col { flex-direction: row; gap: 1rem; }
   .form-row.two-col .field { flex: 1; }
   .field { display: flex; flex-direction: column; gap: 0.3rem; }
-  label { font-size: 0.78rem; font-weight: 600; color: #475569; }
+  label { font-size: 0.78rem; font-weight: 600; color: var(--color-slate-600); }
   input[type="text"], input[type="date"] {
     padding: 0.5rem 0.65rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.85rem;
     font-family: inherit;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
   }
   input[type="text"]:focus, input[type="date"]:focus {
     outline: none;
-    border-color: #9333ea;
-    box-shadow: 0 0 0 3px #f3e8ff;
+    border-color: var(--color-purple-600);
+    box-shadow: 0 0 0 3px var(--color-violet-100);
   }
   .form-error {
     font-size: 0.8rem;
-    color: #dc2626;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    color: var(--color-red-600);
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 6px;
     padding: 0.5rem 0.75rem;
   }
@@ -409,18 +409,18 @@
   }
   .btn-cancel {
     padding: 0.45rem 1rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--color-slate-300);
     background: white;
     border-radius: 6px;
     font-size: 0.85rem;
     font-family: inherit;
     cursor: pointer;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
-  .btn-cancel:hover { background: #f8fafc; }
+  .btn-cancel:hover { background: var(--color-slate-50); }
   .btn-save {
     padding: 0.45rem 1.1rem;
-    background: #9333ea;
+    background: var(--color-purple-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -429,13 +429,13 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .btn-save:hover:not(:disabled) { background: #7e22ce; }
+  .btn-save:hover:not(:disabled) { background: var(--color-purple-700); }
   .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
 
   /* Sections */
   .ph-section {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 10px;
     padding: 1rem 1.25rem;
     display: flex;
@@ -452,14 +452,14 @@
     margin: 0;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
   .btn-add {
     display: flex;
     align-items: center;
     gap: 0.4rem;
     padding: 0.4rem 0.85rem;
-    background: #9333ea;
+    background: var(--color-purple-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -470,7 +470,7 @@
     font-family: inherit;
     flex-shrink: 0;
   }
-  .btn-add:hover { background: #7e22ce; }
+  .btn-add:hover { background: var(--color-purple-700); }
 
   /* Empty state */
   .empty-state {
@@ -478,7 +478,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 1.25rem 0.5rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-size: 0.875rem;
   }
   .empty-state i { font-size: 1.25rem; opacity: 0.6; }
@@ -494,38 +494,38 @@
     font-size: 0.85rem;
   }
   .ph-table thead tr {
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
   }
   .ph-table th {
     padding: 0.5rem 0.75rem;
     text-align: left;
     font-size: 0.72rem;
     font-weight: 700;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;
   }
   .ph-table tbody tr {
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
   }
   .ph-table tbody tr:last-child { border-bottom: none; }
-  .ph-table tbody tr:hover { background: #f8fafc; }
+  .ph-table tbody tr:hover { background: var(--color-slate-50); }
   .ph-table td {
     padding: 0.6rem 0.75rem;
-    color: #334155;
+    color: var(--color-slate-700);
     vertical-align: top;
   }
   .cell-ref {
     font-family: monospace;
     font-size: 0.82rem;
-    color: #475569;
+    color: var(--color-slate-600);
     white-space: nowrap;
   }
   .cell-desc { min-width: 200px; line-height: 1.4; }
-  .cell-decision { color: #334155; font-size: 0.82rem; white-space: nowrap; }
-  .cell-date { white-space: nowrap; color: #64748b; font-size: 0.82rem; }
+  .cell-decision { color: var(--color-slate-700); font-size: 0.82rem; white-space: nowrap; }
+  .cell-date { white-space: nowrap; color: var(--color-slate-500); font-size: 0.82rem; }
   .cell-actions {
     white-space: nowrap;
     text-align: right;
@@ -535,9 +535,9 @@
     display: inline-flex; align-items: center; justify-content: center;
     border: none; background: none; cursor: pointer;
     border-radius: 6px;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.9rem;
   }
-  .icon-btn:hover { background: #f1f5f9; color: #1e293b; }
-  .icon-btn.danger:hover { background: #fef2f2; color: #dc2626; }
+  .icon-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
+  .icon-btn.danger:hover { background: var(--color-red-50); color: var(--color-red-600); }
 </style>

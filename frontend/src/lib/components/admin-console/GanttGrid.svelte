@@ -498,18 +498,18 @@
   
   /* Style for key dates row */
   :global(.tabulator-row[data-row-type="header"]) {
-    background: #e5e7eb !important;
+    background: var(--color-slate-200) !important;
     font-weight: 700 !important;
-    border-top: 1px solid #000 !important;
-    border-bottom: 1px solid #000 !important;
+    border-top: 1px solid var(--color-black) !important;
+    border-bottom: 1px solid var(--color-black) !important;
   }
-  
+
   :global(.tabulator-row[data-row-type="header"] .tabulator-cell) {
-    border-right: 1px solid #000 !important;
+    border-right: 1px solid var(--color-black) !important;
   }
-  
+
   :global(.tabulator-row[data-row-type="header"]:hover) {
-    background: #e5e7eb !important;
+    background: var(--color-slate-200) !important;
     cursor: default !important;
   }
   
@@ -525,46 +525,46 @@
   
   :global(.tabulator) {
     font-size: 11px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
   }
-  
+
   :global(.tabulator .tabulator-header) {
-    background-color: #f8fafc;
-    border-bottom: 2px solid #cbd5e1;
+    background-color: var(--color-slate-50);
+    border-bottom: 2px solid var(--color-slate-300);
   }
-  
+
   :global(.tabulator .tabulator-header .tabulator-col) {
-    background-color: #f8fafc;
-    border-right: 1px solid #e2e8f0;
+    background-color: var(--color-slate-50);
+    border-right: 1px solid var(--color-slate-200);
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
   }
-  
+
   :global(.tabulator .tabulator-row) {
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
-  
+
   :global(.tabulator .tabulator-row:hover) {
     background-color: inherit;
   }
-  
+
   :global(.tabulator .tabulator-cell) {
-    border-right: 1px solid #e2e8f0;
+    border-right: 1px solid var(--color-slate-200);
     padding: 4px 6px;
     cursor: default;
   }
-  
+
   :global(.tabulator .tabulator-cell:not(.tabulator-frozen):hover) {
     background-color: inherit;
   }
-  
+
   :global(.tabulator .tabulator-frozen) {
     background-color: white;
-    border-right: 2px solid #cbd5e1;
+    border-right: 2px solid var(--color-slate-300);
   }
-  
+
   :global(.tabulator .tabulator-frozen-left) {
-    border-right: 2px solid #cbd5e1;
+    border-right: 2px solid var(--color-slate-300);
   }
 
   :global(.tabulator .tabulator-cell:not(.tabulator-frozen)) {
@@ -573,15 +573,15 @@
 
   /* Key Survey Windows toggle row */
   :global(.tabulator-row[data-row-type="survey-windows-toggle"]) {
-    background: #f0f9ff !important;
+    background: var(--color-primary-50) !important;
     font-weight: 600 !important;
-    border-top: 1px solid #bae6fd !important;
-    border-bottom: 1px solid #bae6fd !important;
+    border-top: 1px solid var(--color-sky-200) !important;
+    border-bottom: 1px solid var(--color-sky-200) !important;
     cursor: pointer !important;
   }
 
   :global(.tabulator-row[data-row-type="survey-windows-toggle"]:hover) {
-    background: #e0f2fe !important;
+    background: var(--color-sky-100) !important;
   }
 
   :global(.tabulator-row[data-row-type="survey-windows-toggle"] .tabulator-cell) {
@@ -590,13 +590,13 @@
 
   /* Individual survey window rows */
   :global(.tabulator-row[data-row-type="survey-window"]) {
-    background: #fafafa !important;
+    background: var(--color-slate-50) !important;
     font-size: 10px !important;
-    color: #475569 !important;
+    color: var(--color-slate-600) !important;
   }
 
   :global(.tabulator-row[data-row-type="survey-window"]:hover) {
-    background: #fafafa !important;
+    background: var(--color-slate-50) !important;
     cursor: default !important;
   }
 
@@ -622,7 +622,7 @@
     border: none;
     cursor: pointer;
     font-size: 1.1rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     padding: 0 0 0 4px;
     line-height: 1;
     vertical-align: middle;
@@ -630,14 +630,14 @@
   }
 
   :global(.survey-info-btn:hover) {
-    color: #0369a1;
+    color: var(--color-primary-600);
   }
 
   /* Info modal */
   .info-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--overlay-bg);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -657,28 +657,28 @@
     align-items: center;
     justify-content: space-between;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .info-modal-header h3 {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.25rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     cursor: pointer;
     line-height: 1;
     padding: 0;
   }
 
   .close-btn:hover {
-    color: #475569;
+    color: var(--color-slate-600);
   }
 
   .info-modal-body {
@@ -691,13 +691,13 @@
   .info-modal-body p {
     margin: 0;
     font-size: 0.875rem;
-    color: #475569;
+    color: var(--color-slate-600);
     line-height: 1.6;
   }
 
   .info-modal-body a {
     font-size: 0.875rem;
-    color: #0369a1;
+    color: var(--color-primary-600);
     text-decoration: none;
     font-weight: 500;
   }
@@ -714,6 +714,6 @@
 
   :global(.date-icon:hover) {
     transform: scale(1.15);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 </style>

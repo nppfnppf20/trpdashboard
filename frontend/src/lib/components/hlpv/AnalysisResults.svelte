@@ -158,7 +158,7 @@
       <div class="summary-card">
         <h3>Listed Buildings</h3>
         <p class="summary-value">{onSiteBuildings > 0 ? 'Yes' : (surroundingBuildings > 0 ? 'Nearby' : 'No')}</p>
-        <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+        <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
           {onSiteBuildings > 0 ? `(${onSiteBuildings} on-site)` : (surroundingBuildings > 0 ? `(${surroundingBuildings} within 1km)` : `(0 within 1km)`)}
         </p>
       </div>
@@ -166,7 +166,7 @@
       <div class="summary-card">
         <h3>Conservation Areas</h3>
         <p class="summary-value">{onSiteAreas > 0 ? 'Yes' : (surroundingAreas > 0 ? 'Nearby' : 'No')}</p>
-        <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+        <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
           {onSiteAreas > 0 ? `(${onSiteAreas} on-site)` : (surroundingAreas > 0 ? `(${surroundingAreas} within 1km)` : `(0 within 1km)`)}
         </p>
       </div>
@@ -174,7 +174,7 @@
       <div class="summary-card">
         <h3>Scheduled Monuments</h3>
         <p class="summary-value">{onSiteMonuments > 0 ? 'Yes' : (surroundingMonuments > 0 ? 'Nearby' : 'No')}</p>
-        <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+        <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
           {onSiteMonuments > 0 ? `(${onSiteMonuments} on-site)` : (surroundingMonuments > 0 ? `(${surroundingMonuments} within 1km)` : `(0 within 1km)`)}
         </p>
       </div>
@@ -182,7 +182,7 @@
       <div class="summary-card">
         <h3>Parks &amp; Gardens</h3>
         <p class="summary-value">{onSiteParksGardens > 0 ? 'Yes' : (surroundingParksGardens > 0 ? 'Nearby' : 'No')}</p>
-        <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+        <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
           {onSiteParksGardens > 0 ? `(${onSiteParksGardens} on-site)` : (surroundingParksGardens > 0 ? `(${surroundingParksGardens} within 1km)` : `(0 within 1km)`)}
         </p>
       </div>
@@ -190,7 +190,7 @@
       <div class="summary-card">
         <h3>World Heritage Sites</h3>
         <p class="summary-value">{onSiteWorldHeritageSites > 0 ? 'Yes' : (surroundingWorldHeritageSites > 0 ? 'Nearby' : 'No')}</p>
-        <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+        <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
           {onSiteWorldHeritageSites > 0 ? `(${onSiteWorldHeritageSites} on-site)` : (surroundingWorldHeritageSites > 0 ? `(${surroundingWorldHeritageSites} within 1km)` : `(0 within 1km)`)}
         </p>
       </div>

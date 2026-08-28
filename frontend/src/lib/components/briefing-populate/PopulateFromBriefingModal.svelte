@@ -225,7 +225,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -236,7 +236,7 @@
   .modal {
     background: white;
     border-radius: 8px;
-    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
     width: 100%;
     max-width: 680px;
     display: flex;
@@ -249,9 +249,9 @@
     align-items: center;
     justify-content: space-between;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
-    color: #7c3aed;
+    color: var(--color-violet-600);
     gap: 0.625rem;
   }
 
@@ -267,20 +267,20 @@
     margin: 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.25rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     cursor: pointer;
     padding: 0.25rem;
     border-radius: 4px;
   }
 
-  .close-btn:hover { color: #1e293b; }
+  .close-btn:hover { color: var(--color-slate-800); }
 
   .modal-body {
     overflow-y: auto;
@@ -295,18 +295,18 @@
     justify-content: center;
     gap: 0.75rem;
     padding: 3rem 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-align: center;
   }
 
   .state-center i { font-size: 2rem; opacity: 0.6; }
-  .error { color: #dc2626; }
+  .error { color: var(--color-red-600); }
 
   .spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid #e2e8f0;
-    border-top-color: #7c3aed;
+    border: 3px solid var(--color-slate-200);
+    border-top-color: var(--color-violet-600);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -314,7 +314,7 @@
   .spinner-sm {
     width: 14px;
     height: 14px;
-    border: 2px solid rgba(255,255,255,0.4);
+    border: 2px solid rgba(255, 255, 255, 0.4);
     border-top-color: white;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -326,7 +326,7 @@
   .intro {
     margin: 0 0 1.25rem;
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.5;
   }
 
@@ -342,7 +342,7 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
     flex-shrink: 0;
     flex-wrap: wrap;
   }
@@ -351,7 +351,7 @@
     flex: 1;
     margin: 0;
     font-size: 0.8rem;
-    color: #dc2626;
+    color: var(--color-red-600);
   }
 
   .btn {
@@ -369,18 +369,18 @@
 
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-  .btn-primary { background: #7c3aed; color: white; }
-  .btn-primary:hover:not(:disabled) { background: #6d28d9; }
+  .btn-primary { background: var(--color-violet-600); color: white; }
+  .btn-primary:hover:not(:disabled) { background: var(--color-violet-700); }
 
-  .btn-secondary { background: white; color: #64748b; border: 1px solid #cbd5e1; }
-  .btn-secondary:hover:not(:disabled) { background: #f8fafc; }
+  .btn-secondary { background: white; color: var(--color-slate-500); border: 1px solid var(--color-slate-300); }
+  .btn-secondary:hover:not(:disabled) { background: var(--color-slate-50); }
 
   .briefing-select-step { display: flex; flex-direction: column; gap: 1rem; }
 
   .briefing-list {
     display: flex;
     flex-direction: column;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -394,28 +394,28 @@
     padding: 0.625rem 0.875rem;
     background: transparent;
     border: none;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
     font-size: 0.85rem;
-    color: #374151;
+    color: var(--color-slate-700);
     cursor: pointer;
     font-family: inherit;
     transition: background 0.1s;
   }
 
   .briefing-option:last-child { border-bottom: none; }
-  .briefing-option:hover { background: #f8fafc; }
+  .briefing-option:hover { background: var(--color-slate-50); }
 
   .briefing-option--active {
-    background: #eff6ff;
-    color: #1d4ed8;
+    background: var(--color-primary-50);
+    color: var(--color-primary-700);
   }
 
   .briefing-option-title { font-weight: 500; }
 
   .briefing-option-date {
     font-size: 0.72rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
-  .briefing-option--active .briefing-option-date { color: #93c5fd; }
+  .briefing-option--active .briefing-option-date { color: var(--color-primary-200); }
 </style>

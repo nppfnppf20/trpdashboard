@@ -139,7 +139,7 @@
     width: 380px;
     height: 100vh;
     background: white;
-    box-shadow: -4px 0 20px rgba(0,0,0,0.12);
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.12);
     z-index: 1201;
     display: flex;
     flex-direction: column;
@@ -154,7 +154,7 @@
     align-items: flex-start;
     justify-content: space-between;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
     gap: 0.5rem;
   }
@@ -165,28 +165,28 @@
     gap: 0.35rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #9333ea;
+    color: var(--color-purple-600);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
-  .preset-tag { color: #7e22ce; }
-  .header-filename { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin-top: 0.2rem; }
+  .preset-tag { color: var(--color-purple-700); }
+  .header-filename { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); margin-top: 0.2rem; }
 
   .btn-close {
     background: none;
     border: none;
     font-size: 1.2rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     cursor: pointer;
     padding: 0.1rem;
     transition: color 0.15s;
     flex-shrink: 0;
   }
-  .btn-close:hover { color: #1e293b; }
+  .btn-close:hover { color: var(--color-slate-800); }
 
   .sidebar-tabs {
     display: flex;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
 
@@ -197,14 +197,14 @@
     border: none;
     font-size: 0.8rem;
     font-weight: 500;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     border-bottom: 2px solid transparent;
     font-family: inherit;
     transition: color 0.15s, border-color 0.15s;
   }
-  .s-tab.active { color: #9333ea; border-bottom-color: #9333ea; }
-  .s-tab:hover:not(.active) { color: #1e293b; }
+  .s-tab.active { color: var(--color-purple-600); border-bottom-color: var(--color-purple-600); }
+  .s-tab:hover:not(.active) { color: var(--color-slate-800); }
 
   .sidebar-body {
     flex: 1;
@@ -215,7 +215,7 @@
   .section-label {
     font-size: 0.7rem;
     font-weight: 700;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     margin-bottom: 0.5rem;
@@ -224,7 +224,7 @@
   .body-text {
     margin: 0;
     font-size: 0.875rem;
-    color: #374151;
+    color: var(--color-slate-700);
     line-height: 1.65;
   }
 
@@ -237,11 +237,11 @@
 
   .code-badge {
     font-size: 0.7rem; font-weight: 700;
-    background: #f3e8ff; color: #7e22ce;
+    background: var(--color-violet-100); color: var(--color-purple-700);
     padding: 0.2rem 0.5rem; border-radius: 4px;
     flex-shrink: 0;
   }
-  .topic-title { font-size: 0.9rem; font-weight: 600; color: #1e293b; }
+  .topic-title { font-size: 0.9rem; font-weight: 600; color: var(--color-slate-800); }
 
   .pill-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 
@@ -251,42 +251,42 @@
     border: 1px solid; text-transform: capitalize;
   }
   .confidence-pill {
-    font-size: 0.72rem; color: #64748b;
-    background: #f1f5f9; padding: 0.25rem 0.6rem; border-radius: 20px;
+    font-size: 0.72rem; color: var(--color-slate-500);
+    background: var(--color-slate-100); padding: 0.25rem 0.6rem; border-radius: 20px;
   }
-  .not-mentioned { font-size: 0.72rem; color: #94a3b8; font-style: italic; }
+  .not-mentioned { font-size: 0.72rem; color: var(--color-slate-400); font-style: italic; }
 
   .source-quote {
     margin: 0;
     padding: 0.75rem 1rem;
-    border-left: 3px solid #c4b5fd;
-    background: #faf5ff;
+    border-left: 3px solid var(--color-violet-300);
+    background: var(--color-purple-50);
     font-style: italic;
     font-size: 0.8rem;
-    color: #374151;
+    color: var(--color-slate-700);
     line-height: 1.6;
     border-radius: 0 6px 6px 0;
   }
 
   .unmatched-box {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-amber-200);
     border-radius: 6px;
     padding: 0.75rem;
     font-size: 0.875rem;
-    color: #78350f;
+    color: var(--color-amber-800);
     line-height: 1.5;
   }
 
   .suggested-item {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     padding: 0.75rem;
     margin-bottom: 0.5rem;
   }
-  .suggested-title { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
-  .suggested-desc { margin: 0.25rem 0 0 0; font-size: 0.8rem; color: #475569; }
-  .suggested-reason { margin: 0.25rem 0 0 0; font-size: 0.75rem; color: #94a3b8; }
+  .suggested-title { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); }
+  .suggested-desc { margin: 0.25rem 0 0 0; font-size: 0.8rem; color: var(--color-slate-600); }
+  .suggested-reason { margin: 0.25rem 0 0 0; font-size: 0.75rem; color: var(--color-slate-400); }
 
-  .muted { margin: 0; font-size: 0.875rem; color: #94a3b8; font-style: italic; }
+  .muted { margin: 0; font-size: 0.875rem; color: var(--color-slate-400); font-style: italic; }
 </style>

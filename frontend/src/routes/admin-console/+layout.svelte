@@ -46,7 +46,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    background: #f5f7fa;
+    background: var(--color-slate-50);
   }
 
   .admin-header {
@@ -55,8 +55,8 @@
     justify-content: space-between;
     padding: 0.75rem 1.5rem 0;
     background: white;
-    border-bottom: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border-bottom: 1px solid var(--color-slate-200);
+    box-shadow: var(--shadow-sm);
   }
 
   .header-left {
@@ -72,18 +72,18 @@
     gap: 0.5rem;
     padding: 0.5rem 1rem;
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 0.375rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.875rem;
     text-decoration: none;
     transition: all 0.2s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
   }
 
   .home-button:hover {
-    background: #f1f5f9;
-    border-color: #cbd5e1;
+    background: var(--color-slate-100);
+    border-color: var(--color-slate-300);
   }
 
   .home-button i {
@@ -94,14 +94,14 @@
     margin: 0;
     font-size: 1.125rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
     display: flex;
     align-items: center;
     gap: 0.5rem;
   }
 
   .page-title i {
-    color: #3b82f6;
+    color: var(--color-primary-500);
   }
 
   .admin-nav {
@@ -114,7 +114,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 1rem 1.25rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-decoration: none;
     border-bottom: 2px solid transparent;
     font-size: 0.875rem;
@@ -123,13 +123,13 @@
   }
 
   .nav-tab:hover {
-    color: #1e293b;
-    background: #f8fafc;
+    color: var(--color-slate-800);
+    background: var(--color-slate-50);
   }
 
   .nav-tab.active {
-    color: #9333ea;
-    border-bottom-color: #9333ea;
+    color: var(--color-primary-500);
+    border-bottom-color: var(--color-primary-500);
   }
 
   .nav-tab i {

@@ -166,11 +166,11 @@
         <h3>OS Priority Ponds</h3>
         <p class="summary-value">{pondStatus}</p>
         {#if pondStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSitePonds} on site
           </p>
         {:else if pondStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {/if}
@@ -180,11 +180,11 @@
         <h3>Ramsar Sites</h3>
         <p class="summary-value">{ramsarStatus}</p>
         {#if ramsarStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSiteRamsar} on site
           </p>
         {:else if ramsarStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {/if}
@@ -194,11 +194,11 @@
         <h3>Special Protection Areas</h3>
         <p class="summary-value">{spaStatus}</p>
         {#if spaStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSiteSPA} on site
           </p>
         {:else if spaStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {/if}
@@ -208,11 +208,11 @@
         <h3>Special Areas of Conservation</h3>
         <p class="summary-value">{sacStatus}</p>
         {#if sacStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSiteSAC} on site
           </p>
         {:else if sacStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {/if}
@@ -222,11 +222,11 @@
         <h3>GCN Class Survey License Returns</h3>
         <p class="summary-value">{gcnStatus}</p>
         {#if gcnStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSiteGcn} on site
           </p>
         {:else if gcnStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 250m
           </p>
         {/if}
@@ -236,11 +236,11 @@
         <h3>SSSI Sites</h3>
         <p class="summary-value">{sssiStatus}</p>
         {#if sssiStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSiteSSSI} on site
           </p>
         {:else if sssiStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {/if}
@@ -250,11 +250,11 @@
         <h3>National Nature Reserves</h3>
         <p class="summary-value">{nnrStatus}</p>
         {#if nnrStatus === 'Yes'}
-          <p style="font-size: 0.875rem; color: #059669; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-emerald-600); margin: 0.25rem 0 0 0;">
             {onSiteNNR} on site
           </p>
         {:else if nnrStatus === 'Nearby'}
-          <p style="font-size: 0.875rem; color: #d97706; margin: 0.25rem 0 0 0;">
+          <p style="font-size: 0.875rem; color: var(--color-amber-600); margin: 0.25rem 0 0 0;">
             Within 1km
           </p>
         {/if}

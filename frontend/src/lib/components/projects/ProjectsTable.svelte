@@ -3,7 +3,6 @@
   import { goto } from '$app/navigation';
   import ProjectViewModal from './ProjectViewModal.svelte';
   import EditProjectModal from './EditProjectModal.svelte';
-  import '../../styles/buttons.css';
   import { authFetch } from '$lib/api/client.js';
 
   let projects = [];
@@ -432,10 +431,10 @@
 
 <style>
   .projects-table-container {
-    background: white;
+    background: var(--color-white);
     border-radius: 8px;
     padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
@@ -455,7 +454,7 @@
   .table-header h2 {
     margin: 0;
     font-size: 1.5rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .table-controls {
@@ -468,7 +467,7 @@
 
   .search-input {
     padding: 0.5rem 1rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     font-size: 0.875rem;
     width: 250px;
@@ -478,13 +477,13 @@
 
   .search-input:focus {
     outline: none;
-    border-color: #9333ea;
-    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1);
+    border-color: var(--color-primary-600);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .project-count {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-weight: 500;
   }
 
@@ -495,7 +494,7 @@
 
   .table-wrapper {
     overflow-x: auto;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
   }
 
@@ -506,15 +505,15 @@
   }
 
   .projects-table thead {
-    background: #f8fafc;
-    border-bottom: 2px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-bottom: 2px solid var(--color-slate-200);
   }
 
   .projects-table th {
     padding: 0.75rem 1rem;
     text-align: left;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     white-space: nowrap;
     cursor: pointer;
     user-select: none;
@@ -522,11 +521,11 @@
   }
 
   .projects-table th:hover {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
   }
 
   .projects-table th.sorted {
-    color: #9333ea;
+    color: var(--color-primary-600);
   }
 
   .projects-table th i {
@@ -539,22 +538,22 @@
   }
 
   .projects-table th.actions-column:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .projects-table tbody tr {
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     transition: background-color 0.15s;
     cursor: pointer;
   }
 
   .projects-table tbody tr:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .projects-table td {
     padding: 0.75rem 1rem;
-    color: #334155;
+    color: var(--color-slate-700);
   }
 
   .project-id {
@@ -563,7 +562,7 @@
 
   .project-name {
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .lpa-cell {
@@ -575,7 +574,7 @@
 
   .date-cell {
     white-space: nowrap;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .comments-cell {
@@ -599,33 +598,33 @@
   }
 
   .status-not-set {
-    background: #f1f5f9;
-    color: #94a3b8;
+    background: var(--color-slate-100);
+    color: var(--color-slate-400);
   }
 
   .status-prospective {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
   }
 
   .status-instructed {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-badge-info-bg);
+    color: var(--color-badge-info-fg);
   }
 
   .status-submitted {
-    background: #e0e7ff;
-    color: #3730a3;
+    background: var(--color-badge-indigo-bg);
+    color: var(--color-badge-indigo-fg);
   }
 
   .status-post-sub {
-    background: #fce7f3;
-    color: #9d174d;
+    background: var(--color-badge-danger-bg);
+    color: var(--color-badge-danger-fg);
   }
 
   .status-closed {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
 
   .badge {
@@ -638,13 +637,13 @@
   }
 
   .badge-sector {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-badge-info-bg);
+    color: var(--color-badge-info-fg);
   }
 
   .badge-type {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
 
   .loading-state,
@@ -652,7 +651,7 @@
   .empty-state {
     text-align: center;
     padding: 3rem 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .loading-state i,
@@ -661,12 +660,12 @@
     font-size: 3rem;
     margin-bottom: 1rem;
     display: block;
-    color: #cbd5e1;
+    color: var(--color-slate-300);
   }
 
   .spinner {
-    border: 3px solid #f3f4f6;
-    border-top: 3px solid #9333ea;
+    border: 3px solid var(--color-slate-100);
+    border-top: 3px solid var(--color-primary-600);
     border-radius: 50%;
     width: 40px;
     height: 40px;
@@ -683,8 +682,8 @@
   .empty-state button {
     margin-top: 1rem;
     padding: 0.5rem 1rem;
-    background: #9333ea;
-    color: white;
+    background: var(--color-primary-600);
+    color: var(--color-white);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -693,6 +692,6 @@
 
   .error-state button:hover,
   .empty-state button:hover {
-    background: #7e22ce;
+    background: var(--color-primary-700);
   }
 </style>

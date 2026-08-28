@@ -140,14 +140,14 @@
     gap: 0.5rem;
     margin: 0 0 0.4rem;
     font-size: 1.25rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
-  .page-header h2 i { color: #9333ea; }
+  .page-header h2 i { color: var(--color-primary-500); }
 
   .page-header p {
     margin: 0;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.875rem;
     max-width: 70ch;
   }
@@ -155,17 +155,17 @@
   .state-card {
     padding: 2rem;
     text-align: center;
-    color: #64748b;
+    color: var(--color-slate-500);
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
   }
 
-  .state-card.error { color: #dc2626; }
+  .state-card.error { color: var(--color-red-600); }
 
   .group {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 10px;
     overflow: hidden;
   }
@@ -175,9 +175,9 @@
     padding: 0.85rem 1.1rem;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #1e293b;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    color: var(--color-slate-800);
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   table {
@@ -190,15 +190,15 @@
     padding: 0.6rem 1.1rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   td {
     padding: 0.75rem 1.1rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--color-slate-100);
     font-size: 0.875rem;
     vertical-align: middle;
   }
@@ -207,12 +207,12 @@
 
   .process-name {
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
     white-space: nowrap;
   }
 
   .process-desc {
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .status-badge {
@@ -221,15 +221,15 @@
     padding: 0.1rem 0.5rem;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #92400e;
-    background: #fef3c7;
+    color: var(--color-badge-warning-fg);
+    background: var(--color-badge-warning-bg);
     border-radius: 999px;
     white-space: nowrap;
   }
 
   .provider-toggle {
     display: inline-flex;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     overflow: hidden;
   }
@@ -242,17 +242,17 @@
     border: none;
     font-size: 0.8rem;
     font-weight: 500;
-    color: #475569;
+    color: var(--color-slate-600);
     cursor: pointer;
     transition: all 0.15s;
   }
 
-  .provider-toggle button:not(:first-child) { border-left: 1px solid #cbd5e1; }
-  .provider-toggle button:hover:not(:disabled) { background: #f8fafc; }
+  .provider-toggle button:not(:first-child) { border-left: 1px solid var(--color-slate-300); }
+  .provider-toggle button:hover:not(:disabled) { background: var(--color-slate-50); }
   .provider-toggle button:disabled { cursor: not-allowed; }
 
   .provider-toggle button.active {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
   }
 </style>

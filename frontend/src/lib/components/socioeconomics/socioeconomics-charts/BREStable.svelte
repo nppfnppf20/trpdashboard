@@ -194,14 +194,14 @@
 
   .table-header h3 {
     margin: 0;
-    color: #2c3e50;
+    color: var(--color-slate-700);
     font-size: 1.25rem;
     font-weight: 600;
   }
 
   .warnings {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
+    background: var(--color-amber-100);
+    border: 1px solid var(--color-amber-500);
     border-radius: 4px;
     padding: 1rem;
     margin-bottom: 1rem;
@@ -209,14 +209,14 @@
 
   .warnings h4 {
     margin: 0 0 0.5rem 0;
-    color: #856404;
+    color: var(--color-amber-800);
     font-size: 1rem;
   }
 
   .warnings ul {
     margin: 0;
     padding-left: 1.5rem;
-    color: #856404;
+    color: var(--color-amber-800);
   }
 
   .warnings li {
@@ -226,14 +226,14 @@
   .no-data {
     text-align: center;
     padding: 3rem 2rem;
-    background: #f8f9fa;
+    background: var(--color-slate-50);
     border-radius: 4px;
-    color: #7f8c8d;
+    color: var(--color-slate-500);
   }
 
   .table-container {
     overflow: visible;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--color-slate-200);
     border-radius: 4px;
     flex: 1;
   }
@@ -252,13 +252,13 @@
   }
 
   .data-table th {
-    background: #f8f9fa;
+    background: var(--color-slate-50);
     padding: 0.75rem 0.5rem;
     text-align: center;
-    border-bottom: 1px solid #dee2e6;
-    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid var(--color-slate-200);
+    border-right: 1px solid var(--color-slate-200);
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--color-slate-700);
   }
 
   .industry-header {
@@ -266,7 +266,7 @@
     left: 0;
     top: 0;
     z-index: 20;
-    background: #f8f9fa;
+    background: var(--color-slate-50);
     text-align: left;
     box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
     min-width: 300px;
@@ -274,29 +274,29 @@
 
   .geo-header {
     z-index: 10;
-    background: #e9ecef;
+    background: var(--color-slate-200);
   }
 
   .sub-header {
     z-index: 11;
-    background: #f8f9fa;
+    background: var(--color-slate-50);
     font-size: 0.8rem;
-    border-top: 1px solid #dee2e6 !important;
+    border-top: 1px solid var(--color-slate-200) !important;
   }
 
   .data-table td {
     padding: 0.5rem;
-    border-bottom: 1px solid #dee2e6;
-    border-right: 1px solid #dee2e6;
-    color: #495057;
-    background: #fafbfc;
+    border-bottom: 1px solid var(--color-slate-200);
+    border-right: 1px solid var(--color-slate-200);
+    color: var(--color-slate-600);
+    background: var(--color-slate-50);
     text-align: right;
   }
 
   .industry-cell {
     position: sticky;
     left: 0;
-    background: #fafbfc;
+    background: var(--color-slate-50);
     box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
     z-index: 5;
     font-weight: 500;
@@ -313,10 +313,10 @@
   }
 
   .data-table tr:hover td {
-    background: #f1f3f5;
+    background: var(--color-slate-100);
   }
 
   .data-table tr:hover .industry-cell {
-    background: #f1f3f5;
+    background: var(--color-slate-100);
   }
 </style>

@@ -760,14 +760,14 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
     justify-content: space-between;
     align-items: center;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .panel-header h2 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .header-actions {
@@ -781,15 +781,15 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
   }
 
   .unsaved-badge {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
     padding: 0.25rem 0.625rem;
     border-radius: 4px;
     font-weight: 500;
   }
 
   .saved-text {
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .btn {
@@ -806,27 +806,27 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
   }
 
   .btn-primary {
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .btn-primary:disabled {
-    background: #94a3b8;
+    background: var(--color-slate-400);
     cursor: not-allowed;
   }
 
   .btn-secondary {
     background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .btn-secondary:disabled {
@@ -839,9 +839,9 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
     align-items: center;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    background: #fee2e2;
-    border: 1px solid #fecaca;
-    color: #991b1b;
+    background: var(--color-red-100);
+    border: 1px solid var(--color-red-200);
+    color: var(--color-red-800);
     margin: 1.5rem;
     border-radius: 6px;
   }
@@ -854,7 +854,7 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
     margin-left: auto;
     background: none;
     border: none;
-    color: #991b1b;
+    color: var(--color-red-800);
     cursor: pointer;
     padding: 0.25rem;
     font-size: 1.25rem;
@@ -872,8 +872,8 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
   }
 
   .info-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1.25rem;
   }
@@ -882,8 +882,8 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
     margin: 0 0 1rem 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #475569;
-    border-bottom: 2px solid #cbd5e1;
+    color: var(--color-slate-600);
+    border-bottom: 2px solid var(--color-slate-300);
     padding-bottom: 0.5rem;
   }
 
@@ -902,14 +902,14 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
 
   .info-row .label {
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
     min-width: 180px;
     flex-shrink: 0;
     padding-top: 0.25rem;
   }
 
   .info-row .value {
-    color: #1e293b;
+    color: var(--color-slate-800);
     flex: 1;
     min-width: 0;
     word-wrap: break-word;
@@ -946,10 +946,10 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
     width: 100%;
     min-width: 0;
     padding: 0.5rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 4px;
     font-size: 0.875rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     background: white;
     font-family: inherit;
     box-sizing: border-box;
@@ -958,8 +958,8 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
   .value-input:focus,
   .value-textarea:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .value-textarea {
@@ -968,7 +968,7 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
   }
 
   .info-row .value a {
-    color: #3b82f6;
+    color: var(--color-primary-500);
     text-decoration: none;
     word-break: break-all;
   }
@@ -978,7 +978,7 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
   }
 
   .project-code {
-    color: #9333ea;
+    color: var(--color-primary-500);
     font-weight: 600;
   }
 

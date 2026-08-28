@@ -99,7 +99,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 255, 255, 0.9);
+    background: color-mix(in srgb, var(--color-white) 90%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -116,15 +116,15 @@
   .spinner {
     width: 3rem;
     height: 3rem;
-    border: 3px solid #f3f4f6;
-    border-top: 3px solid #3b82f6;
+    border: 3px solid var(--color-slate-100);
+    border-top: 3px solid var(--color-primary-500);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
 
   .loading-spinner p {
     margin: 0;
-    color: #374151;
+    color: var(--color-slate-700);
     font-weight: 500;
     font-size: 1rem;
   }

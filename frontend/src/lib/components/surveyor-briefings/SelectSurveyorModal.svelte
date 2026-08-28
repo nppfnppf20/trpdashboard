@@ -1,7 +1,6 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
   import { getAllSurveyorOrganisations } from '$lib/api/surveyorOrganisations.js';
-  import '$lib/styles/tables.css';
 
   export let show = false;
   export let selectedSurveyors = []; // Array of { surveyorId, contactId } to show which are already selected
@@ -330,7 +329,7 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -343,7 +342,7 @@
   .modal-content {
     background: white;
     border-radius: 12px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-modal);
     width: 95%;
     max-width: 1200px;
     max-height: 90vh;
@@ -356,28 +355,28 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .modal-subtitle {
     margin: 0.25rem 0 0 0;
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .close-btn {
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     padding: 0.25rem;
     line-height: 1;
@@ -385,7 +384,7 @@
   }
 
   .close-btn:hover {
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .modal-body {
@@ -399,8 +398,8 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
-    background: #f8fafc;
+    border-top: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
   .btn {
@@ -418,12 +417,12 @@
 
   .btn-secondary {
     background: white;
-    color: #64748b;
-    border: 1px solid #cbd5e1;
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-300);
   }
 
   .btn-secondary:hover {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
   }
 
   /* States */
@@ -433,18 +432,18 @@
     align-items: center;
     justify-content: center;
     padding: 3rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .error-state {
-    color: #ef4444;
+    color: var(--color-red-500);
   }
 
   .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid #e2e8f0;
-    border-top-color: #3b82f6;
+    border: 3px solid var(--color-slate-200);
+    border-top-color: var(--color-primary-500);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin-bottom: 1rem;
@@ -473,15 +472,15 @@
   .table-search input {
     width: 100%;
     padding: 0.625rem 1rem 0.625rem 2.5rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-size: 0.875rem;
   }
 
   .table-search input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .table-search-icon {
@@ -489,12 +488,12 @@
     left: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .table-results-count {
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   /* Table */
@@ -518,14 +517,14 @@
     justify-content: space-between;
     gap: 1rem;
     padding: 0.5rem 0.75rem;
-    background: #f8fafc;
+    background: var(--color-slate-50);
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
   }
 
   .contact-row.is-primary {
-    background: #f0f9ff;
-    border-color: #bfdbfe;
+    background: var(--color-primary-50);
+    border-color: var(--color-primary-200);
   }
 
   .contact-info {
@@ -538,7 +537,7 @@
 
   .contact-name {
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
     font-size: 0.875rem;
     display: flex;
     align-items: center;
@@ -548,8 +547,8 @@
   .primary-badge {
     display: inline-block;
     padding: 0.125rem 0.375rem;
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-primary-100);
+    color: var(--color-primary-800);
     border-radius: 4px;
     font-size: 0.6875rem;
     font-weight: 600;
@@ -557,7 +556,7 @@
   }
 
   .contact-email {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.8125rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -569,7 +568,7 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.375rem 0.75rem;
-    background: #3b82f6;
+    background: var(--color-primary-500);
     color: white;
     border: none;
     border-radius: 4px;
@@ -582,11 +581,11 @@
   }
 
   .select-btn:hover:not(:disabled) {
-    background: #2563eb;
+    background: var(--color-primary-600);
   }
 
   .select-btn.selected {
-    background: #10b981;
+    background: var(--color-emerald-500);
     cursor: default;
   }
 
@@ -598,8 +597,8 @@
   .discipline-badge {
     display: inline-block;
     padding: 0.25rem 0.75rem;
-    background: #ebf8ff;
-    color: #2c5282;
+    background: var(--color-primary-50);
+    color: var(--color-slate-600);
     border-radius: 12px;
     font-size: 0.875rem;
     font-weight: 500;
@@ -610,7 +609,7 @@
   }
 
   .text-muted {
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .rating-badge {
@@ -633,18 +632,18 @@
   }
 
   .status-approved {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--color-emerald-100);
+    color: var(--color-emerald-800);
   }
 
   .status-rejected {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--color-red-100);
+    color: var(--color-red-800);
   }
 
   .status-unknown {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-amber-100);
+    color: var(--color-amber-800);
   }
 
   .bold-cell {
@@ -654,7 +653,7 @@
   .no-results-row td {
     text-align: center;
     padding: 2rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   /* Sortable headers */
@@ -664,7 +663,7 @@
   }
 
   .sortable:hover {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
   }
 
   .sort-indicator {

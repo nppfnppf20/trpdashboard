@@ -8,7 +8,7 @@
     align-items: center;
     justify-content: center;
     height: 60vh;
-    color: #9ca3af;
+    color: var(--color-slate-400);
     font-size: 1rem;
   }
 </style>

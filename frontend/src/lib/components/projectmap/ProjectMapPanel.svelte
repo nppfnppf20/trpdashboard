@@ -886,35 +886,35 @@
           <div class="status-legend">
             <div class="legend-title">Development Status</div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #10b981;"></span>
+              <span class="legend-color" style="background-color: var(--color-emerald-500);"></span>
               <span class="legend-label">Operational</span>
             </div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #f59e0b;"></span>
+              <span class="legend-color" style="background-color: var(--color-amber-500);"></span>
               <span class="legend-label">Under Construction</span>
             </div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #eab308;"></span>
+              <span class="legend-color" style="background-color: var(--color-amber-500);"></span>
               <span class="legend-label">Awaiting Construction</span>
             </div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #3b82f6;"></span>
+              <span class="legend-color" style="background-color: var(--color-primary-500);"></span>
               <span class="legend-label">Application Submitted</span>
             </div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #ef4444;"></span>
+              <span class="legend-color" style="background-color: var(--color-red-500);"></span>
               <span class="legend-label">Application Refused</span>
             </div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #8b5cf6;"></span>
+              <span class="legend-color" style="background-color: var(--color-violet-600);"></span>
               <span class="legend-label">No Application Required</span>
             </div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #6b7280;"></span>
+              <span class="legend-color" style="background-color: var(--color-slate-500);"></span>
               <span class="legend-label">Permission Expired</span>
             </div>
             <div class="legend-item">
-              <span class="legend-color" style="background-color: #4b5563;"></span>
+              <span class="legend-color" style="background-color: var(--color-slate-600);"></span>
               <span class="legend-label">Abandoned</span>
             </div>
           </div>
@@ -971,10 +971,10 @@
     gap: 8px;
     font-weight: 600;
     font-size: 14px;
-    color: #1e293b;
+    color: var(--color-slate-800);
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .controls-header i {
@@ -992,12 +992,12 @@
   .group-header {
     font-weight: 600;
     font-size: 12px;
-    color: #64748b;
+    color: var(--color-slate-500);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
     padding-bottom: 4px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .layer-subgroup {
@@ -1007,7 +1007,7 @@
   .subgroup-header {
     font-weight: 500;
     font-size: 11px;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     margin-bottom: 6px;
     font-style: italic;
   }
@@ -1026,7 +1026,7 @@
     gap: 8px;
     cursor: pointer;
     font-size: 13px;
-    color: #334155;
+    color: var(--color-slate-700);
   }
 
   .checkbox-label input[type="checkbox"] {
@@ -1045,43 +1045,43 @@
     height: 12px;
     border-radius: 50%;
     border: 2px solid white;
-    box-shadow: 0 0 0 1px #cbd5e1;
+    box-shadow: 0 0 0 1px var(--color-slate-300);
   }
 
   .layer-color.renewables {
-    background-color: #16a34a;
+    background-color: var(--color-emerald-600);
   }
 
   .layer-color.datacentres {
-    background-color: #3b82f6;
+    background-color: var(--color-primary-500);
   }
 
   .layer-color.projects {
-    background-color: #a855f7;
+    background-color: var(--color-purple-600);
   }
 
   .layer-color.trp-commercial {
-    background-color: #f97316;
+    background-color: var(--color-amber-600);
   }
 
   .layer-color.trp-energy {
-    background-color: #eab308;
+    background-color: var(--color-amber-500);
   }
 
   .layer-color.trp-residential {
-    background-color: #14b8a6;
+    background-color: var(--color-emerald-500);
   }
 
   .layer-color.repd-solar {
-    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #10b981 100%);
+    background: linear-gradient(135deg, var(--color-amber-500) 0%, var(--color-amber-500) 50%, var(--color-emerald-500) 100%);
   }
 
   .layer-color.repd-wind {
-    background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 50%, #10b981 100%);
+    background: linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-primary-500) 50%, var(--color-emerald-500) 100%);
   }
 
   .layer-color.repd-battery {
-    background: linear-gradient(135deg, #10b981 0%, #eab308 50%, #3b82f6 100%);
+    background: linear-gradient(135deg, var(--color-emerald-500) 0%, var(--color-amber-500) 50%, var(--color-primary-500) 100%);
   }
 
   .layer-name {
@@ -1089,7 +1089,7 @@
   }
 
   .layer-count {
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 12px;
   }
 
@@ -1097,13 +1097,13 @@
   .status-legend {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
   }
 
   .legend-title {
     font-size: 11px;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-slate-600);
     margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -1120,24 +1120,24 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    border: 1px solid #000000;
+    border: 1px solid var(--color-black);
     flex-shrink: 0;
   }
 
   .legend-label {
     font-size: 11px;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.2;
   }
 
   .error-message {
     margin-top: 8px;
     padding: 8px;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 4px;
     font-size: 12px;
-    color: #991b1b;
+    color: var(--color-red-800);
     display: flex;
     align-items: center;
     gap: 6px;

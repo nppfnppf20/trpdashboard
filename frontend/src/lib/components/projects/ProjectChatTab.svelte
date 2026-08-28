@@ -471,7 +471,7 @@
   .pc-sources {
     width: 280px;
     flex-shrink: 0;
-    border-right: 1px solid #e2e8f0;
+    border-right: 1px solid var(--color-slate-200);
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -486,7 +486,7 @@
   .pc-sources-loading,
   .pc-sources-error {
     padding: 1rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-size: 0.85rem;
     display: flex;
     flex-direction: column;
@@ -496,7 +496,7 @@
 
   .pc-sources-error button {
     padding: 0.3rem 0.75rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     background: white;
     cursor: pointer;
@@ -509,16 +509,16 @@
     padding: 0.3rem 0.5rem;
     border-radius: 6px;
     font-size: 0.85rem;
-    color: #334155;
+    color: var(--color-slate-700);
     cursor: pointer;
   }
 
-  .pc-row:hover { background: #f8fafc; }
+  .pc-row:hover { background: var(--color-slate-50); }
   .pc-row input[type="checkbox"] { flex-shrink: 0; cursor: pointer; }
 
   .pc-row-all {
     font-weight: 600;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-slate-200);
     border-radius: 0;
     margin-bottom: 0.4rem;
     padding-bottom: 0.5rem;
@@ -536,7 +536,7 @@
     border: none;
     padding: 0;
     font-size: 0.85rem;
-    color: #334155;
+    color: var(--color-slate-700);
     cursor: pointer;
     flex: 1;
     text-align: left;
@@ -558,8 +558,8 @@
     display: inline-block;
     margin-left: 0.35rem;
     font-size: 0.68rem;
-    color: #64748b;
-    background: #f1f5f9;
+    color: var(--color-slate-500);
+    background: var(--color-slate-100);
     padding: 0.05rem 0.35rem;
     border-radius: 4px;
   }
@@ -567,36 +567,36 @@
   .pc-empty-items {
     padding: 0.2rem 0.5rem 0.2rem 1.85rem;
     font-size: 0.78rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
   }
 
   .pc-chars {
     margin-left: auto;
     font-size: 0.72rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     flex-shrink: 0;
   }
 
   /* ── Context meter (StartingDocsModal pattern) ── */
   .pc-context-bar {
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
     padding: 0.6rem 0.75rem;
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    background: #fafbfc;
+    background: var(--color-slate-50);
   }
 
   .pc-context-label {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .pc-context-track {
     height: 6px;
     border-radius: 3px;
-    background: #e2e8f0;
+    background: var(--color-slate-200);
     overflow: hidden;
   }
 
@@ -608,7 +608,7 @@
 
   .pc-context-warning {
     font-size: 0.72rem;
-    color: #dc2626;
+    color: var(--color-red-600);
   }
 
   /* ── Chat panel ── */
@@ -632,7 +632,7 @@
   .pc-chat-empty {
     margin: auto;
     text-align: center;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     max-width: 340px;
   }
 
@@ -655,14 +655,14 @@
   }
 
   .pc-bubble-user {
-    background: #6d28d9;
+    background: var(--color-violet-700);
     color: white;
     border-bottom-right-radius: 4px;
   }
 
   .pc-bubble-ai {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--color-slate-100);
+    color: var(--color-slate-800);
     border-bottom-left-radius: 4px;
     white-space: normal;
   }
@@ -671,14 +671,14 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .pc-bubble-ai :global(.cite-chip),
   .pc-citation .cite-chip {
     display: inline-block;
-    background: #ede9fe;
-    color: #6d28d9;
+    background: var(--color-violet-100);
+    color: var(--color-violet-700);
     font-size: 0.72rem;
     font-weight: 600;
     padding: 0 0.35rem;
@@ -696,7 +696,7 @@
     border: none;
     padding: 0;
     font-size: 0.75rem;
-    color: #6d28d9;
+    color: var(--color-violet-700);
     cursor: pointer;
     font-weight: 600;
   }
@@ -710,7 +710,7 @@
 
   .pc-citation {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 0.45rem 0.6rem;
   }
@@ -725,28 +725,28 @@
   .pc-citation-source {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #334155;
+    color: var(--color-slate-700);
   }
 
   .pc-citation-ref {
     font-size: 0.72rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .pc-citation-quote {
     margin-top: 0.25rem;
     font-size: 0.78rem;
     font-style: italic;
-    color: #475569;
+    color: var(--color-slate-600);
   }
 
   .pc-send-error {
     margin: 0 1.25rem 0.5rem;
     padding: 0.5rem 0.75rem;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
     border-radius: 8px;
-    color: #b91c1c;
+    color: var(--color-red-800);
     font-size: 0.8rem;
     display: flex;
     align-items: center;
@@ -757,14 +757,14 @@
     display: flex;
     gap: 0.5rem;
     padding: 0.75rem 1.25rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--color-slate-200);
     align-items: flex-end;
   }
 
   .pc-input-row textarea {
     flex: 1;
     resize: none;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-slate-300);
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
@@ -774,7 +774,7 @@
 
   .pc-input-row textarea:focus {
     outline: none;
-    border-color: #8b5cf6;
+    border-color: var(--color-violet-600);
   }
 
   .pc-send-btn {
@@ -783,7 +783,7 @@
     flex-shrink: 0;
     border: none;
     border-radius: 8px;
-    background: #6d28d9;
+    background: var(--color-violet-700);
     color: white;
     font-size: 1.1rem;
     cursor: pointer;
@@ -793,15 +793,15 @@
   }
 
   .pc-send-btn:disabled {
-    background: #cbd5e1;
+    background: var(--color-slate-300);
     cursor: not-allowed;
   }
 
   .mini-spinner {
     width: 14px;
     height: 14px;
-    border: 2px solid #e2e8f0;
-    border-top-color: #6d28d9;
+    border: 2px solid var(--color-slate-200);
+    border-top-color: var(--color-violet-700);
     border-radius: 50%;
     animation: pc-spin 0.7s linear infinite;
     flex-shrink: 0;

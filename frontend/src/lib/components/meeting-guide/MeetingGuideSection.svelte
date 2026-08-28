@@ -39,7 +39,7 @@
 
 <style>
   .guide-section {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -51,14 +51,14 @@
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: #f8fafc;
+    background: var(--color-slate-50);
     border: none;
     cursor: pointer;
     text-align: left;
   }
 
   .section-header:hover {
-    background: #f1f5f9;
+    background: var(--color-slate-100);
   }
 
   .section-header--with-note {
@@ -68,14 +68,14 @@
   .header-note {
     margin: 0;
     padding: 0 1rem 0.75rem 1rem;
-    background: #f8fafc;
+    background: var(--color-slate-50);
     font-size: 0.78rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.5;
   }
 
   .guide-section.on-file .header-note {
-    background: #f0fdf4;
+    background: var(--color-slate-100);
   }
 
   .header-left {
@@ -85,11 +85,11 @@
   }
 
   .guide-section.on-file {
-    border-color: #bbf7d0;
+    border-color: var(--color-emerald-100);
   }
 
   .guide-section.on-file .section-header {
-    background: #f0fdf4;
+    background: var(--color-slate-100);
   }
 
   .on-file-tag {
@@ -98,8 +98,8 @@
     gap: 0.25rem;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #16a34a;
-    background: #dcfce7;
+    color: var(--color-emerald-600);
+    background: var(--color-emerald-100);
     padding: 0.1rem 0.5rem;
     border-radius: 999px;
     white-space: nowrap;
@@ -109,10 +109,10 @@
     margin: 0;
     padding: 0.625rem 1rem 0.375rem 1rem;
     font-size: 0.78rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-style: italic;
     line-height: 1.5;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--color-slate-100);
   }
 
   .section-note + .questions {
@@ -121,19 +121,19 @@
 
   .chevron {
     font-size: 0.9rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .section-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .feeds-tag {
     font-size: 0.7rem;
-    color: #7c3aed;
-    background: #f3e8ff;
+    color: var(--color-violet-600);
+    background: var(--color-violet-100);
     padding: 0.15rem 0.5rem;
     border-radius: 999px;
     white-space: nowrap;
@@ -146,12 +146,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--color-slate-100);
   }
 
   .questions li {
     font-size: 0.825rem;
-    color: #475569;
+    color: var(--color-slate-600);
     line-height: 1.5;
   }
 </style>

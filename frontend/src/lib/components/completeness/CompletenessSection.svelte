@@ -26,7 +26,7 @@
 
 <style>
   .section {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -36,8 +36,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.75rem 1rem;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
   }
 
   .section-title {
@@ -49,12 +49,12 @@
   .section-label {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .section-count {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-weight: 400;
   }
 

@@ -804,13 +804,13 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: #fffbeb;
-    border: 1px solid #fcd34d;
+    background: var(--color-badge-warning-bg);
+    border: 1px solid var(--color-amber-200);
     border-radius: 8px;
     padding: 0.75rem 1.25rem;
     margin-bottom: 1rem;
     font-size: 0.875rem;
-    color: #92400e;
+    color: var(--color-badge-warning-fg);
   }
 
   .appeal-warning i {
@@ -823,8 +823,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
     padding: 1rem 1.5rem;
     margin-bottom: 1.5rem;
@@ -840,25 +840,25 @@
   .project-label {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .project-value {
     font-size: 0.875rem;
     font-weight: 500;
-    color: #1e293b;
+    color: var(--color-slate-800);
   }
 
   .project-hint {
     font-size: 0.8125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     font-style: italic;
   }
 
   .refresh-btn-inline {
     padding: 0.5rem 0.75rem;
-    background: #ef4444;
-    color: white;
+    background: var(--color-red-500);
+    color: var(--color-white);
     border: none;
     border-radius: 6px;
     font-size: 0.875rem;
@@ -871,7 +871,7 @@
   }
 
   .refresh-btn-inline:hover {
-    background: #dc2626;
+    background: var(--color-red-600);
   }
 
   .refresh-btn-inline i {

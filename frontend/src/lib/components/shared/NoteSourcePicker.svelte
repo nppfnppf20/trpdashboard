@@ -129,14 +129,14 @@
   .picker-hint {
     margin: 0;
     font-size: 0.8125rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     line-height: 1.5;
   }
 
   .picker-empty {
     margin: 0;
     font-size: 0.8125rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     font-style: italic;
   }
 
@@ -149,7 +149,7 @@
   .picker-field label {
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #374151;
+    color: var(--color-slate-700);
   }
 
   .source-list {
@@ -158,7 +158,7 @@
     gap: 0.375rem;
     max-height: 180px;
     overflow-y: auto;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 6px;
     padding: 0.5rem;
   }
@@ -173,7 +173,7 @@
   }
 
   .source-row:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .source-checkbox {
@@ -181,7 +181,7 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.8125rem;
-    color: #1e293b;
+    color: var(--color-slate-800);
     cursor: pointer;
     min-width: 0;
   }
@@ -194,7 +194,7 @@
 
   .source-date {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -204,7 +204,7 @@
     align-items: center;
     gap: 0.3rem;
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
@@ -223,18 +223,18 @@
 
   .context-meter-label {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-slate-500);
   }
 
   .context-warning {
-    color: #dc2626;
+    color: var(--color-red-600);
     font-weight: 500;
   }
 
   .context-track {
     width: 100%;
     height: 5px;
-    background: #e2e8f0;
+    background: var(--color-slate-200);
     border-radius: 999px;
     overflow: hidden;
   }

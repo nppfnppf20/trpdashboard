@@ -1,7 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { deleteSentRequest } from '$lib/api/quoteRequests.js';
-  import '$lib/styles/buttons.css';
 
   export let sentRequests = [];
 
@@ -139,7 +138,7 @@
     align-items: center;
     justify-content: center;
     padding: 3rem;
-    color: #94a3b8;
+    color: var(--color-slate-400);
   }
 
   .empty i {
@@ -153,7 +152,7 @@
        section below stays reachable */
     max-height: 420px;
     overflow-y: auto;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     border-radius: 8px;
   }
 
@@ -172,21 +171,21 @@
   .data-table th {
     text-align: left;
     padding: 0.75rem 1rem;
-    background: #f8fafc;
-    color: #475569;
+    background: var(--color-slate-50);
+    color: var(--color-slate-600);
     font-weight: 600;
-    border-bottom: 2px solid #e2e8f0;
+    border-bottom: 2px solid var(--color-slate-200);
     white-space: nowrap;
   }
 
   .data-table td {
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid #e2e8f0;
-    color: #1e293b;
+    border-bottom: 1px solid var(--color-slate-200);
+    color: var(--color-slate-800);
   }
 
   .data-table tbody tr:hover {
-    background: #f8fafc;
+    background: var(--color-slate-50);
   }
 
   .recipients {
@@ -205,8 +204,8 @@
   .discipline-tag {
     display: inline-block;
     padding: 0.125rem 0.5rem;
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--color-primary-100);
+    color: var(--color-primary-800);
     border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 500;
