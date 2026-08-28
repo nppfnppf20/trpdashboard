@@ -444,7 +444,7 @@
                   {:else if item.status === 'saved'}
                     <i class="las la-check-circle bi-status-done"></i>
                     <span class="bi-card-filename">{item.label}</span>
-                    <span class="bi-saved-badge">Saved</span>
+                    <span class="badge badge-success bi-saved-badge">Saved</span>
                   {:else}
                     <button
                       class="bi-accept-toggle"
@@ -785,7 +785,7 @@
   .bi-pos-conditional { background: var(--color-amber-100); color: var(--color-amber-600); }
   .bi-pos-neutral     { background: var(--color-slate-100); color: var(--color-slate-500); }
 
-  .bi-saved-badge { font-size: 0.68rem; font-weight: 700; color: var(--color-emerald-600); background: var(--color-emerald-100); padding: 0.1rem 0.45rem; border-radius: 999px; }
+  .bi-saved-badge { font-size: 0.68rem; padding: 0.1rem 0.45rem; }
 
   .bi-card-error-msg { margin: 0 0 0.5rem; padding: 0 0.875rem; font-size: 0.75rem; color: var(--color-red-600); }
   .bi-card-preview   { padding: 0 0.875rem 0.625rem; }

@@ -262,9 +262,9 @@
                 </div>
                 <div class="card-header-right">
                   {#if isAccepted}
-                    <span class="status-badge accepted">Included</span>
+                    <span class="badge badge-success">Included</span>
                   {:else}
-                    <span class="status-badge skipped">Skipped</span>
+                    <span class="badge badge-neutral">Skipped</span>
                   {/if}
                 </div>
               </div>
@@ -698,25 +698,6 @@
 
   .card-header-right {
     flex-shrink: 0;
-  }
-
-  .status-badge {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.2rem 0.6rem;
-    border-radius: 999px;
-  }
-
-  .status-badge.accepted {
-    background: var(--color-emerald-100);
-    color: var(--color-emerald-800);
-  }
-
-  .status-badge.skipped {
-    background: var(--color-slate-100);
-    color: var(--color-slate-400);
   }
 
   /* ── Surveyors section ───────────────────────────────────────────────────── */

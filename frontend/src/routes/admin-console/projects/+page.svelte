@@ -612,35 +612,6 @@
     background: var(--color-slate-50);
   }
   
-  .badge {
-    display: inline-block;
-    padding: 0.25rem 0.625rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-transform: capitalize;
-  }
-  
-  .badge-pending {
-    background: var(--color-badge-warning-bg);
-    color: var(--color-badge-warning-fg);
-  }
-
-  .badge-instructed {
-    background: var(--color-badge-info-bg);
-    color: var(--color-badge-info-fg);
-  }
-
-  .badge-in-progress {
-    background: var(--color-badge-indigo-bg);
-    color: var(--color-badge-indigo-fg);
-  }
-
-  .badge-completed {
-    background: var(--color-badge-success-bg);
-    color: var(--color-badge-success-fg);
-  }
-  
   .gantt-wrapper {
     flex: 1;
     overflow: auto;

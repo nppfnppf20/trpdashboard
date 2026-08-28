@@ -33,6 +33,32 @@
   color: var(--color-badge-success-fg);
 }
 
+/* Generic semantic badges — prefer these over ad-hoc same-purpose classes */
+.badge-warning {
+  background: var(--color-badge-warning-bg);
+  color: var(--color-badge-warning-fg);
+}
+
+.badge-info {
+  background: var(--color-badge-info-bg);
+  color: var(--color-badge-info-fg);
+}
+
+.badge-success {
+  background: var(--color-badge-success-bg);
+  color: var(--color-badge-success-fg);
+}
+
+.badge-danger {
+  background: var(--color-badge-danger-bg);
+  color: var(--color-badge-danger-fg);
+}
+
+.badge-neutral {
+  background: var(--color-slate-100);
+  color: var(--color-slate-600);
+}
+
 /* Badge-styled dropdown select */
 .badge-select {
   display: inline-block;

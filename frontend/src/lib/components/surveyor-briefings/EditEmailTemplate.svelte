@@ -107,7 +107,7 @@
       <div class="header-right">
         <div class="save-status">
           {#if hasUnsavedChanges}
-            <span class="unsaved-badge">Unsaved changes</span>
+            <span class="badge badge-warning">Unsaved changes</span>
           {:else if lastSaved}
             <span class="saved-text">{formatLastSaved()}</span>
           {/if}
@@ -264,14 +264,6 @@
 
   .save-status {
     font-size: 0.875rem;
-  }
-
-  .unsaved-badge {
-    background: var(--color-amber-100);
-    color: var(--color-amber-800);
-    padding: 0.25rem 0.625rem;
-    border-radius: 4px;
-    font-weight: 500;
   }
 
   .saved-text {

@@ -15,7 +15,7 @@
 
   const SENTIMENT_STYLES = {
     positive:      { bg: '#f0fdf4', color: '#166534', border: '#86efac' },
-    neutral:       { bg: '#fffbeb', color: '#92400e', border: '#fde68a' },
+    neutral:       { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
     negative:      { bg: '#fef2f2', color: '#991b1b', border: '#fca5a5' },
     not_mentioned: { bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0' }
   };

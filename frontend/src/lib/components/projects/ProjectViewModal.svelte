@@ -239,6 +239,13 @@
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
+  // Same status → color mapping as ProjectsTable's status badges, so the
+  // header badge here actually reflects the project's real status.
+  function statusClass(status) {
+    if (!status) return 'not-set';
+    return status.toLowerCase().replace(/\s+/g, '-').replace('post-submission', 'post-sub');
+  }
+
   async function loadSavedConflictCheck() {
     if (!projectData?.id) return;
 
@@ -646,7 +653,7 @@
           <div class="modal-breadcrumb">{projectData?.project_name || 'Project Workspace'}</div>
           <h2>
             {tabLabels[activeTab] || 'Project Workspace'}
-            {#if projectData?.status}<span class="status-badge">{projectData.status}</span>{/if}
+            {#if projectData?.status}<span class="status-badge status-{statusClass(projectData.status)}">{projectData.status}</span>{/if}
           </h2>
         </div>
         <div class="header-actions">
@@ -1695,13 +1702,37 @@
     gap: 0.625rem;
   }
 
-  .status-badge {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    padding: 0.1875rem 0.625rem;
-    border-radius: 6px;
+  /* Shape/weight come from the shared tables.css .status-badge (same
+     class name); these are the same status-color variants ProjectsTable
+     uses, so the header badge matches the table's colors for the same status. */
+  .status-not-set {
+    background: var(--color-slate-100);
+    color: var(--color-slate-400);
+  }
+
+  .status-prospective {
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
+  }
+
+  .status-instructed {
     background: var(--color-badge-info-bg);
     color: var(--color-badge-info-fg);
+  }
+
+  .status-submitted {
+    background: var(--color-badge-indigo-bg);
+    color: var(--color-badge-indigo-fg);
+  }
+
+  .status-post-sub {
+    background: var(--color-badge-danger-bg);
+    color: var(--color-badge-danger-fg);
+  }
+
+  .status-closed {
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
 
   .header-actions {

@@ -278,7 +278,7 @@
             {#each filteredSurveyors as surveyor}
               <tr>
                 <td class="bold-cell">{surveyor.organisation}</td>
-                <td><span class="discipline-badge">{surveyor.discipline}</span></td>
+                <td><span class="badge badge-info discipline-badge">{surveyor.discipline}</span></td>
                 <td>{surveyor.location || '-'}</td>
                 <td>
                   {#if surveyor.contacts && surveyor.contacts.length > 0}
@@ -460,13 +460,7 @@
 
   /* Surveyor-specific styles */
   .discipline-badge {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    background: var(--color-badge-info-bg);
-    color: var(--color-badge-info-fg);
-    border-radius: 12px;
     font-size: 0.875rem;
-    font-weight: 500;
   }
 
   .contact-info {

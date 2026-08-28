@@ -94,7 +94,7 @@
                 <td class="process-desc">
                   {item.description}
                   {#if STATUS_LABEL[item.status]}
-                    <span class="status-badge">{STATUS_LABEL[item.status]}</span>
+                    <span class="badge badge-warning status-badge">{STATUS_LABEL[item.status]}</span>
                   {/if}
                 </td>
                 <td>
@@ -211,14 +211,7 @@
   }
 
   .status-badge {
-    display: inline-block;
     margin-left: 0.5rem;
-    padding: 0.1rem 0.5rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--color-badge-warning-fg);
-    background: var(--color-badge-warning-bg);
-    border-radius: 999px;
     white-space: nowrap;
   }
 

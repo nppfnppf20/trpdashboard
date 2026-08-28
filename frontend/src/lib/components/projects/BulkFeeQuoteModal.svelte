@@ -353,7 +353,7 @@ ${worksHtml}
           <div class="step-bar-center">
             <span class="step-count">
               Email {currentIndex + 1} of {drafts.length}
-              {#if drafts[currentIndex].sent}<span class="step-sent-badge"><i class="las la-check-double"></i> Sent</span>{/if}
+              {#if drafts[currentIndex].sent}<span class="badge badge-success step-sent-badge"><i class="las la-check-double"></i> Sent</span>{/if}
             </span>
             <span class="step-label">{draftLabel(drafts[currentIndex])}</span>
           </div>
@@ -798,9 +798,6 @@ ${worksHtml}
     align-items: center;
     gap: 2px;
     margin-left: 6px;
-    color: var(--color-emerald-600);
-    background: var(--color-emerald-100);
-    border-radius: 999px;
     padding: 0 7px;
     font-size: 0.68rem;
   }

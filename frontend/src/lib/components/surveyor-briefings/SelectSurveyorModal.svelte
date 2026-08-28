@@ -297,9 +297,9 @@
                       </td>
                       <td>
                         {#if !surveyor.total_reviews}
-                          <span class="status-badge status-unknown">unknown</span>
+                          <span class="badge status-unknown">unknown</span>
                         {:else}
-                          <span class="status-badge status-{surveyor.approval_status}">
+                          <span class="badge status-{surveyor.approval_status}">
                             {surveyor.approval_status || 'approved'}
                           </span>
                         {/if}
@@ -600,27 +600,19 @@
     text-align: center;
   }
 
-  .status-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-  }
-
   .status-approved {
-    background: var(--color-emerald-100);
-    color: var(--color-emerald-800);
+    background: var(--color-badge-success-bg);
+    color: var(--color-badge-success-fg);
   }
 
   .status-rejected {
-    background: var(--color-red-100);
-    color: var(--color-red-800);
+    background: var(--color-badge-danger-bg);
+    color: var(--color-badge-danger-fg);
   }
 
   .status-unknown {
-    background: var(--color-amber-100);
-    color: var(--color-amber-800);
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
   }
 
   .bold-cell {

@@ -2,7 +2,7 @@
   export let status; // 'complete' | 'partial' | 'missing'
 </script>
 
-<span class="badge badge-{status}">
+<span class="badge {status === 'complete' ? 'badge-success' : status === 'partial' ? 'badge-warning' : 'badge-danger'}">
   {#if status === 'complete'}
     <i class="las la-check-circle"></i> Complete
   {:else if status === 'partial'}
@@ -26,18 +26,4 @@
     white-space: nowrap;
   }
 
-  .badge-complete {
-    background: var(--color-badge-success-bg);
-    color: var(--color-badge-success-fg);
-  }
-
-  .badge-partial {
-    background: var(--color-badge-warning-bg);
-    color: var(--color-badge-warning-fg);
-  }
-
-  .badge-missing {
-    background: var(--color-badge-danger-bg);
-    color: var(--color-badge-danger-fg);
-  }
 </style>

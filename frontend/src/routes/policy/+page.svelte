@@ -619,8 +619,8 @@
     letter-spacing: 0.05em;
     padding: 0.1rem 0.4rem;
     border-radius: 4px;
-    background: var(--color-red-100);
-    color: var(--color-red-800);
+    background: var(--color-badge-danger-bg);
+    color: var(--color-badge-danger-fg);
   }
 
   .superseded-toggle {

@@ -8,6 +8,12 @@
     const date = new Date(dateString);
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
   }
+
+  function workStatusBadgeClass(status) {
+    if (!status) return 'badge-neutral';
+    const key = status.replace(' ', '-');
+    return ['pending', 'instructed', 'in-progress', 'completed'].includes(key) ? `badge-${key}` : 'badge-neutral';
+  }
   
   function getWeekCommencing(date) {
     const d = new Date(date);
@@ -142,7 +148,7 @@
           <div class="row-title">{quote.discipline}</div>
           <div class="row-subtitle">{quote.surveyor_organisation}</div>
           <div class="row-status">
-            <span class="mini-badge status-{quote.work_status?.replace(' ', '-')}">
+            <span class="badge mini-badge {workStatusBadgeClass(quote.work_status)}">
               {quote.work_status || 'not started'}
             </span>
           </div>
@@ -294,39 +300,12 @@
   }
   
   .mini-badge {
-    display: inline-block;
     padding: 0.0625rem 0.375rem;
-    border-radius: 4px;
     font-size: 0.625rem;
     font-weight: 500;
     text-transform: capitalize;
   }
   
-  .mini-badge.status-pending {
-    background: var(--color-badge-warning-bg);
-    color: var(--color-badge-warning-fg);
-  }
-
-  .mini-badge.status-instructed {
-    background: var(--color-badge-info-bg);
-    color: var(--color-badge-info-fg);
-  }
-
-  .mini-badge.status-in-progress {
-    background: var(--color-badge-indigo-bg);
-    color: var(--color-badge-indigo-fg);
-  }
-
-  .mini-badge.status-completed {
-    background: var(--color-badge-success-bg);
-    color: var(--color-badge-success-fg);
-  }
-
-  .mini-badge.status-not-started {
-    background: var(--color-slate-100);
-    color: var(--color-slate-500);
-  }
-
   .gantt-timeline {
     flex: 1;
     position: relative;

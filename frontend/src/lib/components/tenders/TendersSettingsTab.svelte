@@ -43,6 +43,13 @@
     });
   }
 
+  function runBadgeClass(status) {
+    if (status === 'success') return 'badge-success';
+    if (status === 'failed') return 'badge-danger';
+    if (status === 'running') return 'badge-warning';
+    return 'badge-neutral';
+  }
+
   async function load() {
     loading = true;
     errorMsg = '';
@@ -192,7 +199,7 @@
               {#each runs as run (run.id)}
                 <tr>
                   <td class="cell-date">{formatDate(run.started_at)}</td>
-                  <td><span class="run-badge run-{run.status}">{run.status}</span></td>
+                  <td><span class="badge run-badge {runBadgeClass(run.status)}">{run.status}</span></td>
                   <td class="cell-date">{formatDate(run.window_from)} → {formatDate(run.window_to)}</td>
                   <td class="cell-num">{run.pages_fetched}</td>
                   <td class="cell-num">{run.notices_seen}</td>
@@ -378,13 +385,7 @@
   .cell-error { color: var(--color-red-800); max-width: 260px; }
 
   .run-badge {
-    display: inline-block;
     padding: 0.1rem 0.45rem;
-    border-radius: 0.75rem;
     font-size: 0.68rem;
-    font-weight: 600;
   }
-  .run-success { background: var(--color-emerald-100); color: var(--color-emerald-800); }
-  .run-failed { background: var(--color-red-100); color: var(--color-red-800); }
-  .run-running { background: var(--color-amber-100); color: var(--color-amber-800); }
 </style>
