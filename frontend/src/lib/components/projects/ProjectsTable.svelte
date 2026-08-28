@@ -431,9 +431,31 @@
     font-weight: 500;
   }
 
+  /* A thin, theme-matching mirror scrollbar above the table so you don't
+     have to scroll to the bottom edge to reach the horizontal scrollbar —
+     styled to sit inside the table card rather than reading as a bare
+     native scrollbar. */
   .top-scroller {
     overflow-x: auto;
     overflow-y: hidden;
+    height: 14px;
+    margin-bottom: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-300) var(--color-slate-50);
+  }
+  .top-scroller::-webkit-scrollbar {
+    height: 8px;
+  }
+  .top-scroller::-webkit-scrollbar-track {
+    background: var(--color-slate-50);
+    border-radius: var(--radius-pill);
+  }
+  .top-scroller::-webkit-scrollbar-thumb {
+    background: var(--color-slate-300);
+    border-radius: var(--radius-pill);
+  }
+  .top-scroller::-webkit-scrollbar-thumb:hover {
+    background: var(--color-slate-400);
   }
 
   /* .table-wrapper now comes entirely from the shared tables.css — same
