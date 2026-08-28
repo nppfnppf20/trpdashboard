@@ -272,13 +272,20 @@
   }
 
   function positionClass(pos) {
-    if (!pos) return 'ct-pos-none';
+    if (!pos) return '';
     const p = pos.toLowerCase();
-    if (p.includes('objection')) return 'ct-pos-objection';
-    if (p.includes('conditional')) return 'ct-pos-conditional';
-    if (p.includes('support')) return 'ct-pos-support';
-    if (p.includes('no comment') || p.includes('no objection')) return 'ct-pos-no-comment';
-    return 'ct-pos-other';
+    if (p.includes('objection')) return 'badge-danger';
+    if (p.includes('conditional')) return 'badge-warning';
+    if (p.includes('support')) return 'badge-success';
+    if (p.includes('no comment') || p.includes('no objection')) return 'badge-neutral';
+    return 'badge-purple';
+  }
+
+  // Some position values come from AI extraction and can arrive in odd
+  // casing (e.g. "OBJECTION") — normalize to Title Case for display.
+  function toTitleCase(str) {
+    if (!str) return str;
+    return String(str).toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   }
 
   // ── Upload panel ──────────────────────────────────────────────────────────
@@ -1008,7 +1015,7 @@ ${sections.join('<br>')}`;
           <h3 class="tl-title">{timelineResponse.consultee_name}</h3>
           <p class="tl-subtitle">
             {(timelineResponse.advancements || []).length} progress entr{(timelineResponse.advancements || []).length !== 1 ? 'ies' : 'y'}
-            {#if timelineResponse.position}· {timelineResponse.position}{/if}
+            {#if timelineResponse.position}· {toTitleCase(timelineResponse.position)}{/if}
           </p>
         </div>
         <button class="btn btn-icon btn-ghost" on:click={closeTimeline}><i class="las la-times"></i></button>
@@ -1234,7 +1241,7 @@ ${sections.join('<br>')}`;
                   </select>
                 {:else}
                   {#if r.position}
-                    <span class="ct-pos-badge {positionClass(r.position)}">{r.position}</span>
+                    <span class="badge ct-pos-badge {positionClass(r.position)}">{toTitleCase(r.position)}</span>
                   {:else}
                     <span class="ct-cell-muted">—</span>
                   {/if}
@@ -2072,19 +2079,9 @@ ${sections.join('<br>')}`;
 
   /* ── Position badges ────────────────────────────────────────────────────── */
   .ct-pos-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 100px;
     font-size: 0.7rem;
-    font-weight: 600;
     white-space: nowrap;
   }
-  .ct-pos-objection    { background: var(--color-red-100); color: var(--color-red-800); }
-  .ct-pos-conditional  { background: var(--color-amber-100); color: var(--color-amber-800); }
-  .ct-pos-support      { background: var(--color-emerald-100); color: var(--color-green-800); }
-  .ct-pos-no-comment   { background: var(--color-slate-100); color: var(--color-slate-500); }
-  .ct-pos-other        { background: var(--color-violet-100); color: var(--color-violet-700); }
-  .ct-pos-none         {}
 
   /* ── Comments text ───────────────────────────────────────────────────────── */
   .ct-comments-text {

@@ -111,6 +111,14 @@
     );
   }
 
+  // Some source fields (discipline, status) come back from the API in
+  // ALL CAPS — normalize to Title Case for display so badges read cleanly
+  // regardless of how the backend happens to store them.
+  function toTitleCase(str) {
+    if (!str) return str;
+    return String(str).toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+
   function positionBadgeClass(pos) {
     if (pos === 'Objection') return 'badge-danger';
     if (pos === 'Conditional Support') return 'badge-warning';
@@ -128,9 +136,9 @@
     return {
       id: r.id,
       name: r.consultee_name,
-      badgeLabel: r.position,
+      badgeLabel: toTitleCase(r.position),
       badgeClass: positionBadgeClass(r.position),
-      statusLabel: r.status || 'In Progress',
+      statusLabel: toTitleCase(r.status || 'In Progress'),
       statusClass: r.status === 'Closed Out' ? 'badge-neutral' : 'badge-info',
       latest: adv[0] ? { date: adv[0].advancement_date, summary: adv[0].summary } : null,
       count: adv.length,
@@ -142,7 +150,7 @@
     return {
       id: c.id,
       name: `Condition ${c.condition_number || '—'}`,
-      badgeLabel: c.status || 'Not Started',
+      badgeLabel: toTitleCase(c.status || 'Not Started'),
       badgeClass: conditionStatusBadgeClass(c.status),
       statusLabel: null,
       statusClass: null,
@@ -156,9 +164,9 @@
     return {
       id: iss.id,
       name: iss.title,
-      badgeLabel: iss.discipline || null,
+      badgeLabel: toTitleCase(iss.discipline),
       badgeClass: 'badge-neutral',
-      statusLabel: iss.status || 'In Progress',
+      statusLabel: toTitleCase(iss.status || 'In Progress'),
       statusClass: iss.status === 'Complete' ? 'badge-success' : 'badge-info',
       latest: acts[0] ? { date: acts[0].action_date, summary: acts[0].summary } : null,
       count: acts.length,

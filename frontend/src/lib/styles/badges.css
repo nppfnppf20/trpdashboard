@@ -59,6 +59,11 @@
   color: var(--color-slate-600);
 }
 
+.badge-purple {
+  background: var(--color-badge-purple-bg);
+  color: var(--color-badge-purple-fg);
+}
+
 /* Badge-styled dropdown select */
 .badge-select {
   display: inline-block;

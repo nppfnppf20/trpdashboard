@@ -14,12 +14,14 @@
   // Selection state
   let detailsSelected = false;
   let selectedGroups = new Set();      // table-shaped group keys
-  let selectedDocIds = new Set();
   let selectedMeetingIds = new Set();
-  let expandedGroups = new Set(['project_info', 'documents', 'meetings']);
+  let expandedGroups = new Set(['trackers', 'meetings']);
 
-  // Groups hidden from the picker entirely
-  const HIDDEN_GROUP_KEYS = ['key_issues', 'actions'];
+  // Groups hidden from the picker entirely — 'documents' (Project Docs) is
+  // being phased out as a chat source, so it's dropped here too even though
+  // the backend still returns it in the catalogue.
+  const HIDDEN_GROUP_KEYS = ['key_issues', 'actions', 'documents'];
+  const TRACKER_KEYS = ['consultation', 'conditions', 'issues_tracker'];
 
   // Chat state
   let messages = [];                   // { role, content, citations? }
@@ -38,12 +40,8 @@
       const data = await getChatSources(project.id);
       groups = data.groups;
 
-      // Default selection: project details + briefing transcript docs
+      // Default selection: project details only
       detailsSelected = groups.some(g => g.key === 'project_details');
-      const docGroup = groups.find(g => g.key === 'documents');
-      selectedDocIds = new Set(
-        (docGroup?.items ?? []).filter(d => d.doc_type === 'briefing_transcript').map(d => d.id)
-      );
     } catch (err) {
       console.error('Error loading chat sources:', err);
       loadError = err.message;
@@ -53,25 +51,21 @@
   }
 
   // ── Selection helpers ──────────────────────────────────────────────────────
+  // Tick order: Project Details, then Trackers (grouped like Meeting Notes),
+  // then Meeting Notes, then everything else as flat rows.
 
-  $: docGroup = groups.find(g => g.key === 'documents');
   $: meetingGroup = groups.find(g => g.key === 'meetings');
   $: detailsGroup = groups.find(g => g.key === 'project_details');
-  $: historyGroup = groups.find(g => g.key === 'planning_history');
-  $: policiesGroup = groups.find(g => g.key === 'policies');
-  $: policyDocsGroup = groups.find(g => g.key === 'policy_documents');
-  // Loose table groups shown below Documents/Meetings. Planning History,
-  // Policies and Policy Documents live in the Project Information group
-  // instead; hidden groups are dropped.
-  $: tableGroups = groups.filter(g =>
-    !['project_details', 'documents', 'meetings', 'planning_history', 'policies', 'policy_documents', ...HIDDEN_GROUP_KEYS].includes(g.key)
+  $: trackerGroups = TRACKER_KEYS.map(k => groups.find(g => g.key === k)).filter(Boolean);
+  // Everything else, flat — Planning History, Policies, Policy Documents,
+  // Public Comments, Surveyor Management, etc.
+  $: otherGroups = groups.filter(g =>
+    !['project_details', 'meetings', ...TRACKER_KEYS, ...HIDDEN_GROUP_KEYS].includes(g.key)
   );
   // Every selectable table-shaped group key, wherever it appears in the UI
   $: selectableGroupKeys = [
-    ...(historyGroup && historyGroup.count > 0 ? ['planning_history'] : []),
-    ...(policiesGroup && policiesGroup.count > 0 ? ['policies'] : []),
-    ...(policyDocsGroup && policyDocsGroup.count > 0 ? ['policy_documents'] : []),
-    ...tableGroups.filter(g => g.count > 0).map(g => g.key),
+    ...trackerGroups.filter(g => g.count > 0).map(g => g.key),
+    ...otherGroups.filter(g => g.count > 0).map(g => g.key),
   ];
 
   function toggleGroupExpand(key) {
@@ -80,19 +74,16 @@
       : new Set([...expandedGroups, key]);
   }
 
-  function toggleItem(groupKey, id) {
-    const set = groupKey === 'documents' ? selectedDocIds : selectedMeetingIds;
-    const next = new Set(set);
+  function toggleItem(id) {
+    const next = new Set(selectedMeetingIds);
     next.has(id) ? next.delete(id) : next.add(id);
-    if (groupKey === 'documents') selectedDocIds = next; else selectedMeetingIds = next;
+    selectedMeetingIds = next;
   }
 
-  function toggleItemGroup(group) {
-    const ids = (group.items ?? []).map(i => i.id);
-    const set = group.key === 'documents' ? selectedDocIds : selectedMeetingIds;
-    const allSelected = ids.length > 0 && ids.every(id => set.has(id));
-    const next = allSelected ? new Set() : new Set(ids);
-    if (group.key === 'documents') selectedDocIds = next; else selectedMeetingIds = next;
+  function toggleMeetingsGroup() {
+    const ids = (meetingGroup?.items ?? []).map(i => i.id);
+    const allSel = ids.length > 0 && ids.every(id => selectedMeetingIds.has(id));
+    selectedMeetingIds = allSel ? new Set() : new Set(ids);
   }
 
   function toggleTableGroup(key) {
@@ -105,52 +96,40 @@
     if (allSelected) {
       detailsSelected = false;
       selectedGroups = new Set();
-      selectedDocIds = new Set();
       selectedMeetingIds = new Set();
     } else {
       detailsSelected = !!detailsGroup;
       selectedGroups = new Set(selectableGroupKeys);
-      selectedDocIds = new Set((docGroup?.items ?? []).map(d => d.id));
       selectedMeetingIds = new Set((meetingGroup?.items ?? []).map(m => m.id));
     }
   }
 
   $: allSelected =
     (!detailsGroup || detailsSelected) &&
-    (docGroup?.items ?? []).every(d => selectedDocIds.has(d.id)) &&
     (meetingGroup?.items ?? []).every(m => selectedMeetingIds.has(m.id)) &&
     selectableGroupKeys.every(k => selectedGroups.has(k)) &&
     groups.length > 0;
 
-  // Project Information group (Project Details + Planning History + Policies + Policy Documents)
-  $: infoGroups = [
-    ['planning_history', historyGroup],
-    ['policies', policiesGroup],
-    ['policy_documents', policyDocsGroup],
-  ].filter(([, g]) => g && g.count > 0);
-  $: infoSelectableCount = (detailsGroup ? 1 : 0) + infoGroups.length;
-  $: infoSelectedCount =
-    (detailsSelected ? 1 : 0) +
-    infoGroups.filter(([key]) => selectedGroups.has(key)).length;
+  // Trackers group-level checkbox (select/deselect Consultation + Conditions + Project Tracker together)
+  $: trackerSelectableKeys = trackerGroups.filter(g => g.count > 0).map(g => g.key);
+  $: trackerAllSelected = trackerSelectableKeys.length > 0 && trackerSelectableKeys.every(k => selectedGroups.has(k));
+  $: trackerAnySelected = trackerSelectableKeys.some(k => selectedGroups.has(k));
 
-  function toggleProjectInfo() {
-    const selectAll = infoSelectedCount < infoSelectableCount;
-    detailsSelected = selectAll && !!detailsGroup;
+  function toggleTrackersGroup() {
     const next = new Set(selectedGroups);
-    for (const key of ['planning_history', 'policies', 'policy_documents']) next.delete(key);
-    if (selectAll) for (const [key] of infoGroups) next.add(key);
+    if (trackerAllSelected) { for (const k of trackerSelectableKeys) next.delete(k); }
+    else { for (const k of trackerSelectableKeys) next.add(k); }
     selectedGroups = next;
   }
 
-  $: anySelected = detailsSelected || selectedGroups.size > 0 || selectedDocIds.size > 0 || selectedMeetingIds.size > 0;
+  $: anySelected = detailsSelected || selectedGroups.size > 0 || selectedMeetingIds.size > 0;
 
   // ── Context meter (same pattern as StartingDocsModal) ─────────────────────
 
   $: detailsChars = detailsSelected ? (detailsGroup?.chars ?? 0) : 0;
-  $: docChars = (docGroup?.items ?? []).filter(d => selectedDocIds.has(d.id)).reduce((acc, d) => acc + (d.chars ?? 0), 0);
   $: meetingChars = (meetingGroup?.items ?? []).filter(m => selectedMeetingIds.has(m.id)).reduce((acc, m) => acc + (m.chars ?? 0), 0);
   $: tableChars = groups.filter(g => selectedGroups.has(g.key)).reduce((acc, g) => acc + (g.chars ?? 0), 0);
-  $: totalChars = detailsChars + docChars + meetingChars + tableChars;
+  $: totalChars = detailsChars + meetingChars + tableChars;
   $: contextPct = Math.min(100, Math.round(totalChars / CONTEXT_BUDGET * 100));
   $: contextColour = contextPct >= 75 ? '#dc2626' : contextPct >= 50 ? '#d97706' : '#16a34a';
   $: overBudget = totalChars > CONTEXT_BUDGET;
@@ -198,7 +177,7 @@
   function buildSourcesPayload() {
     return {
       project_details: detailsSelected,
-      document_ids: [...selectedDocIds],
+      document_ids: [], // Project Docs is being phased out as a chat source
       meeting_ids: [...selectedMeetingIds],
       groups: [...selectedGroups],
     };
@@ -264,92 +243,67 @@
           <span>Select all</span>
         </label>
 
-        <div class="pc-group">
-          <div class="pc-row pc-row-group">
-            <input
-              type="checkbox"
-              checked={infoSelectableCount > 0 && infoSelectedCount === infoSelectableCount}
-              indeterminate={infoSelectedCount > 0 && infoSelectedCount < infoSelectableCount}
-              disabled={infoSelectableCount === 0}
-              on:change={toggleProjectInfo}
-            />
-            <button class="pc-group-toggle" on:click={() => toggleGroupExpand('project_info')}>
-              <i class="las {expandedGroups.has('project_info') ? 'la-angle-down' : 'la-angle-right'}"></i>
-              <span>Project Information</span>
-            </button>
-          </div>
-          {#if expandedGroups.has('project_info')}
-            {#if detailsGroup}
-              <label class="pc-row pc-row-item">
-                <input type="checkbox" bind:checked={detailsSelected} />
-                <span class="pc-item-label">Project Details</span>
-                <span class="pc-chars">{fmtChars(detailsGroup.chars)}</span>
-              </label>
-            {/if}
-            {#if historyGroup}
-              <label class="pc-row pc-row-item" class:pc-row-disabled={historyGroup.count === 0}>
-                <input
-                  type="checkbox"
-                  checked={selectedGroups.has('planning_history')}
-                  disabled={historyGroup.count === 0}
-                  on:change={() => toggleTableGroup('planning_history')}
-                />
-                <span class="pc-item-label">Planning History ({historyGroup.count})</span>
-                {#if historyGroup.chars > 0}<span class="pc-chars">{fmtChars(historyGroup.chars)}</span>{/if}
-              </label>
-            {/if}
-            {#if policiesGroup}
-              <label class="pc-row pc-row-item" class:pc-row-disabled={policiesGroup.count === 0}>
-                <input
-                  type="checkbox"
-                  checked={selectedGroups.has('policies')}
-                  disabled={policiesGroup.count === 0}
-                  on:change={() => toggleTableGroup('policies')}
-                />
-                <span class="pc-item-label">Relevant Policies ({policiesGroup.count})</span>
-                {#if policiesGroup.chars > 0}<span class="pc-chars">{fmtChars(policiesGroup.chars)}</span>{/if}
-              </label>
-            {/if}
-            {#if policyDocsGroup}
-              <label class="pc-row pc-row-item" class:pc-row-disabled={policyDocsGroup.count === 0}>
-                <input
-                  type="checkbox"
-                  checked={selectedGroups.has('policy_documents')}
-                  disabled={policyDocsGroup.count === 0}
-                  on:change={() => toggleTableGroup('policy_documents')}
-                />
-                <span class="pc-item-label">Policy Documents ({policyDocsGroup.count})</span>
-                {#if policyDocsGroup.chars > 0}<span class="pc-chars">{fmtChars(policyDocsGroup.chars)}</span>{/if}
-              </label>
-            {/if}
-          {/if}
-        </div>
+        {#if detailsGroup}
+          <label class="pc-row">
+            <input type="checkbox" bind:checked={detailsSelected} />
+            <span>Project Details</span>
+            <span class="pc-chars">{fmtChars(detailsGroup.chars)}</span>
+          </label>
+        {/if}
 
-        {#each [docGroup, meetingGroup].filter(Boolean) as group}
-          {@const set = group.key === 'documents' ? selectedDocIds : selectedMeetingIds}
-          {@const ids = (group.items ?? []).map(i => i.id)}
+        {#if trackerGroups.length}
           <div class="pc-group">
             <div class="pc-row pc-row-group">
               <input
                 type="checkbox"
-                checked={ids.length > 0 && ids.every(id => set.has(id))}
-                indeterminate={ids.some(id => set.has(id)) && !ids.every(id => set.has(id))}
-                disabled={ids.length === 0}
-                on:change={() => toggleItemGroup(group)}
+                checked={trackerAllSelected}
+                indeterminate={trackerAnySelected && !trackerAllSelected}
+                disabled={trackerSelectableKeys.length === 0}
+                on:change={toggleTrackersGroup}
               />
-              <button class="pc-group-toggle" on:click={() => toggleGroupExpand(group.key)}>
-                <i class="las {expandedGroups.has(group.key) ? 'la-angle-down' : 'la-angle-right'}"></i>
-                <span>{group.label} ({group.items.length})</span>
+              <button class="pc-group-toggle" on:click={() => toggleGroupExpand('trackers')}>
+                <i class="las {expandedGroups.has('trackers') ? 'la-angle-down' : 'la-angle-right'}"></i>
+                <span>Trackers</span>
               </button>
             </div>
-            {#if expandedGroups.has(group.key)}
-              {#each group.items as item}
+            {#if expandedGroups.has('trackers')}
+              {#each trackerGroups as group}
+                <label class="pc-row pc-row-item" class:pc-row-disabled={group.count === 0}>
+                  <input
+                    type="checkbox"
+                    checked={selectedGroups.has(group.key)}
+                    disabled={group.count === 0}
+                    on:change={() => toggleTableGroup(group.key)}
+                  />
+                  <span class="pc-item-label">{group.label} ({group.count})</span>
+                  {#if group.chars > 0}<span class="pc-chars">{fmtChars(group.chars)}</span>{/if}
+                </label>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+
+        {#if meetingGroup}
+          {@const ids = (meetingGroup.items ?? []).map(i => i.id)}
+          <div class="pc-group">
+            <div class="pc-row pc-row-group">
+              <input
+                type="checkbox"
+                checked={ids.length > 0 && ids.every(id => selectedMeetingIds.has(id))}
+                indeterminate={ids.some(id => selectedMeetingIds.has(id)) && !ids.every(id => selectedMeetingIds.has(id))}
+                disabled={ids.length === 0}
+                on:change={toggleMeetingsGroup}
+              />
+              <button class="pc-group-toggle" on:click={() => toggleGroupExpand('meetings')}>
+                <i class="las {expandedGroups.has('meetings') ? 'la-angle-down' : 'la-angle-right'}"></i>
+                <span>{meetingGroup.label} ({meetingGroup.items.length})</span>
+              </button>
+            </div>
+            {#if expandedGroups.has('meetings')}
+              {#each meetingGroup.items as item}
                 <label class="pc-row pc-row-item">
-                  <input type="checkbox" checked={set.has(item.id)} on:change={() => toggleItem(group.key, item.id)} />
-                  <span class="pc-item-label" title={item.label}>
-                    {item.label}
-                    {#if item.doc_type_label}<span class="pc-doc-type">{item.doc_type_label}</span>{/if}
-                  </span>
+                  <input type="checkbox" checked={selectedMeetingIds.has(item.id)} on:change={() => toggleItem(item.id)} />
+                  <span class="pc-item-label" title={item.label}>{item.label}</span>
                   <span class="pc-chars">{fmtChars(item.chars)}</span>
                 </label>
               {:else}
@@ -357,9 +311,9 @@
               {/each}
             {/if}
           </div>
-        {/each}
+        {/if}
 
-        {#each tableGroups as group}
+        {#each otherGroups as group}
           <label class="pc-row" class:pc-row-disabled={group.count === 0}>
             <input
               type="checkbox"
@@ -552,16 +506,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-  }
-
-  .pc-doc-type {
-    display: inline-block;
-    margin-left: 0.35rem;
-    font-size: 0.68rem;
-    color: var(--color-slate-500);
-    background: var(--color-slate-100);
-    padding: 0.05rem 0.35rem;
-    border-radius: 4px;
   }
 
   .pc-empty-items {
