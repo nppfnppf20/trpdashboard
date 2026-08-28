@@ -4,7 +4,6 @@
   import { authFetch } from '$lib/api/client.js';
   import {
     editModalOpen,
-    openProjectModal as openSharedViewModal,
     openEditModal as openSharedEditModal
   } from '$lib/stores/projectViewModal.js';
 
@@ -329,8 +328,7 @@
         </thead>
         <tbody>
           {#each sortedProjects as project}
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <tr on:click={() => openSharedViewModal(project.id)} role="button" tabindex="0">
+            <tr>
               <td class="project-id">{project.project_id || '-'}</td>
               <td class="project-name">{project.project_name}</td>
               <td>{project.client || '-'}</td>
@@ -455,10 +453,6 @@
 
   .data-table th.actions-column:hover {
     background: var(--color-slate-50);
-  }
-
-  .data-table tbody tr {
-    cursor: pointer;
   }
 
   .project-id {

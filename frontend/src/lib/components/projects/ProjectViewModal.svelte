@@ -4,6 +4,8 @@
   import ConflictDetailPopup from './ConflictDetailPopup.svelte';
   import { authFetch } from '$lib/api/client.js';
   import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
+  import ProjectOverviewTab from '$lib/components/projects/overview/ProjectOverviewTab.svelte';
+  import ProjectDetailsTab from '$lib/components/projects/ProjectDetailsTab.svelte';
   import SimilarSchemesTab from '$lib/components/projects/SimilarSchemesTab.svelte';
   import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
   import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
@@ -17,11 +19,8 @@
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
-  import { getQuotes, getQuoteKeyDates, getProgrammeEvents } from '$lib/api/quotes.js';
-  import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
   import { extractPoliciesFromDocument } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments, createPolicyDocument } from '$lib/api/policyDocuments.js';
-  import { openSurveyorManagement } from '$lib/stores/projectViewModal.js';
 
   export let isOpen = false;
   export let onClose = () => {};
@@ -49,12 +48,12 @@
   // was fully redundant with it and has been removed).
   const tabLabels = {
     site_boundary: 'Site Boundary',
-    details: 'Project Details',
+    details: 'Overview',
+    project_details: 'Project Details',
     project_chat: 'Project Chat',
     policy_and_history: 'Policy & Planning History',
     meeting_notes: 'Meeting Notes',
     ...trackerLabels,
-    surveyor: 'Surveyor',
     similar_schemes: 'Similar Schemes',
     lpa_decision_analysis: 'LPA Decision Analysis',
     conflict: 'Nearby Renewables Check',
@@ -82,13 +81,6 @@
 
   let showMeetingGuide = false;
 
-  // Surveyor management state
-  let stats = null;
-  let keyDates = [];
-  let programmeEvents = [];
-  let statsLoading = false;
-  let statsError = null;
-
   // Load project data when modal opens
   $: if (browser && isOpen && projectId && !projectData) {
     loadProject();
@@ -104,11 +96,6 @@
   // Load saved conflict check when switching to conflict tab
   $: if (browser && isOpen && activeTab === 'conflict' && projectData && !conflictResults && !loadingSavedCheck) {
     loadSavedConflictCheck();
-  }
-
-  // Load surveyor management stats when switching to that tab
-  $: if (browser && isOpen && activeTab === 'surveyor' && projectData && !stats && !statsLoading && !statsError) {
-    loadSurveyorStats();
   }
 
   // Initialize map when container is available and on site boundary tab
@@ -226,17 +213,6 @@
     } catch (err) {
       console.error('Error displaying polygon:', err);
     }
-  }
-
-  function formatLPA(lpaArray) {
-    if (!lpaArray || !Array.isArray(lpaArray) || lpaArray.length === 0) return '-';
-    return lpaArray.join(', ');
-  }
-
-  function formatDate(dateString) {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   // Same status → color mapping as ProjectsTable's status badges, so the
@@ -455,43 +431,6 @@
     }
   }
 
-  async function loadSurveyorStats() {
-    statsLoading = true;
-    statsError = null;
-    try {
-      const [quotes, sentRequests, kd, pe] = await Promise.all([
-        getQuotes({ projectId: projectData.unique_id }),
-        getSentRequestsForProject(projectData.unique_id),
-        getQuoteKeyDates(projectData.unique_id),
-        getProgrammeEvents(projectData.unique_id)
-      ]);
-
-      keyDates = kd;
-      programmeEvents = pe;
-
-      const instructed = quotes.filter(q =>
-        q.instruction_status === 'instructed' || q.instruction_status === 'partially_instructed'
-      );
-      const instructedSpend = instructed.reduce((sum, q) => sum + (parseFloat(q.total) || 0), 0);
-      const worksCompleted = instructed.filter(q => q.work_status === 'completed');
-      const worksOutstanding = instructed.filter(q => q.work_status !== 'completed');
-
-      stats = {
-        quotesSent: sentRequests.length,
-        quotesReceived: quotes.length,
-        quotesInstructed: instructed.length,
-        instructedSpend,
-        worksCompleted: worksCompleted.length,
-        worksOutstanding: worksOutstanding.length
-      };
-    } catch (err) {
-      console.error('Error loading surveyor stats:', err);
-      statsError = err.message;
-    } finally {
-      statsLoading = false;
-    }
-  }
-
   function handleClose() {
     projectData = null;
     loading = true;
@@ -503,11 +442,6 @@
     expandedCategories = {};
     savedCheckInfo = null;
     loadingSavedCheck = false;
-    stats = null;
-    keyDates = [];
-    programmeEvents = [];
-    statsLoading = false;
-    statsError = null;
     showExtractModal = false;
     cleanupMap();
     onClose();
@@ -689,183 +623,9 @@
               <div class="map-container" bind:this={mapContainer}></div>
             </div>
           {:else if activeTab === 'details'}
-            <!-- Project Details Tab -->
-            <div class="details-section">
-              <div class="details-tab-header">
-                <button class="details-guide-btn" on:click={() => showMeetingGuide = true}>
-                  <i class="las la-clipboard-list"></i> Meeting Guide
-                </button>
-              </div>
-              <div class="details-scroll">
-
-                <!-- Project Overview -->
-                <h3 class="detail-section-header">Project Overview</h3>
-                <div class="detail-grid">
-                  <div class="detail-group">
-                    <label>Project ID</label>
-                    <div class="detail-value">{projectData.project_id || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Project Name</label>
-                    <div class="detail-value">{projectData.project_name || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Status</label>
-                    <div class="detail-value">{projectData.status || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Sector</label>
-                    <div class="detail-value">{(projectData.sectors || []).join(', ') || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Sub-sector</label>
-                    <div class="detail-value">{(projectData.sub_sectors || []).join(', ') || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Development Type</label>
-                    <div class="detail-value">{(projectData.development_types || []).join(', ') || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Address</label>
-                    <div class="detail-value">{projectData.address || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Area</label>
-                    <div class="detail-value">{projectData.area || '-'}</div>
-                  </div>
-                  <div class="detail-group detail-group--full">
-                    <label>Description of Development</label>
-                    <div class="detail-value">{projectData.development_description || '-'}</div>
-                  </div>
-                </div>
-
-                <!-- Team -->
-                <h3 class="detail-section-header">Team</h3>
-                <div class="detail-grid">
-                  <div class="detail-group">
-                    <label>Client</label>
-                    <div class="detail-value">{projectData.client || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Client SPV Name</label>
-                    <div class="detail-value">{projectData.client_spv_name || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Project Lead</label>
-                    <div class="detail-value">{projectData.project_lead || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Project Manager</label>
-                    <div class="detail-value">{projectData.project_manager || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Project Director</label>
-                    <div class="detail-value">{projectData.project_director || '-'}</div>
-                  </div>
-                </div>
-
-                <!-- Planning -->
-                <h3 class="detail-section-header">Planning</h3>
-                <div class="detail-grid">
-                  <div class="detail-group">
-                    <label>Local Planning Authority</label>
-                    <div class="detail-value">{formatLPA(projectData.local_planning_authority)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>LPA Reference</label>
-                    <div class="detail-value">{projectData.lpa_reference || '-'}</div>
-                  </div>
-                  <div class="detail-group detail-group--full">
-                    <label>Designations on Site</label>
-                    <div class="detail-value">{projectData.designations_on_site || '-'}</div>
-                  </div>
-                  <div class="detail-group detail-group--full">
-                    <label>Relevant Nearby Designations</label>
-                    <div class="detail-value">{projectData.relevant_nearby_designations || '-'}</div>
-                  </div>
-                </div>
-
-                <!-- Case Officer -->
-                <h3 class="detail-section-header">Case Officer</h3>
-                <div class="detail-grid">
-                  <div class="detail-group">
-                    <label>Name</label>
-                    <div class="detail-value">{projectData.case_officer_name || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Email</label>
-                    <div class="detail-value">{projectData.case_officer_email || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Phone</label>
-                    <div class="detail-value">{projectData.case_officer_phone_number || '-'}</div>
-                  </div>
-                </div>
-
-                <!-- Key Dates -->
-                <h3 class="detail-section-header">Key Dates</h3>
-                <div class="detail-grid">
-                  <div class="detail-group">
-                    <label>Submission Date</label>
-                    <div class="detail-value">{formatDate(projectData.submission_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Validation Date</label>
-                    <div class="detail-value">{formatDate(projectData.validation_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>LPA Consultation End</label>
-                    <div class="detail-value">{formatDate(projectData.lpa_consultation_end_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Committee Date</label>
-                    <div class="detail-value">{formatDate(projectData.committee_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Target Determination Date</label>
-                    <div class="detail-value">{formatDate(projectData.target_determination_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Determined Date</label>
-                    <div class="detail-value">{formatDate(projectData.determined_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>1st Stat Period Expiry</label>
-                    <div class="detail-value">{formatDate(projectData.expiry_of_1st_stat_period_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>EOT Date</label>
-                    <div class="detail-value">{formatDate(projectData.eot_date)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>6-Month Appeal Window</label>
-                    <div class="detail-value">{formatDate(projectData.six_months_appeal_window_date)}</div>
-                  </div>
-                </div>
-
-                <!-- Additional -->
-                <h3 class="detail-section-header">Additional</h3>
-                <div class="detail-grid">
-                  <div class="detail-group detail-group--full">
-                    <label>About the Applicant</label>
-                    <div class="detail-value">{projectData.about_applicant || '-'}</div>
-                  </div>
-                  <div class="detail-group detail-group--full">
-                    <label>Comments</label>
-                    <div class="detail-value">{projectData.comments || '-'}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Created</label>
-                    <div class="detail-value">{formatDate(projectData.created_at)}</div>
-                  </div>
-                  <div class="detail-group">
-                    <label>Last Updated</label>
-                    <div class="detail-value">{formatDate(projectData.updated_at)}</div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
+            <ProjectOverviewTab project={projectData} />
+          {:else if activeTab === 'project_details'}
+            <ProjectDetailsTab project={projectData} onOpenMeetingGuide={() => showMeetingGuide = true} />
           {:else if activeTab === 'hlpv'}
             <!-- HLPV Analysis Tab -->
             <div class="hlpv-analysis-section">
@@ -1388,108 +1148,6 @@
                 {/if}
               {/if}
             </div>
-          {:else if activeTab === 'surveyor'}
-            <!-- Surveyor Management Tab -->
-            <div class="surveyor-section">
-              <div class="surveyor-section-header">
-                <button class="btn-goto-surveyor" on:click={() => openSurveyorManagement(projectId)}>
-                  <i class="las la-external-link-alt"></i> Open Surveyor Management
-                </button>
-              </div>
-              {#if statsLoading}
-                <div class="loading-state">
-                  <div class="spinner"></div>
-                  <p>Loading surveyor data...</p>
-                </div>
-              {:else if statsError}
-                <div class="error-state">
-                  <i class="las la-exclamation-circle"></i>
-                  <p>Error loading data: {statsError}</p>
-                  <button on:click={loadSurveyorStats}>Retry</button>
-                </div>
-              {:else if stats}
-
-                <!-- Quote Stats -->
-                <h3 class="surveyor-section-title">Quotes</h3>
-                <div class="stats-grid">
-                  <div class="stat-card">
-                    <div class="stat-number">{stats.quotesSent}</div>
-                    <div class="stat-label">Requests Sent</div>
-                  </div>
-                  <div class="stat-card">
-                    <div class="stat-number">{stats.quotesReceived}</div>
-                    <div class="stat-label">Quotes Received</div>
-                  </div>
-                  <div class="stat-card">
-                    <div class="stat-number">{stats.quotesInstructed}</div>
-                    <div class="stat-label">Instructed</div>
-                  </div>
-                  <div class="stat-card stat-card--highlight">
-                    <div class="stat-number">£{stats.instructedSpend.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                    <div class="stat-label">Instructed Spend</div>
-                  </div>
-                </div>
-
-                <!-- Works Status -->
-                <h3 class="surveyor-section-title">Works Status</h3>
-                <div class="stats-grid stats-grid--3">
-                  <div class="stat-card stat-card--warning">
-                    <div class="stat-number">{stats.worksOutstanding}</div>
-                    <div class="stat-label">Works Outstanding</div>
-                  </div>
-                  <div class="stat-card stat-card--success">
-                    <div class="stat-number">{stats.worksCompleted}</div>
-                    <div class="stat-label">Works Completed</div>
-                  </div>
-                  <div class="stat-card">
-                    <div class="stat-number">{keyDates.length}</div>
-                    <div class="stat-label">Key Dates</div>
-                  </div>
-                </div>
-
-                <!-- Upcoming Programme Events -->
-                {#if programmeEvents.length > 0}
-                  <h3 class="surveyor-section-title">Upcoming Programme Events</h3>
-                  <div class="event-list">
-                    {#each programmeEvents
-                      .filter(e => new Date(e.date) >= new Date())
-                      .sort((a, b) => new Date(a.date) - new Date(b.date))
-                      .slice(0, 3) as event}
-                      <div class="event-item">
-                        <span class="event-dot" style="background: {event.colour || '#9333ea'}"></span>
-                        <span class="event-date">{formatDate(event.date)}</span>
-                        <span class="event-title">{event.title}</span>
-                      </div>
-                    {:else}
-                      <p class="no-data">No upcoming programme events.</p>
-                    {/each}
-                  </div>
-                {/if}
-
-                <!-- Key Dates -->
-                {#if keyDates.length > 0}
-                  <h3 class="surveyor-section-title">Key Dates</h3>
-                  <div class="event-list">
-                    {#each keyDates.sort((a, b) => new Date(a.date) - new Date(b.date)) as kd}
-                      <div class="event-item">
-                        <span class="event-dot" style="background: {kd.colour || '#3b82f6'}"></span>
-                        <span class="event-date">{formatDate(kd.date)}</span>
-                        <span class="event-title">{kd.title}</span>
-                        {#if kd.discipline}
-                          <span class="event-discipline">{kd.discipline}</span>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-
-              {:else}
-                <div class="empty-state">
-                  <i class="las la-hard-hat"></i>
-                  <p>No surveyor management data found for this project.</p>
-                </div>
-              {/if}
-            </div>
           {:else if activeTab === 'stages'}
             <ProjectStagesBoard project={projectData} />
           {:else if activeTab === 'policy_and_history'}
@@ -1849,102 +1507,10 @@
     min-height: 0;
   }
 
-  .details-section {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    width: 100%;
-  }
-
-  .details-tab-header {
-    display: flex;
-    justify-content: flex-end;
-    padding: 0.75rem 1.25rem 0;
-    flex-shrink: 0;
-  }
-
-  .details-guide-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.45rem 0.875rem;
-    background: white;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--color-slate-600);
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s, border-color 0.15s;
-  }
-
-  .details-guide-btn:hover {
-    background: var(--color-slate-50);
-    border-color: var(--color-slate-400);
-  }
-
   .ct-scroll-wrap {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-  }
-
-  .details-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding-right: 1rem;
-  }
-
-  .detail-section-header {
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: var(--color-slate-800);
-    margin: 1.5rem 0 0.75rem 0;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--color-slate-200);
-  }
-
-  .detail-section-header:first-child {
-    margin-top: 0;
-  }
-
-  .detail-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .detail-group--full {
-    grid-column: 1 / -1;
-  }
-
-  .detail-group {
-    background: var(--color-slate-50);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-    padding: 0.75rem 0.875rem;
-  }
-
-  .detail-group label {
-    display: block;
-    font-size: 0.625rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-slate-400);
-    margin-bottom: 0.375rem;
-  }
-
-  .detail-value {
-    font-size: 0.84375rem;
-    font-weight: 600;
-    color: var(--color-slate-900);
-    padding: 0;
-    background: none;
-    border: none;
-    border-radius: 0;
   }
 
   .map-container {
@@ -2464,161 +2030,6 @@
     to {
       transform: rotate(360deg);
     }
-  }
-
-  /* ── Surveyor Management Tab ── */
-  .surveyor-section-header {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 1rem;
-  }
-
-  .btn-goto-surveyor {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.75rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    font-family: inherit;
-    color: var(--color-purple-600);
-    background: var(--color-violet-50);
-    border: 1px solid var(--color-violet-300);
-    border-radius: 6px;
-    text-decoration: none;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-  }
-
-  .btn-goto-surveyor:hover {
-    background: var(--color-violet-100);
-    border-color: var(--color-purple-600);
-  }
-
-  .surveyor-section {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0.25rem 0.25rem 1rem;
-  }
-
-  .surveyor-section-title {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--color-purple-600);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin: 1.5rem 0 0.75rem 0;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--color-slate-200);
-  }
-
-  .surveyor-section-title:first-child {
-    margin-top: 0;
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .stats-grid--3 {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .stat-card {
-    background: var(--color-slate-50);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.5rem;
-    padding: 1.25rem 1rem;
-    text-align: center;
-  }
-
-  .stat-card--highlight {
-    background: var(--color-violet-100);
-    border-color: var(--color-violet-300);
-  }
-
-  .stat-card--warning {
-    background: var(--color-red-50);
-    border-color: var(--color-red-200);
-  }
-
-  .stat-card--success {
-    background: var(--color-slate-100);
-    border-color: var(--color-emerald-100);
-  }
-
-  .stat-number {
-    font-size: 1.875rem;
-    font-weight: 700;
-    color: var(--color-slate-800);
-    line-height: 1;
-    margin-bottom: 0.5rem;
-  }
-
-  .stat-card--highlight .stat-number { color: var(--color-purple-700); }
-  .stat-card--warning .stat-number   { color: var(--color-orange-700); }
-  .stat-card--success .stat-number   { color: var(--color-green-800); }
-
-  .stat-label {
-    font-size: 0.8125rem;
-    color: var(--color-slate-500);
-    font-weight: 500;
-  }
-
-  .event-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .event-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.625rem 0.875rem;
-    background: var(--color-slate-50);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-  }
-
-  .event-dot {
-    width: 0.625rem;
-    height: 0.625rem;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .event-date {
-    color: var(--color-slate-500);
-    white-space: nowrap;
-    font-size: 0.8125rem;
-    min-width: 6rem;
-  }
-
-  .event-title {
-    color: var(--color-slate-800);
-    font-weight: 500;
-    flex: 1;
-  }
-
-  .event-discipline {
-    font-size: 0.75rem;
-    color: var(--color-purple-700);
-    background: var(--color-violet-100);
-    padding: 0.125rem 0.5rem;
-    border-radius: 0.25rem;
-    white-space: nowrap;
-  }
-
-  .no-data {
-    color: var(--color-slate-400);
-    font-size: 0.875rem;
-    margin: 0;
   }
 
   /* Policy & Planning History split layout */

@@ -11,9 +11,9 @@
   import PlanningWorkspace from '$lib/components/planning-application/PlanningWorkspace.svelte';
   import { selectedProject } from '$lib/stores/projectSelection.js';
   import {
-    mainView, mainViewProjectId, mainViewInitialTab,
+    mainView, mainViewProjectId, mainViewInitialTab, mainViewReturnTab,
     editModalOpen, editModalProjectId,
-    closeProjectModal, openEditModal, closeEditModal
+    closeProjectModal, openProjectModal, openEditModal, closeEditModal
   } from '$lib/stores/projectViewModal.js';
 
   let { children } = $props();
@@ -28,6 +28,17 @@
     const id = $mainViewProjectId;
     closeProjectModal();
     openEditModal(id);
+  }
+
+  // Closing a tab that was drilled into from another tab (e.g. Overview's
+  // "expand tracker" button) goes back to that tab instead of exiting the
+  // whole workspace.
+  function handlePanelClose() {
+    if ($mainViewReturnTab) {
+      openProjectModal($mainViewProjectId, $mainViewReturnTab);
+    } else {
+      closeProjectModal();
+    }
   }
 </script>
 
@@ -62,11 +73,11 @@
           isOpen={true}
           projectId={$mainViewProjectId}
           initialTab={$mainViewInitialTab}
-          onClose={closeProjectModal}
+          onClose={handlePanelClose}
           onEdit={handleEditFromView}
         />
       {:else if $mainView === 'surveyor'}
-        <SurveyorWorkspace project={$selectedProject} />
+        <SurveyorWorkspace project={$selectedProject} initialTab={$mainViewInitialTab} />
       {:else if $mainView === 'planning'}
         <PlanningWorkspace project={$selectedProject} />
       {:else}

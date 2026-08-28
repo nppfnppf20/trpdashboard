@@ -8,6 +8,7 @@
     loadProjects, selectProject, clearProjectSelection
   } from '$lib/stores/projectSelection.js';
   import {
+    mainView, mainViewInitialTab,
     openProjectModal, closeProjectModal,
     openSurveyorManagement, openPlanningDeliverables
   } from '$lib/stores/projectViewModal.js';
@@ -28,6 +29,7 @@
   const adminNavItem = { href: '/admin-console', label: 'Admin Console', icon: 'la-cog' };
 
   const overviewItem = { label: 'Overview', icon: 'la-info-circle', tab: 'details' };
+  const projectDetailsItem = { label: 'Project Details', icon: 'la-id-card', tab: 'project_details' };
   const surveyorManagementItem = { label: 'Surveyor Management', icon: 'la-user-tie' };
   const planningDeliverablesItem = { label: 'Planning Deliverables', icon: 'la-clipboard-list' };
   const workspaceGroups = [
@@ -35,8 +37,7 @@
       label: 'Site & Policy',
       items: [
         { label: 'Site Boundary', icon: 'la-map-marked-alt', tab: 'site_boundary' },
-        { label: 'Policy & History', icon: 'la-history', tab: 'policy_and_history' },
-        { label: 'Project Docs', icon: 'la-folder-open', tab: 'project_docs' }
+        { label: 'Policy & History', icon: 'la-history', tab: 'policy_and_history' }
       ]
     },
     {
@@ -44,29 +45,30 @@
       items: [
         { label: 'Consultation Tracker', icon: 'la-clipboard-list', tab: 'consultation_tracker' },
         { label: 'Conditions Tracker', icon: 'la-shield-alt', tab: 'conditions_tracker' },
-        { label: 'Project Tracker', icon: 'la-chart-line', tab: 'progress_tracker' },
-        { label: 'Stages', icon: 'la-layer-group', tab: 'stages' },
-        { label: 'Completeness', icon: 'la-check-circle', tab: 'completeness' }
-      ]
-    },
-    {
-      label: 'Analysis',
-      items: [
-        { label: 'Similar Schemes', icon: 'la-search', tab: 'similar_schemes' },
-        { label: 'LPA Decision Analysis', icon: 'la-balance-scale', tab: 'lpa_decision_analysis' },
-        { label: 'Conflict Check', icon: 'la-exclamation-triangle', tab: 'conflict' },
-        { label: 'HLPV', icon: 'la-sun', tab: 'hlpv' }
+        { label: 'Project Tracker', icon: 'la-chart-line', tab: 'progress_tracker' }
       ]
     },
     {
       label: 'Team',
       items: [
         { label: 'Project Chat', icon: 'la-comments', tab: 'project_chat' },
-        { label: 'Meeting Notes', icon: 'la-comment-alt', tab: 'meeting_notes' },
-        { label: 'Surveyor', icon: 'la-user-tie', tab: 'surveyor' }
+        { label: 'Meeting Notes', icon: 'la-comment-alt', tab: 'meeting_notes' }
       ]
     }
   ];
+
+  // Still-in-construction tools, tucked away behind a collapsed "Beta"
+  // group so the main Project Workspace list stays short.
+  const betaItems = [
+    { label: 'Similar Schemes', icon: 'la-search', tab: 'similar_schemes' },
+    { label: 'LPA Decision Analysis', icon: 'la-balance-scale', tab: 'lpa_decision_analysis' },
+    { label: 'Conflict Check', icon: 'la-exclamation-triangle', tab: 'conflict' },
+    { label: 'HLPV', icon: 'la-sun', tab: 'hlpv' },
+    { label: 'Project Docs', icon: 'la-folder-open', tab: 'project_docs' },
+    { label: 'Stages', icon: 'la-layer-group', tab: 'stages' },
+    { label: 'Completeness', icon: 'la-check-circle', tab: 'completeness' }
+  ];
+  let betaOpen = false;
 
   let switcherOpen = false;
 
@@ -122,22 +124,6 @@
   </div>
 
   <div class="nav-scroll">
-    <div class="section-label">Global</div>
-    {#each globalNavItems as item}
-      <a href={item.href} class="nav-item" class:active={$page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))} on:click={closeProjectModal}>
-        <i class="las {item.icon}"></i>
-        <span>{item.label}</span>
-        {#if item.beta}<span class="beta-tag">BETA</span>{/if}
-      </a>
-    {/each}
-
-    <div class="divider"></div>
-    <a href={adminNavItem.href} class="nav-item" class:active={$page.url.pathname.startsWith(adminNavItem.href)} on:click={closeProjectModal}>
-      <i class="las {adminNavItem.icon}"></i>
-      <span>{adminNavItem.label}</span>
-    </a>
-
-    <div class="divider"></div>
     <div class="section-label">Project Workspace</div>
 
     <div class="switcher-wrap">
@@ -179,15 +165,35 @@
     </div>
 
     {#if $hasSelectedProject}
-      <button class="nav-item workspace-item" on:click={() => openWorkspaceTab(overviewItem.tab)}>
+      <button
+        class="nav-item workspace-item"
+        class:active={$mainView === 'project' && $mainViewInitialTab === overviewItem.tab}
+        on:click={() => openWorkspaceTab(overviewItem.tab)}
+      >
         <i class="las {overviewItem.icon}"></i>
         <span>{overviewItem.label}</span>
       </button>
-      <button class="nav-item workspace-item" on:click={openWorkspaceSurveyorManagement}>
+      <button
+        class="nav-item workspace-item"
+        class:active={$mainView === 'project' && $mainViewInitialTab === projectDetailsItem.tab}
+        on:click={() => openWorkspaceTab(projectDetailsItem.tab)}
+      >
+        <i class="las {projectDetailsItem.icon}"></i>
+        <span>{projectDetailsItem.label}</span>
+      </button>
+      <button
+        class="nav-item workspace-item"
+        class:active={$mainView === 'surveyor'}
+        on:click={openWorkspaceSurveyorManagement}
+      >
         <i class="las {surveyorManagementItem.icon}"></i>
         <span>{surveyorManagementItem.label}</span>
       </button>
-      <button class="nav-item workspace-item" on:click={openWorkspacePlanningDeliverables}>
+      <button
+        class="nav-item workspace-item"
+        class:active={$mainView === 'planning'}
+        on:click={openWorkspacePlanningDeliverables}
+      >
         <i class="las {planningDeliverablesItem.icon}"></i>
         <span>{planningDeliverablesItem.label}</span>
       </button>
@@ -195,18 +201,56 @@
       {#each workspaceGroups as group}
         <div class="group-label">{group.label}</div>
         {#each group.items as item}
-          <button class="nav-item workspace-item" on:click={() => openWorkspaceTab(item.tab)}>
+          <button
+            class="nav-item workspace-item"
+            class:active={$mainView === 'project' && $mainViewInitialTab === item.tab}
+            on:click={() => openWorkspaceTab(item.tab)}
+          >
             <i class="las {item.icon}"></i>
             <span>{item.label}</span>
           </button>
         {/each}
       {/each}
+
+      <button class="beta-toggle" on:click={() => betaOpen = !betaOpen}>
+        <i class="las la-flask"></i>
+        <span>Beta</span>
+        <i class="las la-angle-down beta-caret {betaOpen ? 'open' : ''}"></i>
+      </button>
+      {#if betaOpen}
+        {#each betaItems as item}
+          <button
+            class="nav-item workspace-item"
+            class:active={$mainView === 'project' && $mainViewInitialTab === item.tab}
+            on:click={() => openWorkspaceTab(item.tab)}
+          >
+            <i class="las {item.icon}"></i>
+            <span>{item.label}</span>
+          </button>
+        {/each}
+      {/if}
     {:else}
       <div class="workspace-empty">
         <i class="las la-folder-open"></i>
         <div>Pick a project above to open its trackers, chat, docs and more.</div>
       </div>
     {/if}
+
+    <div class="divider"></div>
+    <div class="section-label">Global</div>
+    {#each globalNavItems as item}
+      <a href={item.href} class="nav-item" class:active={$mainView === null && ($page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href)))} on:click={closeProjectModal}>
+        <i class="las {item.icon}"></i>
+        <span>{item.label}</span>
+        {#if item.beta}<span class="beta-tag">BETA</span>{/if}
+      </a>
+    {/each}
+
+    <div class="divider"></div>
+    <a href={adminNavItem.href} class="nav-item" class:active={$mainView === null && $page.url.pathname.startsWith(adminNavItem.href)} on:click={closeProjectModal}>
+      <i class="las {adminNavItem.icon}"></i>
+      <span>{adminNavItem.label}</span>
+    </a>
   </div>
 
   <div class="profile">
@@ -324,6 +368,45 @@
 
   .nav-item.active i {
     color: var(--color-primary-600);
+  }
+
+  .beta-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: 0.4375rem var(--space-2);
+    margin-top: var(--space-1);
+    border-radius: var(--radius-sm);
+    background: none;
+    border: none;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: var(--color-slate-400);
+    font-size: 0.65625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .beta-toggle:hover {
+    background: var(--color-slate-100);
+    color: var(--color-slate-600);
+  }
+
+  .beta-toggle i:first-child {
+    font-size: 0.875rem;
+  }
+
+  .beta-caret {
+    margin-left: auto;
+    font-size: 0.875rem;
+    transition: transform 0.15s ease;
+  }
+
+  .beta-caret.open {
+    transform: rotate(180deg);
   }
 
   .beta-tag {

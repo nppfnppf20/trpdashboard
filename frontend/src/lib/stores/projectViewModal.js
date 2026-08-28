@@ -15,20 +15,43 @@ export const mainView = writable(null);
 export const mainViewProjectId = writable(null);
 export const mainViewInitialTab = writable(null); // only meaningful for 'project'
 
+// Set only when a tab is opened as a drill-down from within another tab
+// (e.g. the Overview page's "expand tracker" button) — tells the panel's
+// close button to go back to that tab instead of exiting the workspace.
+// Regular navigation (sidebar clicks) always passes returnTab as null,
+// which clears it.
+export const mainViewReturnTab = writable(null);
+
 // Edit modal — unrelated to the above, stays a true overlay
 export const editModalOpen = writable(false);
 export const editModalProjectId = writable(null);
 
-export function openProjectModal(projectId, tab = null) {
+// One-shot handoff for a file dropped on the Overview page's Meeting Notes
+// widget — MeetingNotesTab picks this up on mount/navigation and seeds its
+// own upload panel with it, then clears it. Not a general-purpose store.
+export const pendingMeetingUploadFile = writable(null);
+
+export function setPendingMeetingUploadFile(file) {
+  pendingMeetingUploadFile.set(file);
+}
+
+export function consumePendingMeetingUploadFile() {
+  let file;
+  pendingMeetingUploadFile.update(f => { file = f; return null; });
+  return file;
+}
+
+export function openProjectModal(projectId, tab = null, returnTab = null) {
   mainView.set('project');
   mainViewProjectId.set(projectId);
   mainViewInitialTab.set(tab);
+  mainViewReturnTab.set(returnTab);
 }
 
-export function openSurveyorManagement(projectId) {
+export function openSurveyorManagement(projectId, tab = null) {
   mainView.set('surveyor');
   mainViewProjectId.set(projectId);
-  mainViewInitialTab.set(null);
+  mainViewInitialTab.set(tab);
 }
 
 export function openPlanningDeliverables(projectId) {
@@ -41,6 +64,7 @@ export function closeProjectModal() {
   mainView.set(null);
   mainViewProjectId.set(null);
   mainViewInitialTab.set(null);
+  mainViewReturnTab.set(null);
 }
 
 export function openEditModal(projectId) {

@@ -5,6 +5,7 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
+  import { consumePendingMeetingUploadFile } from '$lib/stores/projectViewModal.js';
   import {
     getDocumentSummaries,
     generateDocumentSummary,
@@ -296,7 +297,19 @@
   let showExtras = false;
   let fileInput;
 
-  onMount(() => { if (projectId) { loadAll(); loadBriefings(); } });
+  onMount(() => {
+    if (projectId) { loadAll(); loadBriefings(); }
+    // A file dropped on the Overview page's Meeting Notes widget hands off
+    // here rather than duplicating the upload+review flow — seed the panel
+    // with it and let the user pick note type/options and submit as normal.
+    const pendingFile = consumePendingMeetingUploadFile();
+    if (pendingFile) {
+      uploadFile = pendingFile;
+      uploadInputTab = 'upload';
+      uploadNoteType = 'meeting';
+      showUploadPanel = true;
+    }
+  });
   $: if (projectId) { loadAll(); loadBriefings(); }
 
   async function loadAll() {

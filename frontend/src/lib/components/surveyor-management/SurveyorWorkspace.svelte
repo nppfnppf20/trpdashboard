@@ -16,8 +16,9 @@
   } from '$lib/api/quotes.js';
 
   export let project;
+  export let initialTab = null;
 
-  let activeTab = 'general';
+  let activeTab = initialTab ?? 'general';
   let quotes = [];
   let quoteKeyDates = [];
   let programmeEvents = [];

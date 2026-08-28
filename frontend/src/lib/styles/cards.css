@@ -53,3 +53,58 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.875rem;
 }
+
+/* Dashboard widget card — the project Overview page's grid tiles
+   (Trackers, Chat, Key Dates, Surveyor, Meeting Notes). A `.card` with a
+   fixed header/body structure so every widget shares the same chrome. */
+.widget {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.widget-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem 0.625rem;
+  flex-shrink: 0;
+}
+
+.widget-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-slate-900);
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+}
+
+.widget-expand {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-slate-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.widget-expand:hover { color: var(--color-slate-800); }
+
+.widget-body {
+  padding: 0 1rem 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
