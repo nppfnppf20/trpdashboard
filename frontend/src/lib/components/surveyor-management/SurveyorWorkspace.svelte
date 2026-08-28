@@ -4,7 +4,6 @@
   import QuotesPanel from '$lib/components/surveyor-management/QuotesPanel.svelte';
   import ProgrammePanel from '$lib/components/surveyor-management/ProgrammePanel.svelte';
   import ReviewsPanel from '$lib/components/surveyor-management/ReviewsPanel.svelte';
-  import EditableGeneralInfo from '$lib/components/admin-console/EditableGeneralInfo.svelte';
   import {
     getQuotes,
     getQuoteKeyDates,
@@ -19,27 +18,21 @@
   export let initialTab = null;
   export let onClose = () => {};
 
-  let activeTab = initialTab ?? 'general';
+  let activeTab = initialTab ?? 'briefings';
   let quotes = [];
   let quoteKeyDates = [];
   let programmeEvents = [];
   let loading = false;
   let error = null;
-  let generalInfoComponent = null;
   let loadedForId = null;
 
   const tabs = [
-    { id: 'general', label: 'General', icon: 'la-info-circle' },
     { id: 'briefings', label: 'Briefings', icon: 'la-clipboard-list' },
     { id: 'quotes', label: 'Quotes', icon: 'la-file-invoice-dollar' },
     { id: 'instructed', label: 'Instructed', icon: 'la-tasks' },
     { id: 'programme', label: 'Programme', icon: 'la-calendar-alt' },
     { id: 'reviews', label: 'Reviews', icon: 'la-star' }
   ];
-
-  function hasAnyUnsavedChanges() {
-    return generalInfoComponent?.hasUnsaved();
-  }
 
   $: if (project?.unique_id && project.unique_id !== loadedForId) {
     loadedForId = project.unique_id;
@@ -54,23 +47,7 @@
   }
 
   function handleTabChange(newTab) {
-    // Check for unsaved changes before switching tabs
-    if (hasAnyUnsavedChanges()) {
-      if (!confirm('You have unsaved changes. Are you sure you want to leave this tab?')) {
-        return;
-      }
-    }
     activeTab = newTab;
-  }
-
-  function handleProjectInfoUpdated(event) {
-    // Update the local project view with the new data (optimistic UI only —
-    // exclude project_id from the update as it's a foreign key, not the project code)
-    const { project_id, ...projectInfoData } = event.detail;
-    project = {
-      ...project,
-      ...projectInfoData
-    };
   }
 
   async function loadQuotes(projectId) {
@@ -230,16 +207,7 @@
 
     <!-- Content area -->
     <div class="content-area">
-      {#if activeTab === 'general'}
-        <div class="content-panel">
-          <EditableGeneralInfo
-            bind:this={generalInfoComponent}
-            {project}
-            on:updated={handleProjectInfoUpdated}
-          />
-        </div>
-
-      {:else if activeTab === 'briefings'}
+      {#if activeTab === 'briefings'}
         <div class="content-panel">
           <SurveyorBriefingPanel selectedProject={project} />
         </div>

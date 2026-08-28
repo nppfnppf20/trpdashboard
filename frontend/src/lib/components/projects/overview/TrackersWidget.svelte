@@ -435,6 +435,18 @@
   .tr-name { flex: 1; min-width: 0; }
   .tr-name-text { font-size: 12.5px; font-weight: 600; color: var(--color-slate-900); margin-bottom: 2px; }
 
+  /* The shared .badge/.badge-* classes are the same geometry used
+     everywhere else (e.g. ProjectsTable's status pill) — full-size in this
+     dense, small-type widget reads as oversized and blocky, so trim it
+     down proportionately to this row's own type scale. Colors/radius still
+     come from the shared classes. */
+  .tr-row .badge {
+    font-size: 0.625rem;
+    padding: 0.09rem 0.5rem;
+    flex-shrink: 0;
+  }
+  .tr-name .badge { margin-top: 2px; }
+
   .progress-cell {
     flex: 1.6; min-width: 0; height: 40px; box-sizing: border-box;
     display: flex; flex-direction: column; justify-content: center; text-align: left;

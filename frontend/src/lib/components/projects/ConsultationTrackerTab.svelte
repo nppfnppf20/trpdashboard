@@ -991,10 +991,10 @@ ${sections.join('<br>')}`;
 <!-- ── Sub-tab navigation ────────────────────────────────────────────────── -->
 <div class="ct-subtabs">
   <button class="ct-subtab" class:ct-subtab-active={subTab === 'statutory'} on:click={() => subTab = 'statutory'}>
-    Statutory Consultees
+    <i class="las la-landmark"></i> Statutory Consultees
   </button>
   <button class="ct-subtab" class:ct-subtab-active={subTab === 'public'} on:click={() => subTab = 'public'}>
-    Public Comments
+    <i class="las la-comments"></i> Public Comments
   </button>
 </div>
 
@@ -1471,29 +1471,33 @@ ${sections.join('<br>')}`;
   /* ── Sub-tab navigation ─────────────────────────────────────────────────── */
   .ct-subtabs {
     display: flex;
-    gap: 0;
-    border-bottom: 2px solid var(--color-slate-200);
-    padding: 0 1rem;
+    gap: 6px;
+    padding: 0.75rem 1rem;
     background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
   }
   .ct-subtab {
-    padding: 0.625rem 1.125rem;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-slate-500);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.4375rem 0.875rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-slate-600);
     cursor: pointer;
     transition: all 0.15s;
   }
-  .ct-subtab:hover { color: var(--color-slate-800); }
+  .ct-subtab i { font-size: 0.9rem; color: var(--color-slate-400); }
+  .ct-subtab:hover { background: var(--color-slate-100); }
   .ct-subtab-active {
-    color: var(--color-primary-500);
-    border-bottom-color: var(--color-primary-500);
-    font-weight: 600;
+    background: var(--color-slate-900);
+    border-color: var(--color-slate-900);
+    color: var(--color-white);
   }
+  .ct-subtab-active i { color: var(--color-white); }
 
   /* ── Layout ─────────────────────────────────────────────────────────────── */
   .ct-tab {

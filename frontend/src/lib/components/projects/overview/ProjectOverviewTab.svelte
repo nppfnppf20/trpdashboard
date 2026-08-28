@@ -11,16 +11,16 @@
 <div class="ov-grid">
   <TrackersWidget {project} />
   <ChatWidget {project} />
+  <MeetingNotesWidget {project} />
   <KeyDatesWidget {project} />
   <SurveyorWidget {project} />
-  <MeetingNotesWidget {project} />
 </div>
 
 <style>
   .ov-grid {
     display: grid;
     grid-template-columns: 1.6fr 1fr 1fr;
-    grid-template-rows: minmax(260px, 1fr) minmax(260px, 1fr);
+    grid-template-rows: minmax(320px, 2fr) minmax(160px, 1fr);
     gap: 1rem;
     min-height: 600px;
     padding: 1.25rem 1.75rem 0;
