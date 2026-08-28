@@ -46,7 +46,7 @@
   }
 
   function openManage() {
-    openSurveyorManagement(projectId);
+    openSurveyorManagement(projectId, null, 'details');
   }
 </script>
 
@@ -54,7 +54,7 @@
   <div class="widget-head">
     <div class="widget-title">
       <i class="las la-user-tie"></i>
-      Surveyor
+      Surveyor Management
     </div>
     <button class="widget-expand" on:click={openManage}>
       Manage <i class="las la-angle-right"></i>

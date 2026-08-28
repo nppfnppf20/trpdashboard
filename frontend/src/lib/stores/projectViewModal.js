@@ -41,6 +41,35 @@ export function consumePendingMeetingUploadFile() {
   return file;
 }
 
+// Same one-shot handoff, for text pasted into the Meeting Notes widget's
+// paste tab instead of a dropped file.
+export const pendingMeetingUploadText = writable(null);
+
+export function setPendingMeetingUploadText(text) {
+  pendingMeetingUploadText.set(text);
+}
+
+export function consumePendingMeetingUploadText() {
+  let text;
+  pendingMeetingUploadText.update(t => { text = t; return null; });
+  return text;
+}
+
+// One-shot handoff for the Meeting Notes widget's per-note "View Notes" /
+// "Transcript" buttons — MeetingNotesTab opens that note's modal once its
+// own note list has loaded.
+export const pendingMeetingNoteFocus = writable(null); // { noteId, mode: 'view' | 'transcript' }
+
+export function setPendingMeetingNoteFocus(noteId, mode) {
+  pendingMeetingNoteFocus.set({ noteId, mode });
+}
+
+export function consumePendingMeetingNoteFocus() {
+  let focus;
+  pendingMeetingNoteFocus.update(f => { focus = f; return null; });
+  return focus;
+}
+
 export function openProjectModal(projectId, tab = null, returnTab = null) {
   mainView.set('project');
   mainViewProjectId.set(projectId);
@@ -48,10 +77,11 @@ export function openProjectModal(projectId, tab = null, returnTab = null) {
   mainViewReturnTab.set(returnTab);
 }
 
-export function openSurveyorManagement(projectId, tab = null) {
+export function openSurveyorManagement(projectId, tab = null, returnTab = null) {
   mainView.set('surveyor');
   mainViewProjectId.set(projectId);
   mainViewInitialTab.set(tab);
+  mainViewReturnTab.set(returnTab);
 }
 
 export function openPlanningDeliverables(projectId) {

@@ -77,7 +77,7 @@
           onEdit={handleEditFromView}
         />
       {:else if $mainView === 'surveyor'}
-        <SurveyorWorkspace project={$selectedProject} initialTab={$mainViewInitialTab} />
+        <SurveyorWorkspace project={$selectedProject} initialTab={$mainViewInitialTab} onClose={handlePanelClose} />
       {:else if $mainView === 'planning'}
         <PlanningWorkspace project={$selectedProject} />
       {:else}

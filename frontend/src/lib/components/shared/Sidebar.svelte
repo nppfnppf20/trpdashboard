@@ -77,8 +77,16 @@
   }
 
   function pickProject(id) {
+    // If you're picking a project from a global page (not already inside a
+    // project workspace), jump straight into that project's Overview
+    // rather than leaving you on the same global page with just the
+    // switcher updated underneath you.
+    const wasGeneralView = $mainView === null;
     selectProject(id);
     switcherOpen = false;
+    if (wasGeneralView) {
+      openProjectModal(id, 'details');
+    }
   }
 
   function openWorkspaceTab(tab) {

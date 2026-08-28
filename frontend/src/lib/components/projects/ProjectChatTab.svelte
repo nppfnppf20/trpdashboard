@@ -40,8 +40,14 @@
       const data = await getChatSources(project.id);
       groups = data.groups;
 
-      // Default selection: project details only
+      // Default selection: project details, plus whichever tracker has the
+      // most content for this project (highest char/token count).
       detailsSelected = groups.some(g => g.key === 'project_details');
+      const biggestTracker = TRACKER_KEYS
+        .map(k => groups.find(g => g.key === k))
+        .filter(g => g && g.count > 0)
+        .reduce((a, b) => (!a || b.chars > a.chars ? b : a), null);
+      if (biggestTracker) selectedGroups = new Set([...selectedGroups, biggestTracker.key]);
     } catch (err) {
       console.error('Error loading chat sources:', err);
       loadError = err.message;

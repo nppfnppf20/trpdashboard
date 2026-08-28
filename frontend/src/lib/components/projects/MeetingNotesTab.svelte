@@ -5,7 +5,11 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
-  import { consumePendingMeetingUploadFile } from '$lib/stores/projectViewModal.js';
+  import {
+    consumePendingMeetingUploadFile,
+    consumePendingMeetingUploadText,
+    consumePendingMeetingNoteFocus
+  } from '$lib/stores/projectViewModal.js';
   import {
     getDocumentSummaries,
     generateDocumentSummary,
@@ -297,17 +301,36 @@
   let showExtras = false;
   let fileInput;
 
-  onMount(() => {
-    if (projectId) { loadAll(); loadBriefings(); }
-    // A file dropped on the Overview page's Meeting Notes widget hands off
-    // here rather than duplicating the upload+review flow — seed the panel
-    // with it and let the user pick note type/options and submit as normal.
+  onMount(async () => {
+    if (projectId) { await Promise.all([loadAll(), loadBriefings()]); }
+
+    // A file or pasted text handed off from the Overview page's Meeting
+    // Notes widget — seed the upload panel with it and let the user pick
+    // note type/options and submit as normal, same flow as doing it here.
     const pendingFile = consumePendingMeetingUploadFile();
     if (pendingFile) {
       uploadFile = pendingFile;
       uploadInputTab = 'upload';
       uploadNoteType = 'meeting';
       showUploadPanel = true;
+    }
+    const pendingText = consumePendingMeetingUploadText();
+    if (pendingText) {
+      uploadPasteText = pendingText;
+      uploadInputTab = 'paste';
+      uploadNoteType = 'meeting';
+      showUploadPanel = true;
+    }
+
+    // A "View Notes" / "Transcript" click from the widget — open that
+    // note's modal now that the note list has loaded.
+    const focus = consumePendingMeetingNoteFocus();
+    if (focus) {
+      const note = notes.find(n => n.id === focus.noteId);
+      if (note) {
+        if (focus.mode === 'view') openNoteEditor(note);
+        else if (focus.mode === 'transcript') openTranscript(note);
+      }
     }
   });
   $: if (projectId) { loadAll(); loadBriefings(); }

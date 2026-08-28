@@ -34,7 +34,7 @@
   }
 
   function openProgramme() {
-    openSurveyorManagement(projectId, 'programme');
+    openSurveyorManagement(projectId, 'programme', 'details');
   }
 </script>
 
@@ -66,8 +66,8 @@
 <style>
   .kd-body { display: flex; flex-direction: column; gap: 9px; }
   .kd-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.5rem 0; }
-  .kd-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-  .kd-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary-600); flex-shrink: 0; }
-  .kd-date { color: var(--color-slate-500); width: 40px; flex-shrink: 0; }
-  .kd-title { color: var(--color-slate-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kd-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+  .kd-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary-600); flex-shrink: 0; margin-top: 5px; }
+  .kd-date { color: var(--color-slate-500); white-space: nowrap; flex-shrink: 0; padding-top: 1px; }
+  .kd-title { color: var(--color-slate-800); }
 </style>

@@ -43,6 +43,13 @@
       const data = await getChatSources(project.id);
       groups = data.groups || [];
       detailsSelected = groups.some(g => g.key === 'project_details');
+      // Default-select whichever tracker has the most content for this
+      // project (highest char/token count), same as Project Details.
+      const biggestTracker = TRACKER_KEYS
+        .map(k => groups.find(g => g.key === k))
+        .filter(g => g && g.count > 0)
+        .reduce((a, b) => (!a || b.chars > a.chars ? b : a), null);
+      if (biggestTracker) selectedGroups = new Set([...selectedGroups, biggestTracker.key]);
       sourcesLoaded = true;
     } catch (err) {
       error = err.message;

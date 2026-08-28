@@ -17,6 +17,7 @@
 
   export let project;
   export let initialTab = null;
+  export let onClose = () => {};
 
   let activeTab = initialTab ?? 'general';
   let quotes = [];
@@ -210,6 +211,7 @@
         <h1>{project.project_name}</h1>
         {#if project.project_id}<span class="project-ref">{project.project_id}</span>{/if}
       </div>
+      <button class="close-btn" on:click={onClose} title="Close" aria-label="Close">&times;</button>
     </div>
 
     <!-- Tabs navigation -->
@@ -327,6 +329,23 @@
     background: var(--color-slate-100);
     padding: 0.15rem 0.5rem;
     border-radius: 4px;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: var(--color-slate-500);
+    cursor: pointer;
+    padding: 0;
+    width: 2rem;
+    height: 2rem;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+
+  .close-btn:hover {
+    color: var(--color-slate-800);
   }
 
   .tabs-bar {
