@@ -500,11 +500,6 @@
 <svelte:window on:click={handleWindowClick} on:keydown={handleWindowKeydown} />
 
 <div class="mn-page">
-  <a href="/" class="home-button" title="Back to Home">
-    <i class="las la-home"></i>
-    <span>Home</span>
-  </a>
-
   <!-- Page header -->
   <div class="page-header">
     <div class="header-content">
@@ -518,8 +513,27 @@
     </div>
   </div>
 
+  {#if meetingType && !notesLoading}
+    <div class="card stat-strip">
+      <div class="stat-chip">
+        <span class="stat-chip-n">{notes.length}</span>
+        <span class="stat-chip-l">{TYPE_LABELS[meetingType]} Notes</span>
+      </div>
+      <div class="stat-chip-divider"></div>
+      <div class="stat-chip">
+        <span class="stat-chip-n">{notes.filter(n => Number(n.pending_count) > 0).length}</span>
+        <span class="stat-chip-l">With Open Actions</span>
+      </div>
+      <div class="stat-chip-divider"></div>
+      <div class="stat-chip">
+        <span class="stat-chip-n">{notes.reduce((sum, n) => sum + (Number(n.pending_count) || 0), 0)}</span>
+        <span class="stat-chip-l">Total Open Actions</span>
+      </div>
+    </div>
+  {/if}
+
   <!-- Workspace -->
-  <div class="workspace-container">
+  <div class="card workspace-container">
     <div class="workspace-tabs">
       <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
         <button
@@ -813,7 +827,7 @@
   </div><!-- end workspace-container -->
 
   <!-- Stream -->
-  <div class="stream-container">
+  <div class="card stream-container">
     <div class="stream-header">
       <h2 class="stream-title">All Meeting Notes</h2>
     </div>
@@ -1035,56 +1049,41 @@
 <style>
   /* ── Page ──────────────────────────────────────────────────────────────────── */
   .mn-page {
-    min-height: 100vh;
     background: var(--color-slate-50);
-    padding: 2rem;
-    position: relative;
+    padding: 1.5rem 2rem;
   }
 
-  .home-button {
-    position: absolute;
-    top: 0.75rem;
-    left: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-    color: var(--color-slate-800);
-    font-size: 0.875rem;
-    text-decoration: none;
-    transition: all 0.2s;
-    box-shadow: var(--shadow-sm);
-    z-index: 10;
-  }
-  .home-button:hover { background: var(--color-slate-100); border-color: var(--color-slate-300); }
-  .home-button i { font-size: 1.125rem; }
-
-  .page-header { margin-bottom: 2rem; }
-  .header-content { max-width: 1400px; margin: 0 auto; }
+  .page-header { margin-bottom: 1.25rem; }
 
   .page-title {
-    font-size: 2.5rem;
+    font-size: 1.375rem;
     font-weight: 700;
-    color: var(--color-slate-800);
-    margin: 0 0 0.5rem;
+    color: var(--color-slate-900);
+    margin: 0 0 0.25rem;
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.625rem;
+    letter-spacing: -0.02em;
   }
-  .page-title i { font-size: 2.5rem; color: var(--color-violet-600); }
+  .page-title i { font-size: 1.125rem; color: var(--color-violet-600); }
 
-  .page-description { font-size: 1.125rem; color: var(--color-slate-500); margin: 0; }
+  .page-description { font-size: 0.8125rem; color: var(--color-slate-500); margin: 0; max-width: 560px; line-height: 1.5; }
+
+  /* ── Summary strip ─────────────────────────────────────────────────────────── */
+  .stat-strip {
+    display: flex;
+    gap: 1.25rem;
+    padding: 0.75rem 1.125rem;
+    margin-bottom: 1.25rem;
+  }
+  .stat-chip { display: flex; flex-direction: column; gap: 0.125rem; }
+  .stat-chip-n { font-size: 1.0625rem; font-weight: 700; color: var(--color-slate-900); }
+  .stat-chip-l { font-size: 0.65625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-slate-400); }
+  .stat-chip-divider { width: 1px; background: var(--color-slate-200); }
 
   /* ── Workspace (tabbed card) ───────────────────────────────────────────────── */
   .workspace-container {
-    max-width: 1400px;
-    margin: 0 auto 2rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 12px;
+    margin: 0 0 2rem;
     overflow: hidden;
   }
 
@@ -1237,9 +1236,6 @@
   .stream-container {
     max-width: 1400px;
     margin: 0 auto;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 12px;
     padding: 1.5rem;
   }
 
@@ -1328,14 +1324,9 @@
   .badge-gray   { background: var(--color-slate-100); color: var(--color-slate-600); }
 
   /* ── Form helpers ──────────────────────────────────────────────────────────── */
-  .form-input {
-    width: 100%; padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-slate-300); border-radius: 6px;
-    font-size: 0.875rem; font-family: inherit; color: var(--color-slate-800); background: var(--color-white);
-    box-sizing: border-box; transition: border-color 0.15s, box-shadow 0.15s;
-  }
+  /* Base .form-input comes from the shared inputs.css; this page's
+     violet-tinted focus ring stays as a local override. */
   .form-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
-  textarea.form-input { resize: vertical; line-height: 1.5; }
 
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
   .form-row-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.75rem; }

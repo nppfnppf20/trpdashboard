@@ -686,7 +686,7 @@
         />
       {:else}
         <!-- Read-only display when analysis has results -->
-        <div class="project-display">
+        <div class="card project-display">
           <div class="project-display-content">
             <span class="project-label">Selected:</span>
             <span class="project-value">
@@ -823,9 +823,6 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 1rem 1.5rem;
     margin-bottom: 1.5rem;
   }

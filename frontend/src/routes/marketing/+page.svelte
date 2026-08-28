@@ -4,9 +4,6 @@
 
 <div class="page">
   <header class="topbar">
-    <a href="/" class="home-btn" title="Back to Home">
-      <i class="las la-home"></i>
-    </a>
     <span class="topbar-title">Marketing <span class="beta-tag">Beta</span></span>
   </header>
 
@@ -36,21 +33,6 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     z-index: 10;
   }
-
-  .home-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    color: var(--color-slate-600);
-    text-decoration: none;
-    font-size: 1.1rem;
-    flex-shrink: 0;
-    transition: background 0.15s, color 0.15s;
-  }
-  .home-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
 
   .topbar-title {
     font-size: 0.875rem;

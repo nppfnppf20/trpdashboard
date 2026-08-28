@@ -86,7 +86,7 @@
   }
 </script>
 
-<div class="project-selector" class:disabled>
+<div class="card project-selector" class:disabled>
   <div class="selector-header">
     <h3>{label}</h3>
     {#if selectedProjectId && !disabled}
@@ -176,9 +176,6 @@
 
 <style>
   .project-selector {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1.5rem;
     transition: opacity 0.2s, background-color 0.2s;

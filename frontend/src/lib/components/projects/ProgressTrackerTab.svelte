@@ -735,7 +735,7 @@
             </button>
           </div>
           {#each timelineIssue.linked_quotes || [] as q (q.quote_id)}
-            <div class="tl-quote-card">
+            <div class="card tl-quote-card">
               <div class="tl-quote-chip">
                 <span class="tl-quote-org">{q.organisation || 'Quote'}</span>
                 {#if q.discipline}<span class="tl-quote-meta">{q.discipline}</span>{/if}
@@ -1435,20 +1435,9 @@
 
   .tl-add-form { display: flex; flex-direction: column; gap: 0.6rem; border: 1px solid var(--color-slate-200); border-radius: 8px; padding: 0.85rem; background: var(--color-slate-50); }
   .tl-add-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
-  .form-input {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: var(--color-white);
-    box-sizing: border-box;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
+  /* Base .form-input comes from the shared inputs.css; this tab's
+     teal-tinted focus ring stays as a local override. */
   .form-input:focus { outline: none; border-color: var(--color-teal-600); box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1); }
-  textarea.form-input { resize: vertical; line-height: 1.5; }
   .tl-input { font-size: 0.8rem; }
   .tl-stage-new-input { max-width: 160px; }
   .tl-stage-add-toggle {
@@ -1484,7 +1473,7 @@
   .tl-quotes-none { margin: 0; font-size: 0.76rem; color: var(--color-slate-400); }
   .tl-quote-card {
     display: flex; flex-direction: column; gap: 0.4rem;
-    background: var(--color-white); border: 1px solid var(--color-slate-200); border-radius: 8px; padding: 0.5rem 0.65rem;
+    padding: 0.5rem 0.65rem;
   }
   .tl-quote-chip { display: flex; align-items: center; gap: 0.5rem; }
   .tl-quote-statuses { display: flex; flex-wrap: wrap; gap: 0.35rem; }

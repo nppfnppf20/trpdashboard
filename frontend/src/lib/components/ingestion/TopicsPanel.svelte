@@ -191,18 +191,9 @@
   .hint { font-weight: 400; color: var(--color-slate-400); }
   .required { color: var(--color-red-500); }
 
-  .form-input {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    background: white;
-    color: var(--color-slate-800);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  .form-input:focus { border-color: var(--color-purple-600); }
+  /* Base .form-input comes from the shared inputs.css; this panel's
+     purple-tinted focus border stays as a local override. */
+  .form-input:focus { border-color: var(--color-purple-600); box-shadow: none; }
 
   .form-actions { display: flex; gap: 0.5rem; }
 

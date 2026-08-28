@@ -3,6 +3,8 @@
 @import 'leaflet-ruler/src/leaflet-ruler.css';
 @import './lib/styles/badges.css';
 @import './lib/styles/buttons.css';
+@import './lib/styles/cards.css';
+@import './lib/styles/inputs.css';
 @import './lib/styles/tables.css';
 
 /* Global styles */
@@ -10,6 +12,7 @@
   --page-max-width: 1100px;
 
   /* Dashboard layout variables */
+  --sidebar-width: 264px;
   --dashboard-height: 100vh;
   --navbar-height: 60px;
   --dashboard-content-height: calc(100vh - var(--navbar-height));
@@ -162,12 +165,25 @@
   --shadow-dropdown: 0 4px 12px rgba(0, 0, 0, 0.15);
   --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 
+  /* Refined card/tile elevation — barely-there at rest, a touch more on
+     hover. Deliberately quieter than --shadow-sm/md (those stay as they
+     were for existing dropdown/modal consumers); use these on cards,
+     stat tiles and similar flat surfaces instead of a bare border. */
+  --shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-subtle-hover: 0 6px 16px rgba(15, 23, 42, 0.07);
+
+  /* Primary-button-specific depth (blue-tinted on hover) */
+  --shadow-btn-primary: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow-btn-primary-hover: 0 3px 8px rgba(37, 99, 235, 0.22);
+
   /* Interaction — recurring exact patterns found across modals/inputs during Phase 3 */
   --overlay-bg: rgba(0, 0, 0, 0.5);
-  --focus-ring-blue: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  --focus-ring-blue: 0 0 0 3px rgba(37, 99, 235, 0.12);
 
-  /* Typography */
-  --font-sans: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  /* Typography — Plus Jakarta Sans is already loaded app-wide (see
+     app.html) but was previously only applied by a couple of pages;
+     it's now the base font everywhere. */
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
@@ -200,7 +216,7 @@ html, body, #svelte {
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: var(--font-sans);
   color: var(--color-slate-900);
   background: var(--color-white);
 }
@@ -347,14 +363,15 @@ h1 {
 .result-item {
   background: white;
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
   padding: 1rem;
-  transition: all 0.2s ease;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .result-item:hover {
   border-color: var(--color-slate-300);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-subtle-hover);
 }
 
 /* Item header */
@@ -493,7 +510,8 @@ h1 {
   color: var(--color-slate-500);
   background: white;
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
 }
 
 /* Responsive adjustments */

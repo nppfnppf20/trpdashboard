@@ -91,7 +91,7 @@
   $: totalDays = Math.floor((timeline.endWeek - timeline.startWeek) / (1000 * 60 * 60 * 24));
 </script>
 
-<div class="gantt-container">
+<div class="card gantt-container">
   <div class="gantt-header">
     <div class="gantt-sidebar-header">Item / Surveyor</div>
     <div class="gantt-timeline-header">
@@ -202,9 +202,7 @@
 
 <style>
   .gantt-container {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
+    padding: 0;
     overflow-x: auto;
   }
 

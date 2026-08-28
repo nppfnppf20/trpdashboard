@@ -689,7 +689,7 @@
       </div>
     {:else}
       {#each summaries as s (s.id)}
-        <div class="summary-card">
+        <div class="card summary-card">
           <!-- svelte-ignore a11y-no-static-element-interactions -->
           <div class="summary-card-header" on:click={() => toggleExpand(s.id)}>
             <div class="summary-meta">
@@ -1031,9 +1031,6 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .summary-card {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
     padding: 1rem;
     display: flex; flex-direction: column; gap: 0.5rem;
   }

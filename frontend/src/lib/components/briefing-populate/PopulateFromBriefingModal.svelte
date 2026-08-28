@@ -354,26 +354,9 @@
     color: var(--color-red-600);
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.625rem 1.25rem;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-  }
-
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
+  /* This modal uses violet as its accent instead of the default primary blue — everything else comes from the shared buttons.css. */
   .btn-primary { background: var(--color-violet-600); color: white; }
   .btn-primary:hover:not(:disabled) { background: var(--color-violet-700); }
-
-  .btn-secondary { background: white; color: var(--color-slate-500); border: 1px solid var(--color-slate-300); }
-  .btn-secondary:hover:not(:disabled) { background: var(--color-slate-50); }
 
   .briefing-select-step { display: flex; flex-direction: column; gap: 1rem; }
 

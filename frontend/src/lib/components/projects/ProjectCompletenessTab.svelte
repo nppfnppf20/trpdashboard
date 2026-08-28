@@ -256,31 +256,7 @@
     gap: 0.75rem;
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-  }
-
-  .btn-primary {
-    background: var(--color-violet-600);
-    color: white;
-  }
-
+  /* This page uses violet as its accent instead of the default primary blue — everything else comes from the shared buttons.css. */
+  .btn-primary { background: var(--color-violet-600); color: white; }
   .btn-primary:hover { background: var(--color-violet-700); }
-
-  .btn-secondary {
-    background: white;
-    color: var(--color-slate-500);
-    border: 1px solid var(--color-slate-300);
-  }
-
-  .btn-secondary:hover { background: var(--color-slate-50); }
 </style>

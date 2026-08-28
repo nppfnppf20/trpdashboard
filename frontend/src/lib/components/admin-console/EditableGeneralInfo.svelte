@@ -792,43 +792,6 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
     color: var(--color-slate-500);
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: var(--color-primary-600);
-  }
-
-  .btn-primary:disabled {
-    background: var(--color-slate-400);
-    cursor: not-allowed;
-  }
-
-  .btn-secondary {
-    background: white;
-    color: var(--color-slate-500);
-    border: 1px solid var(--color-slate-300);
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--color-slate-50);
-  }
-
   .btn-secondary:disabled {
     opacity: 0.5;
     cursor: not-allowed;

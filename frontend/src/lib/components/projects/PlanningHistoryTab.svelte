@@ -172,7 +172,7 @@
         </div>
       </div>
     {/if}
-    <div class="ph-section">
+    <div class="card ph-section">
       <div class="section-header">
         <div class="section-info">
           <h3>On Site Planning History</h3>
@@ -261,7 +261,7 @@
         </div>
       </div>
     {/if}
-    <div class="ph-section">
+    <div class="card ph-section">
       <div class="section-header">
         <div class="section-info">
           <h3>Relevant Nearby Planning History</h3>
@@ -434,9 +434,6 @@
 
   /* Sections */
   .ph-section {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
     padding: 1rem 1.25rem;
     display: flex;
     flex-direction: column;

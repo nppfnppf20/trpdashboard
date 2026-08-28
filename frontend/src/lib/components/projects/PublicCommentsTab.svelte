@@ -633,20 +633,9 @@
   }
 
   .ct-row-btns    { display: flex; gap: 0.25rem; }
-  .form-input {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: var(--color-white);
-    box-sizing: border-box;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
+  /* Base .form-input comes from the shared inputs.css; this tab's
+     teal-tinted focus ring stays as a local override. */
   .form-input:focus { outline: none; border-color: var(--color-teal-600); box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1); }
-  textarea.form-input { resize: vertical; line-height: 1.5; }
   .ct-cell-input  {
     width: 100%; border: 1px solid var(--color-slate-300); border-radius: 5px;
     padding: 4px 6px; font-size: 0.78rem; font-family: inherit;

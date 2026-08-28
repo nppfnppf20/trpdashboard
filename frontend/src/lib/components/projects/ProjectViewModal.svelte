@@ -21,11 +21,13 @@
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
   import { extractPoliciesFromDocument } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments, createPolicyDocument } from '$lib/api/policyDocuments.js';
+  import { openSurveyorManagement } from '$lib/stores/projectViewModal.js';
 
   export let isOpen = false;
   export let onClose = () => {};
   export let onEdit = () => {};
   export let projectId = null;
+  export let initialTab = null;
 
   // Project data
   let projectData = null;
@@ -34,32 +36,33 @@
 
   // Tab state
   let activeTab = 'site_boundary';
-  let betaDropdownOpen = false;
   let policyFormOpen = false;
 
-  const betaTabs = ['similar_schemes', 'lpa_decision_analysis', 'conflict', 'hlpv', 'project_docs', 'stages', 'completeness'];
-
-  function closeBetaDropdown() {
-    betaDropdownOpen = false;
-  }
-
-  function handleBetaTabSelect(tab) {
-    activeTab = tab;
-    betaDropdownOpen = false;
-  }
-
-  let trackersDropdownOpen = false;
-  const trackerTabs = ['consultation_tracker', 'conditions_tracker', 'progress_tracker'];
   const trackerLabels = {
     consultation_tracker: 'Consultation Tracker',
     conditions_tracker: 'Conditions Tracker',
     progress_tracker: 'Project Tracker',
   };
 
-  function handleTrackerTabSelect(tab) {
-    activeTab = tab;
-    trackersDropdownOpen = false;
-  }
+  // Every tab's display name, for the header — navigation itself now lives
+  // solely in the sidebar's Project Workspace section (the in-panel tab bar
+  // was fully redundant with it and has been removed).
+  const tabLabels = {
+    site_boundary: 'Site Boundary',
+    details: 'Project Details',
+    project_chat: 'Project Chat',
+    policy_and_history: 'Policy & Planning History',
+    meeting_notes: 'Meeting Notes',
+    ...trackerLabels,
+    surveyor: 'Surveyor',
+    similar_schemes: 'Similar Schemes',
+    lpa_decision_analysis: 'LPA Decision Analysis',
+    conflict: 'Nearby Renewables Check',
+    hlpv: 'Renewables HLPV Analysis',
+    project_docs: 'Project Docs',
+    stages: 'Key Issues',
+    completeness: 'Completeness',
+  };
 
   // Map state
   let mapContainer;
@@ -89,6 +92,13 @@
   // Load project data when modal opens
   $: if (browser && isOpen && projectId && !projectData) {
     loadProject();
+  }
+
+  // Jump to a caller-requested tab on open (e.g. sidebar "Consultation Tracker").
+  // Only forces activeTab when initialTab is set, and only until it matches —
+  // a manual tab click afterwards is left alone.
+  $: if (browser && isOpen && initialTab && activeTab !== initialTab) {
+    activeTab = initialTab;
   }
 
   // Load saved conflict check when switching to conflict tab
@@ -480,8 +490,6 @@
     loading = true;
     error = null;
     activeTab = 'site_boundary';
-    betaDropdownOpen = false;
-    trackersDropdownOpen = false;
     policyFormOpen = false;
     conflictResults = null;
     conflictError = null;
@@ -496,12 +504,6 @@
     showExtractModal = false;
     cleanupMap();
     onClose();
-  }
-
-  function handleBackdropClick(event) {
-    if (event.target === event.currentTarget) {
-      handleClose();
-    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -636,143 +638,22 @@
   }
 </script>
 
-<svelte:window on:click={(e) => {
-  if (betaDropdownOpen && !e.target.closest('.beta-dropdown-wrapper')) betaDropdownOpen = false;
-  if (trackersDropdownOpen && !e.target.closest('.trackers-dropdown-wrapper')) trackersDropdownOpen = false;
-}} />
-
 {#if isOpen}
-  <div class="modal-backdrop" on:click={handleBackdropClick} role="presentation">
+  <div class="modal-backdrop">
     <div class="modal-container">
       <div class="modal-header">
-        <h2>View Project</h2>
+        <div class="header-title">
+          <div class="modal-breadcrumb">{projectData?.project_name || 'Project Workspace'}</div>
+          <h2>
+            {tabLabels[activeTab] || 'Project Workspace'}
+            {#if projectData?.status}<span class="status-badge">{projectData.status}</span>{/if}
+          </h2>
+        </div>
         <div class="header-actions">
           <button class="btn-edit-header" on:click={onEdit} title="Edit project">
             <i class="las la-edit"></i> Edit
           </button>
           <button class="close-btn" on:click={handleClose}>&times;</button>
-        </div>
-      </div>
-
-      <!-- Tab Navigation -->
-      <div class="tab-navigation">
-        <button
-          class="tab-button {activeTab === 'site_boundary' ? 'active' : ''}"
-          on:click={() => activeTab = 'site_boundary'}
-        >
-          Site Boundary
-        </button>
-        <button
-          class="tab-button {activeTab === 'details' ? 'active' : ''}"
-          on:click={() => activeTab = 'details'}
-        >
-          Project Details
-        </button>
-        <button
-          class="tab-button {activeTab === 'project_chat' ? 'active' : ''}"
-          on:click={() => activeTab = 'project_chat'}
-        >
-          Project Chat
-        </button>
-        <button
-          class="tab-button {activeTab === 'policy_and_history' ? 'active' : ''}"
-          on:click={() => activeTab = 'policy_and_history'}
-        >
-          Policy & Planning History
-        </button>
-        <button
-          class="tab-button {activeTab === 'meeting_notes' ? 'active' : ''}"
-          on:click={() => activeTab = 'meeting_notes'}
-        >
-          Meeting Notes
-        </button>
-        <div class="trackers-dropdown-wrapper">
-          <button
-            class="tab-button {trackerTabs.includes(activeTab) ? 'active' : ''}"
-            on:click={() => trackersDropdownOpen = !trackersDropdownOpen}
-          >
-            {trackerTabs.includes(activeTab) ? trackerLabels[activeTab] : 'Trackers'} <i class="las la-angle-down beta-chevron {trackersDropdownOpen ? 'open' : ''}"></i>
-          </button>
-          {#if trackersDropdownOpen}
-            <div class="beta-dropdown" role="menu">
-              {#each trackerTabs as tab}
-                <button
-                  class="beta-dropdown-item {activeTab === tab ? 'active' : ''}"
-                  on:click={() => handleTrackerTabSelect(tab)}
-                  role="menuitem"
-                >
-                  {trackerLabels[tab]}
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        <button
-          class="tab-button {activeTab === 'surveyor' ? 'active' : ''}"
-          on:click={() => activeTab = 'surveyor'}
-        >
-          Surveyor Management
-        </button>
-        <div class="beta-dropdown-wrapper">
-          <button
-            class="tab-button {betaTabs.includes(activeTab) ? 'active' : ''}"
-            on:click={() => betaDropdownOpen = !betaDropdownOpen}
-          >
-            Beta <span class="beta-tag">Beta</span> <i class="las la-angle-down beta-chevron {betaDropdownOpen ? 'open' : ''}"></i>
-          </button>
-          {#if betaDropdownOpen}
-            <div class="beta-dropdown" role="menu">
-              <button
-                class="beta-dropdown-item {activeTab === 'similar_schemes' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('similar_schemes')}
-                role="menuitem"
-              >
-                Similar Schemes
-              </button>
-              <button
-                class="beta-dropdown-item {activeTab === 'lpa_decision_analysis' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('lpa_decision_analysis')}
-                role="menuitem"
-              >
-                LPA Decision Analysis
-              </button>
-              <button
-                class="beta-dropdown-item {activeTab === 'conflict' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('conflict')}
-                role="menuitem"
-              >
-                Nearby Renewables Check
-              </button>
-              <button
-                class="beta-dropdown-item {activeTab === 'hlpv' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('hlpv')}
-                role="menuitem"
-              >
-                Renewables HLPV Analysis
-              </button>
-              <button
-                class="beta-dropdown-item {activeTab === 'project_docs' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('project_docs')}
-                role="menuitem"
-              >
-                Project Docs
-              </button>
-              <button
-                class="beta-dropdown-item {activeTab === 'stages' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('stages')}
-                role="menuitem"
-              >
-                Key Issues
-              </button>
-              <button
-                class="beta-dropdown-item {activeTab === 'completeness' ? 'active' : ''}"
-                on:click={() => handleBetaTabSelect('completeness')}
-                role="menuitem"
-              >
-                Completeness
-              </button>
-            </div>
-          {/if}
         </div>
       </div>
 
@@ -1504,9 +1385,9 @@
             <!-- Surveyor Management Tab -->
             <div class="surveyor-section">
               <div class="surveyor-section-header">
-                <a href="/surveyor-management" class="btn-goto-surveyor">
+                <button class="btn-goto-surveyor" on:click={() => openSurveyorManagement(projectId)}>
                   <i class="las la-external-link-alt"></i> Open Surveyor Management
-                </a>
+                </button>
               </div>
               {#if statsLoading}
                 <div class="loading-state">
@@ -1765,45 +1646,62 @@
 {/if}
 
 <style>
+  /* No longer a true backdrop — this fills the main content area inline
+     instead of overlaying the page, so it just owns a fixed viewport
+     height (same self-contained-tool pattern as marketing/+page.svelte). */
   .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--overlay-bg);
+    height: 100vh;
+    overflow: hidden;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 1rem;
+    flex-direction: column;
+    background: var(--color-white);
   }
 
   .modal-container {
     background: white;
-    border-radius: 12px;
-    width: 95%;
-    max-width: 1400px;
-    height: 90vh;
-    max-height: 90vh;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    box-shadow: var(--shadow-lg);
   }
 
   .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.5rem 2rem;
+    padding: 1.25rem 2rem;
     border-bottom: 1px solid var(--color-slate-200);
+  }
+
+  .header-title {
+    min-width: 0;
+  }
+
+  .modal-breadcrumb {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-slate-400);
+    margin-bottom: 0.125rem;
   }
 
   .modal-header h2 {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--color-slate-900);
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+
+  .status-badge {
+    font-size: 0.6875rem;
     font-weight: 600;
-    color: var(--color-slate-800);
+    padding: 0.1875rem 0.625rem;
+    border-radius: 6px;
+    background: var(--color-badge-info-bg);
+    color: var(--color-badge-info-fg);
   }
 
   .header-actions {
@@ -1968,11 +1866,9 @@
   }
 
   .detail-section-header {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 700;
-    color: var(--color-purple-600);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    color: var(--color-slate-800);
     margin: 1.5rem 0 0.75rem 0;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--color-slate-200);
@@ -1984,8 +1880,8 @@
 
   .detail-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
     margin-bottom: 0.5rem;
   }
 
@@ -1994,24 +1890,30 @@
   }
 
   .detail-group {
-    margin-bottom: 1.5rem;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
+    border-radius: 8px;
+    padding: 0.75rem 0.875rem;
   }
 
   .detail-group label {
     display: block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-slate-500);
-    margin-bottom: 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-slate-400);
+    margin-bottom: 0.375rem;
   }
 
   .detail-value {
-    font-size: 1rem;
-    color: var(--color-slate-800);
-    padding: 0.625rem 0.875rem;
-    background: var(--color-slate-50);
-    border-radius: 0.375rem;
-    border: 1px solid var(--color-slate-200);
+    font-size: 0.84375rem;
+    font-weight: 600;
+    color: var(--color-slate-900);
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
   }
 
   .map-container {
@@ -2044,52 +1946,6 @@
 
   .btn-close:hover {
     background: var(--color-slate-600);
-  }
-
-  /* Tab Navigation */
-  .tab-navigation {
-    display: flex;
-    gap: 0;
-    padding: 0 2rem;
-    border-bottom: 1px solid var(--color-slate-200);
-  }
-
-  .tab-button {
-    padding: 1rem 1.5rem;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--color-slate-500);
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .tab-button:hover {
-    color: var(--color-slate-800);
-    background: var(--color-slate-50);
-  }
-
-  .tab-button.active {
-    color: var(--color-purple-600);
-    border-bottom-color: var(--color-purple-600);
-  }
-
-  .beta-tag {
-    display: inline-block;
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    background: var(--color-violet-100);
-    color: var(--color-purple-700);
-    border: 1px solid var(--color-violet-300);
-    border-radius: 4px;
-    padding: 1px 5px;
-    vertical-align: middle;
-    margin-left: 4px;
-    line-height: 1.4;
   }
 
   /* HLPV Analysis Section */
@@ -2593,11 +2449,13 @@
     padding: 0.35rem 0.75rem;
     font-size: 0.75rem;
     font-weight: 500;
+    font-family: inherit;
     color: var(--color-purple-600);
     background: var(--color-violet-50);
     border: 1px solid var(--color-violet-300);
     border-radius: 6px;
     text-decoration: none;
+    cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
   }
 
@@ -2730,66 +2588,6 @@
     color: var(--color-slate-400);
     font-size: 0.875rem;
     margin: 0;
-  }
-
-  /* Beta dropdown */
-  .beta-dropdown-wrapper,
-  .trackers-dropdown-wrapper {
-    position: relative;
-    display: flex;
-    align-items: stretch;
-  }
-
-  .beta-chevron {
-    font-size: 0.75rem;
-    margin-left: 4px;
-    vertical-align: middle;
-    transition: transform 0.2s;
-  }
-
-  .beta-chevron.open {
-    transform: rotate(180deg);
-  }
-
-  .beta-dropdown {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    /* Leaflet's own panes (markers/tooltips/popups on the Site Boundary map)
-       use z-index up to 700 — clear that comfortably so this always sits on top. */
-    z-index: 2000;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    min-width: 220px;
-    padding: 0.375rem 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .beta-dropdown-item {
-    background: none;
-    border: none;
-    padding: 0.625rem 1rem;
-    text-align: left;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-slate-600);
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-
-  .beta-dropdown-item:hover {
-    background: var(--color-slate-50);
-    color: var(--color-slate-800);
-  }
-
-  .beta-dropdown-item.active {
-    color: var(--color-purple-600);
-    background: var(--color-purple-50);
   }
 
   /* Policy & Planning History split layout */

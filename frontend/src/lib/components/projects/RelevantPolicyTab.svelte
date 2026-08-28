@@ -435,7 +435,7 @@
     {#if policies.length > 0}
       <div class="policy-list">
         {#each policies as policy (policy.id)}
-          <div class="policy-card" class:key={policy.is_key_policy}>
+          <div class="card policy-card" class:key={policy.is_key_policy}>
             <div class="policy-card-header">
               <div class="policy-meta">
                 {#if policy.is_key_policy}
@@ -882,9 +882,6 @@
   }
 
   .policy-card {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
     padding: 1rem;
     display: flex;
     flex-direction: column;

@@ -300,7 +300,7 @@
           <div class="doc-list">
             {#each documents as doc (doc.id)}
               {@const s = doc.doc_summary || {}}
-              <div class="doc-card" class:error={doc.status === 'error'}>
+              <div class="card doc-card" class:error={doc.status === 'error'}>
                 <div class="doc-card-header">
                   <div class="doc-meta">
                     {#if s.outcome && s.outcome !== 'Unknown' && s.outcome !== 'N/A'}
@@ -655,9 +655,6 @@
   }
 
   .doc-card {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
     padding: 1rem;
     display: flex;
     flex-direction: column;

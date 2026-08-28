@@ -190,26 +190,6 @@
     gap: 0.5rem;
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .btn-secondary {
-    background: white;
-    color: var(--color-slate-500);
-    border: 1px solid var(--color-slate-300);
-  }
-
-  .btn-secondary:hover { background: var(--color-slate-50); }
-
   @media print {
     :global(.overlay) { position: static; background: none; }
     :global(.modal) { box-shadow: none; max-height: none; }

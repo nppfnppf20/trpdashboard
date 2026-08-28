@@ -574,28 +574,6 @@ export let selectedProject;
     flex-shrink: 0;
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background: var(--color-primary-600);
-  }
-
   .loading, .error {
     display: flex;
     flex-direction: column;

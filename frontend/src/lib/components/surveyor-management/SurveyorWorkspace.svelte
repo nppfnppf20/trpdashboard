@@ -1,5 +1,4 @@
 <script>
-  import SurveyorProjectSelector from '$lib/components/admin-console/SurveyorProjectSelector.svelte';
   import SurveyorBriefingPanel from '$lib/components/surveyor-briefings/SurveyorBriefingPanel.svelte';
   import InstructedSurveyorsPanel from '$lib/components/surveyor-management/InstructedSurveyorsPanel.svelte';
   import QuotesPanel from '$lib/components/surveyor-management/QuotesPanel.svelte';
@@ -16,8 +15,8 @@
     deleteQuote
   } from '$lib/api/quotes.js';
 
-  let selectedProjectId = '';
-  let selectedProject = null;
+  export let project;
+
   let activeTab = 'general';
   let quotes = [];
   let quoteKeyDates = [];
@@ -25,7 +24,8 @@
   let loading = false;
   let error = null;
   let generalInfoComponent = null;
-  
+  let loadedForId = null;
+
   const tabs = [
     { id: 'general', label: 'General', icon: 'la-info-circle' },
     { id: 'briefings', label: 'Briefings', icon: 'la-clipboard-list' },
@@ -34,33 +34,21 @@
     { id: 'programme', label: 'Programme', icon: 'la-calendar-alt' },
     { id: 'reviews', label: 'Reviews', icon: 'la-star' }
   ];
-  
+
   function hasAnyUnsavedChanges() {
     return generalInfoComponent?.hasUnsaved();
   }
 
-  async function handleProjectSelected(event) {
-    // Check for unsaved changes before switching projects
-    if (hasAnyUnsavedChanges()) {
-      if (!confirm('You have unsaved changes. Are you sure you want to switch projects?')) {
-        return;
-      }
-    }
-
-    const { project } = event.detail;
-    selectedProject = project;
-    
-    if (project) {
-      await Promise.all([
-        loadQuotes(project.unique_id),
-        loadQuoteKeyDates(project.unique_id),
-        loadProgrammeEvents(project.unique_id)
-      ]);
-    } else {
-      quotes = [];
-      quoteKeyDates = [];
-      programmeEvents = [];
-    }
+  $: if (project?.unique_id && project.unique_id !== loadedForId) {
+    loadedForId = project.unique_id;
+    loadQuotes(project.unique_id);
+    loadQuoteKeyDates(project.unique_id);
+    loadProgrammeEvents(project.unique_id);
+  } else if (!project) {
+    loadedForId = null;
+    quotes = [];
+    quoteKeyDates = [];
+    programmeEvents = [];
   }
 
   function handleTabChange(newTab) {
@@ -74,15 +62,15 @@
   }
 
   function handleProjectInfoUpdated(event) {
-    // Update the selected project with the new data
-    // Exclude project_id from the update as it's a foreign key, not the project code
+    // Update the local project view with the new data (optimistic UI only —
+    // exclude project_id from the update as it's a foreign key, not the project code)
     const { project_id, ...projectInfoData } = event.detail;
-    selectedProject = {
-      ...selectedProject,
+    project = {
+      ...project,
       ...projectInfoData
     };
   }
-  
+
   async function loadQuotes(projectId) {
     loading = true;
     error = null;
@@ -95,7 +83,7 @@
       loading = false;
     }
   }
-  
+
   async function loadQuoteKeyDates(projectId) {
     try {
       quoteKeyDates = await getQuoteKeyDates(projectId);
@@ -103,7 +91,7 @@
       console.error('Error loading quote key dates:', err);
     }
   }
-  
+
   async function loadProgrammeEvents(projectId) {
     try {
       programmeEvents = await getProgrammeEvents(projectId);
@@ -111,15 +99,15 @@
       console.error('Error loading programme events:', err);
     }
   }
-  
+
   // QuotesPanel event handlers
   async function handleStatusChange(event) {
     const { quoteId, newStatus, selectedLineItems } = event.detail;
-    
+
     try {
       // Call API to update instruction status
       await updateQuoteInstructionStatus(quoteId, newStatus, selectedLineItems);
-      
+
       // Calculate partially instructed total if applicable
       let partiallyInstructedTotal = null;
       if (newStatus === 'partially instructed' && selectedLineItems) {
@@ -130,16 +118,16 @@
             .reduce((sum, item) => sum + (parseFloat(item.cost) || 0), 0);
         }
       }
-      
+
       // Update local data on success
       quotes = quotes.map(q =>
-        q.id === quoteId ? { 
-          ...q, 
+        q.id === quoteId ? {
+          ...q,
           instruction_status: newStatus,
           partially_instructed_total: partiallyInstructedTotal
         } : q
       );
-      
+
       console.log('Status changed for quote:', quoteId, 'to:', newStatus);
     } catch (error) {
       console.error('Failed to update instruction status:', error);
@@ -207,38 +195,22 @@
       alert('Failed to update work status: ' + error.message);
     }
   }
-  
+
   $: allQuotes = quotes;
   $: instructedQuotes = quotes.filter(
     q => q.instruction_status === 'instructed' || q.instruction_status === 'partially instructed'
   );
-  $: completedQuotes = quotes.filter(q => q.work_status === 'completed');
 </script>
 
-<div class="fullscreen-page">
-  <!-- Compact header with project selector -->
-  <div class="compact-header">
-    <div class="header-left">
-      <a href="/" class="home-button" title="Back to Home">
-        <i class="las la-home"></i>
-        <span>Home</span>
-      </a>
-      <h1 class="page-title">Surveyor Management</h1>
+<div class="workspace">
+  {#if project}
+    <div class="workspace-header">
+      <div class="header-info">
+        <h1>{project.project_name}</h1>
+        {#if project.project_id}<span class="project-ref">{project.project_id}</span>{/if}
+      </div>
     </div>
-    <div class="header-center">
-      <SurveyorProjectSelector
-        bind:selectedProjectId
-        on:projectSelected={handleProjectSelected}
-      />
-    </div>
-    <div class="header-right">
-      {#if selectedProject}
-        <span class="project-code">{selectedProject.project_code}</span>
-      {/if}
-    </div>
-  </div>
 
-  {#if selectedProject}
     <!-- Tabs navigation -->
     <div class="tabs-bar">
       {#each tabs as tab}
@@ -257,24 +229,24 @@
     <div class="content-area">
       {#if activeTab === 'general'}
         <div class="content-panel">
-          <EditableGeneralInfo 
+          <EditableGeneralInfo
             bind:this={generalInfoComponent}
-            project={selectedProject}
+            {project}
             on:updated={handleProjectInfoUpdated}
           />
         </div>
 
       {:else if activeTab === 'briefings'}
         <div class="content-panel">
-          <SurveyorBriefingPanel selectedProject={selectedProject} />
+          <SurveyorBriefingPanel selectedProject={project} />
         </div>
 
       {:else if activeTab === 'quotes'}
         <QuotesPanel
           quotes={allQuotes}
           {loading}
-          projectId={selectedProject?.unique_id}
-          project={selectedProject}
+          projectId={project?.unique_id}
+          {project}
           on:statusChange={handleStatusChange}
           on:updateQuote={handleUpdateQuoteEvent}
           on:deleteQuote={handleDeleteQuoteEvent}
@@ -285,8 +257,8 @@
         <InstructedSurveyorsPanel
           quotes={instructedQuotes}
           {loading}
-          projectId={selectedProject?.unique_id}
-          project={selectedProject}
+          projectId={project?.unique_id}
+          {project}
           {quoteKeyDates}
           {programmeEvents}
           on:workStatusChange={handleWorkStatusChange}
@@ -298,8 +270,8 @@
           {quoteKeyDates}
           {programmeEvents}
           {loading}
-          hasSelectedProject={!!selectedProject}
-          projectId={selectedProject?.unique_id}
+          hasSelectedProject={!!project}
+          projectId={project?.unique_id}
         />
 
       {:else if activeTab === 'reviews'}
@@ -312,97 +284,50 @@
   {:else}
     <div class="empty-state">
       <i class="las la-project-diagram"></i>
-      <h2>Select a Project</h2>
-      <p>Choose a project from the selector above to manage surveyor information</p>
+      <h2>No project selected</h2>
+      <p>Select a project from the sidebar to manage surveyor information</p>
     </div>
   {/if}
 </div>
 
 <style>
-  .fullscreen-page {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+  .workspace {
     display: flex;
     flex-direction: column;
+    height: 100vh;
     background: var(--color-slate-100);
-    overflow: hidden;
-    z-index: 100;
   }
-  
-  .compact-header {
-    display: grid;
-    grid-template-columns: auto 1fr 150px;
+
+  .workspace-header {
+    display: flex;
     align-items: center;
-    gap: 1.5rem;
+    justify-content: space-between;
     padding: 0.75rem 1.5rem;
     background: white;
-    border-bottom: 2px solid var(--color-slate-200);
-    box-shadow: var(--shadow-sm);
-    flex-shrink: 0;
+    border-bottom: 1px solid var(--color-slate-200);
   }
-  
-  .header-left {
+
+  .header-info {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.625rem;
   }
 
-  .home-button {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-    color: var(--color-slate-800);
-    font-size: 0.875rem;
-    text-decoration: none;
-    transition: all 0.2s;
-    box-shadow: var(--shadow-sm);
-  }
-
-  .home-button:hover {
-    background: var(--color-slate-100);
-    border-color: var(--color-slate-300);
-  }
-
-  .home-button i {
-    font-size: 1.125rem;
-  }
-  
-  .page-title {
+  .header-info h1 {
     margin: 0;
-    font-size: 1.125rem;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--color-slate-800);
   }
-  
-  .header-center {
-    display: flex;
-    align-items: center;
-    max-width: 400px;
+
+  .project-ref {
+    font-size: 0.8rem;
+    color: var(--color-slate-400);
+    background: var(--color-slate-100);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
   }
-  
-  .header-right {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-  }
-  
-  .project-code {
-    font-family: 'Courier New', monospace;
-    color: var(--color-purple-600);
-    font-weight: 600;
-    background: var(--color-violet-100);
-    padding: 0.375rem 0.875rem;
-    border-radius: 6px;
-    font-size: 0.875rem;
-  }
-  
+
   .tabs-bar {
     display: flex;
     background: white;
@@ -412,7 +337,7 @@
     overflow-x: auto;
     flex-shrink: 0;
   }
-  
+
   .tab-btn {
     display: flex;
     align-items: center;
@@ -427,28 +352,28 @@
     transition: all 0.2s;
     white-space: nowrap;
   }
-  
+
   .tab-btn i {
     font-size: 1.125rem;
   }
-  
+
   .tab-btn:hover {
     color: var(--color-primary-500);
     background: var(--color-slate-50);
   }
-  
+
   .tab-btn.active {
     color: var(--color-primary-500);
     border-bottom-color: var(--color-primary-500);
     background: var(--color-slate-50);
   }
-  
+
   .content-area {
     flex: 1;
     overflow-y: auto;
     padding: 1.5rem;
   }
-  
+
   .content-panel {
     background: white;
     border-radius: 8px;
@@ -457,265 +382,7 @@
     display: flex;
     flex-direction: column;
   }
-  
-  .content-panel.fullheight {
-    min-height: 100%;
-  }
-  
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem;
-    border-bottom: 1px solid var(--color-slate-200);
-  }
-  
-  .panel-header h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--color-slate-800);
-  }
-  
-  .panel-actions {
-    display: flex;
-    gap: 0.75rem;
-  }
-  
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-  }
-  
-  .btn-primary:hover:not(:disabled) {
-    background: var(--color-primary-600);
-  }
-  
-  .btn-secondary {
-    background: white;
-    color: var(--color-slate-500);
-    border: 1px solid var(--color-slate-300);
-  }
-  
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--color-slate-50);
-  }
-  
-  .info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 1.5rem;
-    padding: 1.5rem;
-  }
-  
-  .info-card {
-    background: var(--color-slate-50);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-    padding: 1.25rem;
-  }
-  
-  .info-card h3 {
-    margin: 0 0 1rem 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-slate-600);
-    border-bottom: 2px solid var(--color-slate-300);
-    padding-bottom: 0.5rem;
-  }
-  
-  .info-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  
-  .info-row {
-    display: flex;
-    gap: 1rem;
-  }
-  
-  .info-row .label {
-    font-weight: 600;
-    color: var(--color-slate-500);
-    min-width: 150px;
-  }
-  
-  .info-row .value {
-    color: var(--color-slate-800);
-    flex: 1;
-  }
-  
-  .info-row.full-width {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .info-row.full-width .label {
-    min-width: auto;
-  }
-  
-  .info-row.full-width .value {
-    padding-left: 0;
-  }
-  
-  .info-row .value a {
-    color: var(--color-primary-500);
-    text-decoration: none;
-    word-break: break-all;
-  }
-  
-  .info-row .value a:hover {
-    text-decoration: underline;
-  }
-  
-  .table-wrapper {
-    flex: 1;
-    overflow: auto;
-    padding: 1.5rem;
-  }
-  
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-  }
-  
-  .data-table th {
-    text-align: left;
-    padding: 0.75rem 1rem;
-    background: var(--color-slate-50);
-    color: var(--color-slate-600);
-    font-weight: 600;
-    border-bottom: 2px solid var(--color-slate-200);
-    position: sticky;
-    top: 0;
-  }
-  
-  .data-table td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--color-slate-200);
-    color: var(--color-slate-800);
-  }
-  
-  .data-table tbody tr:hover {
-    background: var(--color-slate-50);
-  }
-  
-  .contact-link {
-    background: none;
-    border: none;
-    color: var(--color-primary-500);
-    cursor: pointer;
-    font-size: inherit;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    text-decoration: underline;
-    transition: color 0.2s;
-  }
-  
-  .contact-link:hover {
-    color: var(--color-primary-600);
-  }
-  
-  .contact-link i {
-    font-size: 0.875rem;
-  }
-  
-  .text-muted {
-    color: var(--color-slate-400);
-  }
-  
-  .text-bold {
-    font-weight: 600;
-    color: var(--color-slate-800);
-  }
-  
-  .text-small {
-    font-size: 0.75rem;
-    font-weight: 400;
-  }
-  
-  .count-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2rem;
-    height: 1.75rem;
-    padding: 0 0.5rem;
-    background: var(--color-slate-100);
-    color: var(--color-slate-600);
-    border: none;
-    border-radius: 6px;
-    font-weight: normal;
-    font-size: inherit;
-  }
-  
-  .count-badge.clickable {
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  
-  .count-badge.clickable:hover {
-    background: var(--color-slate-200);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-  
-  .count-badge.clickable:active {
-    transform: translateY(0);
-    background: var(--color-slate-300);
-  }
-  
-  .grid-wrapper {
-    flex: 1;
-    overflow: hidden;
-    padding: 1.5rem;
-  }
-  
-  .loading, .empty, .placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem;
-    color: var(--color-slate-400);
-  }
-  
-  .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--color-slate-200);
-    border-top-color: var(--color-primary-500);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin-bottom: 1rem;
-  }
-  
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-  
+
   .empty-state {
     display: flex;
     flex-direction: column;
@@ -724,19 +391,18 @@
     height: 100%;
     color: var(--color-slate-400);
   }
-  
+
   .empty-state i {
     font-size: 5rem;
     margin-bottom: 1rem;
   }
-  
+
   .empty-state h2 {
     margin: 0 0 0.5rem 0;
     color: var(--color-slate-500);
   }
-  
+
   .empty-state p {
     margin: 0;
   }
 </style>
-

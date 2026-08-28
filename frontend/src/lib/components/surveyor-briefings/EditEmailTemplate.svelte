@@ -278,19 +278,6 @@
     color: var(--color-slate-500);
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
   .save-btn {
     background: var(--color-teal-600);
     color: white;

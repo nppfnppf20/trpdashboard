@@ -398,37 +398,5 @@
     background: var(--color-slate-50);
   }
   
-  .btn {
-    padding: 0.625rem 1.25rem;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    border: none;
-  }
-  
-  .btn-secondary {
-    background: white;
-    color: var(--color-slate-500);
-    border: 1px solid var(--color-slate-300);
-  }
-
-  .btn-secondary:hover {
-    background: var(--color-slate-50);
-    border-color: var(--color-slate-400);
-  }
-
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background: var(--color-primary-600);
-  }
 </style>
 

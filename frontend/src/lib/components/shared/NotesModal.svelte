@@ -181,35 +181,4 @@
     border-radius: 0 0 8px 8px;
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .btn-primary {
-    background: var(--color-blue-500);
-    color: var(--color-white);
-  }
-
-  .btn-primary:hover {
-    background: var(--color-blue-600);
-  }
-
-  .btn-secondary {
-    background: var(--color-white);
-    color: var(--color-slate-500);
-    border: 1px solid var(--color-slate-300);
-  }
-
-  .btn-secondary:hover {
-    background: var(--color-slate-50);
-  }
 </style>

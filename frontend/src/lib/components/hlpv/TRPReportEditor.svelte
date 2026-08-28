@@ -1108,7 +1108,7 @@
                   <div class="rules-container">
                     {#if discipline.name === 'Agricultural Land'}
                       {#each discipline.triggeredRules as rule}
-                        <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
+                        <div class="card rule-card" style="border-left-color: {discipline.riskSummary?.color};">
                           <div class="rule-header">
                             <h4 class="rule-title">{rule.rule}</h4>
                             <span class="rule-level" style="background-color: {getRiskLevelColors(rule.level).bgColor}; color: {getRiskLevelColors(rule.level).color};">
@@ -1123,7 +1123,7 @@
                     {:else}
                       {#each Object.entries(groupRulesByType(discipline.triggeredRules)) as [baseType, rules]}
                         {@const groupedRule = createGroupedRuleDisplay(baseType, rules)}
-                        <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
+                        <div class="card rule-card" style="border-left-color: {discipline.riskSummary?.color};">
                           <div class="rule-header">
                             <h4 class="rule-title">{groupedRule.title}</h4>
                             <span class="rule-level" style="background-color: {getRiskLevelColors(groupedRule.highestRisk).bgColor}; color: {getRiskLevelColors(groupedRule.highestRisk).color};">
@@ -1314,7 +1314,7 @@
         {#if floodFindings.length > 0}
           <div class="subsection" style="margin-top: 1rem;">
             <h4>Flood Findings</h4>
-            <div class="flood-findings">
+            <div class="card flood-findings">
               {#each floodFindings as paragraph}
                 <p class="flood-finding-paragraph" class:flood-finding-check={paragraph.startsWith('[CHECK')}>{paragraph}</p>
               {/each}
@@ -1375,7 +1375,7 @@
         {#if aviationFindings.length > 0}
           <div class="subsection" style="margin-top: 1rem;">
             <h4>Aviation Findings</h4>
-            <div class="flood-findings">
+            <div class="card flood-findings">
               {#each aviationFindings as paragraph}
                 <p class="flood-finding-paragraph">{paragraph}</p>
               {/each}
@@ -2034,10 +2034,7 @@
   }
 
   .rule-card {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
     border-left: 4px solid;
-    border-radius: 8px;
     padding: 1.5rem;
   }
 
@@ -2253,10 +2250,7 @@
   }
 
   .flood-findings {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
     border-left: 4px solid var(--color-primary-500);
-    border-radius: 8px;
     padding: 1.25rem;
   }
 

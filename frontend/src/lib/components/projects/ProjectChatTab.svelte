@@ -411,7 +411,7 @@
                 {#if expandedCitations.has(idx)}
                   <div class="pc-citations">
                     {#each msg.citations as c}
-                      <div class="pc-citation">
+                      <div class="card pc-citation">
                         <div class="pc-citation-head">
                           <span class="cite-chip">{c.source_id}</span>
                           <span class="pc-citation-source">{sourceLabels[c.source_id] ?? c.source_id}</span>
@@ -709,9 +709,6 @@
   }
 
   .pc-citation {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 0.45rem 0.6rem;
   }
 

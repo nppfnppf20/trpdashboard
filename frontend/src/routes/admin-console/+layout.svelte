@@ -16,10 +16,6 @@
   <!-- Top header with home button and nav -->
   <header class="admin-header">
     <div class="header-left">
-      <a href="/" class="home-button" title="Back to Home">
-        <i class="las la-home"></i>
-        <span>Home</span>
-      </a>
       <h1 class="page-title"><i class="las la-cog"></i> Admin Console</h1>
     </div>
     <nav class="admin-nav">
@@ -45,7 +41,6 @@
   .admin-console-layout {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
     background: var(--color-slate-50);
   }
 
@@ -64,30 +59,6 @@
     align-items: center;
     gap: 1rem;
     padding-bottom: 1rem;
-  }
-
-  .home-button {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-    color: var(--color-slate-800);
-    font-size: 0.875rem;
-    text-decoration: none;
-    transition: all 0.2s;
-    box-shadow: var(--shadow-sm);
-  }
-
-  .home-button:hover {
-    background: var(--color-slate-100);
-    border-color: var(--color-slate-300);
-  }
-
-  .home-button i {
-    font-size: 1.125rem;
   }
 
   .page-title {

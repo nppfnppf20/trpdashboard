@@ -232,7 +232,9 @@
   .form-group label { font-size: 0.78rem; font-weight: 600; color: var(--color-slate-600); }
   .hint { font-weight: 400; color: var(--color-slate-400); }
 
-  .form-select, .form-input {
+  /* .form-input's base now comes from the shared inputs.css — .form-select
+     has no shared equivalent yet, so it keeps its own declaration. */
+  .form-select {
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--color-slate-200);
     border-radius: 6px;
@@ -243,7 +245,7 @@
     outline: none;
     transition: border-color 0.15s;
   }
-  .form-select:focus, .form-input:focus { border-color: var(--color-purple-600); }
+  .form-select:focus, .form-input:focus { border-color: var(--color-purple-600); box-shadow: none; }
 
   .guidance-callout {
     display: flex;

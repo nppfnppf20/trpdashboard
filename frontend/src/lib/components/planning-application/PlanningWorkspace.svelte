@@ -622,7 +622,7 @@
         <div class="issues-list">
           {#each keyIssues as issue (issue.id)}
             {@const risk = riskColours[issue.last_known_risk_level]}
-            <div class="issue-card">
+            <div class="card issue-card">
               <div class="issue-top">
                 <div class="issue-label">
                   {#if issue.discipline}
@@ -815,7 +815,7 @@
             {@const isExpanded = $cardExpandedTypeId === type.id}
             {@const typeSections = $cardSections[type.id] ?? []}
             {@const typeLoading = $cardSectionsLoading[type.id] ?? false}
-            <div class="draft-type-card">
+            <div class="card draft-type-card">
               <div class="draft-type-main">
                 <div class="draft-type-info">
                   <span class="draft-type-name">{type.name}<span class="beta-badge">BETA</span></span>
@@ -1030,7 +1030,7 @@
           {/each}
 
           <!-- ── Certificate B Notice — Coming Soon ── -->
-          <div class="draft-type-card draft-type-card--coming-soon">
+          <div class="card draft-type-card draft-type-card--coming-soon">
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">Certificate B Notice <span class="coming-soon-badge">Coming Soon</span></span>
@@ -1040,7 +1040,7 @@
           </div>
 
           <!-- ── Cover Letter — Coming Soon ── -->
-          <div class="draft-type-card draft-type-card--coming-soon">
+          <div class="card draft-type-card draft-type-card--coming-soon">
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">Cover Letter <span class="coming-soon-badge">Coming Soon</span></span>
@@ -1050,7 +1050,7 @@
           </div>
 
           <!-- ── Site Justification — Coming Soon ── -->
-          <div class="draft-type-card draft-type-card--coming-soon">
+          <div class="card draft-type-card draft-type-card--coming-soon">
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">Site Justification <span class="coming-soon-badge">Coming Soon</span></span>
@@ -1060,7 +1060,7 @@
           </div>
 
           <!-- ── Blank Document ── -->
-          <div class="draft-type-card">
+          <div class="card draft-type-card">
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">Blank Document</span>
@@ -1903,9 +1903,6 @@
     flex-direction: column;
     gap: 0.625rem;
     padding: 0.875rem 1.125rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
   }
 
   .issue-top {
@@ -2530,9 +2527,6 @@
   }
 
   .draft-type-card {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 1rem 1.25rem;
     display: flex;
     flex-direction: column;

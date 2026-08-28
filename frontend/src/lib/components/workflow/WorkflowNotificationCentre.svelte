@@ -38,7 +38,7 @@
 </script>
 
 <div class="notification-centre">
-  <div class="centre-controls">
+  <div class="card centre-controls">
     <div class="scope-toggle">
       <button class="btn {scope === 'team' ? 'btn-primary' : 'btn-secondary'}" on:click={() => { scope = 'team'; load(); }}>
         <i class="las la-users"></i> Team Feed
@@ -72,9 +72,6 @@
     align-items: center;
     gap: 1rem;
     flex-wrap: wrap;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 0.875rem 1.25rem;
   }
 

@@ -35,6 +35,16 @@
   // Confirm delete — { sourceType, id }
   let confirmDelete = null;
 
+  // ── Summary strip ────────────────────────────────────────────────────────
+  $: thisMonthCount = items.filter(it => {
+    if (!it.created_at) return false;
+    const d = new Date(it.created_at);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+  $: supersededCount = items.filter(it => it.superseded).length;
+  $: missingTakeCount = items.filter(it => !it.our_take?.trim()).length;
+
   // ── Load ──────────────────────────────────────────────────────────────────
   onMount(load);
 
@@ -221,11 +231,6 @@
 </script>
 
 <div class="pol-page">
-  <a href="/" class="home-button" title="Back to Home">
-    <i class="las la-home"></i>
-    <span>Home</span>
-  </a>
-
   <div class="page-header">
     <h1 class="page-title">
       <i class="las la-newspaper"></i>
@@ -236,9 +241,32 @@
     </p>
   </div>
 
+  <div class="card stat-strip">
+    <div class="stat-chip">
+      <span class="stat-chip-n">{items.length}</span>
+      <span class="stat-chip-l">Total Updates</span>
+    </div>
+    <div class="stat-chip-divider"></div>
+    <div class="stat-chip">
+      <span class="stat-chip-n">{thisMonthCount}</span>
+      <span class="stat-chip-l">This Month</span>
+    </div>
+    <div class="stat-chip-divider"></div>
+    <div class="stat-chip">
+      <span class="stat-chip-n">{supersededCount}</span>
+      <span class="stat-chip-l">Superseded</span>
+    </div>
+    <div class="stat-chip-divider"></div>
+    <div class="stat-chip">
+      <span class="stat-chip-n">{missingTakeCount}</span>
+      <span class="stat-chip-l">Missing "Our Take"</span>
+    </div>
+  </div>
+
+  <div class="content-grid">
   <!-- Upload panel -->
   <div class="upload-panel">
-    <div class="upload-card">
+    <div class="card upload-card">
       <h3 class="card-title">Add Policy / Update</h3>
 
       <div class="input-tabs">
@@ -316,7 +344,7 @@
     {:else}
       <div class="items-list">
         {#each items as item (item.source_type + '-' + item.id)}
-          <div class="policy-card" class:policy-card--superseded={item.superseded}>
+          <div class="card policy-card" class:policy-card--superseded={item.superseded}>
 
             <!-- Card header -->
             <div class="policy-card-header">
@@ -446,57 +474,50 @@
       </div>
     {/if}
   </div>
+  </div>
 </div>
 
 <style>
   /* ── Page ── */
   .pol-page {
-    min-height: 100vh;
     background: var(--color-slate-50);
-    padding: 2rem;
-    position: relative;
+    padding: 1.5rem 2rem;
   }
 
-  .home-button {
-    position: absolute;
-    top: 0.75rem;
-    left: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-    color: var(--color-slate-800);
-    font-size: 0.875rem;
-    text-decoration: none;
-    transition: all 0.2s;
-    box-shadow: var(--shadow-sm);
-    z-index: 10;
-  }
-  .home-button:hover { background: var(--color-slate-100); border-color: var(--color-slate-300); }
-  .home-button i { font-size: 1.125rem; }
-
-  .page-header { margin-bottom: 1.75rem; padding-top: 0.25rem; max-width: 1400px; margin-left: auto; margin-right: auto; }
+  .page-header { margin-bottom: 1.25rem; padding-top: 0.25rem; }
   .page-title {
-    font-size: 2rem; font-weight: 700; color: var(--color-slate-800); margin: 0 0 0.4rem;
-    display: flex; align-items: center; gap: 0.75rem;
+    font-size: 1.375rem; font-weight: 700; color: var(--color-slate-900); margin: 0 0 0.25rem;
+    display: flex; align-items: center; gap: 0.625rem; letter-spacing: -0.02em;
   }
-  .page-title i { color: var(--color-teal-600); }
-  .page-description { font-size: 0.9375rem; color: var(--color-slate-500); margin: 0; }
+  .page-title i { color: var(--color-teal-600); font-size: 1.125rem; }
+  .page-description { font-size: 0.8125rem; color: var(--color-slate-500); margin: 0; max-width: 560px; line-height: 1.5; }
+
+  /* ── Summary strip — .card supplies background/border/radius/shadow ── */
+  .stat-strip {
+    display: flex;
+    gap: 1.25rem;
+    padding: 0.75rem 1.125rem;
+    margin-bottom: 1.25rem;
+  }
+  .stat-chip { display: flex; flex-direction: column; gap: 0.125rem; }
+  .stat-chip-n { font-size: 1.0625rem; font-weight: 700; color: var(--color-slate-900); }
+  .stat-chip-l { font-size: 0.65625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-slate-400); }
+  .stat-chip-divider { width: 1px; background: var(--color-slate-200); }
+
+  /* ── Content grid ── */
+  .content-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
 
   /* ── Upload panel ── */
   .upload-panel {
-    max-width: 1400px;
-    margin: 0 auto 1.75rem;
+    /* sized by the .content-grid column, no local max-width needed */
   }
 
   .upload-card {
-    max-width: 640px;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
     padding: 1rem 1.125rem;
     display: flex;
     flex-direction: column;
@@ -522,16 +543,10 @@
   .paste-area { min-height: 72px; resize: vertical; }
 
   .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
-  .form-label { font-size: 0.8rem; font-weight: 500; color: var(--color-slate-700); }
   .optional { font-weight: 400; color: var(--color-slate-400); }
-  .form-input {
-    width: 100%; padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-slate-300); border-radius: 6px;
-    font-size: 0.875rem; font-family: inherit; color: var(--color-slate-800); background: var(--color-white);
-    box-sizing: border-box; transition: border-color 0.15s;
-  }
+  /* Base .form-input/.form-label come from the shared inputs.css;
+     only the teal-tinted focus state (matching this page's accent) stays local. */
   .form-input:focus { outline: none; border-color: var(--color-teal-600); box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1); }
-  textarea.form-input { resize: vertical; line-height: 1.5; }
 
   .upload-error {
     background: var(--color-red-50); border: 1px solid var(--color-red-200); border-radius: 6px;
@@ -540,11 +555,7 @@
 
   .process-btn { width: 100%; }
 
-  /* ── Items section ── */
-  .items-section {
-    max-width: 1400px;
-    margin: 0 auto;
-  }
+  /* ── Items section — sized by the .content-grid column ── */
 
   .section-title {
     font-size: 1rem; font-weight: 700; color: var(--color-slate-800); margin: 0 0 0.875rem;
@@ -560,9 +571,6 @@
 
   /* ── Policy card ── */
   .policy-card {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
     padding: 1.25rem 1.375rem;
     display: flex;
     flex-direction: column;
@@ -744,26 +752,18 @@
   }
   @keyframes pol-spin { to { transform: rotate(360deg); } }
 
-  /* Shared button classes (fallback if buttons.css doesn't cover everything) */
-  .btn {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    padding: 0.45rem 0.875rem; border-radius: 6px; font-size: 0.8125rem;
-    font-weight: 500; cursor: pointer; font-family: inherit; border: none;
-    transition: all 0.15s;
-  }
-  .btn-sm { padding: 0.3rem 0.625rem; font-size: 0.775rem; }
+  /* Policy uses teal as its category accent (matches the page icon and
+     "Our Take" label) instead of the app's default primary blue —
+     everything else about .btn/.btn-secondary/.btn-ghost/.btn-sm now
+     comes from the shared buttons.css. */
   .btn-primary { background: var(--color-teal-600); color: white; }
   .btn-primary:hover:not(:disabled) { background: var(--color-primary-600); }
-  .btn-primary:disabled { opacity: 0.6; cursor: default; }
-  .btn-secondary { background: white; color: var(--color-slate-700); border: 1px solid var(--color-slate-200); }
-  .btn-secondary:hover { background: var(--color-slate-50); border-color: var(--color-slate-300); }
-  .btn-ghost { background: transparent; color: var(--color-slate-500); border: 1px solid transparent; }
-  .btn-ghost:hover { background: var(--color-slate-100); color: var(--color-slate-700); }
 
   /* Responsive */
   @media (max-width: 768px) {
     .pol-page { padding: 1rem; }
-    .top-row { grid-template-columns: 1fr; }
+    .content-grid { grid-template-columns: 1fr; }
+    .stat-strip { flex-wrap: wrap; gap: 0.75rem 1.25rem; }
     .page-title { font-size: 1.5rem; }
   }
 </style>

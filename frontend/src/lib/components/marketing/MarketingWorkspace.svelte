@@ -160,7 +160,7 @@
       <div class="draft-types-list">
         {#each $draftTypes as type (type.id)}
           {@const draft = $drafts[type.id]}
-          <div class="draft-type-card">
+          <div class="card draft-type-card">
             <div class="draft-type-main">
               <div class="draft-type-info">
                 <span class="draft-type-name">{type.name}</span>
@@ -364,9 +364,6 @@
   }
 
   .draft-type-card {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
     padding: 1rem 1.125rem;
     transition: box-shadow 0.15s;
   }

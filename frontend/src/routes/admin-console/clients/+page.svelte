@@ -279,28 +279,6 @@
     color: var(--color-slate-500);
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: none;
-  }
-
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background: var(--color-primary-600);
-  }
-
   .empty-state .btn {
     margin-top: 1rem;
   }

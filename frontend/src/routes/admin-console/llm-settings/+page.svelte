@@ -72,12 +72,12 @@
   </div>
 
   {#if loading}
-    <div class="state-card"><i class="las la-circle-notch la-spin"></i> Loading…</div>
+    <div class="card state-card"><i class="las la-circle-notch la-spin"></i> Loading…</div>
   {:else if error}
     <div class="state-card error">{error}</div>
   {:else}
     {#each grouped as group (group.status)}
-      <div class="group">
+      <div class="card group">
         <h3>{group.label}</h3>
         <table>
           <thead>
@@ -156,17 +156,12 @@
     padding: 2rem;
     text-align: center;
     color: var(--color-slate-500);
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
   }
 
   .state-card.error { color: var(--color-red-600); }
 
   .group {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
+    padding: 0;
     overflow: hidden;
   }
 

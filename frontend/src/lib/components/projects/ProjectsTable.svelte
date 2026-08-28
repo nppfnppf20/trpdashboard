@@ -1,9 +1,12 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
-  import ProjectViewModal from './ProjectViewModal.svelte';
-  import EditProjectModal from './EditProjectModal.svelte';
   import { authFetch } from '$lib/api/client.js';
+  import {
+    editModalOpen,
+    openProjectModal as openSharedViewModal,
+    openEditModal as openSharedEditModal
+  } from '$lib/stores/projectViewModal.js';
 
   let projects = [];
   let loading = true;
@@ -31,13 +34,16 @@
     if (topScroller) topScroller.scrollLeft = tableWrapper.scrollLeft;
   }
 
-  // View modal state
-  let showViewModal = false;
-  let selectedProjectId = null;
-
-  // Edit modal state
-  let showEditModal = false;
-  let editProjectId = null;
+  // Refetch the list whenever the (now globally-shared) edit modal closes,
+  // whether the edit was saved or cancelled — simple and safe, just an
+  // occasional extra fetch on cancel.
+  let wasEditModalOpen = false;
+  $: {
+    if (wasEditModalOpen && !$editModalOpen) {
+      fetchProjects();
+    }
+    wasEditModalOpen = $editModalOpen;
+  }
 
   onMount(async () => {
     await fetchProjects();
@@ -78,37 +84,6 @@
       console.error('Error deleting project:', err);
       alert('Failed to delete project');
     }
-  }
-
-  function openViewModal(projectId) {
-    selectedProjectId = projectId;
-    showViewModal = true;
-  }
-
-  function closeViewModal() {
-    showViewModal = false;
-    selectedProjectId = null;
-  }
-
-  function handleEditFromView() {
-    const id = selectedProjectId;
-    closeViewModal();
-    openEditModal(id);
-  }
-
-  function openEditModal(projectId) {
-    editProjectId = projectId;
-    showEditModal = true;
-  }
-
-  function closeEditModal() {
-    showEditModal = false;
-    editProjectId = null;
-  }
-
-  async function handleProjectUpdated() {
-    // Refresh the projects list after update
-    await fetchProjects();
   }
 
   function formatDate(dateString) {
@@ -179,7 +154,7 @@
   });
 </script>
 
-<div class="projects-table-container">
+<div class="table-container projects-table-container">
   <div class="table-header">
     <h2>Projects</h2>
     <div class="table-controls">
@@ -187,7 +162,7 @@
         type="text"
         placeholder="Search projects..."
         bind:value={searchTerm}
-        class="search-input"
+        class="form-input search-input"
       />
       <span class="project-count">{filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''}</span>
     </div>
@@ -217,7 +192,7 @@
       <div style="width: {phantomWidth}px; height: 1px;"></div>
     </div>
     <div class="table-wrapper" bind:this={tableWrapper} on:scroll={onBottomScroll}>
-      <table class="projects-table">
+      <table class="data-table">
         <thead>
           <tr>
             <th on:click={() => sortTable('project_id')} class:sorted={sortColumn === 'project_id'}>
@@ -355,7 +330,7 @@
         <tbody>
           {#each sortedProjects as project}
             <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <tr on:click={() => openViewModal(project.id)} role="button" tabindex="0">
+            <tr on:click={() => openSharedViewModal(project.id)} role="button" tabindex="0">
               <td class="project-id">{project.project_id || '-'}</td>
               <td class="project-name">{project.project_name}</td>
               <td>{project.client || '-'}</td>
@@ -393,7 +368,7 @@
                 <button
                   class="action-btn edit-btn"
                   title="Edit project"
-                  on:click|stopPropagation={() => openEditModal(project.id)}
+                  on:click|stopPropagation={() => openSharedEditModal(project.id)}
                 >
                   <i class="las la-edit"></i>
                 </button>
@@ -413,32 +388,12 @@
   {/if}
 </div>
 
-<!-- View Project Modal -->
-<ProjectViewModal
-  isOpen={showViewModal}
-  projectId={selectedProjectId}
-  onClose={closeViewModal}
-  onEdit={handleEditFromView}
-/>
-
-<!-- Edit Project Modal -->
-<EditProjectModal
-  isOpen={showEditModal}
-  projectId={editProjectId}
-  onClose={closeEditModal}
-  onProjectUpdated={handleProjectUpdated}
-/>
-
 <style>
+  /* background/border/radius/shadow/width/overflow now come from the
+     shared .table-container in tables.css; padding stays local since
+     the shared class doesn't set one. */
   .projects-table-container {
-    background: var(--color-white);
-    border-radius: 8px;
     padding: 1.5rem;
-    box-shadow: var(--shadow-sm);
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-    overflow: hidden;
   }
 
   .table-header {
@@ -465,20 +420,11 @@
     flex-shrink: 0;
   }
 
+  /* Base look/focus ring now come from the shared .form-input; only the
+     fixed width is a local override. */
   .search-input {
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.875rem;
     width: 250px;
     max-width: 250px;
-    box-sizing: border-box;
-  }
-
-  .search-input:focus {
-    outline: none;
-    border-color: var(--color-primary-600);
-    box-shadow: var(--focus-ring-blue);
   }
 
   .project-count {
@@ -492,68 +438,27 @@
     overflow-y: hidden;
   }
 
-  .table-wrapper {
-    overflow-x: auto;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-  }
+  /* .table-wrapper now comes entirely from the shared tables.css — same
+     class name there, so no local override needed here at all. */
 
-  .projects-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-  }
-
-  .projects-table thead {
-    background: var(--color-slate-50);
-    border-bottom: 2px solid var(--color-slate-200);
-  }
-
-  .projects-table th {
-    padding: 0.75rem 1rem;
-    text-align: left;
-    font-weight: 600;
-    color: var(--color-slate-600);
-    white-space: nowrap;
-    cursor: pointer;
-    user-select: none;
-    transition: background-color 0.15s;
-  }
-
-  .projects-table th:hover {
-    background: var(--color-slate-100);
-  }
-
-  .projects-table th.sorted {
+  /* Renamed from .projects-table to the shared .data-table (tables.css) —
+     that covers width/font-size/thead/th/td/hover styling identically;
+     only the row cursor (rows are clickable here) and the
+     actions-column behavior are genuinely local. */
+  .data-table th.sorted {
     color: var(--color-primary-600);
   }
 
-  .projects-table th i {
-    margin-left: 0.25rem;
-    font-size: 0.75rem;
-  }
-
-  .projects-table th.actions-column {
+  .data-table th.actions-column {
     cursor: default;
   }
 
-  .projects-table th.actions-column:hover {
+  .data-table th.actions-column:hover {
     background: var(--color-slate-50);
   }
 
-  .projects-table tbody tr {
-    border-bottom: 1px solid var(--color-slate-200);
-    transition: background-color 0.15s;
+  .data-table tbody tr {
     cursor: pointer;
-  }
-
-  .projects-table tbody tr:hover {
-    background: var(--color-slate-50);
-  }
-
-  .projects-table td {
-    padding: 0.75rem 1rem;
-    color: var(--color-slate-700);
   }
 
   .project-id {
@@ -588,15 +493,9 @@
     white-space: nowrap;
   }
 
-  .status-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
+  /* .status-badge's shape/weight now comes from the shared tables.css
+     (same class name) — only these project-pipeline color variants
+     (a different set from tables.css's own pending/instructed/etc.) stay local. */
   .status-not-set {
     background: var(--color-slate-100);
     color: var(--color-slate-400);
@@ -627,57 +526,8 @@
     color: var(--color-badge-success-fg);
   }
 
-  .badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
-  .badge-sector {
-    background: var(--color-badge-info-bg);
-    color: var(--color-badge-info-fg);
-  }
-
-  .badge-type {
-    background: var(--color-badge-success-bg);
-    color: var(--color-badge-success-fg);
-  }
-
-  .loading-state,
-  .error-state,
-  .empty-state {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: var(--color-slate-500);
-  }
-
-  .loading-state i,
-  .error-state i,
-  .empty-state i {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    display: block;
-    color: var(--color-slate-300);
-  }
-
-  .spinner {
-    border: 3px solid var(--color-slate-100);
-    border-top: 3px solid var(--color-primary-600);
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 1rem;
-  }
-
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-
+  /* .loading-state/.error-state/.empty-state/.spinner now come entirely
+     from the shared tables.css (same class names). */
   .error-state button,
   .empty-state button {
     margin-top: 1rem;

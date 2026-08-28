@@ -5,10 +5,11 @@
 /* Static badges */
 .badge {
   display: inline-block;
-  padding: 0.25rem 0.625rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   text-transform: capitalize;
 }
 
@@ -35,10 +36,11 @@
 /* Badge-styled dropdown select */
 .badge-select {
   display: inline-block;
-  padding: 0.25rem 1.5rem 0.25rem 0.625rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  padding: 0.25rem 1.5rem 0.25rem 0.75rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   text-transform: capitalize;
   border: none;
   cursor: pointer;

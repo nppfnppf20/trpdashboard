@@ -185,7 +185,7 @@
 
   <!-- Loading state -->
   {#if generating}
-    <div class="generating-state">
+    <div class="card generating-state">
       <div class="generating-spinner"></div>
       <p>Generating Stage 1 Appraisal from briefing note…</p>
       <p class="generating-hint">This may take 20–30 seconds.</p>
@@ -492,9 +492,6 @@
   .generating-state {
     text-align: center;
     padding: 4rem 2rem;
-    background: white;
-    border-radius: 12px;
-    border: 1px solid var(--color-slate-200);
   }
 
   .generating-spinner {

@@ -2,13 +2,33 @@
   import favicon from '$lib/assets/favicon.svg';
   import '../app.css';
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import { initAuth, loading, sessionIdle } from '$lib/stores/auth.js';
+  import Sidebar from '$lib/components/shared/Sidebar.svelte';
+  import ProjectViewModal from '$lib/components/projects/ProjectViewModal.svelte';
+  import EditProjectModal from '$lib/components/projects/EditProjectModal.svelte';
+  import SurveyorWorkspace from '$lib/components/surveyor-management/SurveyorWorkspace.svelte';
+  import PlanningWorkspace from '$lib/components/planning-application/PlanningWorkspace.svelte';
+  import { selectedProject } from '$lib/stores/projectSelection.js';
+  import {
+    mainView, mainViewProjectId, mainViewInitialTab,
+    editModalOpen, editModalProjectId,
+    closeProjectModal, openEditModal, closeEditModal
+  } from '$lib/stores/projectViewModal.js';
 
   let { children } = $props();
+
+  let isAuthShell = $derived(!$page.url.pathname.startsWith('/auth'));
 
   onMount(() => {
     initAuth();
   });
+
+  function handleEditFromView() {
+    const id = $mainViewProjectId;
+    closeProjectModal();
+    openEditModal(id);
+  }
 </script>
 
 <svelte:head>
@@ -33,11 +53,51 @@
     <div class="app-loading-spinner"></div>
     <div class="app-loading-text">Loading...</div>
   </div>
+{:else if isAuthShell}
+  <div class="app-shell">
+    <Sidebar />
+    <div class="app-main">
+      {#if $mainView === 'project'}
+        <ProjectViewModal
+          isOpen={true}
+          projectId={$mainViewProjectId}
+          initialTab={$mainViewInitialTab}
+          onClose={closeProjectModal}
+          onEdit={handleEditFromView}
+        />
+      {:else if $mainView === 'surveyor'}
+        <SurveyorWorkspace project={$selectedProject} />
+      {:else if $mainView === 'planning'}
+        <PlanningWorkspace project={$selectedProject} />
+      {:else}
+        {@render children?.()}
+      {/if}
+    </div>
+  </div>
+
+  <EditProjectModal
+    isOpen={$editModalOpen}
+    projectId={$editModalProjectId}
+    onClose={closeEditModal}
+    onProjectUpdated={closeEditModal}
+  />
 {:else}
   {@render children?.()}
 {/if}
 
 <style>
+  .app-shell {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .app-main {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+  }
+
   .app-loading {
     min-height: 100vh;
     display: flex;

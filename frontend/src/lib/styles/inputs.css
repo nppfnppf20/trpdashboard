@@ -1,0 +1,49 @@
+/* Shared Input Styles
+ * .form-input was already the de facto convention across the app,
+ * just redefined locally in ~10 different components. This is the
+ * single shared version — new work should use it directly instead of
+ * redeclaring the rule; existing per-component .form-input blocks
+ * still take precedence there (Svelte scopes them) until migrated.
+ */
+
+.form-input {
+  width: 100%;
+  padding: 0.5625rem 0.75rem;
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-md);
+  font-size: 0.84375rem;
+  font-family: inherit;
+  color: var(--color-slate-800);
+  background: var(--color-white);
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-input::placeholder {
+  color: var(--color-slate-400);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary-600);
+  box-shadow: var(--focus-ring-blue);
+}
+
+.form-input:disabled {
+  background: var(--color-slate-50);
+  color: var(--color-slate-400);
+  cursor: not-allowed;
+}
+
+textarea.form-input {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  color: var(--color-slate-600);
+  margin-bottom: 0.375rem;
+}

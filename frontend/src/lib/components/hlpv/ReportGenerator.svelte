@@ -710,7 +710,7 @@
                       {#if discipline.name === 'Agricultural Land'}
                         <!-- Agricultural Land: Show individual rules (no grouping) -->
                         {#each discipline.triggeredRules as rule}
-                          <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
+                          <div class="card rule-card" style="border-left-color: {discipline.riskSummary?.color};">
                             <div class="rule-header">
                               <h4 class="rule-title">{rule.rule}</h4>
                               <span class="rule-level" style="background-color: {getRiskLevelColors(rule.level).bgColor}; color: {getRiskLevelColors(rule.level).color};">
@@ -726,7 +726,7 @@
                         <!-- Other disciplines: Use grouped rules display -->
                         {#each Object.entries(groupRulesByType(discipline.triggeredRules)) as [baseType, rules]}
                           {@const groupedRule = createGroupedRuleDisplay(baseType, rules)}
-                          <div class="rule-card" style="border-left-color: {discipline.riskSummary?.color};">
+                          <div class="card rule-card" style="border-left-color: {discipline.riskSummary?.color};">
                             <div class="rule-header">
                               <h4 class="rule-title">{groupedRule.title}</h4>
                               <span class="rule-level" style="background-color: {getRiskLevelColors(groupedRule.highestRisk).bgColor}; color: {getRiskLevelColors(groupedRule.highestRisk).color};">
@@ -898,7 +898,7 @@
           {#if floodFindings.length > 0}
             <div class="subsection" style="margin-top: 1rem;">
               <h4>Flood Findings</h4>
-              <div class="flood-findings">
+              <div class="card flood-findings">
                 {#each floodFindings as paragraph}
                   <p class="flood-finding-paragraph" class:flood-finding-check={paragraph.startsWith('[CHECK')}>{paragraph}</p>
                 {/each}
@@ -958,7 +958,7 @@
           {#if aviationFindings.length > 0}
             <div class="subsection" style="margin-top: 1rem;">
               <h4>Aviation Findings</h4>
-              <div class="flood-findings">
+              <div class="card flood-findings">
                 {#each aviationFindings as paragraph}
                   <p class="flood-finding-paragraph">{paragraph}</p>
                 {/each}
@@ -1250,10 +1250,7 @@
   }
 
   .rule-card {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
     border-left: 4px solid;
-    border-radius: 8px;
     padding: 1.5rem;
   }
 
@@ -1386,48 +1383,6 @@
     border-top: 1px solid var(--color-slate-200);
   }
 
-  .btn-secondary,
-  .btn-primary {
-    padding: 0.75rem 1.5rem;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .btn-secondary {
-    background: var(--color-slate-100);
-    color: var(--color-slate-700);
-    border: 1px solid var(--color-slate-300);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    justify-content: center;
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--color-slate-200);
-  }
-
-  .btn-secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .btn-secondary i {
-    font-size: 1.125rem;
-  }
-
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-    border: 1px solid var(--color-primary-500);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: var(--color-primary-600);
-  }
-
   .btn-primary:disabled {
     background: var(--color-slate-400);
     border-color: var(--color-slate-400);
@@ -1538,10 +1493,7 @@
   }
 
   .flood-findings {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
     border-left: 4px solid var(--color-primary-500);
-    border-radius: 8px;
     padding: 1.25rem;
   }
 

@@ -250,29 +250,6 @@
     color: var(--color-slate-500);
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background: var(--color-primary-600);
-  }
-
   .btn i {
     font-size: 1rem;
   }

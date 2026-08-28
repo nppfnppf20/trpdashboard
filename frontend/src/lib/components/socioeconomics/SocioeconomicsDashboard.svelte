@@ -3,7 +3,6 @@
   import SocioeconomicsSpreadsheet from './SocioeconomicsSpreadsheet.svelte';
   import ProjectSelector from '$lib/components/shared/ProjectSelector.svelte';
   import AddProjectModal from '$lib/components/projects/AddProjectModal.svelte';
-  import { goto } from '$app/navigation';
   import { analyzeSocioeconomics } from '$lib/services/socioeconomicsApi.js';
 
   /** @type {any | null} */
@@ -182,21 +181,9 @@
     }
   }
 
-  function goHome() {
-    goto('/');
-  }
 </script>
 
 <div class="dashboard">
-  <!-- Home button in top-left corner -->
-  <button
-    class="home-button"
-    on:click={goHome}
-    title="Back to Home">
-    <i class="las la-home"></i>
-    <span>Home</span>
-  </button>
-
   <!-- Simple left panel -->
   <div class="findings-section">
     <!-- Simple navbar -->
@@ -219,7 +206,7 @@
         showDivider={false}
       />
     {:else}
-      <div class="project-display">
+      <div class="card project-display">
         <div class="project-display-content">
           <span class="project-label">Selected:</span>
           <span class="project-value">
@@ -339,34 +326,6 @@
     font-size: 1.25rem;
     font-weight: 600;
     color: var(--color-slate-800);
-  }
-
-  .home-button {
-    position: fixed;
-    top: 0.75rem;
-    left: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-    color: var(--color-slate-800);
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    z-index: 100;
-    box-shadow: var(--shadow-sm);
-  }
-
-  .home-button:hover {
-    background: var(--color-slate-100);
-    border-color: var(--color-slate-300);
-  }
-
-  .home-button i {
-    font-size: 1.125rem;
   }
 
   .welcome-content {
@@ -520,9 +479,6 @@
 
   /* Project Display (when analysis is running) */
   .project-display {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 1rem 1.5rem;
     margin-bottom: 1.5rem;
     display: flex;

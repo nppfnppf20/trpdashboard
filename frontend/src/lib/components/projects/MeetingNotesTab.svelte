@@ -589,7 +589,7 @@
     <div class="mn-top-row">
 
       <!-- Upload card -->
-      <div class="mn-upload-card">
+      <div class="card mn-upload-card">
         <h3 class="mn-card-title">Summarise Meeting</h3>
 
         <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
@@ -799,7 +799,7 @@
       </div>
 
       <!-- Latest meeting card -->
-      <div class="mn-latest-card">
+      <div class="card mn-latest-card">
         {#if latestNote}
           <div class="mn-latest-card-inner">
             <div class="mn-latest-card-top">
@@ -834,7 +834,7 @@
 
     {#if uploadNoteType === 'briefing'}
       <!-- Meeting Guide card -->
-      <div class="mn-guide-card">
+      <div class="card mn-guide-card">
         <div class="mn-guide-card-left">
           <div class="mn-guide-icon"><i class="las la-clipboard-list"></i></div>
           <div>
@@ -849,7 +849,7 @@
     {/if}
 
     <!-- ── All Notes ──────────────────────────────────────────────────── -->
-    <div class="mn-section mn-section-muted">
+    <div class="card mn-section mn-section-muted">
       <button class="mn-concertina-btn" on:click={() => showAllNotes = !showAllNotes}>
         <i class="las la-{showAllNotes ? 'angle-up' : 'angle-down'}"></i>
         All Notes ({combinedItems.length})
@@ -1345,9 +1345,6 @@
   .mn-type-badge--briefing { background: var(--color-red-50); color: var(--color-red-500); }
 
   .mn-guide-card {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 1rem 1.25rem;
     display: flex;
     align-items: center;
@@ -1398,9 +1395,6 @@
 
   /* Upload card */
   .mn-upload-card {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 0.85rem 1rem;
     display: flex;
     flex-direction: column;
@@ -1416,9 +1410,6 @@
 
   /* Latest meeting card */
   .mn-latest-card {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 0.85rem 1rem;
     display: flex;
     flex-direction: column;
@@ -1476,9 +1467,6 @@
 
   /* ── Sections ──────────────────────────────────────────────────────────── */
   .mn-section {
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
     padding: 1rem 1.25rem;
   }
   .mn-section-muted { background: var(--color-slate-50); }
@@ -1510,24 +1498,7 @@
   /* ── Upload panel ──────────────────────────────────────────────────────── */
 
   /* Form overrides (matching site's form style) */
-  .form-input {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: var(--color-white);
-    box-sizing: border-box;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  .form-input:focus {
-    outline: none;
-    border-color: var(--color-primary-500);
-    box-shadow: var(--focus-ring-blue);
-  }
-  textarea.form-input { resize: vertical; line-height: 1.5; }
+  /* .form-input (default blue focus ring) now comes from the shared inputs.css. */
 
   .form-row {
     display: grid;

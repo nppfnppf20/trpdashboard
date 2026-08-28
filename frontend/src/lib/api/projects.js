@@ -8,6 +8,35 @@ import { authFetch } from './client.js';
 const API_BASE_URL = '/api/projects';
 
 /**
+ * List all projects
+ * @returns {Promise<Array<Object>>} All projects, unfiltered
+ */
+export async function getProjects() {
+  const response = await authFetch(API_BASE_URL);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch projects');
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get a single project by id
+ * @param {string} projectId - Project UUID
+ * @returns {Promise<Object>} Project
+ */
+export async function getProject(projectId) {
+  const response = await authFetch(`${API_BASE_URL}/${projectId}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to load project');
+  }
+
+  return await response.json();
+}
+
+/**
  * Get project information
  * @param {string} projectId - Project UUID
  * @returns {Promise<Object|null>} Project information or null if not found

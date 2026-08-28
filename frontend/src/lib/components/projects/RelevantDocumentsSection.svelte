@@ -213,7 +213,7 @@
           </div>
         </div>
       {/if}
-      <div class="rd-card">
+      <div class="card rd-card">
         <div class="rd-card-header">
           <span class="rd-card-title">{sec.label}</span>
           <button class="btn-add" on:click={() => openAdd(sec.key)}>
@@ -405,9 +405,7 @@
 
   /* Section cards */
   .rd-card {
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 10px;
+    padding: 0;
     overflow: hidden;
   }
 

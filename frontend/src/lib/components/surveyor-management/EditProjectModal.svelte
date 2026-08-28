@@ -609,38 +609,6 @@
     border-top: 1px solid var(--color-slate-200);
   }
 
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .btn-primary {
-    background: var(--color-primary-500);
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background: var(--color-primary-600);
-  }
-
-  .btn-secondary {
-    background: white;
-    color: var(--color-slate-500);
-    border: 1px solid var(--color-slate-300);
-  }
-
-  .btn-secondary:hover {
-    background: var(--color-slate-50);
-  }
-
   @media (max-width: 768px) {
     .line-item-fields {
       grid-template-columns: 1fr;
