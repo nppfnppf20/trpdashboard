@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { suggestAdvancementSummaries, suggestFeeQuoteWorks, draftAdvancementsSummaryEmail } from '../services/conditionsTracker.service.js';
+import { suggestAdvancementSummaries, suggestAdvancementCandidates, suggestFeeQuoteWorks, draftAdvancementsSummaryEmail } from '../services/conditionsTracker.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee quote drafting: per condition, list the works the wording requires.
@@ -444,61 +444,92 @@ export async function createAdvancements(req, res) {
 // wording, reason and previous advancements. User-supplied notes take
 // precedence. Among the ticked conditions, only those the source material
 // actually contains relevant new information for come back with a summary.
+//
+// When `items` is empty (nothing ticked yet), instead falls back to reading
+// every condition tracked for the project and asking the model to work out
+// for itself which ones (if any) the source material relates to — so the
+// caller can auto-tick + fill whatever comes back, rather than requiring a
+// row to be picked before generation is possible at all.
 export async function suggestAdvancements(req, res) {
   const { projectId } = req.params;
   const { full_text, items } = req.body;
   if (!full_text?.trim()) return res.status(400).json({ error: 'Paste the email trail or note text to summarise from' });
-  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'At least one condition is required' });
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
 
   try {
-    const ids = items.map(i => i.condition_id);
-    const [{ rows: conditions }, { rows: advancements }, { rows: requirements }] = await Promise.all([
-      pool.query(
-        `SELECT id, condition_number, title, wording, reason
-         FROM planning_applications.conditions
-         WHERE project_id = $1 AND id = ANY($2::int[])`,
-        [projectId, ids]
-      ),
-      pool.query(
-        `SELECT condition_id, advancement_date::text, summary
-         FROM planning_applications.condition_advancements
-         WHERE condition_id = ANY($1::int[])
-         ORDER BY advancement_date DESC, id DESC`,
-        [ids]
-      ),
-      pool.query(
-        `SELECT id, condition_id, requirement_text
-         FROM planning_applications.condition_requirements
-         WHERE condition_id = ANY($1::int[])
-         ORDER BY sort_order ASC, id ASC`,
-        [ids]
-      ),
-    ]);
-    if (!conditions.length) return res.status(404).json({ error: 'No matching conditions found' });
+    if (items.length) {
+      const ids = items.map(i => i.condition_id);
+      const [{ rows: conditions }, { rows: advancements }, { rows: requirements }] = await Promise.all([
+        pool.query(
+          `SELECT id, condition_number, title, wording, reason
+           FROM planning_applications.conditions
+           WHERE project_id = $1 AND id = ANY($2::int[])`,
+          [projectId, ids]
+        ),
+        pool.query(
+          `SELECT condition_id, advancement_date::text, summary
+           FROM planning_applications.condition_advancements
+           WHERE condition_id = ANY($1::int[])
+           ORDER BY advancement_date DESC, id DESC`,
+          [ids]
+        ),
+        pool.query(
+          `SELECT id, condition_id, requirement_text
+           FROM planning_applications.condition_requirements
+           WHERE condition_id = ANY($1::int[])
+           ORDER BY sort_order ASC, id ASC`,
+          [ids]
+        ),
+      ]);
+      if (!conditions.length) return res.status(404).json({ error: 'No matching conditions found' });
 
-    const advByCondition = {};
-    for (const a of advancements) {
-      (advByCondition[a.condition_id] ||= []).push(a);
+      const advByCondition = {};
+      for (const a of advancements) {
+        (advByCondition[a.condition_id] ||= []).push(a);
+      }
+      const reqsByCondition = {};
+      for (const r of requirements) {
+        (reqsByCondition[r.condition_id] ||= []).push(r);
+      }
+      const userSummaries = Object.fromEntries(items.map(i => [i.condition_id, i.user_summary?.trim() || null]));
+      const tickedReqIds = Object.fromEntries(items.map(i => [i.condition_id, i.requirement_ids || []]));
+
+      const enriched = conditions.map(c => {
+        const reqs = reqsByCondition[c.id] || [];
+        const ticked = tickedReqIds[c.id] || [];
+        return {
+          ...c,
+          advancements: advByCondition[c.id] || [],
+          user_summary: userSummaries[c.id] || null,
+          target_requirements: reqs.filter(r => ticked.includes(r.id)).map(r => r.requirement_text),
+        };
+      });
+
+      const suggestions = await suggestAdvancementSummaries(full_text, enriched);
+      return res.json({ suggestions });
     }
-    const reqsByCondition = {};
-    for (const r of requirements) {
-      (reqsByCondition[r.condition_id] ||= []).push(r);
-    }
-    const userSummaries = Object.fromEntries(items.map(i => [i.condition_id, i.user_summary?.trim() || null]));
-    const tickedReqIds = Object.fromEntries(items.map(i => [i.condition_id, i.requirement_ids || []]));
 
-    const enriched = conditions.map(c => {
-      const reqs = reqsByCondition[c.id] || [];
-      const ticked = tickedReqIds[c.id] || [];
-      return {
-        ...c,
-        advancements: advByCondition[c.id] || [],
-        user_summary: userSummaries[c.id] || null,
-        target_requirements: reqs.filter(r => ticked.includes(r.id)).map(r => r.requirement_text),
-      };
-    });
+    // Nothing ticked — read every condition in the tracker (lightweight, no
+    // full history) and let the model identify which ones are relevant.
+    const { rows: allConditions } = await pool.query(
+      `SELECT id, condition_number, title, status
+       FROM planning_applications.conditions
+       WHERE project_id = $1`,
+      [projectId]
+    );
+    if (!allConditions.length) return res.status(404).json({ error: 'No conditions in this tracker yet' });
 
-    const suggestions = await suggestAdvancementSummaries(full_text, enriched);
+    const { rows: latest } = await pool.query(
+      `SELECT DISTINCT ON (condition_id) condition_id, summary
+       FROM planning_applications.condition_advancements
+       WHERE condition_id = ANY($1::int[])
+       ORDER BY condition_id, advancement_date DESC, id DESC`,
+      [allConditions.map(c => c.id)]
+    );
+    const latestByCondition = Object.fromEntries(latest.map(l => [l.condition_id, l.summary]));
+    const candidates = allConditions.map(c => ({ ...c, latest_summary: latestByCondition[c.id] || null }));
+
+    const suggestions = await suggestAdvancementCandidates(full_text, candidates);
     res.json({ suggestions });
   } catch (err) {
     console.error('conditions.suggestAdvancements error:', err);

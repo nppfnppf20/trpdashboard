@@ -62,6 +62,7 @@
   let generating = false;
   let generatedNotice = false;
   let skippedLabels = [];
+  let autoTickedCount = 0;      // rows the AI ticked itself (nothing was checked before generating)
   let lastGeneratedText = null;
   let error = null;
   let seeded = false;
@@ -72,6 +73,7 @@
     error = null;
     generatedNotice = false;
     skippedLabels = [];
+    autoTickedCount = 0;
     lastGeneratedText = null;
     stageInstanceId = defaultStageInstanceId;
     selections = {};
@@ -93,7 +95,10 @@
 
   $: checkedCount = Object.values(selections).filter(s => s.checked).length;
   $: hasBlankChecked = issues.some(iss => selections[iss.id]?.checked && !selections[iss.id].summary.trim());
-  $: canGenerate = hasBlankChecked && fullText.trim().length > 0;
+  // Enabled either when some ticked rows still need summaries, or when
+  // nothing is ticked at all — in which case the AI works out which rows
+  // this applies to instead of requiring them to be picked first.
+  $: canGenerate = fullText.trim().length > 0 && (hasBlankChecked || checkedCount === 0);
   $: canSave = checkedCount > 0 && !hasBlankChecked;
   $: allChecked = issues.length > 0 && issues.every(iss => selections[iss.id]?.checked);
 
@@ -131,12 +136,19 @@
   // Fill blank ticked rows from the pasted text. Typed summaries are left
   // untouched — they take precedence. The model only fills blanks for issues
   // the text actually contains relevant new information for.
+  //
+  // If nothing is ticked at all, this instead asks the backend to read every
+  // issue in the tracker and work out which one(s) the text is actually
+  // about — those come back in `suggestions` too, and get ticked here just
+  // like an already-checked blank row would.
   async function generateSummaries() {
+    if (!fullText.trim()) return;
     const items = buildItems();
     const blanks = items.filter(i => !i.summary);
-    if (!blanks.length || !fullText.trim()) return;
+    const suggestMode = items.length === 0;
+    if (!suggestMode && !blanks.length) return;
 
-    if (fullText === lastGeneratedText) {
+    if (!suggestMode && fullText === lastGeneratedText) {
       skippedLabels = issues.filter(iss => blanks.some(b => b.issue_id === iss.id)).map(issueLabel);
       return;
     }
@@ -148,15 +160,18 @@
         full_text: fullText,
         items: items.map(i => ({ issue_id: i.issue_id, user_summary: i.summary || null })),
       });
+      let newlyTicked = 0;
       for (const s of suggestions) {
-        if (selections[s.issue_id]?.checked && !selections[s.issue_id].summary.trim()) {
-          selections[s.issue_id] = { ...selections[s.issue_id], summary: s.summary };
-        }
+        const current = selections[s.issue_id];
+        if (!current || (current.checked && current.summary.trim())) continue;
+        if (!current.checked) newlyTicked++;
+        selections[s.issue_id] = { ...current, checked: true, summary: s.summary };
       }
       selections = { ...selections };
-      skippedLabels = issues
-        .filter(iss => selections[iss.id]?.checked && !selections[iss.id].summary.trim())
-        .map(issueLabel);
+      autoTickedCount = newlyTicked;
+      skippedLabels = suggestMode
+        ? []
+        : issues.filter(iss => selections[iss.id]?.checked && !selections[iss.id].summary.trim()).map(issueLabel);
       lastGeneratedText = fullText;
       generatedNotice = true;
     } catch (err) {
@@ -354,11 +369,17 @@
             canGenerate={canGenerate && !saving}
             fullTextHint="optional fuller detail behind the summaries - paste an email trail, notes, whatever you've got"
             fullTextPlaceholder="Type or paste the detail here…"
+            generateHint="Tick rows to summarise into them, or leave everything unticked and it'll suggest which ones apply."
           />
 
           {#if generatedNotice}
             <div class="adv-notice">
-              <i class="las la-magic"></i> Summaries generated from the pasted text - review or edit them below.
+              <i class="las la-magic"></i>
+              {#if autoTickedCount > 0}
+                Identified {autoTickedCount} issue{autoTickedCount !== 1 ? 's' : ''} this looks relevant to and ticked {autoTickedCount !== 1 ? 'them' : 'it'} below - review before saving.
+              {:else}
+                Summaries generated from the pasted text - review or edit them below.
+              {/if}
             </div>
           {/if}
           {#if skippedLabels.length}

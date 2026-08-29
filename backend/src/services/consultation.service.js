@@ -142,6 +142,21 @@ Return your response using EXACTLY this XML structure — one <ITEM> block per r
 <SUMMARY>the 1-2 sentence progress summary</SUMMARY>
 </ITEM>`;
 
+function parseAdvancementItems(raw, logLabel, errorMessage) {
+  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
+  if (!blocks.length) {
+    if (/<NONE\s*\/?>/i.test(raw)) return [];   // nothing relevant found — a valid outcome
+    console.error(`[${logLabel}] No ITEM blocks found. Raw (first 400):`, raw.slice(0, 400));
+    throw new Error(errorMessage);
+  }
+  return blocks
+    .map(block => ({
+      response_id: parseInt(extractTag(block, 'RESPONSE_ID'), 10),
+      summary: extractTag(block, 'SUMMARY'),
+    }))
+    .filter(s => Number.isFinite(s.response_id) && s.summary);
+}
+
 export async function suggestConsultationAdvancementSummaries(fullText, responses) {
   const responseBlocks = responses.map(r => {
     const history = (r.advancements || []).length
@@ -164,20 +179,59 @@ ${(fullText || '').slice(0, 80000)}
 ${responseBlocks}`;
 
   const raw = await callClaude(ADVANCEMENT_SYSTEM_PROMPT, content, undefined, 8000);
+  return parseAdvancementItems(raw, 'consultation.service', 'Could not generate summaries from the provided text');
+}
 
-  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
-  if (!blocks.length) {
-    if (/<NONE\s*\/?>/i.test(raw)) return [];   // nothing relevant found — a valid outcome
-    console.error('[consultation.service] No ITEM blocks found. Raw (first 400):', raw.slice(0, 400));
-    throw new Error('Could not generate summaries from the provided text');
-  }
+// Same job, but for when nothing has been ticked yet: given every response
+// currently tracked (not just a pre-picked set), work out which ones (if
+// any) the source material actually relates to. Lighter per-row context
+// than the scoped path above (no full history) since the first job here is
+// picking the right rows out of potentially many, not writing a rich entry.
+const ADVANCEMENT_CANDIDATE_SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a statutory consultation tracker. The user will provide:
 
-  return blocks
-    .map(block => ({
-      response_id: parseInt(extractTag(block, 'RESPONSE_ID'), 10),
-      summary: extractTag(block, 'SUMMARY'),
-    }))
-    .filter(s => Number.isFinite(s.response_id) && s.summary);
+1. SOURCE MATERIAL — typically an email trail or a typed note describing recent progress with statutory consultees.
+2. Every CONSULTEE RESPONSE currently tracked for this project, each with the consultee's name, their position, and a one-line note of where things currently stand.
+
+Nothing has been pre-selected. Work out for yourself which response(s), if any, the source material is actually about, then write the next dated progress entry for each one.
+
+Relevance — decide per response:
+- Return an <ITEM> only for responses the source material genuinely mentions or is clearly about. Most responses in the list will NOT be relevant — do not pad the list to cover more responses than the material actually supports. Returning only one or two <ITEM>s, or none at all, is the normal and expected outcome.
+- If the source material doesn't relate to any of the listed responses, return exactly:
+<NONE/>
+
+Tone and voice — this matters:
+- Write in the team's own voice, first person plural, e.g. "Drafted response to Highways' concerns", "Chased Natural England for their outstanding comments", "We confirmed in writing that…". Where the consultee acted, name them plainly: "Highways confirmed the revised drawings were acceptable".
+- This is an internal log entry, not a planning report. No report-speak, no long chained clauses, no restating the consultee's comments back.
+- Keep it SHORT: one or two brisk sentences, 35 words maximum. If two things happened, two short sentences beat one long one.
+- End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting their sign-off", "Response issued to consultee".
+
+Content rules:
+- Use the consultee's position and current status to understand what's outstanding, so the note is specific.
+- Plain text only — no markdown, no bullets, no headings.
+
+Return your response using EXACTLY this XML structure — one <ITEM> block per relevant response, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<RESPONSE_ID>the numeric id given for the response</RESPONSE_ID>
+<SUMMARY>the 1-2 sentence progress summary</SUMMARY>
+</ITEM>`;
+
+export async function suggestConsultationAdvancementCandidates(fullText, responses) {
+  const responseBlocks = responses.map(r => `RESPONSE (id: ${r.id})
+Consultee: ${r.consultee_name}
+Position: ${r.position || 'n/a'}
+Current status: ${r.latest_summary || 'no progress entries yet'}`).join('\n\n');
+
+  const content = `SOURCE MATERIAL:
+
+${(fullText || '').slice(0, 80000)}
+
+════════════════════════════════════════
+
+${responseBlocks}`;
+
+  const raw = await callClaude(ADVANCEMENT_CANDIDATE_SYSTEM_PROMPT, content, undefined, 8000);
+  return parseAdvancementItems(raw, 'consultation.service.candidates', 'Could not identify which responses this relates to');
 }
 
 export async function processConsultationResponse(text, fileName, developmentType = null, userNotes = null) {

@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { suggestActionSummaries, draftActionsFromMeetingNotes } from '../services/progressTracker.service.js';
+import { suggestActionSummaries, suggestActionCandidates, draftActionsFromMeetingNotes } from '../services/progressTracker.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Get all issues (with sub-issues + actions) + tracker meta for a project
@@ -366,44 +366,75 @@ export async function createActions(req, res) {
 
 // Suggest per-issue summaries from source text — mirrors Conditions Tracker's
 // suggestAdvancements.
+//
+// When `items` is empty (nothing ticked yet), instead falls back to reading
+// every issue tracked for the project and asking the model to work out for
+// itself which ones (if any) the source material relates to — so the caller
+// can auto-tick + fill whatever comes back, rather than requiring a row to
+// be picked before generation is possible at all.
 export async function suggestActions(req, res) {
   const { projectId } = req.params;
   const { full_text, items } = req.body;
   if (!full_text?.trim()) return res.status(400).json({ error: 'Paste the email trail or note text to summarise from' });
-  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'At least one issue is required' });
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
 
   try {
-    const ids = items.map(i => i.issue_id);
-    const [{ rows: issues }, { rows: actions }] = await Promise.all([
-      pool.query(
-        `SELECT id, title, discipline
-         FROM planning_applications.progress_issues
-         WHERE project_id = $1 AND id = ANY($2::int[])`,
-        [projectId, ids]
-      ),
-      pool.query(
-        `SELECT issue_id, action_date::text, summary
-         FROM planning_applications.progress_actions
-         WHERE issue_id = ANY($1::int[])
-         ORDER BY action_date DESC, id DESC`,
-        [ids]
-      ),
-    ]);
-    if (!issues.length) return res.status(404).json({ error: 'No matching issues found' });
+    if (items.length) {
+      const ids = items.map(i => i.issue_id);
+      const [{ rows: issues }, { rows: actions }] = await Promise.all([
+        pool.query(
+          `SELECT id, title, discipline
+           FROM planning_applications.progress_issues
+           WHERE project_id = $1 AND id = ANY($2::int[])`,
+          [projectId, ids]
+        ),
+        pool.query(
+          `SELECT issue_id, action_date::text, summary
+           FROM planning_applications.progress_actions
+           WHERE issue_id = ANY($1::int[])
+           ORDER BY action_date DESC, id DESC`,
+          [ids]
+        ),
+      ]);
+      if (!issues.length) return res.status(404).json({ error: 'No matching issues found' });
 
-    const actionsByIssue = {};
-    for (const a of actions) {
-      (actionsByIssue[a.issue_id] ||= []).push(a);
+      const actionsByIssue = {};
+      for (const a of actions) {
+        (actionsByIssue[a.issue_id] ||= []).push(a);
+      }
+      const userSummaries = Object.fromEntries(items.map(i => [i.issue_id, i.user_summary?.trim() || null]));
+
+      const enriched = issues.map(iss => ({
+        ...iss,
+        actions: actionsByIssue[iss.id] || [],
+        user_summary: userSummaries[iss.id] || null,
+      }));
+
+      const suggestions = await suggestActionSummaries(full_text, enriched);
+      return res.json({ suggestions });
     }
-    const userSummaries = Object.fromEntries(items.map(i => [i.issue_id, i.user_summary?.trim() || null]));
 
-    const enriched = issues.map(iss => ({
-      ...iss,
-      actions: actionsByIssue[iss.id] || [],
-      user_summary: userSummaries[iss.id] || null,
-    }));
+    // Nothing ticked — read every issue in the tracker (lightweight, no full
+    // history) and let the model identify which ones are relevant.
+    const { rows: allIssues } = await pool.query(
+      `SELECT id, title, discipline
+       FROM planning_applications.progress_issues
+       WHERE project_id = $1`,
+      [projectId]
+    );
+    if (!allIssues.length) return res.status(404).json({ error: 'No issues in this tracker yet' });
 
-    const suggestions = await suggestActionSummaries(full_text, enriched);
+    const { rows: latest } = await pool.query(
+      `SELECT DISTINCT ON (issue_id) issue_id, summary
+       FROM planning_applications.progress_actions
+       WHERE issue_id = ANY($1::int[])
+       ORDER BY issue_id, action_date DESC, id DESC`,
+      [allIssues.map(iss => iss.id)]
+    );
+    const latestByIssue = Object.fromEntries(latest.map(l => [l.issue_id, l.summary]));
+    const candidates = allIssues.map(iss => ({ ...iss, latest_summary: latestByIssue[iss.id] || null }));
+
+    const suggestions = await suggestActionCandidates(full_text, candidates);
     res.json({ suggestions });
   } catch (err) {
     console.error('progressTracker.suggestActions error:', err);

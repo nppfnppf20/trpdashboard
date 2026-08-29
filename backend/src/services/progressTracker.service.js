@@ -43,6 +43,21 @@ function extractTag(text, tag) {
   return m ? m[1].trim() : null;
 }
 
+function parseIssueActionItems(raw, logLabel, errorMessage) {
+  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
+  if (!blocks.length) {
+    if (/<NONE\s*\/?>/i.test(raw)) return [];
+    console.error(`[${logLabel}] No ITEM blocks found. Raw (first 400):`, raw.slice(0, 400));
+    throw new Error(errorMessage);
+  }
+  return blocks
+    .map(block => ({
+      issue_id: parseInt(extractTag(block, 'ISSUE_ID'), 10),
+      summary: extractTag(block, 'SUMMARY'),
+    }))
+    .filter(s => Number.isFinite(s.issue_id) && s.summary);
+}
+
 export async function suggestActionSummaries(fullText, issues) {
   const issueBlocks = issues.map(iss => {
     const history = (iss.actions || []).length
@@ -64,20 +79,59 @@ ${(fullText || '').slice(0, 80000)}
 ${issueBlocks}`;
 
   const raw = await callClaude(SUMMARY_SYSTEM_PROMPT, content, undefined, 8000);
+  return parseIssueActionItems(raw, 'progressTracker.service', 'Could not generate summaries from the provided text');
+}
 
-  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
-  if (!blocks.length) {
-    if (/<NONE\s*\/?>/i.test(raw)) return [];
-    console.error('[progressTracker.service] No ITEM blocks found. Raw (first 400):', raw.slice(0, 400));
-    throw new Error('Could not generate summaries from the provided text');
-  }
+// Same job, but for when nothing has been ticked yet: given every issue
+// currently tracked (not just a pre-picked set), work out which ones (if
+// any) the source material actually relates to. Lighter per-row context
+// than the scoped path above (no full history) since the first job here is
+// picking the right rows out of potentially many, not writing a rich entry.
+const CANDIDATE_SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a pre-decision planning issues tracker. The user will provide:
 
-  return blocks
-    .map(block => ({
-      issue_id: parseInt(extractTag(block, 'ISSUE_ID'), 10),
-      summary: extractTag(block, 'SUMMARY'),
-    }))
-    .filter(s => Number.isFinite(s.issue_id) && s.summary);
+1. SOURCE MATERIAL — typically an email trail or a typed note describing recent progress on a planning issue being worked through with the LPA/client.
+2. Every ISSUE currently tracked for this project, each with its title, discipline, and a one-line note of where things currently stand.
+
+Nothing has been pre-selected. Work out for yourself which issue(s), if any, the source material is actually about, then write the next dated entry in its action log for each one.
+
+Relevance — decide per issue:
+- Return an <ITEM> only for issues the source material genuinely mentions or is clearly about. Most issues in the list will NOT be relevant — do not pad the list to cover more issues than the material actually supports. Returning only one or two <ITEM>s, or none at all, is the normal and expected outcome.
+- If the source material doesn't relate to any of the listed issues, return exactly:
+<NONE/>
+
+Tone and voice — this matters:
+- Write in the team's own voice, first person plural, e.g. "Raised massing concern with conservation officer", "Agreed revised access strategy with highways". Where another party acted, name them plainly: "LPA confirmed setting impact acceptable", "Applicant provided updated tree survey".
+- This is an internal log entry, not a planning report. No report-speak, no long chained clauses, no restating the issue back.
+- Keep it SHORT: one or two brisk sentences, 35 words maximum. If two things happened, two short sentences beat one long one.
+- End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting officer response", "Agreed in principle".
+
+Content rules:
+- Use the issue's title and discipline to understand what's outstanding, so the note is specific.
+- Plain text only — no markdown, no bullets, no headings.
+
+Return your response using EXACTLY this XML structure — one <ITEM> block per relevant issue, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<ISSUE_ID>the numeric id given for the issue</ISSUE_ID>
+<SUMMARY>the 1-2 sentence progress summary</SUMMARY>
+</ITEM>`;
+
+export async function suggestActionCandidates(fullText, issues) {
+  const issueBlocks = issues.map(iss => `ISSUE (id: ${iss.id})
+Title: ${iss.title}
+Discipline: ${iss.discipline || 'n/a'}
+Latest action: ${iss.latest_summary || 'no actions logged yet'}`).join('\n\n');
+
+  const content = `SOURCE MATERIAL:
+
+${(fullText || '').slice(0, 80000)}
+
+════════════════════════════════════════
+
+${issueBlocks}`;
+
+  const raw = await callClaude(CANDIDATE_SYSTEM_PROMPT, content, undefined, 8000);
+  return parseIssueActionItems(raw, 'progressTracker.service.candidates', 'Could not identify which issues this relates to');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

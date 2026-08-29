@@ -1,6 +1,6 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processConsultationResponse, summariseConsultation, suggestConsultationAdvancementSummaries } from '../services/consultation.service.js';
+import { processConsultationResponse, summariseConsultation, suggestConsultationAdvancementSummaries, suggestConsultationAdvancementCandidates } from '../services/consultation.service.js';
 import { sendEmail } from '../services/emailService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -286,44 +286,75 @@ export async function createAdvancements(req, res) {
 // position, comments and previous advancements. User-supplied notes take
 // precedence. Among the ticked responses, only those the source material
 // actually contains relevant new information for come back with a summary.
+//
+// When `items` is empty (nothing ticked yet), instead falls back to reading
+// every response tracked for the project and asking the model to work out
+// for itself which ones (if any) the source material relates to — so the
+// caller can auto-tick + fill whatever comes back, rather than requiring a
+// row to be picked before generation is possible at all.
 export async function suggestAdvancements(req, res) {
   const { projectId } = req.params;
   const { full_text, items } = req.body;
   if (!full_text?.trim()) return res.status(400).json({ error: 'Paste the email trail or note text to summarise from' });
-  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'At least one response is required' });
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
 
   try {
-    const ids = items.map(i => i.response_id);
-    const [{ rows: responses }, { rows: advancements }] = await Promise.all([
-      pool.query(
-        `SELECT id, consultee_name, position, comments
-         FROM planning_applications.consultation_responses
-         WHERE project_id = $1 AND id = ANY($2::int[])`,
-        [projectId, ids]
-      ),
-      pool.query(
-        `SELECT response_id, advancement_date::text, summary
-         FROM planning_applications.consultation_response_advancements
-         WHERE response_id = ANY($1::int[])
-         ORDER BY advancement_date DESC, id DESC`,
-        [ids]
-      ),
-    ]);
-    if (!responses.length) return res.status(404).json({ error: 'No matching responses found' });
+    if (items.length) {
+      const ids = items.map(i => i.response_id);
+      const [{ rows: responses }, { rows: advancements }] = await Promise.all([
+        pool.query(
+          `SELECT id, consultee_name, position, comments
+           FROM planning_applications.consultation_responses
+           WHERE project_id = $1 AND id = ANY($2::int[])`,
+          [projectId, ids]
+        ),
+        pool.query(
+          `SELECT response_id, advancement_date::text, summary
+           FROM planning_applications.consultation_response_advancements
+           WHERE response_id = ANY($1::int[])
+           ORDER BY advancement_date DESC, id DESC`,
+          [ids]
+        ),
+      ]);
+      if (!responses.length) return res.status(404).json({ error: 'No matching responses found' });
 
-    const advByResponse = {};
-    for (const a of advancements) {
-      (advByResponse[a.response_id] ||= []).push(a);
+      const advByResponse = {};
+      for (const a of advancements) {
+        (advByResponse[a.response_id] ||= []).push(a);
+      }
+      const userSummaries = Object.fromEntries(items.map(i => [i.response_id, i.user_summary?.trim() || null]));
+
+      const enriched = responses.map(r => ({
+        ...r,
+        advancements: advByResponse[r.id] || [],
+        user_summary: userSummaries[r.id] || null,
+      }));
+
+      const suggestions = await suggestConsultationAdvancementSummaries(full_text, enriched);
+      return res.json({ suggestions });
     }
-    const userSummaries = Object.fromEntries(items.map(i => [i.response_id, i.user_summary?.trim() || null]));
 
-    const enriched = responses.map(r => ({
-      ...r,
-      advancements: advByResponse[r.id] || [],
-      user_summary: userSummaries[r.id] || null,
-    }));
+    // Nothing ticked — read every response in the tracker (lightweight, no
+    // full history) and let the model identify which ones are relevant.
+    const { rows: allResponses } = await pool.query(
+      `SELECT id, consultee_name, position
+       FROM planning_applications.consultation_responses
+       WHERE project_id = $1`,
+      [projectId]
+    );
+    if (!allResponses.length) return res.status(404).json({ error: 'No responses in this tracker yet' });
 
-    const suggestions = await suggestConsultationAdvancementSummaries(full_text, enriched);
+    const { rows: latest } = await pool.query(
+      `SELECT DISTINCT ON (response_id) response_id, summary
+       FROM planning_applications.consultation_response_advancements
+       WHERE response_id = ANY($1::int[])
+       ORDER BY response_id, advancement_date DESC, id DESC`,
+      [allResponses.map(r => r.id)]
+    );
+    const latestByResponse = Object.fromEntries(latest.map(l => [l.response_id, l.summary]));
+    const candidates = allResponses.map(r => ({ ...r, latest_summary: latestByResponse[r.id] || null }));
+
+    const suggestions = await suggestConsultationAdvancementCandidates(full_text, candidates);
     res.json({ suggestions });
   } catch (err) {
     console.error('consultation.suggestAdvancements error:', err);

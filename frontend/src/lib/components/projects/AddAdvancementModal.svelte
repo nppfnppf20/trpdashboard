@@ -17,6 +17,7 @@
   let generating = false;
   let generatedNotice = false;
   let skippedLabels = [];       // ticked conditions the source text had nothing relevant for
+  let autoTickedCount = 0;      // rows the AI ticked itself (nothing was checked before generating)
   let lastGeneratedText = null; // avoid regenerating in a loop for the same text
   let error = null;
   let seeded = false;
@@ -28,6 +29,7 @@
     error = null;
     generatedNotice = false;
     skippedLabels = [];
+    autoTickedCount = 0;
     lastGeneratedText = null;
     selections = {};
     for (const c of conditions) {
@@ -46,7 +48,10 @@
 
   $: checkedCount = Object.values(selections).filter(s => s.checked).length;
   $: hasBlankChecked = conditions.some(c => selections[c.id]?.checked && !selections[c.id].summary.trim());
-  $: canGenerate = hasBlankChecked && fullText.trim().length > 0;
+  // Enabled either when some ticked rows still need summaries, or when
+  // nothing is ticked at all — in which case the AI works out which rows
+  // this applies to instead of requiring them to be picked first.
+  $: canGenerate = fullText.trim().length > 0 && (hasBlankChecked || checkedCount === 0);
   $: canSave = checkedCount > 0 && !hasBlankChecked;
   $: allChecked = conditions.length > 0 && conditions.every(c => selections[c.id]?.checked);
 
@@ -127,14 +132,22 @@
   // previous advancements are read server-side). Typed summaries are left
   // untouched — they take precedence. The model only fills blanks for
   // conditions the text actually contains relevant new information for.
+  //
+  // If nothing is ticked at all, this instead asks the backend to read every
+  // condition in the tracker and work out which one(s) the text is actually
+  // about — those come back in `suggestions` too, and get ticked here just
+  // like an already-checked blank row would.
   async function generateSummaries() {
+    if (!fullText.trim()) return;
     const items = buildItems();
     const blanks = items.filter(i => !i.summary);
-    if (!blanks.length || !fullText.trim()) return;
+    const suggestMode = items.length === 0;
+    if (!suggestMode && !blanks.length) return;
 
     // Already generated for this exact text — don't hit the API again, just
-    // refresh which ticked rows are still unresolved.
-    if (fullText === lastGeneratedText) {
+    // refresh which ticked rows are still unresolved. Doesn't apply in
+    // suggest mode: there's nothing ticked yet to "still be unresolved".
+    if (!suggestMode && fullText === lastGeneratedText) {
       skippedLabels = conditions.filter(c => blanks.some(b => b.condition_id === c.id)).map(conditionLabel);
       return;
     }
@@ -150,15 +163,18 @@
           requirement_ids: i.requirement_ids,
         })),
       });
+      let newlyTicked = 0;
       for (const s of suggestions) {
-        if (selections[s.condition_id]?.checked && !selections[s.condition_id].summary.trim()) {
-          selections[s.condition_id] = { ...selections[s.condition_id], summary: s.summary };
-        }
+        const current = selections[s.condition_id];
+        if (!current || (current.checked && current.summary.trim())) continue;
+        if (!current.checked) newlyTicked++;
+        selections[s.condition_id] = { ...current, checked: true, summary: s.summary };
       }
       selections = { ...selections };
-      skippedLabels = conditions
-        .filter(c => selections[c.id]?.checked && !selections[c.id].summary.trim())
-        .map(conditionLabel);
+      autoTickedCount = newlyTicked;
+      skippedLabels = suggestMode
+        ? []
+        : conditions.filter(c => selections[c.id]?.checked && !selections[c.id].summary.trim()).map(conditionLabel);
       lastGeneratedText = fullText;
       generatedNotice = true;
     } catch (err) {
@@ -216,11 +232,17 @@
           onGenerate={generateSummaries}
           {generating}
           canGenerate={canGenerate && !saving}
+          generateHint="Tick rows to summarise into them, or leave everything unticked and it'll suggest which ones apply."
         />
 
         {#if generatedNotice}
           <div class="adv-notice">
-            <i class="las la-magic"></i> Summaries generated from the pasted text - review or edit them below.
+            <i class="las la-magic"></i>
+            {#if autoTickedCount > 0}
+              Identified {autoTickedCount} condition{autoTickedCount !== 1 ? 's' : ''} this looks relevant to and ticked {autoTickedCount !== 1 ? 'them' : 'it'} below - review before saving.
+            {:else}
+              Summaries generated from the pasted text - review or edit them below.
+            {/if}
           </div>
         {/if}
         {#if skippedLabels.length}
