@@ -74,5 +74,6 @@
     flex: 1;
     overflow-y: auto;
     padding: 1.25rem;
+    background: var(--color-slate-50);
   }
 </style>

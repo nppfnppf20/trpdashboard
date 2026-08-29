@@ -5,10 +5,11 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
+  import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
+  import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
   import {
     consumePendingMeetingUploadFile,
-    consumePendingMeetingUploadText,
-    consumePendingMeetingNoteFocus
+    consumePendingMeetingUploadText
   } from '$lib/stores/projectViewModal.js';
   import {
     getDocumentSummaries,
@@ -20,7 +21,6 @@
   } from '$lib/api/projectDocs.js';
   import {
     getMeetingNotes,
-    getMeetingTranscript,
     deleteMeetingNote,
     updateMeetingNote,
     updateMeetingSummary,
@@ -276,14 +276,8 @@
   let editingNoteId = null;
   let noteEditForm = { title: '', meeting_date: '', attendees_text: '' };
 
-  // Transcript view (lazy-loaded)
-  let transcriptData = {};
-
   // Note editor modal (view/edit summary)
   let editorNote = null;     // the note object currently open
-  let editorInitialHtml = '';
-  let editorSaving = false;
-  let richTextEditor;        // bind:this on RichTextEditor
 
   // ── Upload panel ──────────────────────────────────────────────────────────
   let showUploadPanel = false;
@@ -320,17 +314,6 @@
       uploadInputTab = 'paste';
       uploadNoteType = 'meeting';
       showUploadPanel = true;
-    }
-
-    // A "View Notes" / "Transcript" click from the widget — open that
-    // note's modal now that the note list has loaded.
-    const focus = consumePendingMeetingNoteFocus();
-    if (focus) {
-      const note = notes.find(n => n.id === focus.noteId);
-      if (note) {
-        if (focus.mode === 'view') openNoteEditor(note);
-        else if (focus.mode === 'transcript') openTranscript(note);
-      }
     }
   });
   $: if (projectId) { loadAll(); loadBriefings(); }
@@ -405,22 +388,8 @@
     }
   }
 
-  async function loadTranscript(meetingId) {
-    if (transcriptData[meetingId]) return;
-    transcriptData[meetingId] = { loading: true, text: null, error: null };
-    transcriptData = { ...transcriptData };
-    try {
-      const data = await getMeetingTranscript(meetingId);
-      transcriptData[meetingId] = { loading: false, text: data.transcript_text, error: null };
-    } catch (err) {
-      transcriptData[meetingId] = { loading: false, text: null, error: err.message };
-    }
-    transcriptData = { ...transcriptData };
-  }
-
   function openTranscript(note) {
     viewingTranscriptNote = note;
-    loadTranscript(note.id);
   }
 
   // ── Upload panel ──────────────────────────────────────────────────────────
@@ -539,39 +508,14 @@
 
   function openNoteEditor(note) {
     editorNote = note;
-    editorInitialHtml = note.summary_html || '';
   }
 
   function closeNoteEditor() {
     editorNote = null;
-    editorInitialHtml = '';
   }
 
-  async function saveNoteEditor() {
-    if (!editorNote) return;
-    editorSaving = true;
-    try {
-      const html = richTextEditor?.getHTML() ?? editorNote.summary_html;
-      const updated = await updateMeetingSummary(editorNote.id, html);
-      notes = notes.map(n => n.id === editorNote.id ? { ...n, summary_html: updated.summary_html } : n);
-      closeNoteEditor();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      editorSaving = false;
-    }
-  }
-
-  async function downloadFromEditor() {
-    const note = editorNote;
-    const title = note.title || 'Meeting Notes';
-    const dateStr = note.meeting_date
-      ? new Date(note.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-      : '';
-    const metaLine = [dateStr, note.attendees_text].filter(Boolean).join(' · ');
-    const html = richTextEditor?.getHTML() ?? note.summary_html ?? '';
-    const exportHtml = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${html}`;
-    await exportHtmlToWord(exportHtml, buildExportFilename(project, `${title}${dateStr ? ` ${dateStr}` : ''}`), '/basicdocument.docx');
+  function handleNoteUpdated(updated) {
+    notes = notes.map(n => n.id === updated.id ? { ...n, summary_html: updated.summary_html } : n);
   }
 
   // ── Download (from note card, no editor) ─────────────────────────────────
@@ -1043,55 +987,7 @@
 
 <!-- ── Note Editor Modal ─────────────────────────────────────────────────── -->
 {#if editorNote}
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && !editorSaving && closeNoteEditor()}>
-    <div class="mn-modal mn-editor-modal">
-
-      <!-- Header -->
-      <div class="modal-header mn-editor-header">
-        <div>
-          <h2 class="mn-modal-title">{editorNote.title}</h2>
-          <p class="mn-modal-meta">
-            {formatDate(editorNote.meeting_date)}
-            {#if editorNote.attendees_text} &bull; {editorNote.attendees_text}{/if}
-          </p>
-        </div>
-        <div class="mn-editor-header-btns">
-          <button class="btn btn-secondary btn-sm" on:click={downloadFromEditor} disabled={editorSaving}>
-            <i class="las la-download"></i> Download
-          </button>
-          <button class="btn btn-icon btn-ghost close-btn" on:click={closeNoteEditor} disabled={editorSaving}>
-            <i class="las la-times"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- Rich text editor — scrolls -->
-      <div class="mn-editor-body">
-        <RichTextEditor
-          bind:this={richTextEditor}
-          content={editorInitialHtml}
-          placeholder="Meeting summary…"
-          fullHeight={false}
-        />
-      </div>
-
-      <!-- Footer -->
-      <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
-          Close
-        </button>
-        <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving}>
-          {#if editorSaving}
-            <span class="mn-spinner"></span> Saving…
-          {:else}
-            <i class="las la-save"></i> Save changes
-          {/if}
-        </button>
-      </div>
-
-    </div>
-  </div>
+  <NoteEditorModal note={editorNote} {project} onClose={closeNoteEditor} onUpdated={handleNoteUpdated} />
 {/if}
 
 <!-- ── Briefing Viewer Modal ─────────────────────────────────────────────── -->
@@ -1131,42 +1027,7 @@
 
 <!-- ── Meeting Transcript Viewer Modal ────────────────────────────────────── -->
 {#if viewingTranscriptNote}
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && (viewingTranscriptNote = null)}>
-    <div class="mn-modal mn-editor-modal">
-
-      <div class="modal-header">
-        <div>
-          <h2 class="mn-modal-title">{viewingTranscriptNote.title}</h2>
-          <p class="mn-modal-meta">
-            Full transcript
-            {#if viewingTranscriptNote.meeting_date}&nbsp;&bull; {formatDate(viewingTranscriptNote.meeting_date)}{/if}
-            {#if viewingTranscriptNote.attendees_text}&nbsp;&bull; {viewingTranscriptNote.attendees_text}{/if}
-          </p>
-        </div>
-        <button class="btn btn-icon btn-ghost close-btn" on:click={() => viewingTranscriptNote = null}>
-          <i class="las la-times"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        {#if transcriptData[viewingTranscriptNote.id]?.loading}
-          <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading transcript…</div>
-        {:else if transcriptData[viewingTranscriptNote.id]?.error}
-          <div class="mn-error">{transcriptData[viewingTranscriptNote.id].error}</div>
-        {:else if transcriptData[viewingTranscriptNote.id]?.text}
-          <pre class="mn-transcript-text mn-transcript-modal-text">{transcriptData[viewingTranscriptNote.id].text}</pre>
-        {:else}
-          <p class="mn-empty">No transcript stored for this meeting.</p>
-        {/if}
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" on:click={() => viewingTranscriptNote = null}>Close</button>
-      </div>
-
-    </div>
-  </div>
+  <TranscriptViewerModal note={viewingTranscriptNote} onClose={() => viewingTranscriptNote = null} />
 {/if}
 
 <!-- ── Briefing Transcript Viewer Modal ──────────────────────────────────── -->

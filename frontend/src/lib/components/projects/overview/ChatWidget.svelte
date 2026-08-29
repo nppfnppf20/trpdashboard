@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
+  import { renderReply, buildSourceLabels } from '$lib/utils/chatMarkdown.js';
 
   export let project;
   $: projectId = project?.id;
@@ -58,6 +59,7 @@
     }
   }
 
+  $: sourceLabels = buildSourceLabels(groups);
   $: meetingGroup = groups.find(g => g.key === 'meetings');
   $: detailsGroup = groups.find(g => g.key === 'project_details');
   $: trackerGroups = TRACKER_KEYS.map(k => groups.find(g => g.key === k)).filter(Boolean);
@@ -230,7 +232,11 @@
       {/if}
       {#each messages as m}
         <div class="cw-bubble" class:cw-bubble-user={m.role === 'user'} class:cw-bubble-assistant={m.role === 'assistant'}>
-          {m.content}
+          {#if m.role === 'assistant'}
+            {@html renderReply(m.content, sourceLabels)}
+          {:else}
+            {m.content}
+          {/if}
         </div>
       {/each}
       {#if sending}
@@ -365,6 +371,18 @@
   .cw-bubble-user { align-self: flex-end; background: var(--color-primary-600); color: var(--color-white); border-radius: 11px 11px 2px 11px; }
   .cw-bubble-assistant { align-self: flex-start; background: var(--color-slate-100); color: var(--color-slate-700); border-radius: 11px 11px 11px 2px; }
   .cw-thinking { display: flex; align-items: center; gap: 6px; }
+
+  .cw-bubble-assistant :global(.cite-chip) {
+    display: inline-block;
+    background: var(--color-violet-100);
+    color: var(--color-violet-700);
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0 0.3rem;
+    border-radius: 4px;
+    vertical-align: baseline;
+    white-space: nowrap;
+  }
 
   .cw-error { font-size: 0.72rem; color: var(--color-red-600); }
 

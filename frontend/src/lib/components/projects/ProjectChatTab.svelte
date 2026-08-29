@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
+  import { renderReply, buildSourceLabels } from '$lib/utils/chatMarkdown.js';
 
   export let project;
 
@@ -143,34 +144,6 @@
   // ── Source labels for citation chips ───────────────────────────────────────
 
   $: sourceLabels = buildSourceLabels(groups);
-  function buildSourceLabels(gs) {
-    const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', IT: 'Project Tracker', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
-    for (const d of gs.find(g => g.key === 'documents')?.items ?? []) map[`D${d.id}`] = d.label;
-    for (const m of gs.find(g => g.key === 'meetings')?.items ?? []) map[`M${m.id}`] = m.label;
-    return map;
-  }
-
-  function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  // Convert inline [D12] / [D12 §4.2] markers into chips, plus minimal
-  // formatting: **bold**, markdown-style headings rendered as bold lines,
-  // and */- bullets normalised to •. Everything else stays plain text.
-  function renderReply(text) {
-    const escaped = escapeHtml(text);
-    return escaped
-      .replace(/\[((?:D\d+|M\d+|COND|IT|POL|PD|PC|P|C|K|A|H|S)(?:\s*[§·][^\]]*)?)\]/g, (match, inner) => {
-        const id = inner.split(/[\s§·]/)[0];
-        const label = sourceLabels[id];
-        const title = label ? ` title="${escapeHtml(label)}"` : '';
-        return `<span class="cite-chip"${title}>${inner}</span>`;
-      })
-      .replace(/^#{1,4}\s+(.+)$/gm, '<strong>$1</strong>')
-      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/^(\s*)[-*]\s+/gm, '$1• ')
-      .replace(/\n/g, '<br>');
-  }
 
   function toggleCitations(idx) {
     expandedCitations = expandedCitations.has(idx)
@@ -362,7 +335,7 @@
             <div class="pc-bubble pc-bubble-user">{msg.content}</div>
           {:else}
             <div class="pc-bubble pc-bubble-ai">
-              {@html renderReply(msg.content)}
+              {@html renderReply(msg.content, sourceLabels)}
               {#if msg.citations?.length}
                 <button class="pc-citations-toggle" on:click={() => toggleCitations(idx)}>
                   <i class="las {expandedCitations.has(idx) ? 'la-angle-down' : 'la-angle-right'}"></i>

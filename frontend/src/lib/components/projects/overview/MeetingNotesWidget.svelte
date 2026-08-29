@@ -3,11 +3,12 @@
   import { getMeetingNotes } from '$lib/api/meetingNotes.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
+  import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
+  import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
   import {
     openProjectModal,
     setPendingMeetingUploadFile,
-    setPendingMeetingUploadText,
-    setPendingMeetingNoteFocus
+    setPendingMeetingUploadText
   } from '$lib/stores/projectViewModal.js';
 
   export let project;
@@ -20,6 +21,9 @@
   let fileInput;
   let inputMode = 'upload'; // 'upload' | 'paste'
   let pasteText = '';
+
+  let editingNote = null;      // note object open in the editor modal, or null
+  let viewingTranscript = null; // note object open in the transcript modal, or null
 
   onMount(load);
 
@@ -64,13 +68,15 @@
   }
 
   function viewNotes(n) {
-    setPendingMeetingNoteFocus(n.id, 'view');
-    openProjectModal(projectId, 'meeting_notes', 'details');
+    editingNote = n;
   }
 
   function viewTranscript(n) {
-    setPendingMeetingNoteFocus(n.id, 'transcript');
-    openProjectModal(projectId, 'meeting_notes', 'details');
+    viewingTranscript = n;
+  }
+
+  function handleNoteUpdated(updated) {
+    notes = notes.map(n => n.id === updated.id ? { ...n, summary_html: updated.summary_html } : n);
   }
 
   async function downloadNote(n) {
@@ -153,6 +159,14 @@
     {/if}
   </div>
 </div>
+
+{#if editingNote}
+  <NoteEditorModal note={editingNote} {project} onClose={() => editingNote = null} onUpdated={handleNoteUpdated} />
+{/if}
+
+{#if viewingTranscript}
+  <TranscriptViewerModal note={viewingTranscript} onClose={() => viewingTranscript = null} />
+{/if}
 
 <style>
   .mnw-body { display: flex; flex-direction: column; gap: 8px; }

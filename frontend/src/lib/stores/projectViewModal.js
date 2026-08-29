@@ -55,21 +55,6 @@ export function consumePendingMeetingUploadText() {
   return text;
 }
 
-// One-shot handoff for the Meeting Notes widget's per-note "View Notes" /
-// "Transcript" buttons — MeetingNotesTab opens that note's modal once its
-// own note list has loaded.
-export const pendingMeetingNoteFocus = writable(null); // { noteId, mode: 'view' | 'transcript' }
-
-export function setPendingMeetingNoteFocus(noteId, mode) {
-  pendingMeetingNoteFocus.set({ noteId, mode });
-}
-
-export function consumePendingMeetingNoteFocus() {
-  let focus;
-  pendingMeetingNoteFocus.update(f => { focus = f; return null; });
-  return focus;
-}
-
 export function openProjectModal(projectId, tab = null, returnTab = null) {
   mainView.set('project');
   mainViewProjectId.set(projectId);
