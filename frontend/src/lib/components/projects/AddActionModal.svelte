@@ -6,6 +6,7 @@
     getProgressData,
   } from '$lib/api/progressTracker.js';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
+  import AdvancementEntryFields from './AdvancementEntryFields.svelte';
 
   export let show = false;
   export let projectId;
@@ -345,30 +346,15 @@
 
       {#if mode === 'manual'}
         <div class="adv-body">
-          <div class="field field--date">
-            <label>Date</label>
-            <input type="date" bind:value={actionDate} />
-          </div>
-
-          <div class="field">
-            <label>What happened <span class="label-hint">optional fuller detail behind the summaries - paste an email trail, notes, whatever you've got</span></label>
-            <textarea
-              rows="7"
-              bind:value={fullText}
-              placeholder="Type or paste the detail here…"
-            ></textarea>
-            <div class="adv-generate-row">
-              <button
-                type="button"
-                class="btn-generate"
-                on:click={generateSummaries}
-                disabled={!canGenerate || generating || saving}
-              >
-                {#if generating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Rows{/if}
-              </button>
-              <span class="adv-generate-hint">Summarises text into ticked rows below. Rows must be selected first.</span>
-            </div>
-          </div>
+          <AdvancementEntryFields
+            bind:date={actionDate}
+            bind:fullText={fullText}
+            onGenerate={generateSummaries}
+            {generating}
+            canGenerate={canGenerate && !saving}
+            fullTextHint="optional fuller detail behind the summaries - paste an email trail, notes, whatever you've got"
+            fullTextPlaceholder="Type or paste the detail here…"
+          />
 
           {#if generatedNotice}
             <div class="adv-notice">
@@ -658,8 +644,6 @@
   }
 
   .field { display: flex; flex-direction: column; gap: 0.3rem; }
-  .field--date { flex: 0 0 auto; }
-  .field--date input { max-width: 170px; }
 
   label {
     font-size: 0.78rem;
@@ -667,22 +651,6 @@
     color: var(--color-slate-600);
   }
   .label-hint { font-weight: 400; color: var(--color-slate-400); }
-
-  input[type="date"], input[type="text"], textarea {
-    padding: 0.5rem 0.65rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: white;
-    resize: vertical;
-  }
-  input:focus, textarea:focus {
-    outline: none;
-    border-color: var(--color-primary-600);
-    box-shadow: 0 0 0 3px var(--color-sky-100);
-  }
 
   .adv-applies-header {
     display: flex;
@@ -703,39 +671,6 @@
     flex-shrink: 0;
   }
   .select-all-btn:hover { color: var(--color-slate-800); background: var(--color-slate-100); }
-  .adv-generate-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .btn-generate {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.85rem;
-    background: var(--color-primary-50);
-    color: var(--color-teal-600);
-    border: 1px solid var(--color-sky-200);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  .btn-generate:hover:not(:disabled) { background: var(--color-sky-100); }
-  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
-  .adv-generate-hint { font-size: 0.74rem; color: var(--color-slate-400); }
-  .mini-spinner {
-    display: inline-block;
-    width: 0.8rem;
-    height: 0.8rem;
-    border: 2px solid var(--color-sky-200);
-    border-top-color: var(--color-teal-600);
-    border-radius: 50%;
-    animation: adv-spin 0.6s linear infinite;
-  }
-  @keyframes adv-spin { to { transform: rotate(360deg); } }
 
   .adv-cond-list {
     display: flex;
@@ -769,9 +704,20 @@
   }
   .adv-summary-input {
     margin-left: 1.5rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--color-slate-300);
+    border-radius: 6px;
+    font-family: inherit;
+    color: var(--color-slate-800);
+    background: white;
     line-height: 1.5;
     resize: vertical;
     font-size: 0.8rem;
+  }
+  .adv-summary-input:focus {
+    outline: none;
+    border-color: var(--color-primary-600);
+    box-shadow: var(--focus-ring-blue);
   }
   .adv-req-list {
     display: flex;

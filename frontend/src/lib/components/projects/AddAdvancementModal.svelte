@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { createConditionAdvancements, suggestConditionAdvancementSummaries } from '$lib/api/conditions.js';
+  import AdvancementEntryFields from './AdvancementEntryFields.svelte';
 
   export let show = false;
   export let projectId;
@@ -10,7 +11,6 @@
   const dispatch = createEventDispatcher();
 
   let advDate = '';
-  let sourceType = 'note';   // 'note' | 'email'
   let fullText = '';
   let selections = {};        // condition_id -> { checked, summary }
   let saving = false;
@@ -24,7 +24,6 @@
   // Seed state whenever the modal opens
   $: if (show && !seeded) {
     advDate = new Date().toISOString().slice(0, 10);
-    sourceType = 'note';
     fullText = '';
     error = null;
     generatedNotice = false;
@@ -182,7 +181,7 @@
       const rows = await createConditionAdvancements(projectId, {
         advancement_date: advDate,
         full_text: fullText.trim() || null,
-        source_type: sourceType,
+        source_type: 'note',
         items,
       });
       dispatch('done', { rows });
@@ -211,48 +210,13 @@
       </div>
 
       <div class="adv-body">
-        <div class="adv-row two-col">
-          <div class="field field--date">
-            <label>Date</label>
-            <input type="date" bind:value={advDate} />
-          </div>
-          <div class="field field--source">
-            <label>Source</label>
-            <div class="adv-source-toggle">
-              <button class="adv-source-btn" class:active={sourceType === 'note'} on:click={() => sourceType = 'note'}>
-                <i class="las la-sticky-note"></i> Note
-              </button>
-              <button class="adv-source-btn" class:active={sourceType === 'email'} on:click={() => sourceType = 'email'}>
-                <i class="las la-envelope"></i> Email trail
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>
-            {sourceType === 'email' ? 'Email trail' : 'What happened'}
-            <span class="label-hint">{sourceType === 'email' ? 'paste the full trail - kept as the source record' : 'optional fuller detail behind the summaries'}</span>
-          </label>
-          <textarea
-            rows="7"
-            bind:value={fullText}
-            placeholder={sourceType === 'email'
-              ? 'Paste the email trail here…'
-              : 'Type the full detail of what happened (optional)…'}
-          ></textarea>
-          <div class="adv-generate-row">
-            <button
-              type="button"
-              class="btn-generate"
-              on:click={generateSummaries}
-              disabled={!canGenerate || generating || saving}
-            >
-              {#if generating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Rows{/if}
-            </button>
-            <span class="adv-generate-hint">Summarises text into ticked rows below. Rows must be selected first.</span>
-          </div>
-        </div>
+        <AdvancementEntryFields
+          bind:date={advDate}
+          bind:fullText={fullText}
+          onGenerate={generateSummaries}
+          {generating}
+          canGenerate={canGenerate && !saving}
+        />
 
         {#if generatedNotice}
           <div class="adv-notice">
@@ -405,11 +369,7 @@
     gap: 0.875rem;
   }
 
-  .adv-row { display: flex; flex-direction: column; gap: 0.5rem; }
-  .adv-row.two-col { flex-direction: row; gap: 0.75rem; align-items: flex-start; }
   .field { display: flex; flex-direction: column; gap: 0.3rem; }
-  .field--date { flex: 0 0 170px; }
-  .field--source { flex: 1; }
 
   label {
     font-size: 0.78rem;
@@ -417,80 +377,6 @@
     color: var(--color-slate-600);
   }
   .label-hint { font-weight: 400; color: var(--color-slate-400); }
-
-  input[type="date"], input[type="text"], textarea {
-    padding: 0.5rem 0.65rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: white;
-    resize: vertical;
-  }
-  input:focus, textarea:focus {
-    outline: none;
-    border-color: var(--color-purple-600);
-    box-shadow: 0 0 0 3px var(--color-violet-100);
-  }
-
-  .adv-generate-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .btn-generate {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.85rem;
-    background: var(--color-purple-50);
-    color: var(--color-purple-700);
-    border: 1px solid var(--color-violet-200);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  .btn-generate:hover:not(:disabled) { background: var(--color-violet-100); }
-  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
-  .adv-generate-hint { font-size: 0.74rem; color: var(--color-slate-400); }
-  .mini-spinner {
-    display: inline-block;
-    width: 0.8rem;
-    height: 0.8rem;
-    border: 2px solid var(--color-violet-200);
-    border-top-color: var(--color-purple-700);
-    border-radius: 50%;
-    animation: adv-spin 0.6s linear infinite;
-  }
-  @keyframes adv-spin { to { transform: rotate(360deg); } }
-
-  /* Source toggle */
-  .adv-source-toggle {
-    display: flex;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-    overflow: hidden;
-    align-self: flex-start;
-  }
-  .adv-source-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.45rem 0.9rem;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--color-slate-500);
-    background: var(--color-slate-50);
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .adv-source-btn:not(:last-child) { border-right: 1px solid var(--color-slate-200); }
-  .adv-source-btn.active { color: var(--color-purple-600); background: var(--color-purple-50); font-weight: 600; }
 
   /* Applies-to header with sort pills */
   .adv-applies-header {
@@ -584,9 +470,20 @@
   }
   .adv-summary-input {
     margin-left: 1.5rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--color-slate-300);
+    border-radius: 6px;
+    font-family: inherit;
+    color: var(--color-slate-800);
+    background: white;
     line-height: 1.5;
     resize: vertical;
     font-size: 0.8rem;
+  }
+  .adv-summary-input:focus {
+    outline: none;
+    border-color: var(--color-primary-600);
+    box-shadow: var(--focus-ring-blue);
   }
   .adv-req-list {
     display: flex;

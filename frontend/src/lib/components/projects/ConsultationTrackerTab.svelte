@@ -10,6 +10,8 @@
   import BatchImportModal from '$lib/components/projects/BatchImportModal.svelte';
   import AddConsultationAdvancementModal from '$lib/components/projects/AddConsultationAdvancementModal.svelte';
   import ExportConsultationModal from '$lib/components/projects/ExportConsultationModal.svelte';
+  import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
+  import AdvancementSourceBadge from '$lib/components/projects/AdvancementSourceBadge.svelte';
 
   let showBatchImport = false;
   let showExportModal = false;
@@ -1024,28 +1026,22 @@ ${sections.join('<br>')}`;
       <div class="tl-body">
         {#if showTlAdd}
           <div class="tl-add-form">
-            <div class="tl-add-row">
-              <input type="date" class="form-input tl-input" bind:value={tlAddForm.advancement_date} />
-              <select class="form-input tl-input" bind:value={tlAddForm.source_type}>
-                <option value="note">Note</option>
-                <option value="email">Email trail</option>
-              </select>
-            </div>
-            <textarea class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
-              placeholder="Summary - leave blank to auto-summarise from the text below…"></textarea>
-            <textarea class="form-input tl-input" rows="5" bind:value={tlAddForm.full_text}
-              placeholder={tlAddForm.source_type === 'email' ? 'Paste the email trail here…' : 'Fuller detail…'}></textarea>
-            <div class="tl-generate-row">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                on:click={generateTlSummary}
-                disabled={!tlCanGenerate || tlAddGenerating || tlAddSaving}
-              >
-                {#if tlAddGenerating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Summary{/if}
-              </button>
-              <span class="tl-generate-hint">Fills the summary above from this text - leave it if you've already typed one</span>
-            </div>
+            <AdvancementEntryFields
+              bind:date={tlAddForm.advancement_date}
+              bind:fullText={tlAddForm.full_text}
+              onGenerate={generateTlSummary}
+              generating={tlAddGenerating}
+              canGenerate={tlCanGenerate && !tlAddSaving}
+              fullTextLabel="Detail"
+              fullTextHint="optional — feeds the summary below"
+              fullTextPlaceholder="Fuller detail…"
+              generateLabel="Generate & Fill Summary"
+              generateHint="Fills the summary below from this text - leave it if you've already typed one"
+              rows={5}
+            />
+            <label class="form-label" for="tl-add-summary">Summary</label>
+            <textarea id="tl-add-summary" class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
+              placeholder="Summary - leave blank to auto-summarise from the text above…"></textarea>
             {#if tlAddGenerated}
               <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
             {/if}
@@ -1078,15 +1074,11 @@ ${sections.join('<br>')}`;
               <div class="tl-entry-marker"></div>
               <div class="tl-entry-content">
                 {#if tlEditingId === a.id}
-                  <div class="tl-add-row">
-                    <input type="date" class="form-input tl-input" bind:value={tlEditForm.advancement_date} />
-                    <select class="form-input tl-input" bind:value={tlEditForm.source_type}>
-                      <option value="email">Email trail</option>
-                      <option value="note">Note</option>
-                    </select>
-                  </div>
-                  <textarea class="form-input tl-input" rows="2" bind:value={tlEditForm.summary}></textarea>
-                  <textarea class="form-input tl-input" rows="5" bind:value={tlEditForm.full_text} placeholder="Source text (optional)…"></textarea>
+                  <input type="date" class="form-input tl-input" bind:value={tlEditForm.advancement_date} />
+                  <label class="form-label" for="tl-edit-summary">Summary</label>
+                  <textarea id="tl-edit-summary" class="form-input tl-input" rows="2" bind:value={tlEditForm.summary}></textarea>
+                  <label class="form-label" for="tl-edit-fulltext">Detail</label>
+                  <textarea id="tl-edit-fulltext" class="form-input tl-input" rows="5" bind:value={tlEditForm.full_text} placeholder="Source text (optional)…"></textarea>
                   <div class="tl-add-btns">
                     <button class="btn btn-ghost btn-sm" on:click={() => tlEditingId = null}>Cancel</button>
                     <button class="btn btn-primary btn-sm" on:click={() => saveTlEdit(timelineResponse.id)}>Save</button>
@@ -1094,10 +1086,7 @@ ${sections.join('<br>')}`;
                 {:else}
                   <div class="tl-entry-head">
                     <span class="tl-entry-date">{formatDate(a.advancement_date)}</span>
-                    <span class="tl-source-badge" class:tl-source-email={a.source_type === 'email'}>
-                      <i class="las {a.source_type === 'email' ? 'la-envelope' : 'la-sticky-note'}"></i>
-                      {a.source_type === 'email' ? 'Email trail' : 'Note'}
-                    </span>
+                    <AdvancementSourceBadge sourceType={a.source_type} />
                     <div class="tl-entry-btns">
                       <button class="btn btn-icon btn-ghost" title="Edit" on:click={() => startTlEdit(a)}><i class="las la-pen"></i></button>
                       <button class="btn btn-icon btn-danger-ghost" title="Delete" on:click={() => removeAdvancement(timelineResponse.id, a.id)}><i class="las la-trash"></i></button>
@@ -1781,11 +1770,6 @@ ${sections.join('<br>')}`;
     border-radius: 10px;
     padding: 0.875rem;
   }
-  .tl-add-row {
-    display: flex;
-    gap: 0.5rem;
-  }
-  .tl-add-row .tl-input { flex: 1; }
   .tl-input {
     font-size: 0.8rem;
     padding: 5px 8px;
@@ -1798,18 +1782,6 @@ ${sections.join('<br>')}`;
     justify-content: flex-end;
     gap: 0.5rem;
   }
-  .tl-generate-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-  .tl-generate-hint { font-size: 0.72rem; color: var(--color-slate-400); }
-  .mini-spinner {
-    display: inline-block;
-    width: 0.8rem;
-    height: 0.8rem;
-    border: 2px solid var(--color-sky-200);
-    border-top-color: var(--color-teal-600);
-    border-radius: 50%;
-    animation: adv-spin 0.6s linear infinite;
-  }
-  @keyframes adv-spin { to { transform: rotate(360deg); } }
   .tl-error {
     background: var(--color-red-100);
     color: var(--color-red-800);
@@ -1883,18 +1855,6 @@ ${sections.join('<br>')}`;
     font-weight: 700;
     color: var(--color-slate-800);
   }
-  .tl-source-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 0.68rem;
-    font-weight: 600;
-    color: var(--color-slate-500);
-    background: var(--color-slate-100);
-    border-radius: 100px;
-    padding: 1px 8px;
-  }
-  .tl-source-email { color: var(--color-primary-600); background: var(--color-primary-100); }
   .tl-entry-btns {
     margin-left: auto;
     display: flex;

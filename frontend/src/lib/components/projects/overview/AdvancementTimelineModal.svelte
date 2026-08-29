@@ -11,10 +11,11 @@
   // Non-editable rows (e.g. Conditions' merged-in quote/key-date events)
   // render read-only with their sourceLabel as a small tag.
 
+  import AdvancementEntryFields from '../AdvancementEntryFields.svelte';
+
   export let show = false;
   export let title = '';
   export let items = [];
-  export let showSourceToggle = true;
   export let onAdd; // (form) => Promise
   export let onUpdate; // (id, form) => Promise
   export let onDelete; // (id) => Promise
@@ -160,39 +161,23 @@
 
         <div class="atm-form">
           <div class="atm-form-title">{editingId ? 'Edit entry' : 'Add entry'}</div>
-          <div class="atm-form-row">
-            <div class="field field--date">
-              <label>Date</label>
-              <input type="date" bind:value={formDate} />
-            </div>
-            {#if showSourceToggle}
-              <div class="field field--source">
-                <label>Source</label>
-                <div class="atm-source-toggle">
-                  <button type="button" class:active={formSourceType === 'note'} on:click={() => formSourceType = 'note'}>
-                    <i class="las la-sticky-note"></i> Note
-                  </button>
-                  <button type="button" class:active={formSourceType === 'email'} on:click={() => formSourceType = 'email'}>
-                    <i class="las la-envelope"></i> Email trail
-                  </button>
-                </div>
-              </div>
-            {/if}
-          </div>
-
-          {#if onGenerate}
-            <div class="field">
-              <label>Detail <span class="hint">optional — paste the full note or email trail</span></label>
-              <textarea rows="3" bind:value={formFullText} placeholder="Paste the full detail here…"></textarea>
-              <button type="button" class="btn-generate" on:click={generate} disabled={!formFullText.trim() || generating}>
-                {#if generating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate summary{/if}
-              </button>
-            </div>
-          {/if}
+          <AdvancementEntryFields
+            bind:date={formDate}
+            bind:fullText={formFullText}
+            onGenerate={onGenerate ? generate : null}
+            {generating}
+            canGenerate={!!formFullText.trim()}
+            fullTextLabel="Detail"
+            fullTextHint="optional — paste the full note or email trail"
+            fullTextPlaceholder="Paste the full detail here…"
+            generateLabel="Generate summary"
+            generateHint=""
+            rows={3}
+          />
 
           <div class="field">
-            <label>Summary</label>
-            <textarea rows="2" bind:value={formSummary} placeholder="What happened…"></textarea>
+            <label class="form-label">Summary</label>
+            <textarea class="form-input" rows="2" bind:value={formSummary} placeholder="What happened…"></textarea>
           </div>
 
           {#if error}<div class="atm-error">{error}</div>{/if}
@@ -263,49 +248,7 @@
 
   .atm-form { border-top: 1px dashed var(--color-slate-200); padding-top: 0.9rem; display: flex; flex-direction: column; gap: 0.7rem; }
   .atm-form-title { font-size: 0.78rem; font-weight: 700; color: var(--color-slate-600); }
-  .atm-form-row { display: flex; gap: 0.75rem; align-items: flex-start; }
   .field { display: flex; flex-direction: column; gap: 0.3rem; }
-  .field--date { flex: 0 0 160px; }
-  .field--source { flex: 1; }
-  label { font-size: 0.76rem; font-weight: 600; color: var(--color-slate-600); }
-  .hint { font-weight: 400; color: var(--color-slate-400); }
-
-  input[type="date"], textarea {
-    padding: 0.45rem 0.6rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.83rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: var(--color-white);
-    resize: vertical;
-  }
-  input:focus, textarea:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px var(--focus-ring-blue); }
-
-  .atm-source-toggle { display: flex; border: 1px solid var(--color-slate-200); border-radius: 8px; overflow: hidden; align-self: flex-start; }
-  .atm-source-toggle button {
-    display: flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.8rem;
-    font-size: 0.78rem; font-weight: 500; color: var(--color-slate-500);
-    background: var(--color-slate-50); border: none; cursor: pointer; font-family: inherit;
-  }
-  .atm-source-toggle button:not(:last-child) { border-right: 1px solid var(--color-slate-200); }
-  .atm-source-toggle button.active { color: var(--color-primary-600); background: var(--color-primary-50); font-weight: 600; }
-
-  .btn-generate {
-    align-self: flex-start;
-    display: flex; align-items: center; gap: 0.35rem;
-    padding: 0.35rem 0.8rem; margin-top: 0.4rem;
-    background: var(--color-primary-50); color: var(--color-primary-700);
-    border: 1px solid var(--color-primary-200); border-radius: 6px;
-    font-size: 0.76rem; font-weight: 600; font-family: inherit; cursor: pointer;
-  }
-  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
-  .mini-spinner {
-    display: inline-block; width: 0.75rem; height: 0.75rem;
-    border: 2px solid var(--color-primary-200); border-top-color: var(--color-primary-700);
-    border-radius: 50%; animation: atm-spin 0.6s linear infinite;
-  }
-  @keyframes atm-spin { to { transform: rotate(360deg); } }
 
   .atm-error {
     font-size: 0.78rem; color: var(--color-red-600); background: var(--color-red-50);

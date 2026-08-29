@@ -403,7 +403,6 @@
     show={!!timelineRow}
     title="{timelineRow.name} · {activeTrackerLabel}"
     items={timelineItems}
-    showSourceToggle={timelineRow.kind !== 'progress'}
     onAdd={timelineAdd}
     onUpdate={timelineUpdate}
     onDelete={timelineDelete}

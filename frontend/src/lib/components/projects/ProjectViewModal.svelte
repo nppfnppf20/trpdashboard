@@ -24,7 +24,6 @@
 
   export let isOpen = false;
   export let onClose = () => {};
-  export let onEdit = () => {};
   export let projectId = null;
   export let initialTab = null;
 
@@ -123,6 +122,10 @@
       mapInitialized = false;
       polygonLayer = null;
     }
+    drawControl = null;
+    drawnItems = null;
+    siteBoundaryEditMode = false;
+    siteBoundaryError = null;
   }
 
   async function loadProject() {
@@ -220,6 +223,175 @@
   function statusClass(status) {
     if (!status) return 'not-set';
     return status.toLowerCase().replace(/\s+/g, '-').replace('post-submission', 'post-sub');
+  }
+
+  // Project Details / Site Boundary save inline in place now (no more
+  // separate EditProjectModal for this) — merge the saved fields straight
+  // into projectData so the page reflects the change immediately.
+  function handleProjectUpdated(updated) {
+    projectData = { ...projectData, ...updated };
+  }
+
+  function formatDateForInput(dateString) {
+    if (!dateString) return '';
+    return String(dateString).slice(0, 10);
+  }
+
+  // Same PUT /api/projects/:id contract EditProjectModal.svelte used —
+  // the backend expects the full field set, so this rebuilds it from the
+  // current projectData with just the given overrides applied.
+  function buildProjectUpdatePayload(overrides = {}) {
+    return {
+      project_id: projectData.project_id || '',
+      project_name: projectData.project_name || '',
+      project_type: projectData.project_type || '',
+      local_planning_authority: [...(projectData.local_planning_authority || [])],
+      project_lead: projectData.project_lead || '',
+      project_manager: projectData.project_manager || '',
+      project_director: projectData.project_director || '',
+      address: projectData.address || '',
+      polygon_geojson: projectData.polygon_geojson || null,
+      area: projectData.area || '',
+      client: projectData.client || '',
+      client_spv_name: projectData.client_spv_name || '',
+      sectors: [...(projectData.sectors || [])],
+      sub_sectors: [...(projectData.sub_sectors || [])],
+      development_types: [...(projectData.development_types || [])],
+      designations_on_site: projectData.designations_on_site || '',
+      relevant_nearby_designations: projectData.relevant_nearby_designations || '',
+      development_description: projectData.development_description || '',
+      about_applicant: projectData.about_applicant || '',
+      status: projectData.status || '',
+      case_officer_name: projectData.case_officer_name || '',
+      case_officer_email: projectData.case_officer_email || '',
+      case_officer_phone_number: projectData.case_officer_phone_number || '',
+      lpa_reference: projectData.lpa_reference || '',
+      submission_date: formatDateForInput(projectData.submission_date),
+      validation_date: formatDateForInput(projectData.validation_date),
+      lpa_consultation_end_date: formatDateForInput(projectData.lpa_consultation_end_date),
+      committee_date: formatDateForInput(projectData.committee_date),
+      target_determination_date: formatDateForInput(projectData.target_determination_date),
+      determined_date: formatDateForInput(projectData.determined_date),
+      expiry_of_1st_stat_period_date: formatDateForInput(projectData.expiry_of_1st_stat_period_date),
+      eot_date: formatDateForInput(projectData.eot_date),
+      six_months_appeal_window_date: formatDateForInput(projectData.six_months_appeal_window_date),
+      comments: projectData.comments || '',
+      ...overrides,
+    };
+  }
+
+  // ── Site Boundary inline editing ────────────────────────────────────────
+  let siteBoundaryEditMode = false;
+  let drawnItems;
+  let drawControl;
+  let siteBoundarySaving = false;
+  let siteBoundaryError = null;
+  let draftPolygonGeojson = null;
+  let draftArea = '';
+
+  function handleDrawCreated(e) {
+    drawnItems.clearLayers();
+    drawnItems.addLayer(e.layer);
+    draftPolygonGeojson = JSON.stringify(e.layer.toGeoJSON().geometry);
+    const area = L.GeometryUtil && e.layer.getLatLngs
+      ? L.GeometryUtil.geodesicArea(e.layer.getLatLngs()[0]) : null;
+    if (area) draftArea = `${(area / 10000).toFixed(2)} ha`;
+  }
+
+  function handleDrawEdited(e) {
+    e.layers.eachLayer(layer => {
+      draftPolygonGeojson = JSON.stringify(layer.toGeoJSON().geometry);
+    });
+  }
+
+  function handleDrawDeleted() {
+    draftPolygonGeojson = null;
+    draftArea = '';
+  }
+
+  async function enableSiteBoundaryEdit() {
+    if (!map || !L) return;
+    siteBoundaryError = null;
+    draftPolygonGeojson = projectData.polygon_geojson || null;
+    draftArea = projectData.area || '';
+
+    await import('leaflet-draw');
+
+    drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    if (polygonLayer) {
+      polygonLayer.eachLayer(layer => drawnItems.addLayer(layer));
+      map.removeLayer(polygonLayer);
+      polygonLayer = null;
+    }
+
+    drawControl = new L.Control.Draw({
+      draw: {
+        polygon: {
+          allowIntersection: false,
+          showArea: false,
+          shapeOptions: { color: '#9333ea', weight: 3, opacity: 0.8, fillOpacity: 0.2 },
+          metric: true
+        },
+        polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false
+      },
+      edit: { featureGroup: drawnItems, remove: true }
+    });
+    map.addControl(drawControl);
+
+    map.on(L.Draw.Event.CREATED, handleDrawCreated);
+    map.on(L.Draw.Event.EDITED, handleDrawEdited);
+    map.on(L.Draw.Event.DELETED, handleDrawDeleted);
+
+    siteBoundaryEditMode = true;
+  }
+
+  function teardownDrawControl() {
+    if (drawControl && map) map.removeControl(drawControl);
+    if (drawnItems && map) map.removeLayer(drawnItems);
+    if (map && L?.Draw?.Event) {
+      map.off(L.Draw.Event.CREATED, handleDrawCreated);
+      map.off(L.Draw.Event.EDITED, handleDrawEdited);
+      map.off(L.Draw.Event.DELETED, handleDrawDeleted);
+    }
+    drawControl = null;
+    drawnItems = null;
+  }
+
+  function cancelSiteBoundaryEdit() {
+    teardownDrawControl();
+    siteBoundaryEditMode = false;
+    siteBoundaryError = null;
+    if (projectData?.polygon_geojson) {
+      displayPolygon(projectData.polygon_geojson);
+    }
+  }
+
+  async function saveSiteBoundary() {
+    siteBoundarySaving = true;
+    siteBoundaryError = null;
+    try {
+      const payload = buildProjectUpdatePayload({ polygon_geojson: draftPolygonGeojson, area: draftArea });
+      const response = await authFetch(`/api/projects/${projectData.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        handleProjectUpdated(data.project);
+        teardownDrawControl();
+        siteBoundaryEditMode = false;
+        if (projectData.polygon_geojson) displayPolygon(projectData.polygon_geojson);
+      } else {
+        siteBoundaryError = data.error || 'Failed to update site boundary';
+      }
+    } catch (err) {
+      siteBoundaryError = err.message || 'Network error. Please try again.';
+    } finally {
+      siteBoundarySaving = false;
+    }
   }
 
   async function loadSavedConflictCheck() {
@@ -591,9 +763,6 @@
           </h2>
         </div>
         <div class="header-actions">
-          <button class="btn-edit-header" on:click={onEdit} title="Edit project">
-            <i class="las la-edit"></i> Edit
-          </button>
           <button class="close-btn" on:click={handleClose}>&times;</button>
         </div>
       </div>
@@ -614,7 +783,20 @@
           {#if activeTab === 'site_boundary'}
             <!-- Site Boundary Tab -->
             <div class="site-boundary-section">
-              {#if !projectData.polygon_geojson}
+              <div class="site-boundary-head">
+                {#if !siteBoundaryEditMode}
+                  <button class="btn btn-primary btn-sm" on:click={enableSiteBoundaryEdit}>
+                    <i class="las la-edit"></i> Edit
+                  </button>
+                {:else}
+                  <button class="btn btn-secondary btn-sm" on:click={cancelSiteBoundaryEdit} disabled={siteBoundarySaving}>Cancel</button>
+                  <button class="btn btn-primary btn-sm" on:click={saveSiteBoundary} disabled={siteBoundarySaving}>
+                    {#if siteBoundarySaving}<i class="las la-circle-notch la-spin"></i>{:else}<i class="las la-save"></i>{/if} Save
+                  </button>
+                {/if}
+              </div>
+              {#if siteBoundaryError}<div class="pd-error"><i class="las la-exclamation-triangle"></i> {siteBoundaryError}</div>{/if}
+              {#if !projectData.polygon_geojson && !siteBoundaryEditMode}
                 <div class="empty-state">
                   <i class="las la-map-marked-alt"></i>
                   <p>No site boundary defined for this project.</p>
@@ -625,7 +807,7 @@
           {:else if activeTab === 'details'}
             <ProjectOverviewTab project={projectData} />
           {:else if activeTab === 'project_details'}
-            <ProjectDetailsTab project={projectData} onOpenMeetingGuide={() => showMeetingGuide = true} />
+            <ProjectDetailsTab project={projectData} onOpenMeetingGuide={() => showMeetingGuide = true} onUpdated={handleProjectUpdated} />
           {:else if activeTab === 'hlpv'}
             <!-- HLPV Analysis Tab -->
             <div class="hlpv-analysis-section">
@@ -1399,30 +1581,6 @@
     gap: 0.75rem;
   }
 
-  .btn-edit-header {
-    background: var(--color-slate-100);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    color: var(--color-slate-600);
-    cursor: pointer;
-    padding: 0.4rem 0.9rem;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    font-family: inherit;
-    transition: background 0.15s, color 0.15s;
-    line-height: 1;
-  }
-
-  .btn-edit-header i { font-size: 1.1rem; }
-
-  .btn-edit-header:hover {
-    background: var(--color-slate-200);
-    color: var(--color-slate-800);
-  }
-
   .close-btn {
     background: none;
     border: none;
@@ -1500,6 +1658,29 @@
     flex-direction: column;
     flex: 1;
     overflow: hidden;
+  }
+
+  .site-boundary-head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem 0;
+    flex-shrink: 0;
+  }
+
+  .pd-error {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    margin: 0.75rem 1.5rem 0;
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
+    border-radius: var(--radius-md);
+    color: var(--color-red-800);
+    font-size: 0.8rem;
+    flex-shrink: 0;
   }
 
   .site-boundary-section .map-container {

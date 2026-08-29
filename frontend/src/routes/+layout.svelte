@@ -13,7 +13,7 @@
   import {
     mainView, mainViewProjectId, mainViewInitialTab, mainViewReturnTab,
     editModalOpen, editModalProjectId,
-    closeProjectModal, openProjectModal, openEditModal, closeEditModal
+    closeProjectModal, openProjectModal, closeEditModal
   } from '$lib/stores/projectViewModal.js';
 
   let { children } = $props();
@@ -23,12 +23,6 @@
   onMount(() => {
     initAuth();
   });
-
-  function handleEditFromView() {
-    const id = $mainViewProjectId;
-    closeProjectModal();
-    openEditModal(id);
-  }
 
   // Closing a tab that was drilled into from another tab (e.g. Overview's
   // "expand tracker" button) goes back to that tab instead of exiting the
@@ -74,7 +68,6 @@
           projectId={$mainViewProjectId}
           initialTab={$mainViewInitialTab}
           onClose={handlePanelClose}
-          onEdit={handleEditFromView}
         />
       {:else if $mainView === 'surveyor'}
         <SurveyorWorkspace project={$selectedProject} initialTab={$mainViewInitialTab} onClose={handlePanelClose} />

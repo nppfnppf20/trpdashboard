@@ -6,6 +6,8 @@
   import AddIssuesModal from '$lib/components/projects/AddIssuesModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
+  import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
+  import AdvancementSourceBadge from '$lib/components/projects/AdvancementSourceBadge.svelte';
   import {
     getProgressData,
     updateIssue,
@@ -799,8 +801,20 @@
 
         {#if showTlAdd}
           <div class="tl-add-form">
+            <AdvancementEntryFields
+              bind:date={tlAddForm.action_date}
+              bind:fullText={tlAddForm.full_text}
+              onGenerate={generateTlSummary}
+              generating={tlAddGenerating}
+              canGenerate={tlCanGenerate && !tlAddSaving}
+              fullTextLabel="Detail"
+              fullTextHint="optional — feeds the summary below"
+              fullTextPlaceholder="Fuller detail - paste an email trail, notes, whatever you've got…"
+              generateLabel="Generate & Fill Summary"
+              generateHint="Fills the summary below from this text - leave it if you've already typed one"
+              rows={4}
+            />
             <div class="tl-add-row">
-              <input type="date" class="form-input tl-input" bind:value={tlAddForm.action_date} />
               <select class="form-input tl-input" bind:value={tlAddForm.stage_instance_id}>
                 <option value={null}>No stage</option>
                 {#each stages as s (s.instance_id)}
@@ -842,21 +856,9 @@
                 </select>
               </div>
             {/if}
-            <textarea class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
-              placeholder="Summary - leave blank to auto-summarise from the text below…"></textarea>
-            <textarea class="form-input tl-input" rows="4" bind:value={tlAddForm.full_text}
-              placeholder="Fuller detail - paste an email trail, notes, whatever you've got…"></textarea>
-            <div class="tl-generate-row">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                on:click={generateTlSummary}
-                disabled={!tlCanGenerate || tlAddGenerating || tlAddSaving}
-              >
-                {#if tlAddGenerating}<span class="mini-spinner"></span> Generating…{:else}<i class="las la-magic"></i> Generate & Fill Summary{/if}
-              </button>
-              <span class="tl-generate-hint">Fills the summary above from this text - leave it if you've already typed one</span>
-            </div>
+            <label class="form-label" for="tl-add-summary">Summary</label>
+            <textarea id="tl-add-summary" class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
+              placeholder="Summary - leave blank to auto-summarise from the text above…"></textarea>
             {#if tlAddGenerated}
               <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
             {/if}
@@ -892,11 +894,6 @@
                 {#if tlEditingId === a.id}
                   <div class="tl-add-row">
                     <input type="date" class="form-input tl-input" bind:value={tlEditForm.action_date} />
-                    <select class="form-input tl-input" bind:value={tlEditForm.source_type}>
-                      <option value="note">Note</option>
-                      <option value="email">Email trail</option>
-                      <option value="meeting">Meeting note</option>
-                    </select>
                     <select class="form-input tl-input" bind:value={tlEditForm.stage_instance_id}>
                       <option value={null}>No stage</option>
                       {#each stages as s (s.instance_id)}
@@ -926,8 +923,10 @@
                       </select>
                     </div>
                   {/if}
-                  <textarea class="form-input tl-input" rows="2" bind:value={tlEditForm.summary}></textarea>
-                  <textarea class="form-input tl-input" rows="4" bind:value={tlEditForm.full_text} placeholder="Source text (optional)…"></textarea>
+                  <label class="form-label" for="tl-edit-summary">Summary</label>
+                  <textarea id="tl-edit-summary" class="form-input tl-input" rows="2" bind:value={tlEditForm.summary}></textarea>
+                  <label class="form-label" for="tl-edit-fulltext">Detail</label>
+                  <textarea id="tl-edit-fulltext" class="form-input tl-input" rows="4" bind:value={tlEditForm.full_text} placeholder="Source text (optional)…"></textarea>
                   <div class="tl-add-btns">
                     <button class="btn btn-ghost btn-sm" on:click={() => tlEditingId = null}>Cancel</button>
                     <button class="btn btn-primary btn-sm" on:click={() => saveTlEdit(timelineIssue.id)}>Save</button>
@@ -941,10 +940,7 @@
                       </span>
                     {/if}
                     {#if a._kind === 'issue'}
-                      <span class="tl-source-badge" class:tl-source-email={a.source_type === 'email'} class:tl-source-meeting={a.source_type === 'meeting'}>
-                        <i class="las {a.source_type === 'email' ? 'la-envelope' : a.source_type === 'meeting' ? 'la-users' : 'la-sticky-note'}"></i>
-                        {a.source_type === 'email' ? 'Email trail' : a.source_type === 'meeting' ? (a.meeting_note_title || 'Meeting note') : 'Note'}
-                      </span>
+                      <AdvancementSourceBadge sourceType={a.source_type} meetingNoteTitle={a.meeting_note_title} />
                     {/if}
                     {#if a._kind === 'issue' && a.quote_id}
                       {@const taggedQuote = timelineIssue.linked_quotes?.find(q => q.quote_id === a.quote_id)}
@@ -1450,8 +1446,6 @@
   .tl-req-check { display: flex; align-items: flex-start; gap: 0.4rem; font-size: 0.78rem; color: var(--color-slate-700); cursor: pointer; }
   .tl-add-btns { display: flex; justify-content: flex-end; gap: 0.5rem; }
   .tl-notice { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--color-teal-600); background: var(--color-primary-50); border: 1px solid var(--color-sky-200); border-radius: 6px; padding: 0.5rem 0.6rem; }
-  .tl-generate-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-  .tl-generate-hint { font-size: 0.72rem; color: var(--color-slate-400); }
   .tl-error { font-size: 0.78rem; color: var(--color-red-600); background: var(--color-red-50); border: 1px solid var(--color-red-200); border-radius: 6px; padding: 0.4rem 0.6rem; }
   .tl-empty { color: var(--color-slate-400); font-size: 0.85rem; text-align: center; padding: 1rem 0; }
 
@@ -1522,12 +1516,6 @@
   .tl-entry-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .tl-entry-date { font-size: 0.78rem; font-weight: 600; color: var(--color-slate-700); }
   .tl-stage-badge { font-size: 0.68rem; font-weight: 600; border-radius: 999px; padding: 1px 8px; }
-  .tl-source-badge {
-    display: flex; align-items: center; gap: 4px; font-size: 0.68rem; color: var(--color-slate-500);
-    background: var(--color-slate-100); border-radius: 999px; padding: 1px 8px;
-  }
-  .tl-source-email { color: var(--color-teal-600); background: var(--color-sky-100); }
-  .tl-source-meeting { color: var(--color-violet-600); background: var(--color-violet-100); }
   .tl-entry-btns { display: flex; gap: 2px; margin-left: auto; }
   .tl-req-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .tl-req-tag { font-size: 0.68rem; color: var(--color-slate-600); background: var(--color-slate-100); border-radius: 4px; padding: 1px 6px; }
