@@ -224,7 +224,7 @@
   }
   .adv-modal {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     width: 95%;
     max-width: 760px;
     max-height: 90vh;
@@ -286,7 +286,7 @@
   input[type="date"], input[type="text"], textarea {
     padding: 0.5rem 0.65rem;
     border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.85rem;
     font-family: inherit;
     color: var(--color-slate-800);
@@ -303,7 +303,7 @@
   .adv-source-toggle {
     display: flex;
     border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     align-self: flex-start;
   }
@@ -328,7 +328,7 @@
     display: flex;
     flex-direction: column;
     border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
   .adv-cond-row {
@@ -369,7 +369,7 @@
     color: var(--color-purple-700);
     background: var(--color-purple-50);
     border: 1px solid var(--color-violet-200);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.5rem 0.75rem;
   }
 
@@ -379,7 +379,7 @@
     color: var(--color-red-600);
     background: var(--color-red-50);
     border: 1px solid var(--color-red-200);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.5rem 0.75rem;
     flex-shrink: 0;
   }
@@ -398,7 +398,7 @@
     padding: 0.45rem 1rem;
     border: 1px solid var(--color-slate-300);
     background: white;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.85rem;
     font-family: inherit;
     cursor: pointer;
@@ -410,7 +410,7 @@
     background: var(--color-purple-600);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.85rem;
     font-weight: 500;
     font-family: inherit;

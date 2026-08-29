@@ -344,7 +344,7 @@
 
   .modal-content {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     width: 100%;
     max-width: 800px;
     max-height: 90vh;
@@ -389,7 +389,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition: all 0.2s;
   }
 
@@ -428,7 +428,7 @@
   .form-group textarea {
     padding: 0.625rem;
     border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.875rem;
     color: var(--color-slate-800);
     background: white;
@@ -492,7 +492,7 @@
     width: 100%;
     padding: 0.625rem;
     border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.875rem;
     color: var(--color-slate-800);
     background: white;
@@ -546,7 +546,7 @@
     color: var(--color-red-500);
     cursor: pointer;
     padding: 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 1.125rem;
     transition: all 0.2s;
     display: inline-flex;
@@ -566,7 +566,7 @@
     background: white;
     color: var(--color-primary-500);
     border: 1px solid var(--color-primary-500);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
@@ -586,7 +586,7 @@
     padding: 1rem;
     background: var(--color-primary-50);
     border: 1px solid var(--color-primary-200);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
   }
 
   .total-label {

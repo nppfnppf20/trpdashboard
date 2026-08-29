@@ -92,7 +92,7 @@
 
   .modal {
     background: var(--color-white);
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     width: 100%;
     max-width: 440px;
@@ -129,7 +129,7 @@
     color: var(--color-slate-400);
     cursor: pointer;
     padding: 0.25rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     transition: color 0.15s;
@@ -156,7 +156,7 @@
     gap: 0.625rem;
     padding: 0.625rem 0.75rem;
     border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: all 0.15s;
   }

@@ -176,14 +176,14 @@
     <div class="error-state">
       <i class="las la-exclamation-circle"></i>
       <p>Error loading projects: {error}</p>
-      <button on:click={fetchProjects}>Retry</button>
+      <button class="btn btn-primary" on:click={fetchProjects}>Retry</button>
     </div>
   {:else if sortedProjects.length === 0}
     <div class="empty-state">
       <i class="las la-folder-open"></i>
       <p>No projects found</p>
       {#if searchTerm}
-        <button on:click={() => searchTerm = ''}>Clear search</button>
+        <button class="btn btn-primary" on:click={() => searchTerm = ''}>Clear search</button>
       {/if}
     </div>
   {:else}
@@ -465,10 +465,6 @@
      that covers width/font-size/thead/th/td/hover styling identically;
      only the row cursor (rows are clickable here) and the
      actions-column behavior are genuinely local. */
-  .data-table th.sorted {
-    color: var(--color-primary-600);
-  }
-
   .data-table th.actions-column {
     cursor: default;
   }
@@ -514,7 +510,7 @@
      (a different set from tables.css's own pending/instructed/etc.) stay local. */
   .status-not-set {
     background: var(--color-slate-100);
-    color: var(--color-slate-400);
+    color: var(--color-slate-600);
   }
 
   .status-prospective {
@@ -543,21 +539,10 @@
   }
 
   /* .loading-state/.error-state/.empty-state/.spinner now come entirely
-     from the shared tables.css (same class names). */
-  .error-state button,
-  .empty-state button {
+     from the shared tables.css (same class names); their buttons use the
+     shared .btn .btn-primary classes directly in the markup. */
+  .error-state .btn,
+  .empty-state .btn {
     margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    background: var(--color-primary-600);
-    color: var(--color-white);
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.875rem;
-  }
-
-  .error-state button:hover,
-  .empty-state button:hover {
-    background: var(--color-primary-700);
   }
 </style>

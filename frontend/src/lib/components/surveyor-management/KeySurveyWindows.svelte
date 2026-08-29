@@ -104,7 +104,7 @@
     <button class="toggle-btn" on:click={() => (isExpanded = !isExpanded)}>
       <i class="las {isExpanded ? 'la-chevron-up' : 'la-chevron-down'}"></i>
       <span>Key Survey Windows</span>
-      <span class="badge">{surveyWindows.length}</span>
+      <span class="badge badge-neutral">{surveyWindows.length}</span>
     </button>
     {#if isExpanded}
       <span class="hint">Windows are hardcoded, live data coming soon</span>
@@ -179,7 +179,7 @@
     font-weight: 600;
     color: var(--color-slate-600);
     padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition: background 0.15s, color 0.15s;
   }
 
@@ -190,15 +190,6 @@
 
   .toggle-btn i {
     font-size: 0.75rem;
-  }
-
-  .badge {
-    background: var(--color-slate-200);
-    color: var(--color-slate-500);
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 10px;
   }
 
   .hint {
@@ -253,7 +244,7 @@
 
   .window-bar {
     position: absolute;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     opacity: 0.8;
     transition: opacity 0.15s;
   }

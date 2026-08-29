@@ -494,7 +494,7 @@
   }
 
   const TYPE_LABELS = { internal: 'Internal', cpd: 'CPD', project: 'Project' };
-  const TYPE_COLORS = { internal: 'badge-blue', cpd: 'badge-purple', project: 'badge-teal' };
+  const TYPE_COLORS = { internal: 'badge-info', cpd: 'badge-purple', project: 'badge-success' };
 </script>
 
 <svelte:window on:click={handleWindowClick} on:keydown={handleWindowKeydown} />
@@ -706,10 +706,10 @@
               </div>
               <div class="mn-latest-badges">
                 {#if Number(latestNote.pending_count) > 0}
-                  <span class="mn-badge mn-badge-warn">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
+                  <span class="badge badge-warning">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
                 {/if}
                 {#if Number(latestNote.complete_count) > 0}
-                  <span class="mn-badge mn-badge-ok">{latestNote.complete_count} completed</span>
+                  <span class="badge badge-success">{latestNote.complete_count} completed</span>
                 {/if}
               </div>
               <div class="mn-latest-card-btns">
@@ -776,10 +776,10 @@
                         </div>
                         <div class="mn-note-badges-row">
                           {#if Number(note.pending_count) > 0}
-                            <span class="mn-badge mn-badge-warn">{note.pending_count} open</span>
+                            <span class="badge badge-warning">{note.pending_count} open</span>
                           {/if}
                           {#if Number(note.complete_count) > 0}
-                            <span class="mn-badge mn-badge-ok">{note.complete_count} done</span>
+                            <span class="badge badge-success">{note.complete_count} done</span>
                           {/if}
                         </div>
                       </div>
@@ -867,7 +867,7 @@
             <div class="stream-card-main">
             <div class="stream-card-left">
               <div class="stream-card-top">
-                <span class="type-badge {TYPE_COLORS[note.meeting_type] ?? 'badge-gray'}">
+                <span class="badge {TYPE_COLORS[note.meeting_type] ?? 'badge-neutral'}">
                   {TYPE_LABELS[note.meeting_type] ?? note.meeting_type}
                 </span>
                 {#if note.project_name}
@@ -882,10 +882,10 @@
             </div>
             <div class="stream-card-right">
               {#if Number(note.pending_count) > 0}
-                <span class="mn-badge mn-badge-warn">{note.pending_count} open</span>
+                <span class="badge badge-warning">{note.pending_count} open</span>
               {/if}
               {#if Number(note.complete_count) > 0}
-                <span class="mn-badge mn-badge-ok">{note.complete_count} done</span>
+                <span class="badge badge-success">{note.complete_count} done</span>
               {/if}
               <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
                 <i class="las la-eye"></i> View
@@ -1103,7 +1103,7 @@
     width: 100%;
     padding: 0.6rem 0.75rem;
     border: 1.5px solid var(--color-slate-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.85rem;
     font-weight: 600;
     font-family: inherit;
@@ -1150,7 +1150,7 @@
     width: 100%;
     padding: 0.5rem 0.6rem;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: transparent;
     cursor: pointer;
     text-align: left;
@@ -1224,7 +1224,7 @@
 
   /* ── Note cards ────────────────────────────────────────────────────────────── */
   .mn-notes-list { display: flex; flex-direction: column; gap: 0.5rem; }
-  .mn-note-card { background: var(--color-white); border: 1px solid var(--color-slate-200); border-radius: 6px; padding: 0.75rem 1rem; }
+  .mn-note-card { background: var(--color-white); border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.75rem 1rem; }
   .mn-note-info { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
   .mn-note-meta { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; }
   .mn-note-title { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); }
@@ -1268,7 +1268,7 @@
     font-size: 0.7rem;
     font-weight: 600;
     padding: 0.05rem 0.4rem;
-    border-radius: 8px;
+    border-radius: var(--radius-pill);
     min-width: 1.2rem;
     text-align: center;
   }
@@ -1307,21 +1307,8 @@
 
   .stream-card-right { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; flex-wrap: wrap; }
 
-  /* Type badges */
-  .type-badge {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-  .badge-blue   { background: var(--color-primary-50); color: var(--color-primary-700); }
-  .badge-purple { background: var(--color-violet-50); color: var(--color-violet-700); }
-  .badge-teal   { background: var(--color-slate-100); color: var(--color-emerald-600); }
-  .badge-gray   { background: var(--color-slate-100); color: var(--color-slate-600); }
+  /* Type badges now use the shared .badge / .badge-info / .badge-purple /
+     .badge-success / .badge-neutral classes from badges.css. */
 
   /* ── Form helpers ──────────────────────────────────────────────────────────── */
   /* Base .form-input comes from the shared inputs.css; this page's
@@ -1344,7 +1331,7 @@
   .mn-extras-toggle { font-size: 0.8rem; }
 
   .mn-drop-zone {
-    border: 2px dashed var(--color-violet-200); border-radius: 6px; padding: 0.75rem 1rem;
+    border: 2px dashed var(--color-violet-200); border-radius: var(--radius-md); padding: 0.75rem 1rem;
     text-align: center; cursor: pointer; color: var(--color-slate-500); font-size: 0.875rem;
     display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
     transition: background 0.15s, border-color 0.15s;
@@ -1355,14 +1342,9 @@
   .mn-drop-hint { font-size: 0.75rem; color: var(--color-slate-400); }
   .mn-paste { min-height: 72px; }
 
-  /* ── Badges ────────────────────────────────────────────────────────────────── */
-  .mn-badge { font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 10px; white-space: nowrap; }
-  .mn-badge-warn { background: var(--color-amber-100); color: var(--color-amber-800); }
-  .mn-badge-ok   { background: var(--color-emerald-100); color: var(--color-green-800); }
-
   /* ── States ────────────────────────────────────────────────────────────────── */
   .mn-empty { color: var(--color-slate-400); font-size: 0.875rem; padding: 0.5rem 0; margin: 0; }
-  .mn-error { background: var(--color-red-50); border: 1px solid var(--color-red-200); border-radius: 6px; padding: 0.6rem 0.85rem; color: var(--color-red-800); font-size: 0.875rem; }
+  .mn-error { background: var(--color-red-50); border: 1px solid var(--color-red-200); border-radius: var(--radius-md); padding: 0.6rem 0.85rem; color: var(--color-red-800); font-size: 0.875rem; }
   .mn-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--color-slate-500); font-size: 0.875rem; padding: 2rem; justify-content: center; }
   .mn-table-mt { margin-top: 0.75rem; }
 
@@ -1417,7 +1399,7 @@
     display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem;
   }
   .mn-modal {
-    background: var(--color-white); border-radius: 10px;
+    background: var(--color-white); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-modal);
     width: 100%; max-width: 720px; max-height: 90vh;
     display: flex; flex-direction: column; overflow: hidden;

@@ -177,15 +177,13 @@
     return isNaN(numRating) ? 'N/A' : numRating.toFixed(1);
   }
 
-  function getRatingColor(rating) {
-    if (!rating) return '#94a3b8';
+  function getRatingBadgeClass(rating) {
+    if (!rating) return 'badge-neutral';
     const numRating = parseFloat(rating);
-    if (isNaN(numRating)) return '#94a3b8';
-    if (numRating >= 4.5) return '#10b981';
-    if (numRating >= 4.0) return '#84cc16';
-    if (numRating >= 3.5) return '#f59e0b';
-    if (numRating >= 3.0) return '#f97316';
-    return '#ef4444';
+    if (isNaN(numRating)) return 'badge-neutral';
+    if (numRating >= 4.0) return 'badge-success';
+    if (numRating >= 3.0) return 'badge-warning';
+    return 'badge-danger';
   }
 </script>
 
@@ -195,7 +193,7 @@
       <h1>Surveyor Organisations</h1>
       <p>Manage external surveyors and view their performance ratings</p>
     </div>
-    <button class="btn-add" on:click={openAddModal}>
+    <button class="btn btn-primary" on:click={openAddModal}>
       <i class="las la-plus"></i> Add Surveyor
     </button>
   </div>
@@ -295,33 +293,23 @@
                 </td>
                 <td class="text-center">{surveyor.total_reviews || 0}</td>
                 <td class="text-center">
-                  <span
-                    class="rating-badge"
-                    style="background-color: {getRatingColor(surveyor.avg_quality)}"
-                  >
+                  <span class="badge rating-badge {getRatingBadgeClass(surveyor.avg_quality)}">
                     {formatRating(surveyor.avg_quality)}
                   </span>
                 </td>
                 <td class="text-center">
-                  <span
-                    class="rating-badge"
-                    style="background-color: {getRatingColor(surveyor.avg_responsiveness)}"
-                  >
+                  <span class="badge rating-badge {getRatingBadgeClass(surveyor.avg_responsiveness)}">
                     {formatRating(surveyor.avg_responsiveness)}
                   </span>
                 </td>
                 <td class="text-center">
-                  <span
-                    class="rating-badge"
-                    style="background-color: {getRatingColor(surveyor.avg_on_time)}"
-                  >
+                  <span class="badge rating-badge {getRatingBadgeClass(surveyor.avg_on_time)}">
                     {formatRating(surveyor.avg_on_time)}
                   </span>
                 </td>
                 <td class="text-center">
                   <span
-                    class="rating-badge overall"
-                    style="background-color: {getRatingColor(surveyor.avg_overall)}"
+                    class="badge rating-badge rating-badge--overall {getRatingBadgeClass(surveyor.avg_overall)}"
                   >
                     {formatRating(surveyor.avg_overall)}
                   </span>
@@ -376,7 +364,7 @@
     height: 12px;
     margin-bottom: 2px;
     border: 1px solid var(--color-slate-200);
-    border-radius: 4px 4px 0 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     border-bottom: none;
   }
 
@@ -402,60 +390,12 @@
     color: var(--color-slate-500);
   }
 
-  .btn-add {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    background: var(--color-primary-500);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s;
-    white-space: nowrap;
-  }
-
-  .btn-add:hover {
-    background: var(--color-primary-600);
-  }
-
+  /* .btn-primary and .action-btn/.edit-btn/.delete-btn now come entirely
+     from the shared buttons.css (same class names). */
   .actions-cell {
     display: flex;
     gap: 0.375rem;
     align-items: center;
-  }
-
-  .action-btn {
-    background: none;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 4px;
-    padding: 0.3rem 0.5rem;
-    cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-  }
-
-  .edit-btn {
-    color: var(--color-primary-500);
-  }
-
-  .edit-btn:hover {
-    background: var(--color-primary-50);
-    border-color: var(--color-primary-500);
-  }
-
-  .delete-btn {
-    color: var(--color-red-500);
-  }
-
-  .delete-btn:hover {
-    background: var(--color-red-50);
-    border-color: var(--color-red-500);
   }
 
   /* Surveyor-specific styles */
@@ -481,20 +421,15 @@
     text-align: center;
   }
 
+  /* Sizing on top of the shared .badge shape/colour classes. */
   .rating-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    color: white;
-    border-radius: 4px;
-    font-weight: 600;
-    font-size: 0.875rem;
     min-width: 36px;
     text-align: center;
   }
 
-  .rating-badge.overall {
-    font-size: 1rem;
-    padding: 0.375rem 0.625rem;
+  .rating-badge--overall {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
   }
 
   .status-approved {

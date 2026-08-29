@@ -254,7 +254,7 @@
 <style>
   .content-panel {
     background: white;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     height: 100%;
     display: flex;

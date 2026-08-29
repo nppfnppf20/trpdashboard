@@ -725,7 +725,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
 <style>
   .content-panel {
     background: white;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     height: 100%;
     display: flex;
@@ -760,7 +760,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
     padding: 0.5rem 0.875rem;
     background: var(--color-purple-50);
     border: 1px solid var(--color-violet-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--color-violet-600);
     font-size: 0.875rem;
     font-weight: 500;
@@ -780,7 +780,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
     max-width: 280px;
     background: none;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 4px 6px;
     text-align: left;
     cursor: pointer;
@@ -802,7 +802,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
     font-weight: 600;
     color: var(--color-slate-500);
     background: var(--color-slate-100);
-    border-radius: 100px;
+    border-radius: var(--radius-pill);
     padding: 1px 7px;
     margin-top: 2px;
   }
@@ -815,7 +815,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
     color: var(--color-slate-400);
     background: white;
     border: 1px dashed var(--color-slate-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 4px 10px;
     cursor: pointer;
     font-family: inherit;
@@ -861,7 +861,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
     background: var(--color-slate-100);
     color: var(--color-slate-600);
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-weight: normal;
     font-size: inherit;
   }
@@ -919,7 +919,7 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
     align-items: center;
     gap: 0.5rem;
     max-width: 250px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     transition: all 0.2s;
   }
 

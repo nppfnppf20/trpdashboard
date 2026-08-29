@@ -28,7 +28,12 @@
     {fullTextLabel}
     {#if fullTextHint}<span class="aef-hint">{fullTextHint}</span>{/if}
   </label>
-  <textarea id="aef-text" class="form-input" {rows} bind:value={fullText} placeholder={fullTextPlaceholder}></textarea>
+  <div class="aef-textarea-wrap">
+    <textarea id="aef-text" class="form-input aef-textarea" {rows} bind:value={fullText} placeholder={fullTextPlaceholder}></textarea>
+    <button type="button" class="aef-mic-btn" disabled title="Voice dictation — coming soon">
+      <i class="las la-microphone"></i>
+    </button>
+  </div>
   {#if onGenerate}
     <div class="aef-generate-row">
       <button type="button" class="aef-generate-btn" on:click={onGenerate} disabled={!canGenerate || generating}>
@@ -53,6 +58,31 @@
     font-weight: 400;
     color: var(--color-slate-400);
     margin-left: 0.4rem;
+  }
+
+  .aef-textarea-wrap {
+    position: relative;
+  }
+  .aef-textarea {
+    padding-right: 2.35rem;
+  }
+  /* Voice dictation placeholder — greyed out until the Whisper Flow API is
+     wired in. Not functional yet. */
+  .aef-mic-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 50%;
+    background: var(--color-white);
+    color: var(--color-slate-300);
+    font-size: 0.85rem;
+    cursor: not-allowed;
   }
 
   .aef-generate-row {

@@ -294,7 +294,7 @@
 <style>
   .content-panel {
     background: var(--color-white);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     height: 100%;
     display: flex;
@@ -408,7 +408,7 @@
     align-items: center;
     gap: 0.5rem;
     max-width: 250px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     transition: all 0.2s;
   }
 
@@ -457,7 +457,7 @@
     padding: 0.375rem 0.5rem;
     border: 1px solid var(--color-slate-200);
     background: white;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 0.15s;
     font-size: 1rem;

@@ -229,7 +229,7 @@
       <div class="header-right">
         <div class="save-status">
           {#if hasUnsavedChanges}
-            <span class="unsaved-badge">Unsaved changes</span>
+            <span class="badge badge-warning">Unsaved changes</span>
           {:else if lastSaved}
             <span class="saved-text">{formatLastSaved()}</span>
           {/if}
@@ -324,13 +324,13 @@
 
   .editor-modal-content {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     width: 100%;
     max-width: 1200px;
     height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 50px var(--overlay-bg);
+    box-shadow: var(--shadow-modal);
   }
 
   .editor-header {
@@ -361,7 +361,7 @@
     color: var(--color-slate-800);
     border: 1px solid transparent;
     padding: 0.25rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
     transition: all 0.2s;
   }
@@ -385,14 +385,6 @@
 
   .save-status {
     font-size: 0.875rem;
-  }
-
-  .unsaved-badge {
-    background: var(--color-amber-100);
-    color: var(--color-amber-800);
-    padding: 0.25rem 0.625rem;
-    border-radius: 4px;
-    font-weight: 500;
   }
 
   .saved-text {
@@ -453,7 +445,7 @@
   .editor-info-banner {
     background: var(--color-amber-100);
     border: 1px solid var(--color-yellow-300);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 0.75rem 1rem;
     margin-bottom: 1.5rem;
     display: flex;
@@ -492,7 +484,7 @@
     width: 100%;
     padding: 0.625rem;
     border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.875rem;
     color: var(--color-slate-800);
     background: white;
@@ -526,7 +518,7 @@
   .placeholders-hint code {
     background: var(--color-slate-100);
     padding: 0.125rem 0.375rem;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-family: monospace;
     font-size: 0.75rem;
     color: var(--color-teal-600);

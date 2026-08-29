@@ -295,7 +295,7 @@
     border: 2px dashed var(--color-violet-300);
     background: white;
     color: var(--color-purple-600);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 0.82rem;
     font-weight: 500;
     cursor: pointer;
@@ -309,7 +309,7 @@
     gap: 0.5rem;
     border: 1px solid var(--color-violet-200);
     background: var(--color-purple-50);
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     padding: 0.875rem;
   }
   .tl-add-row {
@@ -323,7 +323,7 @@
     width: 100%;
     box-sizing: border-box;
     border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-family: inherit;
     color: var(--color-slate-800);
     background: white;
@@ -342,7 +342,7 @@
   .tl-error {
     background: var(--color-red-100);
     color: var(--color-red-800);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.4rem 0.6rem;
     font-size: 0.78rem;
   }
@@ -354,7 +354,7 @@
     color: var(--color-purple-700);
     background: var(--color-white);
     border: 1px solid var(--color-violet-200);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.4rem 0.6rem;
   }
   .tl-empty {
@@ -368,7 +368,7 @@
   /* Buttons */
   .tl-btn {
     padding: 0.35rem 0.9rem;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.8rem;
     font-weight: 500;
     font-family: inherit;
@@ -390,7 +390,7 @@
     cursor: pointer;
     font-size: 1rem;
     padding: 2px 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
   .tl-icon-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
   .tl-icon-btn-danger:hover { background: var(--color-red-50); color: var(--color-red-600); }
@@ -450,7 +450,7 @@
     font-weight: 600;
     color: var(--color-slate-500);
     background: var(--color-slate-100);
-    border-radius: 100px;
+    border-radius: var(--radius-pill);
     padding: 1px 8px;
   }
   .tl-source-email { color: var(--color-primary-600); background: var(--color-primary-100); }
@@ -461,7 +461,7 @@
     font-weight: 600;
     color: var(--color-orange-700);
     background: var(--color-amber-100);
-    border-radius: 100px;
+    border-radius: var(--radius-pill);
     padding: 1px 8px;
   }
   .tl-entry-btns {
@@ -489,7 +489,7 @@
     padding: 0.625rem 0.75rem;
     background: var(--color-slate-50);
     border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 0.74rem;
     line-height: 1.55;
     color: var(--color-slate-600);

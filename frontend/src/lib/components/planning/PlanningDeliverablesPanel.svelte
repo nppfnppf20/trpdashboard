@@ -104,13 +104,13 @@
     });
   }
 
-  function getStatusColor(status) {
-    const colors = {
-      'draft': '#f59e0b',
-      'review': '#3b82f6',
-      'final': '#10b981'
+  function getStatusBadgeClass(status) {
+    const classes = {
+      'draft': 'badge-warning',
+      'review': 'badge-info',
+      'final': 'badge-success'
     };
-    return colors[status] || '#6b7280';
+    return classes[status] || 'badge-neutral';
   }
 
   function handleTemplateClick(template) {
@@ -157,7 +157,7 @@
     <div class="error">
       <i class="las la-exclamation-circle"></i>
       <p>Error: {error}</p>
-      <button on:click={loadData} class="retry-btn">Try Again</button>
+      <button on:click={loadData} class="btn btn-primary retry-btn">Try Again</button>
     </div>
   {:else}
     <div class="panel-header">
@@ -165,7 +165,7 @@
         <h2>{project.project_name}</h2>
         <p class="project-id">Project ID: {project.project_id}</p>
       </div>
-      <button class="create-btn" on:click={handleCreateNew}>
+      <button class="btn btn-primary" on:click={handleCreateNew}>
         <i class="las la-plus"></i>
         Create New Deliverable
       </button>
@@ -191,7 +191,7 @@
                 <div class="card-icon">
                   <i class="las la-file-alt"></i>
                 </div>
-                <div class="card-status" style="background: {getStatusColor(deliverable.status)}20; color: {getStatusColor(deliverable.status)}">
+                <div class="badge card-status {getStatusBadgeClass(deliverable.status)}">
                   {deliverable.status}
                 </div>
               </div>
@@ -208,16 +208,16 @@
               </div>
 
               <div class="card-actions">
-                <button 
-                  class="action-btn edit-btn" 
+                <button
+                  class="btn btn-secondary btn-sm card-action"
                   on:click={() => handleEditDeliverable(deliverable)}
                   title="Edit deliverable"
                 >
                   <i class="las la-edit"></i>
                   Edit
                 </button>
-                <button 
-                  class="action-btn delete-btn" 
+                <button
+                  class="btn btn-icon btn-danger-ghost btn-sm"
                   on:click={() => handleDeleteDeliverable(deliverable.id)}
                   title="Delete deliverable"
                 >
@@ -322,7 +322,7 @@
     text-align: center;
     padding: 4rem 2rem;
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--color-slate-200);
   }
 
@@ -340,17 +340,6 @@
 
   .retry-btn {
     margin-top: 1rem;
-    padding: 0.5rem 1.5rem;
-    background: var(--color-teal-600);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 1rem;
-  }
-
-  .retry-btn:hover {
-    background: var(--color-emerald-600);
   }
 
   .panel-header {
@@ -360,7 +349,7 @@
     margin-bottom: 2rem;
     background: white;
     padding: 1.5rem;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--color-slate-200);
   }
 
@@ -375,30 +364,6 @@
     font-size: 0.875rem;
     color: var(--color-slate-500);
     margin: 0;
-  }
-
-  .create-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.5rem;
-    background: var(--color-teal-600);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .create-btn:hover {
-    background: var(--color-emerald-600);
-    transform: translateY(-1px);
-  }
-
-  .create-btn i {
-    font-size: 1.25rem;
   }
 
   .deliverables-section, .templates-section {
@@ -424,7 +389,7 @@
     text-align: center;
     padding: 3rem 2rem;
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     border: 2px dashed var(--color-slate-300);
   }
 
@@ -455,14 +420,14 @@
   .deliverable-card {
     background: white;
     border: 1px solid var(--color-slate-200);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     padding: 1.5rem;
     transition: all 0.2s;
   }
 
   .deliverable-card:hover {
-    border-color: var(--color-teal-600);
-    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.1);
+    border-color: var(--color-primary-600);
+    box-shadow: var(--shadow-md);
   }
 
   .card-header {
@@ -476,7 +441,7 @@
     width: 3rem;
     height: 3rem;
     background: var(--color-teal-100);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -487,13 +452,7 @@
     color: var(--color-teal-600);
   }
 
-  .card-status {
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
+  /* Shape/colour come from the shared .badge classes now. */
 
   .card-content {
     margin-bottom: 1rem;
@@ -530,35 +489,8 @@
     gap: 0.5rem;
   }
 
-  .action-btn {
+  .card-action {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    background: white;
-    color: var(--color-slate-500);
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .action-btn:hover {
-    border-color: var(--color-teal-600);
-    color: var(--color-teal-600);
-  }
-
-  .delete-btn {
-    flex: 0;
-  }
-
-  .delete-btn:hover {
-    border-color: var(--color-red-600);
-    color: var(--color-red-600);
-    background: var(--color-red-50);
   }
 
   .templates-grid {
@@ -570,7 +502,7 @@
   .template-card {
     background: white;
     border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1rem;
     display: flex;
     gap: 1rem;
@@ -595,7 +527,7 @@
     background: transparent;
     color: var(--color-slate-400);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 1rem;
     cursor: pointer;
     transition: all 0.2s;
@@ -612,22 +544,22 @@
   }
 
   .template-card.clickable:hover {
-    border-color: var(--color-teal-600);
-    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.1);
+    border-color: var(--color-primary-600);
+    box-shadow: var(--shadow-sm);
     transform: translateY(-1px);
   }
 
   .template-card.clickable:focus {
     outline: none;
-    border-color: var(--color-teal-600);
-    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+    border-color: var(--color-primary-600);
+    box-shadow: var(--focus-ring-blue);
   }
 
   .template-icon {
     width: 2.5rem;
     height: 2.5rem;
     background: var(--color-slate-100);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -659,7 +591,7 @@
       gap: 1rem;
     }
 
-    .create-btn {
+    .panel-header .btn-primary {
       width: 100%;
       justify-content: center;
     }

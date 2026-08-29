@@ -165,13 +165,13 @@
 
   .modal-content {
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     max-width: 600px;
     width: 100%;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 50px var(--overlay-bg);
+    box-shadow: var(--shadow-modal);
   }
 
   .modal-header {
@@ -204,7 +204,7 @@
     background: transparent;
     color: var(--color-slate-500);
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     transition: all 0.2s;
     display: flex;
     align-items: center;
@@ -228,7 +228,7 @@
   .project-info-banner {
     background: var(--color-slate-100);
     border: 1px solid var(--color-sky-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1rem;
     display: flex;
     align-items: center;
@@ -273,7 +273,7 @@
     width: 100%;
     padding: 0.75rem;
     border: 1px solid var(--color-slate-300);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 1rem;
     color: var(--color-slate-800);
     transition: all 0.2s;
@@ -294,7 +294,7 @@
   .template-preview {
     background: var(--color-slate-50);
     border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1rem;
     margin-bottom: 1.5rem;
   }
@@ -330,7 +330,7 @@
   .error-message {
     background: var(--color-red-50);
     border: 1px solid var(--color-red-200);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 0.75rem;
     color: var(--color-red-600);
     font-size: 0.875rem;
@@ -353,7 +353,7 @@
 
   .cancel-btn, .create-btn {
     padding: 0.75rem 1.5rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 1rem;
     font-weight: 500;
     cursor: pointer;
