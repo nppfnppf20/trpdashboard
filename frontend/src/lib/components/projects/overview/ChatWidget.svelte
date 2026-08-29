@@ -3,8 +3,10 @@
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { renderReply, buildSourceLabels } from '$lib/utils/chatMarkdown.js';
+  import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
 
   export let project;
+  export let onAcceptDateSuggestion = null; // async (field, date) => boolean
   $: projectId = project?.id;
 
   const CONTEXT_BUDGET = 200000;
@@ -176,7 +178,7 @@
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         sources: buildSourcesPayload(),
       });
-      messages = [...messages, { role: 'assistant', content: result.reply }];
+      messages = [...messages, { role: 'assistant', content: result.reply, suggestions: result.suggestions ?? [] }];
     } catch (err) {
       error = err.message;
       messages = messages.slice(0, -1);
@@ -234,6 +236,9 @@
         <div class="cw-bubble" class:cw-bubble-user={m.role === 'user'} class:cw-bubble-assistant={m.role === 'assistant'}>
           {#if m.role === 'assistant'}
             {@html renderReply(m.content, sourceLabels)}
+            {#each m.suggestions ?? [] as suggestion}
+              <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} compact />
+            {/each}
           {:else}
             {m.content}
           {/if}

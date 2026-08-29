@@ -2,7 +2,6 @@
   import SurveyorBriefingPanel from '$lib/components/surveyor-briefings/SurveyorBriefingPanel.svelte';
   import InstructedSurveyorsPanel from '$lib/components/surveyor-management/InstructedSurveyorsPanel.svelte';
   import QuotesPanel from '$lib/components/surveyor-management/QuotesPanel.svelte';
-  import ProgrammePanel from '$lib/components/surveyor-management/ProgrammePanel.svelte';
   import ReviewsPanel from '$lib/components/surveyor-management/ReviewsPanel.svelte';
   import {
     getQuotes,
@@ -30,7 +29,6 @@
     { id: 'briefings', label: 'Briefings', icon: 'la-clipboard-list' },
     { id: 'quotes', label: 'Quotes', icon: 'la-file-invoice-dollar' },
     { id: 'instructed', label: 'Instructed', icon: 'la-tasks' },
-    { id: 'programme', label: 'Programme', icon: 'la-calendar-alt' },
     { id: 'reviews', label: 'Reviews', icon: 'la-star' }
   ];
 
@@ -233,16 +231,6 @@
           {quoteKeyDates}
           {programmeEvents}
           on:workStatusChange={handleWorkStatusChange}
-        />
-
-      {:else if activeTab === 'programme'}
-        <ProgrammePanel
-          quotes={instructedQuotes}
-          {quoteKeyDates}
-          {programmeEvents}
-          {loading}
-          hasSelectedProject={!!project}
-          projectId={project?.unique_id}
         />
 
       {:else if activeTab === 'reviews'}

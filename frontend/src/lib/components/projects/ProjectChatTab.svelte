@@ -2,8 +2,10 @@
   import { onMount, tick } from 'svelte';
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
   import { renderReply, buildSourceLabels } from '$lib/utils/chatMarkdown.js';
+  import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
 
   export let project;
+  export let onAcceptDateSuggestion = null; // async (field, date) => boolean
 
   const CONTEXT_BUDGET = 200000;
 
@@ -177,7 +179,7 @@
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         sources: buildSourcesPayload(),
       });
-      messages = [...messages, { role: 'assistant', content: result.reply, citations: result.citations ?? [] }];
+      messages = [...messages, { role: 'assistant', content: result.reply, citations: result.citations ?? [], suggestions: result.suggestions ?? [] }];
     } catch (err) {
       console.error('Project chat error:', err);
       sendError = err.message;
@@ -356,6 +358,9 @@
                   </div>
                 {/if}
               {/if}
+              {#each msg.suggestions ?? [] as suggestion}
+                <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} />
+              {/each}
             </div>
           {/if}
         </div>

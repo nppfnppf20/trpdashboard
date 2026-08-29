@@ -11,8 +11,9 @@
   import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
   import AdvancementSourceBadge from '$lib/components/projects/AdvancementSourceBadge.svelte';
   import SelectSurveyorModal from '$lib/components/surveyor-briefings/SelectSurveyorModal.svelte';
+  import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
   import { cleanPastedText } from '$lib/utils/pdfText.js';
-  import { getQuotes, getProgrammeEvents, getQuoteKeyDates } from '$lib/api/quotes.js';
+  import { getQuotes, getProgrammeEvents, getQuoteKeyDates, createQuoteKeyDate } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
   import { getQuoteActions } from '$lib/api/quoteActions.js';
   import {
@@ -547,6 +548,29 @@
     }
   }
 
+  // ── Key dates for a linked quote — this is where Programme's dates for
+  // this condition actually get added, now that Programme itself is a
+  // read-only rollup (see ProgrammeTab.svelte) ───────────────────────────────
+  let showAddKeyDateModal = false;
+  let keyDateForQuote = null;
+
+  function openAddKeyDate(q) {
+    keyDateForQuote = q;
+    showAddKeyDateModal = true;
+  }
+
+  async function handleAddKeyDateSubmit(event) {
+    const { data } = event.detail;
+    try {
+      await createQuoteKeyDate(keyDateForQuote.quote_id, { title: data.title, date: data.date, colour: data.color });
+      await refreshData();
+    } catch (err) {
+      alert('Failed to add key date: ' + err.message);
+    }
+    showAddKeyDateModal = false;
+    keyDateForQuote = null;
+  }
+
   function formatQuoteTotal(total) {
     const n = Number(total);
     return Number.isFinite(n) && n > 0 ? `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}` : null;
@@ -931,6 +955,15 @@
   on:close={() => showBulkFeeQuote = false}
 />
 
+<AddKeyDateModal
+  bind:show={showAddKeyDateModal}
+  type="quote"
+  quotes={keyDateForQuote ? [{ id: keyDateForQuote.quote_id, discipline: keyDateForQuote.discipline, surveyor_organisation: keyDateForQuote.organisation }] : []}
+  preSelectedQuote={keyDateForQuote ? { id: keyDateForQuote.quote_id } : null}
+  on:submit={handleAddKeyDateSubmit}
+  on:close={() => { showAddKeyDateModal = false; keyDateForQuote = null; }}
+/>
+
 <SelectSurveyorModal
   show={showSurveyorPicker}
   selectedSurveyors={[]}
@@ -988,6 +1021,9 @@
                   {/each}
                 </div>
               {/if}
+              <button class="ct-expand-btn" on:click={() => openAddKeyDate(q)}>
+                <i class="las la-calendar-plus"></i> Add key date
+              </button>
             </div>
           {:else}
             {#if !showQuotePicker}

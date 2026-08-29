@@ -2,11 +2,12 @@
   import { createEventDispatcher } from 'svelte';
   import { getProjectConditionsForLinking, getProjectIssuesForLinking } from '$lib/api/quotes.js';
   import { linkConditionQuote, unlinkConditionQuote } from '$lib/api/conditions.js';
-  import { linkIssueQuote, unlinkIssueQuote } from '$lib/api/progressTracker.js';
+  import { linkIssueQuote, unlinkIssueQuote, createIssue } from '$lib/api/progressTracker.js';
 
   export let show = false;
   export let projectPk;   // integer project id (public.projects.id)
-  export let quote;       // { id, surveyor_organisation }
+  export let quote;       // { id, surveyor_organisation, discipline }
+  export let justInstructed = false;   // opened automatically right after instructing, rather than manually
 
   const dispatch = createEventDispatcher();
 
@@ -21,9 +22,33 @@
   let error = null;
   let loaded = false;
 
+  let newIssueTitle = '';
+  let creatingIssue = false;
+  let createIssueError = null;
+
+  $: defaultIssueTitle = [quote?.discipline, quote?.surveyor_organisation].filter(Boolean).join(' — ') || 'Survey';
+
   $: if (show && !loaded && projectPk) {
     loaded = true;
+    if (justInstructed) newIssueTitle = defaultIssueTitle;
     load();
+  }
+
+  async function createAndLinkIssue() {
+    const title = newIssueTitle.trim();
+    if (!title) return;
+    creatingIssue = true;
+    createIssueError = null;
+    try {
+      const created = await createIssue(projectPk, { title, discipline: quote?.discipline || null });
+      issues = [...issues, { id: created.id, title: created.title, linked: false }];
+      checkedIssueIds = new Set([...checkedIssueIds, created.id]);
+      newIssueTitle = '';
+    } catch (err) {
+      createIssueError = err.message;
+    } finally {
+      creatingIssue = false;
+    }
   }
 
   async function load() {
@@ -88,6 +113,8 @@
     loaded = false;
     conditions = [];
     issues = [];
+    newIssueTitle = '';
+    createIssueError = null;
     dispatch('close');
   }
 </script>
@@ -96,11 +123,16 @@
   <div class="modal-overlay" on:click|self={close} role="dialog" aria-modal="true">
     <div class="modal modal-link-items">
       <div class="modal-header">
-        <span class="modal-title">Link to Conditions / Issues: {quote?.surveyor_organisation || 'Quote'}</span>
+        <span class="modal-title">
+          {justInstructed ? `Tag this survey: ${quote?.surveyor_organisation || 'Quote'}` : `Link to Conditions / Issues: ${quote?.surveyor_organisation || 'Quote'}`}
+        </span>
         <button class="modal-close" on:click={close}>&times;</button>
       </div>
 
       <div class="modal-body">
+        {#if justInstructed}
+          <p class="lc-intro">Which condition or issue is this survey for? Pick an existing one below, or create one now — you can always change this later.</p>
+        {/if}
         {#if loading}
           <div class="lc-loading"><span class="lc-spinner"></span> Loading…</div>
         {:else}
@@ -137,14 +169,27 @@
                 {/each}
               </div>
             {/if}
+            <div class="lc-create-row">
+              <input
+                type="text"
+                class="lc-create-input"
+                placeholder="New issue title…"
+                bind:value={newIssueTitle}
+                on:keydown={(e) => e.key === 'Enter' && createAndLinkIssue()}
+              />
+              <button class="lc-create-btn" on:click={createAndLinkIssue} disabled={creatingIssue || !newIssueTitle.trim()}>
+                {creatingIssue ? 'Creating…' : '+ Create & link'}
+              </button>
+            </div>
+            {#if createIssueError}<div class="lc-error">{createIssueError}</div>{/if}
           </div>
         {/if}
         {#if error}<div class="lc-error">{error}</div>{/if}
       </div>
 
       <div class="modal-footer">
-        <button class="btn-cancel" on:click={close} disabled={saving}>Cancel</button>
-        <button class="btn-save" on:click={save} disabled={saving || loading || (conditions.length === 0 && issues.length === 0)}>
+        <button class="btn-cancel" on:click={close} disabled={saving}>{justInstructed ? 'Skip for now' : 'Cancel'}</button>
+        <button class="btn-save" on:click={save} disabled={saving || loading}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
@@ -211,7 +256,49 @@
     gap: 1.1rem;
   }
 
+  .lc-intro {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-slate-600);
+    line-height: 1.5;
+  }
+
   .lc-section { display: flex; flex-direction: column; gap: 0.4rem; }
+
+  .lc-create-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.15rem;
+  }
+  .lc-create-input {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--color-slate-300);
+    border-radius: 6px;
+    font-size: 0.83rem;
+    font-family: inherit;
+    color: var(--color-slate-800);
+  }
+  .lc-create-input:focus {
+    outline: none;
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
+  }
+  .lc-create-btn {
+    flex-shrink: 0;
+    padding: 0.4rem 0.85rem;
+    background: var(--color-slate-100);
+    color: var(--color-slate-700);
+    border: 1px solid var(--color-slate-300);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .lc-create-btn:hover:not(:disabled) { background: var(--color-slate-200); }
+  .lc-create-btn:disabled { opacity: 0.55; cursor: not-allowed; }
   .lc-section-label {
     font-size: 0.72rem;
     font-weight: 700;

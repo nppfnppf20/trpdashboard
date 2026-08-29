@@ -52,6 +52,7 @@ export async function getQuotes(filters = {}) {
       q.dependencies,
       q.site_visit_date,
       q.report_draft_date,
+      q.report_final_date,
       q.operational_notes,
       q.quality,
       q.responsiveness,
@@ -92,7 +93,23 @@ export async function getQuotes(filters = {}) {
           'vat_included', COALESCE(qli.vat_included, false),
           'is_instructed', COALESCE(qli.is_instructed, false)
         ) ORDER BY qli.created_at
-      ) FILTER (WHERE qli.id IS NOT NULL) as line_items
+      ) FILTER (WHERE qli.id IS NOT NULL) as line_items,
+
+      -- Linked tracker items (Conditions Tracker / Issues Tracker), for Programme
+      -- grouping and the instruct-time "link to an issue" prompt. Correlated
+      -- subqueries rather than joins so they can't multiply the line_items rows.
+      COALESCE((
+        SELECT json_agg(jsonb_build_object('id', cond.id, 'title', cond.title, 'condition_number', cond.condition_number, 'sort_order', cond.sort_order) ORDER BY cond.sort_order, cond.id)
+        FROM planning_applications.condition_quote_links cql
+        JOIN planning_applications.conditions cond ON cond.id = cql.condition_id
+        WHERE cql.quote_id = q.id
+      ), '[]') as linked_conditions,
+      COALESCE((
+        SELECT json_agg(jsonb_build_object('id', iss.id, 'title', iss.title, 'sort_order', iss.sort_order) ORDER BY iss.sort_order, iss.id)
+        FROM planning_applications.progress_issue_quote_links piql
+        JOIN planning_applications.progress_issues iss ON iss.id = piql.issue_id
+        WHERE piql.quote_id = q.id
+      ), '[]') as linked_issues
 
     FROM admin_console.quotes q
     LEFT JOIN public.projects p ON p.unique_id = q.project_id

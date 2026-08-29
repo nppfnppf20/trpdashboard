@@ -6,11 +6,12 @@
   import MeetingNotesWidget from './MeetingNotesWidget.svelte';
 
   export let project;
+  export let onAcceptDateSuggestion = null; // async (field, date) => boolean
 </script>
 
 <div class="ov-grid">
   <TrackersWidget {project} />
-  <ChatWidget {project} />
+  <ChatWidget {project} {onAcceptDateSuggestion} />
   <MeetingNotesWidget {project} />
   <KeyDatesWidget {project} />
   <SurveyorWidget {project} />

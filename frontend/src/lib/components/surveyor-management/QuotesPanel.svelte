@@ -269,6 +269,7 @@
       dispatch('statusChange', pendingStatusChange);
       pendingStatusChange = null;
     }
+    maybePromptLinking(selectedQuote);
     showInstructedModal = false;
     selectedQuote = null;
   }
@@ -313,12 +314,13 @@
   function handlePartiallyInstructedConfirm(event) {
     if (pendingStatusChange) {
       // Include the selected line items in the dispatch
-      dispatch('statusChange', { 
-        ...pendingStatusChange, 
-        selectedLineItems: event.detail.selectedItems 
+      dispatch('statusChange', {
+        ...pendingStatusChange,
+        selectedLineItems: event.detail.selectedItems
       });
       pendingStatusChange = null;
     }
+    maybePromptLinking(selectedQuote);
     showPartiallyInstructedModal = false;
     selectedQuote = null;
   }
@@ -360,10 +362,25 @@
 
   let showLinkConditions = false;
   let linkingQuote = null;
+  let justInstructedLink = false;
 
   function openLinkConditions(quote) {
     linkingQuote = quote;
+    justInstructedLink = false;
     showLinkConditions = true;
+  }
+
+  // Prompt to tag a survey against a condition/issue right after it's
+  // instructed — but only the first time, so re-instructing an already
+  // linked quote (e.g. changing which line items are instructed) doesn't nag.
+  function maybePromptLinking(quote) {
+    if (!quote) return;
+    const hasLinks = (quote.linked_conditions?.length || 0) > 0 || (quote.linked_issues?.length || 0) > 0;
+    if (!hasLinks) {
+      linkingQuote = quote;
+      justInstructedLink = true;
+      showLinkConditions = true;
+    }
   }
 
   function openAddQuoteModal() {
@@ -684,8 +701,9 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
   bind:show={showLinkConditions}
   projectPk={project?.id}
   quote={linkingQuote}
-  on:done={() => { showLinkConditions = false; linkingQuote = null; }}
-  on:close={() => { showLinkConditions = false; linkingQuote = null; }}
+  justInstructed={justInstructedLink}
+  on:done={() => { showLinkConditions = false; linkingQuote = null; justInstructedLink = false; }}
+  on:close={() => { showLinkConditions = false; linkingQuote = null; justInstructedLink = false; }}
 />
 
 <!-- Edit Quote Modal -->

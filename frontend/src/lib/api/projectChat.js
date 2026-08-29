@@ -16,5 +16,5 @@ export async function sendProjectChat(projectId, { messages, sources }) {
     const e = await res.json().catch(() => ({}));
     throw new Error(e.error || 'Chat request failed');
   }
-  return res.json(); // { reply, citations, sources_used, context_chars }
+  return res.json(); // { reply, citations, sources_used, context_chars, suggestions }
 }

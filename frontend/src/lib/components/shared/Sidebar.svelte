@@ -45,7 +45,8 @@
       items: [
         { label: 'Consultation Tracker', icon: 'la-clipboard-list', tab: 'consultation_tracker' },
         { label: 'Conditions Tracker', icon: 'la-shield-alt', tab: 'conditions_tracker' },
-        { label: 'Project Tracker', icon: 'la-chart-line', tab: 'progress_tracker' }
+        { label: 'Project Tracker', icon: 'la-chart-line', tab: 'progress_tracker' },
+        { label: 'Programme', icon: 'la-calendar-alt', tab: 'programme' }
       ]
     },
     {

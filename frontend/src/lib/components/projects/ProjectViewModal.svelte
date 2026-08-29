@@ -16,6 +16,7 @@
   import ConsultationTrackerTab from '$lib/components/projects/ConsultationTrackerTab.svelte';
   import ConditionsTrackerTab from '$lib/components/projects/ConditionsTrackerTab.svelte';
   import ProgressTrackerTab from '$lib/components/projects/ProgressTrackerTab.svelte';
+  import ProgrammeTab from '$lib/components/projects/ProgrammeTab.svelte';
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
@@ -40,6 +41,7 @@
     consultation_tracker: 'Consultation Tracker',
     conditions_tracker: 'Conditions Tracker',
     progress_tracker: 'Project Tracker',
+    programme: 'Programme',
   };
 
   // Every tab's display name, for the header — navigation itself now lives
@@ -278,6 +280,28 @@
       comments: projectData.comments || '',
       ...overrides,
     };
+  }
+
+  // Project Chat's "Set {date field} to {date}?" suggestion cards call this
+  // to accept — same PUT-the-full-object pattern as saveSiteBoundary below.
+  async function handleAcceptDateSuggestion(field, date) {
+    try {
+      const payload = buildProjectUpdatePayload({ [field]: date });
+      const response = await authFetch(`/api/projects/${projectData.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        handleProjectUpdated(data.project);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error accepting date suggestion:', err);
+      return false;
+    }
   }
 
   // ── Site Boundary inline editing ────────────────────────────────────────
@@ -805,7 +829,7 @@
               <div class="map-container" bind:this={mapContainer}></div>
             </div>
           {:else if activeTab === 'details'}
-            <ProjectOverviewTab project={projectData} />
+            <ProjectOverviewTab project={projectData} onAcceptDateSuggestion={handleAcceptDateSuggestion} />
           {:else if activeTab === 'project_details'}
             <ProjectDetailsTab project={projectData} onOpenMeetingGuide={() => showMeetingGuide = true} onUpdated={handleProjectUpdated} />
           {:else if activeTab === 'hlpv'}
@@ -1364,7 +1388,7 @@
           {:else if activeTab === 'project_docs'}
             <ProjectDocsTab project={projectData} />
           {:else if activeTab === 'project_chat'}
-            <ProjectChatTab project={projectData} />
+            <ProjectChatTab project={projectData} onAcceptDateSuggestion={handleAcceptDateSuggestion} />
           {:else if activeTab === 'meeting_notes'}
             <MeetingNotesTab project={projectData} />
           {:else if activeTab === 'consultation_tracker'}
@@ -1378,6 +1402,10 @@
           {:else if activeTab === 'progress_tracker'}
             <div class="ct-scroll-wrap">
               <ProgressTrackerTab project={projectData} />
+            </div>
+          {:else if activeTab === 'programme'}
+            <div class="ct-scroll-wrap">
+              <ProgrammeTab project={projectData} />
             </div>
           {:else if activeTab === 'completeness'}
             <ProjectCompletenessTab project={projectData} />
