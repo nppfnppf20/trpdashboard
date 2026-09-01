@@ -5,6 +5,9 @@
     suggestConsultationAdvancementSummaries,
     updateConsultationAdvancement,
     deleteConsultationAdvancement,
+    createConsultationKeyDate,
+    updateConsultationKeyDate,
+    deleteConsultationKeyDate,
   } from '$lib/api/consultation.js';
   import {
     getConditionsData,
@@ -12,6 +15,9 @@
     suggestConditionAdvancementSummaries,
     updateConditionAdvancement,
     deleteConditionAdvancement,
+    createConditionKeyDate,
+    updateConditionKeyDate,
+    deleteConditionKeyDate,
   } from '$lib/api/conditions.js';
   import {
     getProgressData,
@@ -19,11 +25,15 @@
     suggestActionSummaries,
     updateAction,
     deleteAction,
+    createIssueKeyDate,
+    updateIssueKeyDate,
+    deleteIssueKeyDate,
   } from '$lib/api/progressTracker.js';
   import AddConsultationAdvancementModal from '$lib/components/projects/AddConsultationAdvancementModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import AdvancementTimelineModal from './AdvancementTimelineModal.svelte';
+  import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
 
   export let project;
@@ -280,6 +290,84 @@
     }));
   }
 
+  // ── Per-row direct key dates (shown inside the timeline popup) ─────────────
+  $: timelineKeyDates = timelineRow ? buildKeyDates(timelineRow) : [];
+
+  function buildKeyDates(row) {
+    if (row.kind === 'consultation') return responses.find(x => x.id === row.id)?.key_dates || [];
+    if (row.kind === 'conditions') return conditions.find(x => x.id === row.id)?.key_dates || [];
+    return issues.find(x => x.id === row.id)?.key_dates || [];
+  }
+
+  async function timelineAddKeyDate(form) {
+    if (timelineRow.kind === 'consultation') await createConsultationKeyDate(timelineRow.id, form);
+    else if (timelineRow.kind === 'conditions') await createConditionKeyDate(timelineRow.id, form);
+    else await createIssueKeyDate(timelineRow.id, form);
+    await load();
+  }
+
+  async function timelineUpdateKeyDate(id, form) {
+    if (timelineRow.kind === 'consultation') await updateConsultationKeyDate(id, form);
+    else if (timelineRow.kind === 'conditions') await updateConditionKeyDate(id, form);
+    else await updateIssueKeyDate(id, form);
+    await load();
+  }
+
+  async function timelineDeleteKeyDate(id) {
+    if (timelineRow.kind === 'consultation') await deleteConsultationKeyDate(id);
+    else if (timelineRow.kind === 'conditions') await deleteConditionKeyDate(id);
+    else await deleteIssueKeyDate(id);
+    await load();
+  }
+
+  // ── Master advancements (all rows of the active tracker, flattened) ────────
+  let showMasterAdvancements = false;
+
+  function kindBadgeFor(a) {
+    if (a._kind === 'quote') return { icon: 'la-file-invoice-dollar', label: a._org, title: 'From the linked quote\'s actions log in surveyor management' };
+    if (a._kind === 'key_date') return { icon: 'la-calendar', label: a._org, title: 'Key date from the linked quote in surveyor management' };
+    if (a._kind === 'instruction_status') return { icon: 'la-flag', label: a._org, title: 'Instruction status change from the linked quote in surveyor management' };
+    return null;
+  }
+
+  $: masterAdvancementItems = (
+    activeType === 'consultation'
+      ? responses.flatMap(r => sortByDateDesc(r.advancements || [], 'advancement_date').map(a => ({
+          id: `${r.id}-${a.id}`,
+          date: a.advancement_date,
+          summary: a.summary,
+          fullText: a.full_text,
+          sourceType: a.source_type,
+          rowId: r.id,
+          rowTitle: r.consultee_name,
+        })))
+      : activeType === 'conditions'
+      ? conditions.flatMap(c => mergedConditionTimeline(c).map(a => ({
+          id: `${c.id}-${a.id}`,
+          date: a.advancement_date,
+          summary: a.summary,
+          fullText: a.full_text,
+          sourceType: a._kind === 'condition' ? a.source_type : null,
+          kindBadge: kindBadgeFor(a),
+          rowId: c.id,
+          rowTitle: c.condition_number ? `Condition ${c.condition_number} — ${c.title}` : c.title,
+        })))
+      : issues.flatMap(iss => sortByDateDesc(mainIssueActions(iss), 'action_date').map(a => ({
+          id: `${iss.id}-${a.id}`,
+          date: a.action_date,
+          summary: a.summary,
+          fullText: a.full_text,
+          sourceType: a.source_type,
+          rowId: iss.id,
+          rowTitle: iss.title,
+        })))
+  ).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.id).localeCompare(String(a.id)));
+
+  function jumpToRowFromMaster(rowId) {
+    const row = activeRows.find(r => r.id === rowId);
+    if (row) openTimelineFor(row);
+  }
+
   async function timelineAdd(form) {
     if (timelineRow.kind === 'consultation') {
       await createConsultationAdvancements(projectId, {
@@ -369,6 +457,9 @@
       <button class="btn btn-primary btn-sm" on:click={() => openBulkAdd(null)} disabled={!activeRows.length}>
         <i class="las la-history"></i> Add Advancement
       </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showMasterAdvancements = true} disabled={!activeRows.length}>
+        <i class="las la-stream"></i> All Advancements
+      </button>
       <button class="btn btn-icon btn-secondary" title="Open full {activeTrackerLabel}" on:click={openFullTracker}>
         <i class="las la-expand-arrows-alt"></i>
       </button>
@@ -437,6 +528,14 @@
   />
 {/if}
 
+<MasterAdvancementsModal
+  bind:show={showMasterAdvancements}
+  title="All Advancements · {activeTrackerLabel}"
+  items={masterAdvancementItems}
+  onJumpToRow={jumpToRowFromMaster}
+  onClose={() => showMasterAdvancements = false}
+/>
+
 {#if timelineRow}
   <AdvancementTimelineModal
     show={!!timelineRow}
@@ -447,6 +546,10 @@
     onDelete={timelineDelete}
     onGenerate={timelineGenerate}
     onClose={closeTimeline}
+    keyDates={timelineKeyDates}
+    onAddKeyDate={timelineAddKeyDate}
+    onUpdateKeyDate={timelineUpdateKeyDate}
+    onDeleteKeyDate={timelineDeleteKeyDate}
   />
 {/if}
 

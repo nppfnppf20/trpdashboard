@@ -12,6 +12,7 @@
   // render read-only with their sourceLabel as a small tag.
 
   import AdvancementEntryFields from '../AdvancementEntryFields.svelte';
+  import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
 
   export let show = false;
   export let title = '';
@@ -21,6 +22,14 @@
   export let onDelete; // (id) => Promise
   export let onGenerate = null; // (fullText) => Promise<string>
   export let onClose = () => {};
+
+  // Key dates owned directly by this row — same "direct key date" concept
+  // the full-page tracker tabs already have, mirrored here.
+  export let keyDates = []; // [{ id, title, date, colour }]
+  export let onAddKeyDate = null; // (form) => Promise
+  export let onUpdateKeyDate = null; // (id, form) => Promise
+  export let onDeleteKeyDate = null; // (id) => Promise
+  $: keyDatesEnabled = !!(onAddKeyDate && onUpdateKeyDate && onDeleteKeyDate);
 
   let formDate = '';
   let formSourceType = 'note';
@@ -132,6 +141,47 @@
     onClose();
   }
 
+  // ── Key dates ────────────────────────────────────────────────────────────
+  let showKeyDateModal = false;
+  let editingKeyDate = null; // null = adding new, row = editing existing
+  let keyDateError = null;
+
+  function openAddKeyDate() {
+    editingKeyDate = null;
+    keyDateError = null;
+    showKeyDateModal = true;
+  }
+
+  function openEditKeyDate(kd) {
+    editingKeyDate = kd;
+    keyDateError = null;
+    showKeyDateModal = true;
+  }
+
+  async function handleKeyDateSubmit(event) {
+    const { data, isEdit } = event.detail;
+    try {
+      if (isEdit) {
+        await onUpdateKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+      } else {
+        await onAddKeyDate({ title: data.title, date: data.date, colour: data.color });
+      }
+    } catch (err) {
+      keyDateError = err.message;
+    }
+    showKeyDateModal = false;
+    editingKeyDate = null;
+  }
+
+  async function removeKeyDate(id) {
+    if (!confirm('Delete this key date?')) return;
+    try {
+      await onDeleteKeyDate(id);
+    } catch (err) {
+      keyDateError = err.message;
+    }
+  }
+
   function formatDate(d) {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -147,6 +197,30 @@
       </div>
 
       <div class="atm-body">
+        {#if keyDatesEnabled}
+          <div class="atm-keydates">
+            <div class="atm-keydates-hd">
+              <span class="atm-keydates-label"><i class="las la-calendar-alt"></i> Key Dates</span>
+              <button class="atm-keydates-add" on:click={openAddKeyDate}>+ Add key date</button>
+            </div>
+            {#if keyDates.length}
+              <div class="atm-keydates-list">
+                {#each keyDates as kd (kd.id)}
+                  <span class="atm-keydate" on:click={() => openEditKeyDate(kd)}>
+                    {kd.title} - {formatDate(kd.date)}
+                    <button class="atm-keydate-remove" title="Delete" on:click|stopPropagation={() => removeKeyDate(kd.id)}>
+                      <i class="las la-times"></i>
+                    </button>
+                  </span>
+                {/each}
+              </div>
+            {:else}
+              <p class="atm-keydates-none">No key dates yet.</p>
+            {/if}
+            {#if keyDateError}<div class="atm-error">{keyDateError}</div>{/if}
+          </div>
+        {/if}
+
         <div class="atm-list">
           {#each items as item (item.id)}
             <div class="atm-row" class:editing={editingId === item.id}>
@@ -210,6 +284,17 @@
   </div>
 {/if}
 
+{#if keyDatesEnabled}
+  <AddKeyDateModal
+    bind:show={showKeyDateModal}
+    type="tracker-row"
+    typeLabel="Key Date"
+    existingDate={editingKeyDate}
+    on:submit={handleKeyDateSubmit}
+    on:close={() => { showKeyDateModal = false; editingKeyDate = null; }}
+  />
+{/if}
+
 <style>
   .atm-backdrop {
     position: fixed;
@@ -248,6 +333,19 @@
   .atm-close-btn:hover { color: var(--color-slate-800); }
 
   .atm-body { flex: 1; overflow-y: auto; padding: 1.1rem 1.4rem; display: flex; flex-direction: column; gap: 1rem; }
+
+  .atm-keydates { border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.65rem 0.75rem; background: var(--color-slate-50); }
+  .atm-keydates-hd { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .atm-keydates-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-slate-500); display: flex; align-items: center; gap: 0.3rem; }
+  .atm-keydates-add { font-size: 0.72rem; color: var(--color-primary-500); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+  .atm-keydates-none { margin: 0.4rem 0 0; font-size: 0.76rem; color: var(--color-slate-400); }
+  .atm-keydates-list { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem; font-size: 0.72rem; }
+  .atm-keydate {
+    display: inline-flex; align-items: center; gap: 0.3rem; background: var(--color-red-50); border: 1px solid var(--color-amber-200);
+    color: var(--color-amber-800); border-radius: 6px; padding: 1px 7px; cursor: pointer;
+  }
+  .atm-keydate-remove { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: none; background: none; padding: 0; color: inherit; opacity: 0.6; cursor: pointer; font-size: 0.65rem; }
+  .atm-keydate-remove:hover { opacity: 1; }
 
   .atm-list { display: flex; flex-direction: column; border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); overflow: hidden; }
   .atm-row { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--color-slate-100); }

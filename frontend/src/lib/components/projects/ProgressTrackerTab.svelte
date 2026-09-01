@@ -5,6 +5,7 @@
   import { exportProgressPdf } from '$lib/services/progressTrackerPdfExport.js';
   import AddIssuesModal from '$lib/components/projects/AddIssuesModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
+  import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
   import AdvancementSourceBadge from '$lib/components/projects/AdvancementSourceBadge.svelte';
@@ -563,6 +564,35 @@
 
   $: tlMerged = timelineIssue ? mergedTimeline(timelineIssue) : [];
 
+  // ── Master advancements (all issues, flattened) ─────────────────────────────
+  let showMasterAdvancements = false;
+
+  function kindBadgeFor(a) {
+    if (a._kind === 'quote') return { icon: 'la-file-invoice-dollar', label: a._org, title: 'From the linked quote\'s actions log in surveyor management' };
+    if (a._kind === 'key_date') return { icon: 'la-calendar', label: a._org, title: 'Key date from the linked quote in surveyor management' };
+    if (a._kind === 'instruction_status') return { icon: 'la-flag', label: a._org, title: 'Instruction status change from the linked quote in surveyor management' };
+    return null;
+  }
+
+  $: masterAdvancementItems = issues
+    .flatMap(iss => mergedTimeline(iss).map(a => ({
+      id: `${iss.id}-${a.id}`,
+      date: a.action_date,
+      summary: a.summary,
+      fullText: a.full_text,
+      sourceType: a._kind === 'issue' ? a.source_type : null,
+      meetingNoteTitle: a._kind === 'issue' ? a.meeting_note_title : null,
+      kindBadge: kindBadgeFor(a),
+      rowId: iss.id,
+      rowTitle: iss.title,
+    })))
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.id).localeCompare(String(a.id)));
+
+  function jumpToIssueTimeline(issueId) {
+    const iss = issues.find(x => x.id === issueId);
+    if (iss) openTimeline(iss);
+  }
+
   // Quick-add form inside the drawer
   let showTlAdd = false;
   let tlAddForm = { action_date: '', source_type: 'note', summary: '', full_text: '', stage_instance_id: null, quote_id: null };
@@ -805,6 +835,14 @@
   existingDate={editingDirectKeyDate}
   on:submit={handleDirectKeyDateSubmit}
   on:close={() => { showDirectKeyDateModal = false; editingDirectKeyDate = null; }}
+/>
+
+<MasterAdvancementsModal
+  bind:show={showMasterAdvancements}
+  title="All Advancements"
+  items={masterAdvancementItems}
+  onJumpToRow={jumpToIssueTimeline}
+  onClose={() => showMasterAdvancements = false}
 />
 
 <AddActionModal
@@ -1146,6 +1184,9 @@
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => openAddAction()} disabled={!issues.length}>
         <i class="las la-history"></i> Add Advancement
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showMasterAdvancements = true} disabled={!issues.length}>
+        <i class="las la-stream"></i> All Advancements
       </button>
     </div>
     <div class="pt-topbar-right">

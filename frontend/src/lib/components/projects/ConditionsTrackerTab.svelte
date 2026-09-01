@@ -5,6 +5,7 @@
   import { exportConditionsPdf, exportConditionsWithExtras } from '$lib/services/conditionsPdfExport.js';
   import AddConditionsModal from '$lib/components/projects/AddConditionsModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
+  import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
   import ConditionEmailModal from '$lib/components/projects/ConditionEmailModal.svelte';
   import BulkFeeQuoteModal from '$lib/components/projects/BulkFeeQuoteModal.svelte';
   import ExportConditionsModal from '$lib/components/projects/ExportConditionsModal.svelte';
@@ -487,6 +488,38 @@
   }
 
   $: tlMerged = timelineCondition ? mergedTimeline(timelineCondition) : [];
+
+  // ── Master advancements (all conditions, flattened) ────────────────────────
+  let showMasterAdvancements = false;
+
+  function conditionLabel(c) {
+    return `${c.condition_number ? `Condition ${c.condition_number}: ` : ''}${c.title}`;
+  }
+
+  function kindBadgeFor(a) {
+    if (a._kind === 'quote') return { icon: 'la-file-invoice-dollar', label: a._org, title: 'From the linked quote\'s actions log in surveyor management' };
+    if (a._kind === 'key_date') return { icon: 'la-calendar', label: a._org, title: 'Key date from the linked quote in surveyor management' };
+    if (a._kind === 'instruction_status') return { icon: 'la-flag', label: a._org, title: 'Instruction status change from the linked quote in surveyor management' };
+    return null;
+  }
+
+  $: masterAdvancementItems = conditions
+    .flatMap(c => mergedTimeline(c).map(a => ({
+      id: `${c.id}-${a.id}`,
+      date: a.advancement_date,
+      summary: a.summary,
+      fullText: a.full_text,
+      sourceType: a._kind === 'condition' ? a.source_type : null,
+      kindBadge: kindBadgeFor(a),
+      rowId: c.id,
+      rowTitle: conditionLabel(c),
+    })))
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.id).localeCompare(String(a.id)));
+
+  function jumpToConditionTimeline(conditionId) {
+    const c = conditions.find(x => x.id === conditionId);
+    if (c) openTimeline(c);
+  }
 
   let showQuotePicker = false;
   let projectQuotes = [];
@@ -996,6 +1029,14 @@
   on:close={() => showAddConditions = false}
 />
 
+<MasterAdvancementsModal
+  bind:show={showMasterAdvancements}
+  title="All Advancements"
+  items={masterAdvancementItems}
+  onJumpToRow={jumpToConditionTimeline}
+  onClose={() => showMasterAdvancements = false}
+/>
+
 <AddAdvancementModal
   bind:show={showAddAdvancement}
   {projectId}
@@ -1338,6 +1379,9 @@
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => openAddAdvancement()} disabled={!conditions.length}>
         <i class="las la-history"></i> Add Advancement
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showMasterAdvancements = true} disabled={!conditions.length}>
+        <i class="las la-stream"></i> All Advancements
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => showBulkFeeQuote = true} disabled={!conditions.length} title="Draft a fee quote email for each condition (beta)">
         <i class="las la-flask"></i> Draft Fee Quote Emails

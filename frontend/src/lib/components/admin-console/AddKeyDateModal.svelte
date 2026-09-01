@@ -256,7 +256,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    /* Higher than every modal/drawer this can be opened from (tracker
+       timeline drawers sit at 9999, the Overview widget's popups at 2000)
+       so it always ends up on top rather than trapped underneath. */
+    z-index: 10000;
     padding: 1rem;
   }
 

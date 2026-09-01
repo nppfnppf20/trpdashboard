@@ -9,6 +9,7 @@
   import PublicCommentsTab from '$lib/components/projects/PublicCommentsTab.svelte';
   import BatchImportModal from '$lib/components/projects/BatchImportModal.svelte';
   import AddConsultationAdvancementModal from '$lib/components/projects/AddConsultationAdvancementModal.svelte';
+  import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
   import ExportConsultationModal from '$lib/components/projects/ExportConsultationModal.svelte';
   import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
   import AdvancementSourceBadge from '$lib/components/projects/AdvancementSourceBadge.svelte';
@@ -506,6 +507,27 @@
   $: timelineResponse = responses.find(r => r.id === timelineResponseId) || null;
 
   function openTimeline(r) { timelineResponseId = r.id; }
+
+  // ── Master advancements (all responses, flattened) ─────────────────────────
+  let showMasterAdvancements = false;
+
+  $: masterAdvancementItems = responses
+    .flatMap(r => sortAdvancements(r.advancements || []).map(a => ({
+      id: `${r.id}-${a.id}`,
+      date: a.advancement_date,
+      summary: a.summary,
+      fullText: a.full_text,
+      sourceType: a.source_type,
+      rowId: r.id,
+      rowTitle: r.consultee_name,
+      rowSubtitle: r.position ? toTitleCase(r.position) : null,
+    })))
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.id).localeCompare(String(a.id)));
+
+  function jumpToResponseTimeline(responseId) {
+    const r = responses.find(x => x.id === responseId);
+    if (r) openTimeline(r);
+  }
 
   function closeTimeline() {
     timelineResponseId = null;
@@ -1364,6 +1386,14 @@ ${sections.join('<br>')}`;
   </div>
 {/if}
 
+<MasterAdvancementsModal
+  bind:show={showMasterAdvancements}
+  title="All Advancements"
+  items={masterAdvancementItems}
+  onJumpToRow={jumpToResponseTimeline}
+  onClose={() => showMasterAdvancements = false}
+/>
+
 <AddConsultationAdvancementModal
   bind:show={showAddAdvancement}
   {projectId}
@@ -1412,6 +1442,9 @@ ${sections.join('<br>')}`;
       </button>
       <button class="btn btn-secondary btn-sm" on:click={() => openAddAdvancement()} disabled={!responses.length}>
         <i class="las la-history"></i> Add Advancement
+      </button>
+      <button class="btn btn-secondary btn-sm" on:click={() => showMasterAdvancements = true} disabled={!responses.length}>
+        <i class="las la-stream"></i> All Advancements
       </button>
     </div>
     <div class="ct-topbar-right">
