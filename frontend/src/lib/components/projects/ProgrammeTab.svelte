@@ -133,10 +133,19 @@
     return date >= weekStart && date <= weekEnd;
   }
 
-  function buildWeeks(events, keyDates, quotesForDates, directKeyDates) {
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+  function shiftWeeks(date, n) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + n * 7);
+    return d;
+  }
+
+  // The data-driven minimum range — grows/shrinks with what's actually on
+  // the programme. `now` is always included so the current week's column
+  // exists even if every real date is weeks away from it.
+  function computeBaseRange(events, keyDates, quotesForDates, directKeyDates) {
     const now = new Date();
-    // `now` is always included so the current week's column exists even if
-    // every actual date on the programme is weeks away from it.
     const allDates = [
       now,
       ...events.map(e => new Date(e.date)),
@@ -146,19 +155,24 @@
         .filter(Boolean).map(d => new Date(d))
     ].filter(d => !Number.isNaN(d.getTime()));
 
-    const startWeek = getWeekCommencing(new Date(Math.min(...allDates)));
-    startWeek.setDate(startWeek.getDate() - 14);
+    const start = getWeekCommencing(new Date(Math.min(...allDates)));
+    start.setDate(start.getDate() - 14);
 
-    const endWeek = getWeekCommencing(new Date(Math.max(...allDates)));
-    endWeek.setDate(endWeek.getDate() + 14);
+    const end = getWeekCommencing(new Date(Math.max(...allDates)));
+    end.setDate(end.getDate() + 14);
 
     const minWeeks = 12;
-    const spanWeeks = Math.max(minWeeks, Math.round((endWeek - startWeek) / (7 * 24 * 60 * 60 * 1000)) + 1);
+    const spanWeeks = Math.round((end - start) / WEEK_MS) + 1;
+    if (spanWeeks < minWeeks) end.setDate(end.getDate() + (minWeeks - spanWeeks) * 7);
 
-    const currentWeekStart = getWeekCommencing(now);
+    return { start, end };
+  }
 
+  function buildWeeksArray(start, end) {
+    const currentWeekStart = getWeekCommencing(new Date());
+    const spanWeeks = Math.round((end - start) / WEEK_MS) + 1;
     const weeks = [];
-    const current = new Date(startWeek);
+    const current = new Date(start);
     for (let i = 0; i < spanWeeks; i++) {
       weeks.push({
         date: new Date(current),
@@ -171,7 +185,21 @@
     return weeks;
   }
 
-  $: weeks = buildWeeks(programmeEvents, visibleKeyDates, visibleQuotes, allDirectKeyDates);
+  $: baseRange = computeBaseRange(programmeEvents, visibleKeyDates, visibleQuotes, allDirectKeyDates);
+
+  // The actually-rendered range — starts from baseRange, then only ever
+  // grows, either because the data-driven range widens, or because the user
+  // scrolled near an edge (see handleGridScroll below). Never shrinks, so a
+  // manual scroll-extension survives a data reload (e.g. after adding a date).
+  let rangeStart = null;
+  let rangeEnd = null;
+
+  $: if (baseRange) {
+    if (!rangeStart || baseRange.start < rangeStart) rangeStart = baseRange.start;
+    if (!rangeEnd || baseRange.end > rangeEnd) rangeEnd = baseRange.end;
+  }
+
+  $: weeks = (rangeStart && rangeEnd) ? buildWeeksArray(rangeStart, rangeEnd) : [];
 
   // ── Land on the current week, past weeks reachable by scrolling left ───────
   // Only runs once, right after the first real set of weeks renders — later
@@ -182,7 +210,7 @@
   let hasScrolledToToday = false;
 
   // Gated on !loading, not just weeks.length — weeks is non-empty even
-  // before the real data arrives (buildWeeks always includes "now"), so
+  // before the real data arrives (the base range always includes "now"), so
   // scrolling on that placeholder range could land on the wrong column
   // once the real date range shifts things after load() resolves.
   $: if (!loading && weeks.length && !hasScrolledToToday) {
@@ -197,6 +225,41 @@
     const stickyItemColWidth = 230;
     const delta = th.getBoundingClientRect().left - scrollEl.getBoundingClientRect().left - stickyItemColWidth;
     scrollEl.scrollLeft += delta;
+  }
+
+  // ── Semi-infinite scroll — open up more weeks as the user nears either
+  // edge, rather than hard-stopping at whatever range the data happened to
+  // produce. ───────────────────────────────────────────────────────────────
+  const EDGE_THRESHOLD_PX = 400;
+  const EXTEND_BY_WEEKS = 8;
+  let extendingBack = false;
+  let extendingForward = false;
+
+  function handleGridScroll() {
+    if (!scrollEl) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollEl;
+    if (scrollLeft < EDGE_THRESHOLD_PX) extendBackward();
+    if (scrollWidth - (scrollLeft + clientWidth) < EDGE_THRESHOLD_PX) extendForward();
+  }
+
+  async function extendBackward() {
+    if (extendingBack || !rangeStart) return;
+    extendingBack = true;
+    const prevScrollWidth = scrollEl.scrollWidth;
+    rangeStart = shiftWeeks(rangeStart, -EXTEND_BY_WEEKS);
+    await tick();
+    // Prepending columns pushes everything rightward by the new width —
+    // compensate so the view doesn't visibly jump.
+    scrollEl.scrollLeft += scrollEl.scrollWidth - prevScrollWidth;
+    extendingBack = false;
+  }
+
+  async function extendForward() {
+    if (extendingForward || !rangeEnd) return;
+    extendingForward = true;
+    rangeEnd = shiftWeeks(rangeEnd, EXTEND_BY_WEEKS);
+    await tick();
+    extendingForward = false;
   }
 
   // ── Chips per row/week ───────────────────────────────────────────────────
@@ -388,7 +451,7 @@
     </div>
   {:else}
     <div class="pg-grid-card">
-      <div class="pg-scroll" bind:this={scrollEl}>
+      <div class="pg-scroll" bind:this={scrollEl} on:scroll={handleGridScroll}>
         <table class="pg-grid">
           <thead>
             <tr>
