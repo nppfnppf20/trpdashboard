@@ -116,3 +116,54 @@ export async function deleteConsultationAdvancement(advancementId) {
   if (!res.ok) throw new Error('Failed to delete advancement');
   return res.json();
 }
+
+export async function getProjectQuotesForConsultation(projectId) {
+  const res = await authFetch(`/api/consultation/projects/${projectId}/quotes`);
+  if (!res.ok) throw new Error('Failed to fetch project quotes');
+  return res.json(); // { quotes: [{ id, status, total, organisation, discipline, contact_name }] }
+}
+
+export async function linkConsultationQuote(responseId, quoteId) {
+  const res = await authFetch(`/api/consultation/responses/${responseId}/quote-links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quote_id: quoteId }),
+  });
+  if (!res.ok) throw new Error('Failed to link quote');
+  return res.json();
+}
+
+export async function unlinkConsultationQuote(responseId, quoteId) {
+  const res = await authFetch(`/api/consultation/responses/${responseId}/quote-links/${quoteId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to unlink quote');
+  return res.json();
+}
+
+export async function createConsultationKeyDate(responseId, fields) {
+  const res = await authFetch(`/api/consultation/responses/${responseId}/key-dates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to create key date');
+  }
+  return res.json();
+}
+
+export async function updateConsultationKeyDate(keyDateId, fields) {
+  const res = await authFetch(`/api/consultation/key-dates/${keyDateId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) throw new Error('Failed to update key date');
+  return res.json();
+}
+
+export async function deleteConsultationKeyDate(keyDateId) {
+  const res = await authFetch(`/api/consultation/key-dates/${keyDateId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete key date');
+  return res.json();
+}

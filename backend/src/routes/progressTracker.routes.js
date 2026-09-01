@@ -17,6 +17,9 @@ import {
   listProjectQuotes,
   linkIssueQuote,
   unlinkIssueQuote,
+  createIssueKeyDate,
+  updateIssueKeyDate,
+  deleteIssueKeyDate,
   markExported,
   markIssuedToClient,
 } from '../controllers/progressTracker.controller.js';
@@ -42,5 +45,8 @@ router.post('/projects/:projectId/actions/commit-drafted', commitDraftedActions)
 router.get('/projects/:projectId/quotes', listProjectQuotes);
 router.post('/issues/:issueId/quote-links', linkIssueQuote);
 router.delete('/issues/:issueId/quote-links/:quoteId', unlinkIssueQuote);
+router.post('/issues/:issueId/key-dates', createIssueKeyDate);
+router.put('/key-dates/:keyDateId', updateIssueKeyDate);
+router.delete('/key-dates/:keyDateId', deleteIssueKeyDate);
 
 export default router;

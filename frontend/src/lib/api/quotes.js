@@ -84,6 +84,13 @@ export async function getProjectIssuesForLinking(projectId, quoteId = null) {
   return await response.json();
 }
 
+export async function getProjectConsultationResponsesForLinking(projectId, quoteId = null) {
+  const url = `${API_BASE_URL}/quotes/projects/${projectId}/consultation-responses${quoteId ? `?quoteId=${quoteId}` : ''}`;
+  const response = await authFetch(url);
+  if (!response.ok) throw new Error('Failed to fetch project consultation responses');
+  return await response.json();
+}
+
 export async function getProgrammeEvents(projectId) {
   const response = await authFetch(`${API_BASE_URL}/quotes/projects/${projectId}/programme-events`);
   if (!response.ok) throw new Error('Failed to fetch programme events');

@@ -25,17 +25,36 @@ Content rules:
 - If the user has provided their own notes or a partial summary for a condition, treat that as authoritative — it takes precedence over your own reading of the source material. Refine it for clarity only; do not contradict it.
 - Plain text only — no markdown, no bullets, no headings.
 
+Date suggestion — optional, per item:
+- If the source material mentions a specific date that matters for SCHEDULING this condition's discharge going forward (a report due date, a site visit date, a submission deadline, a re-inspection date) — not the date of this update itself, and not a date already in the past relative to TODAY'S DATE given below — include a <DATE_SUGGESTION> block inside that <ITEM>.
+- Only include it when there is a genuinely new, specific, future, schedulable date. Omit it entirely otherwise — most items will have none. Never invent a date or guess one from vague phrasing ("in a few weeks").
+
 Return your response using EXACTLY this XML structure — one <ITEM> block per condition, in the same order they were given, nothing before the first <ITEM> and nothing after the last </ITEM>:
 
 <ITEM>
 <CONDITION_ID>the numeric id given for the condition</CONDITION_ID>
 <SUMMARY>the 1-2 sentence progress summary</SUMMARY>
+<DATE_SUGGESTION>
+<DATE>the date in YYYY-MM-DD format</DATE>
+<TITLE>a short label for what happens on that date, e.g. "Draft report due"</TITLE>
+</DATE_SUGGESTION>
 </ITEM>`;
 
 function extractTag(text, tag) {
   const re = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
   const m = text.match(re);
   return m ? m[1].trim() : null;
+}
+
+// Optional <DATE_SUGGESTION><DATE>...</DATE><TITLE>...</TITLE></DATE_SUGGESTION>
+// nested inside an <ITEM> — null if absent or malformed.
+function extractDateSuggestion(block) {
+  const dsBlock = extractTag(block, 'DATE_SUGGESTION');
+  if (!dsBlock) return null;
+  const date = extractTag(dsBlock, 'DATE');
+  const title = extractTag(dsBlock, 'TITLE');
+  if (!date || !title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return { date, title };
 }
 
 function parseConditionAdvancementItems(raw, logLabel, errorMessage) {
@@ -49,6 +68,7 @@ function parseConditionAdvancementItems(raw, logLabel, errorMessage) {
     .map(block => ({
       condition_id: parseInt(extractTag(block, 'CONDITION_ID'), 10),
       summary: extractTag(block, 'SUMMARY'),
+      date_suggestion: extractDateSuggestion(block),
     }))
     .filter(s => Number.isFinite(s.condition_id) && s.summary);
 }
@@ -70,7 +90,9 @@ Previous progress entries (newest first):
 ${history}${targets}${c.user_summary ? `\nUser's own notes for this condition (authoritative): ${c.user_summary}` : ''}`;
   }).join('\n\n');
 
-  const content = `SOURCE MATERIAL:
+  const content = `TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}
+
+SOURCE MATERIAL:
 
 ${(fullText || '').slice(0, 80000)}
 

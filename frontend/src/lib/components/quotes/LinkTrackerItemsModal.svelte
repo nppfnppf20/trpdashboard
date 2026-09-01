@@ -1,8 +1,9 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { getProjectConditionsForLinking, getProjectIssuesForLinking } from '$lib/api/quotes.js';
+  import { getProjectConditionsForLinking, getProjectIssuesForLinking, getProjectConsultationResponsesForLinking } from '$lib/api/quotes.js';
   import { linkConditionQuote, unlinkConditionQuote } from '$lib/api/conditions.js';
   import { linkIssueQuote, unlinkIssueQuote, createIssue } from '$lib/api/progressTracker.js';
+  import { linkConsultationQuote, unlinkConsultationQuote } from '$lib/api/consultation.js';
 
   export let show = false;
   export let projectPk;   // integer project id (public.projects.id)
@@ -13,10 +14,13 @@
 
   let conditions = [];
   let issues = [];
+  let consultationResponses = [];
   let originalLinkedConditionIds = new Set();
   let originalLinkedIssueIds = new Set();
+  let originalLinkedResponseIds = new Set();
   let checkedConditionIds = new Set();
   let checkedIssueIds = new Set();
+  let checkedResponseIds = new Set();
   let loading = false;
   let saving = false;
   let error = null;
@@ -55,16 +59,20 @@
     loading = true;
     error = null;
     try {
-      const [{ conditions: conditionRows }, { issues: issueRows }] = await Promise.all([
+      const [{ conditions: conditionRows }, { issues: issueRows }, { responses: responseRows }] = await Promise.all([
         getProjectConditionsForLinking(projectPk, quote.id),
         getProjectIssuesForLinking(projectPk, quote.id),
+        getProjectConsultationResponsesForLinking(projectPk, quote.id),
       ]);
       conditions = conditionRows;
       issues = issueRows;
+      consultationResponses = responseRows;
       originalLinkedConditionIds = new Set(conditionRows.filter(c => c.linked).map(c => c.id));
       originalLinkedIssueIds = new Set(issueRows.filter(i => i.linked).map(i => i.id));
+      originalLinkedResponseIds = new Set(responseRows.filter(r => r.linked).map(r => r.id));
       checkedConditionIds = new Set(originalLinkedConditionIds);
       checkedIssueIds = new Set(originalLinkedIssueIds);
+      checkedResponseIds = new Set(originalLinkedResponseIds);
     } catch (err) {
       error = err.message;
     } finally {
@@ -84,6 +92,12 @@
     checkedIssueIds = next;
   }
 
+  function toggleResponse(id) {
+    const next = new Set(checkedResponseIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    checkedResponseIds = next;
+  }
+
   async function save() {
     saving = true;
     error = null;
@@ -97,6 +111,11 @@
       const issueToUnlink = [...originalLinkedIssueIds].filter(id => !checkedIssueIds.has(id));
       for (const id of issueToLink) await linkIssueQuote(id, quote.id);
       for (const id of issueToUnlink) await unlinkIssueQuote(id, quote.id);
+
+      const responseToLink = [...checkedResponseIds].filter(id => !originalLinkedResponseIds.has(id));
+      const responseToUnlink = [...originalLinkedResponseIds].filter(id => !checkedResponseIds.has(id));
+      for (const id of responseToLink) await linkConsultationQuote(id, quote.id);
+      for (const id of responseToUnlink) await unlinkConsultationQuote(id, quote.id);
 
       dispatch('done');
       close();
@@ -113,6 +132,7 @@
     loaded = false;
     conditions = [];
     issues = [];
+    consultationResponses = [];
     newIssueTitle = '';
     createIssueError = null;
     dispatch('close');
@@ -124,7 +144,7 @@
     <div class="modal modal-link-items">
       <div class="modal-header">
         <span class="modal-title">
-          {justInstructed ? `Tag this survey: ${quote?.surveyor_organisation || 'Quote'}` : `Link to Conditions / Issues: ${quote?.surveyor_organisation || 'Quote'}`}
+          {justInstructed ? `Tag this survey: ${quote?.surveyor_organisation || 'Quote'}` : `Link to Conditions / Issues / Consultation: ${quote?.surveyor_organisation || 'Quote'}`}
         </span>
         <button class="modal-close" on:click={close}>&times;</button>
       </div>
@@ -182,6 +202,22 @@
               </button>
             </div>
             {#if createIssueError}<div class="lc-error">{createIssueError}</div>{/if}
+          </div>
+
+          <div class="lc-section">
+            <span class="lc-section-label">Consultation</span>
+            {#if consultationResponses.length === 0}
+              <p class="lc-empty">No consultation responses on this project yet.</p>
+            {:else}
+              <div class="lc-list">
+                {#each consultationResponses as r (r.id)}
+                  <label class="lc-row">
+                    <input type="checkbox" checked={checkedResponseIds.has(r.id)} on:change={() => toggleResponse(r.id)} />
+                    <span class="lc-row-text">{r.title}</span>
+                  </label>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
         {#if error}<div class="lc-error">{error}</div>{/if}

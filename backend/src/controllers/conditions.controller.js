@@ -37,7 +37,7 @@ export async function feeQuoteWorks(req, res) {
 export async function getConditionsData(req, res) {
   const { projectId } = req.params;
   try {
-    const [{ rows: conditions }, { rows: requirements }, { rows: advancements }, { rows: advReqLinks }, { rows: quoteLinks }, { rows: quoteActions }, { rows: quoteKeyDates }, { rows: meta }] = await Promise.all([
+    const [{ rows: conditions }, { rows: requirements }, { rows: advancements }, { rows: advReqLinks }, { rows: quoteLinks }, { rows: quoteActions }, { rows: quoteKeyDates }, { rows: keyDates }, { rows: meta }] = await Promise.all([
       pool.query(
         `SELECT id, condition_number, title, condition_type, wording, reason, initial_actions,
                 original_consultant, original_consultant_email, fee_quote_requested_at,
@@ -113,6 +113,14 @@ export async function getConditionsData(req, res) {
         [projectId]
       ),
       pool.query(
+        `SELECT ckd.id, ckd.condition_id, ckd.title, ckd.date, ckd.colour
+         FROM planning_applications.condition_key_dates ckd
+         JOIN planning_applications.conditions c ON c.id = ckd.condition_id
+         WHERE c.project_id = $1
+         ORDER BY ckd.date ASC, ckd.id ASC`,
+        [projectId]
+      ),
+      pool.query(
         `SELECT last_exported_at, last_issued_to_client_at
          FROM planning_applications.conditions_tracker_meta
          WHERE project_id = $1`,
@@ -155,11 +163,16 @@ export async function getConditionsData(req, res) {
         key_dates: keyDatesByQuote[link.quote_id] || [],
       });
     }
+    const keyDatesByCondition = {};
+    for (const kd of keyDates) {
+      (keyDatesByCondition[kd.condition_id] ||= []).push(kd);
+    }
     const withRequirements = conditions.map(c => ({
       ...c,
       requirements: byCondition[c.id] || [],
       advancements: advByCondition[c.id] || [],
       linked_quotes: quotesByCondition[c.id] || [],
+      key_dates: keyDatesByCondition[c.id] || [],
     }));
 
     res.json({
@@ -761,6 +774,62 @@ export async function unlinkConditionQuote(req, res) {
   } catch (err) {
     console.error('conditions.unlinkConditionQuote error:', err);
     res.status(500).json({ error: 'Failed to unlink quote' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Key dates owned directly by the condition — no linked quote required.
+// Independent of the quote-linking above; Programme shows both.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createConditionKeyDate(req, res) {
+  const { conditionId } = req.params;
+  const { title, date, colour } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  if (!date) return res.status(400).json({ error: 'date is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.condition_key_dates (condition_id, title, date, colour)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [conditionId, title.trim(), date, colour?.trim() || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('conditions.createConditionKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to create key date' });
+  }
+}
+
+export async function updateConditionKeyDate(req, res) {
+  const { keyDateId } = req.params;
+  const { title, date, colour } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.condition_key_dates SET
+         title      = COALESCE($2, title),
+         date       = COALESCE($3, date),
+         colour     = CASE WHEN $4 THEN $5 ELSE colour END,
+         updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [keyDateId, title?.trim() || null, date || null, 'colour' in req.body, colour?.trim() || null]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('conditions.updateConditionKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to update key date' });
+  }
+}
+
+export async function deleteConditionKeyDate(req, res) {
+  const { keyDateId } = req.params;
+  try {
+    await pool.query(`DELETE FROM planning_applications.condition_key_dates WHERE id = $1`, [keyDateId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('conditions.deleteConditionKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to delete key date' });
   }
 }
 

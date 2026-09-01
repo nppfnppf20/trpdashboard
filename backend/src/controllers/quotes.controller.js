@@ -179,6 +179,28 @@ export async function listProjectIssues(req, res) {
 }
 
 /**
+ * GET /api/admin-console/quotes/projects/:projectId/consultation-responses
+ * Lightweight list of a project's Consultation Tracker responses for the
+ * "link to condition(s)/issue(s)/response(s)" pickers in Surveyor Management.
+ * :projectId here is the integer PK. Optional ?quoteId= marks which rows are
+ * already linked to that quote.
+ */
+export async function listProjectConsultationResponses(req, res) {
+  try {
+    const { projectId } = req.params;
+    const { quoteId } = req.query;
+    const responses = await quotesService.listProjectConsultationResponsesForLinking(projectId, quoteId || null);
+    res.json({ responses });
+  } catch (error) {
+    console.error('Error fetching project consultation responses for linking:', error);
+    res.status(500).json({
+      error: 'Failed to fetch project consultation responses',
+      details: error.message
+    });
+  }
+}
+
+/**
  * GET /api/admin-console/projects/:projectId/programme-events
  * Get programme events for a project
  */

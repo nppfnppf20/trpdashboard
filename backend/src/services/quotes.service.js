@@ -94,9 +94,10 @@ export async function getQuotes(filters = {}) {
         ) ORDER BY qli.created_at
       ) FILTER (WHERE qli.id IS NOT NULL) as line_items,
 
-      -- Linked tracker items (Conditions Tracker / Issues Tracker), for Programme
-      -- grouping and the instruct-time "link to an issue" prompt. Correlated
-      -- subqueries rather than joins so they can't multiply the line_items rows.
+      -- Linked tracker items (Conditions / Issues / Consultation Tracker), for
+      -- Programme grouping and the instruct-time "link to an issue" prompt.
+      -- Correlated subqueries rather than joins so they can't multiply the
+      -- line_items rows.
       COALESCE((
         SELECT json_agg(jsonb_build_object('id', cond.id, 'title', cond.title, 'condition_number', cond.condition_number, 'sort_order', cond.sort_order) ORDER BY cond.sort_order, cond.id)
         FROM planning_applications.condition_quote_links cql
@@ -108,7 +109,13 @@ export async function getQuotes(filters = {}) {
         FROM planning_applications.progress_issue_quote_links piql
         JOIN planning_applications.progress_issues iss ON iss.id = piql.issue_id
         WHERE piql.quote_id = q.id
-      ), '[]') as linked_issues
+      ), '[]') as linked_issues,
+      COALESCE((
+        SELECT json_agg(jsonb_build_object('id', resp.id, 'title', resp.consultee_name, 'sort_order', resp.sort_order) ORDER BY resp.sort_order, resp.id)
+        FROM planning_applications.consultation_response_quote_links crql
+        JOIN planning_applications.consultation_responses resp ON resp.id = crql.response_id
+        WHERE crql.quote_id = q.id
+      ), '[]') as linked_consultation_responses
 
     FROM admin_console.quotes q
     LEFT JOIN public.projects p ON p.unique_id = q.project_id
@@ -263,6 +270,26 @@ export async function listProjectIssuesForLinking(projectId, quoteId = null) {
     FROM planning_applications.progress_issues i
     WHERE i.project_id = $1
     ORDER BY i.sort_order ASC, i.id ASC
+  `;
+  const result = await pool.query(query, [projectId, quoteId]);
+  return result.rows;
+}
+
+/**
+ * Lightweight list of a project's Consultation Tracker responses, for the
+ * "link to condition(s)/issue(s)/response(s)" pickers in Surveyor Management.
+ * Same shape/pattern as listProjectConditionsForLinking / listProjectIssuesForLinking.
+ */
+export async function listProjectConsultationResponsesForLinking(projectId, quoteId = null) {
+  const query = `
+    SELECT r.id, r.consultee_name AS title,
+           EXISTS (
+             SELECT 1 FROM planning_applications.consultation_response_quote_links crql
+             WHERE crql.response_id = r.id AND crql.quote_id = $2::uuid
+           ) AS linked
+    FROM planning_applications.consultation_responses r
+    WHERE r.project_id = $1
+    ORDER BY r.sort_order ASC, r.id ASC
   `;
   const result = await pool.query(query, [projectId, quoteId]);
   return result.rows;

@@ -16,6 +16,9 @@ import {
   listProjectQuotes,
   linkConditionQuote,
   unlinkConditionQuote,
+  createConditionKeyDate,
+  updateConditionKeyDate,
+  deleteConditionKeyDate,
   markExported,
   markIssuedToClient,
 } from '../controllers/conditions.controller.js';
@@ -40,5 +43,8 @@ router.delete('/advancements/:advancementId', deleteAdvancement);
 router.get('/projects/:projectId/quotes', listProjectQuotes);
 router.post('/conditions/:conditionId/quote-links', linkConditionQuote);
 router.delete('/conditions/:conditionId/quote-links/:quoteId', unlinkConditionQuote);
+router.post('/conditions/:conditionId/key-dates', createConditionKeyDate);
+router.put('/key-dates/:keyDateId', updateConditionKeyDate);
+router.delete('/key-dates/:keyDateId', deleteConditionKeyDate);
 
 export default router;

@@ -142,6 +142,35 @@ export async function unlinkConditionQuote(conditionId, quoteId) {
   return res.json();
 }
 
+export async function createConditionKeyDate(conditionId, fields) {
+  const res = await authFetch(`/api/conditions/conditions/${conditionId}/key-dates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to create key date');
+  }
+  return res.json();
+}
+
+export async function updateConditionKeyDate(keyDateId, fields) {
+  const res = await authFetch(`/api/conditions/key-dates/${keyDateId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) throw new Error('Failed to update key date');
+  return res.json();
+}
+
+export async function deleteConditionKeyDate(keyDateId) {
+  const res = await authFetch(`/api/conditions/key-dates/${keyDateId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete key date');
+  return res.json();
+}
+
 export async function markConditionsExported(projectId) {
   const res = await authFetch(`/api/conditions/projects/${projectId}/export`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to record export');

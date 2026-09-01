@@ -9,6 +9,7 @@
   import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
   import AdvancementSourceBadge from '$lib/components/projects/AdvancementSourceBadge.svelte';
   import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
+  import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
   import { createQuoteKeyDate } from '$lib/api/quotes.js';
   import {
     getProgressData,
@@ -25,6 +26,9 @@
     getProjectQuotesForIssues,
     linkIssueQuote,
     unlinkIssueQuote,
+    createIssueKeyDate,
+    updateIssueKeyDate,
+    deleteIssueKeyDate,
   } from '$lib/api/progressTracker.js';
 
   export let project;
@@ -466,6 +470,47 @@
     keyDateForQuote = null;
   }
 
+  // ── Key dates owned directly by the issue — no linked quote required.
+  // Independent of the per-linked-quote dates above; Programme shows both. ──
+  let showDirectKeyDateModal = false;
+  let editingDirectKeyDate = null; // null = adding new, row = editing existing
+
+  function openAddDirectKeyDate() {
+    editingDirectKeyDate = null;
+    showDirectKeyDateModal = true;
+  }
+
+  function openEditDirectKeyDate(kd) {
+    editingDirectKeyDate = kd;
+    showDirectKeyDateModal = true;
+  }
+
+  async function handleDirectKeyDateSubmit(event) {
+    const { data, isEdit } = event.detail;
+    try {
+      if (isEdit) {
+        await updateIssueKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+      } else {
+        await createIssueKeyDate(timelineIssueId, { title: data.title, date: data.date, colour: data.color });
+      }
+      await refreshData();
+    } catch (err) {
+      alert('Failed to save key date: ' + err.message);
+    }
+    showDirectKeyDateModal = false;
+    editingDirectKeyDate = null;
+  }
+
+  async function removeDirectKeyDate(id) {
+    if (!confirm('Delete this key date?')) return;
+    try {
+      await deleteIssueKeyDate(id);
+      await refreshData();
+    } catch (err) {
+      alert('Failed to delete key date: ' + err.message);
+    }
+  }
+
   function formatQuoteTotal(total) {
     const n = Number(total);
     return Number.isFinite(n) && n > 0 ? `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}` : null;
@@ -542,6 +587,7 @@
     tlAddSubIds = {};
     tlAddError = null;
     tlAddGenerated = false;
+    tlDateSuggestion = null;
     showAddStageInline = false;
     newStageNameInline = '';
     showTlAdd = true;
@@ -556,6 +602,8 @@
 
   // Fill the blank summary from the pasted text (issue title/discipline and
   // previous actions are read server-side). No-ops once a summary is typed.
+  let tlDateSuggestion = null;
+
   async function generateTlSummary() {
     if (tlAddForm.summary.trim() || !tlAddForm.full_text.trim()) return;
     tlAddGenerating = true;
@@ -568,6 +616,7 @@
       if (suggestions[0]?.summary) {
         tlAddForm = { ...tlAddForm, summary: suggestions[0].summary };
         tlAddGenerated = true;
+        tlDateSuggestion = suggestions[0].date_suggestion || null;
       } else {
         tlAddError = 'Could not generate a summary - please type one.';
       }
@@ -575,6 +624,17 @@
       tlAddError = err.message;
     } finally {
       tlAddGenerating = false;
+    }
+  }
+
+  async function acceptTlDateSuggestion() {
+    try {
+      await createIssueKeyDate(timelineIssueId, { title: tlDateSuggestion.title, date: tlDateSuggestion.date });
+      await refreshData();
+      return true;
+    } catch (err) {
+      alert('Failed to add key date: ' + err.message);
+      return false;
     }
   }
 
@@ -738,6 +798,15 @@
   on:close={() => { showAddKeyDateModal = false; keyDateForQuote = null; }}
 />
 
+<AddKeyDateModal
+  bind:show={showDirectKeyDateModal}
+  type="issue"
+  typeLabel="Key Date"
+  existingDate={editingDirectKeyDate}
+  on:submit={handleDirectKeyDateSubmit}
+  on:close={() => { showDirectKeyDateModal = false; editingDirectKeyDate = null; }}
+/>
+
 <AddActionModal
   bind:show={showAddAction}
   {projectId}
@@ -832,6 +901,27 @@
           {/if}
         </div>
 
+        <div class="tl-quotes">
+          <div class="tl-quotes-hd">
+            <span class="tl-quotes-label"><i class="las la-calendar-alt"></i> Key Dates</span>
+            <button class="ct-expand-btn" on:click={openAddDirectKeyDate}>+ Add key date</button>
+          </div>
+          {#if timelineIssue.key_dates?.length}
+            <div class="tl-quote-keydates">
+              {#each timelineIssue.key_dates as kd (kd.id)}
+                <span class="tl-quote-keydate tl-direct-keydate" on:click={() => openEditDirectKeyDate(kd)}>
+                  {kd.title} - {formatDate(kd.date)}
+                  <button class="tl-quote-unlink" title="Delete" on:click|stopPropagation={() => removeDirectKeyDate(kd.id)}>
+                    <i class="las la-times"></i>
+                  </button>
+                </span>
+              {/each}
+            </div>
+          {:else}
+            <p class="tl-quotes-none">No key dates on this issue yet.</p>
+          {/if}
+        </div>
+
         <div class="tl-quick-actions">
           <button class="tl-add-btn" on:click={openTlAdd} class:tl-add-btn-hidden={showTlAdd}>
             <i class="las la-plus"></i> Add Advancement
@@ -903,6 +993,9 @@
               placeholder="Summary - leave blank to auto-summarise from the text above…"></textarea>
             {#if tlAddGenerated}
               <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
+            {/if}
+            {#if tlDateSuggestion}
+              <KeyDateSuggestionCard suggestion={tlDateSuggestion} onAccept={acceptTlDateSuggestion} onDismiss={() => tlDateSuggestion = null} />
             {/if}
             {#if tlAddError}<div class="tl-error">{tlAddError}</div>{/if}
             <div class="tl-add-btns">
@@ -1522,6 +1615,13 @@
   .tl-quote-keydate {
     background: var(--color-red-50); border: 1px solid var(--color-amber-200); color: var(--color-amber-800); border-radius: 6px; padding: 1px 7px;
   }
+  .tl-direct-keydate { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+  .tl-direct-keydate .tl-quote-unlink {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border: none; background: none; padding: 0;
+    color: inherit; opacity: 0.6; cursor: pointer; font-size: 0.65rem;
+  }
+  .tl-direct-keydate .tl-quote-unlink:hover { opacity: 1; }
   .tl-quote-org {
     font-size: 0.78rem; font-weight: 600; color: var(--color-slate-800); flex: 1; min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

@@ -7,6 +7,8 @@
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
+  import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
+  import { createProgrammeEvent } from '$lib/api/quotes.js';
   import {
     consumePendingMeetingUploadFile,
     consumePendingMeetingUploadText
@@ -47,6 +49,7 @@
   let reviewSaving = false;
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
   let reviewError = null;
+  let reviewDateSuggestions = []; // dates spotted in the transcript, offered alongside the Issues Tracker prompt
 
   // Note type — drives which fields/buttons show in the Add Note card.
   // Starts unselected: the user must explicitly choose one before the
@@ -463,6 +466,7 @@
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
+      reviewDateSuggestions = (result.dateSuggestions || []).map((d, i) => ({ ...d, _key: i }));
       reviewOpen = true;
     } catch (err) {
       uploadError = err.message;
@@ -496,12 +500,23 @@
     reviewSummaryHtml = '';
     reviewSaved = false;
     reviewError = null;
+    reviewDateSuggestions = [];
   }
 
   function reviewAddToIssuesTracker() {
     issuesPromptNoteId = reviewTranscript.id;
     showDraftIssuesModal = true;
     closeReview();
+  }
+
+  async function acceptReviewDateSuggestion(suggestion) {
+    try {
+      await createProgrammeEvent(project.unique_id, { title: suggestion.title, date: suggestion.date });
+      return true;
+    } catch (err) {
+      alert('Failed to add key date: ' + err.message);
+      return false;
+    }
   }
 
   // ── Note editor ───────────────────────────────────────────────────────────
@@ -978,6 +993,14 @@
               <button class="btn btn-ghost btn-sm" on:click={closeReview}>No, done</button>
             </div>
           </div>
+
+          {#if reviewDateSuggestions.length}
+            <div class="mn-date-suggestions">
+              {#each reviewDateSuggestions as d (d._key)}
+                <KeyDateSuggestionCard suggestion={d} onAccept={() => acceptReviewDateSuggestion(d)} />
+              {/each}
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -1550,6 +1573,7 @@
     font-weight: 500;
     color: var(--color-teal-600);
   }
+  .mn-date-suggestions { display: flex; flex-direction: column; gap: 0.5rem; }
   .mn-issues-prompt-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
   .mn-error-sm { color: var(--color-red-600); font-size: 0.8rem; margin: 0.25rem 0 0; }
   .mn-loading {

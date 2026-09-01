@@ -135,12 +135,31 @@ Content rules:
 - If the user has provided their own notes or a partial summary for a response, treat that as authoritative — it takes precedence over your own reading of the source material. Refine it for clarity only; do not contradict it.
 - Plain text only — no markdown, no bullets, no headings.
 
+Date suggestion — optional, per item:
+- If the source material mentions a specific date that matters for SCHEDULING this response going forward (a reply deadline, a submission deadline, a follow-up date) — not the date of this update itself, and not a date already in the past relative to TODAY'S DATE given below — include a <DATE_SUGGESTION> block inside that <ITEM>.
+- Only include it when there is a genuinely new, specific, future, schedulable date. Omit it entirely otherwise — most items will have none. Never invent a date or guess one from vague phrasing ("in a few weeks").
+
 Return your response using EXACTLY this XML structure — one <ITEM> block per response, in the same order they were given, nothing before the first <ITEM> and nothing after the last </ITEM>:
 
 <ITEM>
 <RESPONSE_ID>the numeric id given for the response</RESPONSE_ID>
 <SUMMARY>the 1-2 sentence progress summary</SUMMARY>
+<DATE_SUGGESTION>
+<DATE>the date in YYYY-MM-DD format</DATE>
+<TITLE>a short label for what happens on that date, e.g. "Reply due to Highways"</TITLE>
+</DATE_SUGGESTION>
 </ITEM>`;
+
+// Optional <DATE_SUGGESTION><DATE>...</DATE><TITLE>...</TITLE></DATE_SUGGESTION>
+// nested inside an <ITEM> — null if absent or malformed.
+function extractDateSuggestion(block) {
+  const dsBlock = extractTag(block, 'DATE_SUGGESTION');
+  if (!dsBlock) return null;
+  const date = extractTag(dsBlock, 'DATE');
+  const title = extractTag(dsBlock, 'TITLE');
+  if (!date || !title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return { date, title };
+}
 
 function parseAdvancementItems(raw, logLabel, errorMessage) {
   const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
@@ -153,6 +172,7 @@ function parseAdvancementItems(raw, logLabel, errorMessage) {
     .map(block => ({
       response_id: parseInt(extractTag(block, 'RESPONSE_ID'), 10),
       summary: extractTag(block, 'SUMMARY'),
+      date_suggestion: extractDateSuggestion(block),
     }))
     .filter(s => Number.isFinite(s.response_id) && s.summary);
 }
@@ -170,7 +190,9 @@ Previous progress entries (newest first):
 ${history}${r.user_summary ? `\nUser's own notes for this response (authoritative): ${r.user_summary}` : ''}`;
   }).join('\n\n');
 
-  const content = `SOURCE MATERIAL:
+  const content = `TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}
+
+SOURCE MATERIAL:
 
 ${(fullText || '').slice(0, 80000)}
 

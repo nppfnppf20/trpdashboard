@@ -9,32 +9,45 @@
     updateQuoteKeyDate,
     deleteQuoteKeyDate
   } from '$lib/api/quotes.js';
+  import { getConditionsData, updateConditionKeyDate, deleteConditionKeyDate } from '$lib/api/conditions.js';
+  import { getProgressData, updateIssueKeyDate, deleteIssueKeyDate } from '$lib/api/progressTracker.js';
+  import { getConsultationData, updateConsultationKeyDate, deleteConsultationKeyDate } from '$lib/api/consultation.js';
   import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
   import ViewDateModal from '$lib/components/admin-console/ViewDateModal.svelte';
 
   export let project;
   $: projectId = project?.unique_id;
+  $: projectPk = project?.id;
 
   let quotes = [];
   let programmeEvents = [];
   let quoteKeyDates = [];
+  let conditions = [];
+  let issues = [];
+  let consultationResponses = [];
   let loading = true;
   let error = null;
 
-  $: if (projectId) load();
+  $: if (projectId && projectPk) load();
 
   async function load() {
     loading = true;
     error = null;
     try {
-      const [q, pe, kd] = await Promise.all([
+      const [q, pe, kd, condData, progData, consData] = await Promise.all([
         getQuotes({ projectId }),
         getProgrammeEvents(projectId),
-        getQuoteKeyDates(projectId)
+        getQuoteKeyDates(projectId),
+        getConditionsData(projectPk),
+        getProgressData(projectPk),
+        getConsultationData(projectPk)
       ]);
       quotes = q;
       programmeEvents = pe;
       quoteKeyDates = kd;
+      conditions = condData.conditions || [];
+      issues = progData.issues || [];
+      consultationResponses = consData.responses || [];
     } catch (err) {
       error = err.message;
     } finally {
@@ -42,38 +55,63 @@
     }
   }
 
-  // ── Group quotes by the Condition / Issue they're linked to ────────────────
-  // A quote linked to more than one tracker item appears once per item — same
-  // duplication the tracker timelines themselves already show.
+  // ── Group rows by tracker item — a row shows up if it has its own direct
+  // key dates, or a linked quote (with or without dates yet), or both. No
+  // longer gated on having a linked quote at all. ────────────────────────────
   function conditionNumberValue(num) {
     const digits = (num || '').replace(/\D/g, '');
     return digits ? parseInt(digits, 10) : 999999;
   }
 
-  function buildGroups(allQuotes, field) {
-    const map = new Map();
-    for (const q of allQuotes) {
-      for (const link of q[field] || []) {
-        if (!map.has(link.id)) map.set(link.id, { ...link, quotes: [] });
-        map.get(link.id).quotes.push(q);
-      }
-    }
-    return [...map.values()];
+  function quotesLinkedTo(field, id) {
+    return quotes.filter(q => (q[field] || []).some(link => link.id === id));
   }
 
-  $: conditionGroups = buildGroups(quotes, 'linked_conditions').sort((a, b) =>
-    (a.sort_order ?? 999999) - (b.sort_order ?? 999999)
-    || conditionNumberValue(a.condition_number) - conditionNumberValue(b.condition_number)
-    || a.id - b.id
-  );
+  $: conditionGroups = conditions
+    .map(c => ({
+      id: c.id,
+      title: c.title,
+      condition_number: c.condition_number,
+      sort_order: c.sort_order,
+      key_dates: c.key_dates || [],
+      kind: 'condition',
+      quotes: quotesLinkedTo('linked_conditions', c.id)
+    }))
+    .filter(g => g.key_dates.length > 0 || g.quotes.length > 0)
+    .sort((a, b) =>
+      (a.sort_order ?? 999999) - (b.sort_order ?? 999999)
+      || conditionNumberValue(a.condition_number) - conditionNumberValue(b.condition_number)
+      || a.id - b.id
+    );
 
-  $: issueGroups = buildGroups(quotes, 'linked_issues').sort((a, b) =>
-    (a.sort_order ?? 999999) - (b.sort_order ?? 999999) || a.id - b.id
-  );
+  $: issueGroups = issues
+    .map(i => ({
+      id: i.id,
+      title: i.title,
+      sort_order: i.sort_order,
+      key_dates: i.key_dates || [],
+      kind: 'issue',
+      quotes: quotesLinkedTo('linked_issues', i.id)
+    }))
+    .filter(g => g.key_dates.length > 0 || g.quotes.length > 0)
+    .sort((a, b) => (a.sort_order ?? 999999) - (b.sort_order ?? 999999) || a.id - b.id);
 
-  $: linkedQuoteIds = new Set([...conditionGroups, ...issueGroups].flatMap(g => g.quotes.map(q => q.id)));
+  $: consultationGroups = consultationResponses
+    .map(r => ({
+      id: r.id,
+      title: r.consultee_name,
+      sort_order: r.sort_order,
+      key_dates: r.key_dates || [],
+      kind: 'consultation',
+      quotes: quotesLinkedTo('linked_consultation_responses', r.id)
+    }))
+    .filter(g => g.key_dates.length > 0 || g.quotes.length > 0)
+    .sort((a, b) => (a.sort_order ?? 999999) - (b.sort_order ?? 999999) || a.id - b.id);
+
+  $: linkedQuoteIds = new Set([...conditionGroups, ...issueGroups, ...consultationGroups].flatMap(g => g.quotes.map(q => q.id)));
   $: visibleQuotes = quotes.filter(q => linkedQuoteIds.has(q.id));
   $: visibleKeyDates = quoteKeyDates.filter(kd => linkedQuoteIds.has(kd.quote_id));
+  $: allDirectKeyDates = [...conditionGroups, ...issueGroups, ...consultationGroups].flatMap(g => g.key_dates);
 
   // ── Week columns ─────────────────────────────────────────────────────────
   function getWeekCommencing(date) {
@@ -92,10 +130,11 @@
     return date >= weekStart && date <= weekEnd;
   }
 
-  function buildWeeks(events, keyDates, quotesForDates) {
+  function buildWeeks(events, keyDates, quotesForDates, directKeyDates) {
     const allDates = [
       ...events.map(e => new Date(e.date)),
       ...keyDates.map(kd => new Date(kd.date)),
+      ...directKeyDates.map(kd => new Date(kd.date)),
       ...quotesForDates.flatMap(q => [q.site_visit_date, q.report_draft_date, q.report_final_date])
         .filter(Boolean).map(d => new Date(d))
     ].filter(d => !Number.isNaN(d.getTime()));
@@ -123,13 +162,23 @@
     return weeks;
   }
 
-  $: weeks = buildWeeks(programmeEvents, visibleKeyDates, visibleQuotes);
+  $: weeks = buildWeeks(programmeEvents, visibleKeyDates, visibleQuotes, allDirectKeyDates);
 
   // ── Chips per row/week ───────────────────────────────────────────────────
   function milestoneChipsForWeek(weekStart) {
     return programmeEvents
       .filter(pe => isDateInWeek(pe.date, weekStart))
       .map(pe => ({ id: pe.id, title: pe.title, date: pe.date, colour: pe.colour || 'var(--color-primary-700)', type: 'project' }));
+  }
+
+  // Direct key dates owned by a condition/issue/consultation row itself
+  function directChipsForWeek(group, weekStart) {
+    return group.key_dates
+      .filter(kd => isDateInWeek(kd.date, weekStart))
+      .map(kd => ({
+        id: kd.id, title: kd.title, date: kd.date, colour: kd.colour || 'var(--color-amber-500)',
+        label: (kd.title || '?').charAt(0).toUpperCase(), type: `direct-${group.kind}`
+      }));
   }
 
   function quoteChipsForWeek(quote, weekStart) {
@@ -151,9 +200,10 @@
     return chips;
   }
 
-  // ── Add / view / edit / delete (project milestones + editing existing
-  // quote key dates — adding a NEW quote key date now happens from inside
-  // the Conditions/Issues Tracker drawer, where the quote is already linked) ──
+  // ── Add / view / edit / delete ──────────────────────────────────────────
+  // Project milestones and editing existing dates all happen here. Adding a
+  // NEW date to a row or a linked quote happens from inside that Condition /
+  // Issue / Consultation response's own timeline drawer, where it belongs.
   let showAddKeyDateModal = false;
   let showViewDateModal = false;
   let selectedDate = null;
@@ -179,7 +229,7 @@
       return;
     }
     existingDateForEdit = date;
-    keyDateType = date.type === 'project' ? 'project' : 'quote';
+    keyDateType = date.type;
     preSelectedDate = null;
     showViewDateModal = false;
     showAddKeyDateModal = true;
@@ -193,6 +243,15 @@
       } else if (date.type === 'quote') {
         await deleteQuoteKeyDate(date.id);
         quoteKeyDates = quoteKeyDates.filter(kd => kd.id !== date.id);
+      } else if (date.type === 'direct-condition') {
+        await deleteConditionKeyDate(date.id);
+        await load();
+      } else if (date.type === 'direct-issue') {
+        await deleteIssueKeyDate(date.id);
+        await load();
+      } else if (date.type === 'direct-consultation') {
+        await deleteConsultationKeyDate(date.id);
+        await load();
       } else {
         alert('Site Visit, Draft Report and Final Report dates come from the quote itself — remove them from Surveyor Management.');
       }
@@ -203,18 +262,33 @@
 
   async function handleSubmitDate(event) {
     const { type, data, isEdit } = event.detail;
-    try {
-      if (isEdit) {
-        if (type === 'project') {
-          const updated = await updateProgrammeEvent(data.id, { title: data.title, date: data.date, colour: data.color });
-          programmeEvents = programmeEvents.map(pe => pe.id === data.id ? { ...pe, ...updated } : pe);
-        } else {
-          const updated = await updateQuoteKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
-          quoteKeyDates = quoteKeyDates.map(kd => kd.id === data.id ? { ...kd, ...updated } : kd);
-        }
-      } else {
+    if (!isEdit) {
+      // Only project milestones can be created from Programme itself.
+      try {
         const newEvent = await createProgrammeEvent(projectId, { title: data.title, date: data.date, colour: data.color });
         programmeEvents = [...programmeEvents, newEvent];
+      } catch (err) {
+        alert('Failed to save date: ' + err.message);
+      }
+      showAddKeyDateModal = false;
+      return;
+    }
+    try {
+      if (type === 'project') {
+        const updated = await updateProgrammeEvent(data.id, { title: data.title, date: data.date, colour: data.color });
+        programmeEvents = programmeEvents.map(pe => pe.id === data.id ? { ...pe, ...updated } : pe);
+      } else if (type === 'quote') {
+        const updated = await updateQuoteKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+        quoteKeyDates = quoteKeyDates.map(kd => kd.id === data.id ? { ...kd, ...updated } : kd);
+      } else if (type === 'direct-condition') {
+        await updateConditionKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+        await load();
+      } else if (type === 'direct-issue') {
+        await updateIssueKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+        await load();
+      } else if (type === 'direct-consultation') {
+        await updateConsultationKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+        await load();
       }
     } catch (err) {
       alert('Failed to save date: ' + err.message);
@@ -236,11 +310,11 @@
     <div class="pg-state"><span class="pg-spinner"></span><p>Loading programme…</p></div>
   {:else if error}
     <div class="pg-state pg-state-error"><i class="las la-exclamation-triangle"></i><p>{error}</p></div>
-  {:else if conditionGroups.length === 0 && issueGroups.length === 0 && programmeEvents.length === 0}
+  {:else if conditionGroups.length === 0 && issueGroups.length === 0 && consultationGroups.length === 0 && programmeEvents.length === 0}
     <div class="pg-empty">
       <i class="las la-calendar-alt pg-empty-icon"></i>
       <p class="pg-empty-title">Nothing to schedule yet</p>
-      <p class="pg-empty-hint">Programme shows dates for surveys linked to a Condition or Issue. Link a survey to one from Surveyor Management once it's instructed, then add its key dates from that Condition or Issue's own timeline.</p>
+      <p class="pg-empty-hint">Programme shows key dates added directly to a Condition, Issue or Consultation response, plus dates from any survey quote linked to one. Add a key date from that item's own timeline in its tracker.</p>
     </div>
   {:else}
     <div class="pg-grid-card">
@@ -278,7 +352,14 @@
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
                   <td class="c2"></td><td class="c3"></td>
-                  {#each weeks as week}<td class="week"></td>{/each}
+                  {#each weeks as week}
+                    {@const chips = directChipsForWeek(g, week.date)}
+                    <td class="week">
+                      {#each chips as chip}
+                        <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
+                      {/each}
+                    </td>
+                  {/each}
                 </tr>
                 {#each g.quotes as quote (quote.id)}
                   <tr class="row-sub under-cond">
@@ -307,10 +388,53 @@
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
                   <td class="c2"></td><td class="c3"></td>
-                  {#each weeks as week}<td class="week"></td>{/each}
+                  {#each weeks as week}
+                    {@const chips = directChipsForWeek(g, week.date)}
+                    <td class="week">
+                      {#each chips as chip}
+                        <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
+                      {/each}
+                    </td>
+                  {/each}
                 </tr>
                 {#each g.quotes as quote (quote.id)}
                   <tr class="row-sub under-issue">
+                    <td class="c1"><span class="sub-org">{quote.surveyor_organisation || 'Unnamed surveyor'}</span></td>
+                    <td class="c2">{quote.surveyor_organisation || '—'}</td>
+                    <td class="c3"><span class="sub-discipline">{quote.discipline || '—'}</span></td>
+                    {#each weeks as week}
+                      {@const chips = quoteChipsForWeek(quote, week.date)}
+                      <td class="week">
+                        {#each chips as chip}
+                          <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
+                        {/each}
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              {/each}
+            {/if}
+
+            {#if consultationGroups.length}
+              <tr class="row-section"><td colspan={3 + weeks.length}><span class="dot dot-consultation"></span>Consultation Tracker</td></tr>
+              {#each consultationGroups as g (g.id)}
+                <tr class="row-consultation">
+                  <td class="c1">
+                    <span class="item-title">{g.title}</span>
+                    <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
+                  </td>
+                  <td class="c2"></td><td class="c3"></td>
+                  {#each weeks as week}
+                    {@const chips = directChipsForWeek(g, week.date)}
+                    <td class="week">
+                      {#each chips as chip}
+                        <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
+                      {/each}
+                    </td>
+                  {/each}
+                </tr>
+                {#each g.quotes as quote (quote.id)}
+                  <tr class="row-sub under-consultation">
                     <td class="c1"><span class="sub-org">{quote.surveyor_organisation || 'Unnamed surveyor'}</span></td>
                     <td class="c2">{quote.surveyor_organisation || '—'}</td>
                     <td class="c3"><span class="sub-discipline">{quote.discipline || '—'}</span></td>
@@ -334,7 +458,7 @@
         <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-primary-500)"></span>Site Visit</span>
         <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-violet-600)"></span>Draft Report</span>
         <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-emerald-500)"></span>Final Report</span>
-        <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-amber-500)"></span>Custom key date</span>
+        <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-amber-500)"></span>Key date</span>
         <span class="pg-legend-item"><span class="chip-diamond" style="background:var(--color-primary-700)"></span>Project milestone</span>
       </div>
     </div>
@@ -346,6 +470,7 @@
   {quotes}
   {projectId}
   type={keyDateType}
+  typeLabel={keyDateType.startsWith('direct-') ? 'Key Date' : null}
   {preSelectedDate}
   existingDate={existingDateForEdit}
   on:submit={handleSubmitDate}
@@ -452,21 +577,26 @@
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; }
   .dot-cond { background: var(--color-indigo-800); }
   .dot-issue { background: var(--color-amber-500); }
+  .dot-consultation { background: var(--color-violet-600); }
 
-  tr.row-cond .c1, tr.row-issue .c1 { border-left: 3px solid transparent; }
+  tr.row-cond .c1, tr.row-issue .c1, tr.row-consultation .c1 { border-left: 3px solid transparent; }
   tr.row-cond .c1 { border-left-color: var(--color-indigo-800); background: var(--color-badge-indigo-bg); }
   tr.row-cond .c2, tr.row-cond .c3 { background: var(--color-badge-indigo-bg); }
   tr.row-issue .c1 { border-left-color: var(--color-amber-500); background: var(--color-badge-warning-bg); }
   tr.row-issue .c2, tr.row-issue .c3 { background: var(--color-badge-warning-bg); }
+  tr.row-consultation .c1 { border-left-color: var(--color-violet-600); background: var(--color-badge-purple-bg); }
+  tr.row-consultation .c2, tr.row-consultation .c3 { background: var(--color-badge-purple-bg); }
 
   .item-title { display: block; font-weight: 700; font-size: 0.83rem; }
   tr.row-cond .item-title { color: var(--color-badge-indigo-fg); }
   tr.row-issue .item-title { color: var(--color-badge-warning-fg); }
+  tr.row-consultation .item-title { color: var(--color-badge-purple-fg); }
   .item-meta { display: block; font-size: 0.72rem; color: var(--color-slate-500); font-weight: 500; margin-top: 0.1rem; }
 
   tr.row-sub .c1 { padding-left: 1.85rem; border-left: 3px solid var(--color-slate-200); }
   tr.row-sub.under-cond .c1 { border-left-color: var(--color-indigo-800); }
   tr.row-sub.under-issue .c1 { border-left-color: var(--color-amber-500); }
+  tr.row-sub.under-consultation .c1 { border-left-color: var(--color-violet-600); }
 
   .sub-org { font-weight: 600; color: var(--color-slate-700); font-size: 0.8rem; }
   .sub-discipline { color: var(--color-slate-500); font-size: 0.75rem; }

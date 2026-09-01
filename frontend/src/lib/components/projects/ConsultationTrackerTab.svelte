@@ -12,6 +12,9 @@
   import ExportConsultationModal from '$lib/components/projects/ExportConsultationModal.svelte';
   import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
   import AdvancementSourceBadge from '$lib/components/projects/AdvancementSourceBadge.svelte';
+  import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
+  import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
+  import { createQuoteKeyDate } from '$lib/api/quotes.js';
 
   let showBatchImport = false;
   let showExportModal = false;
@@ -94,6 +97,12 @@
     suggestConsultationAdvancementSummaries,
     updateConsultationAdvancement,
     deleteConsultationAdvancement,
+    getProjectQuotesForConsultation,
+    linkConsultationQuote,
+    unlinkConsultationQuote,
+    createConsultationKeyDate,
+    updateConsultationKeyDate,
+    deleteConsultationKeyDate,
   } from '$lib/api/consultation.js';
 
   export let project;
@@ -521,6 +530,7 @@
     };
     tlAddError = null;
     tlAddGenerated = false;
+    tlDateSuggestion = null;
     showTlAdd = true;
   }
 
@@ -529,6 +539,8 @@
 
   // Fill the blank summary from the source text (position, comments and
   // previous advancements are read server-side). No-ops once a summary is typed.
+  let tlDateSuggestion = null;
+
   async function generateTlSummary() {
     if (tlAddForm.summary.trim() || !tlAddForm.full_text.trim()) return;
     tlAddGenerating = true;
@@ -541,6 +553,7 @@
       if (suggestions[0]?.summary) {
         tlAddForm = { ...tlAddForm, summary: suggestions[0].summary };
         tlAddGenerated = true;
+        tlDateSuggestion = suggestions[0].date_suggestion || null;
       } else {
         tlAddError = 'Could not generate a summary - please type one.';
       }
@@ -548,6 +561,17 @@
       tlAddError = err.message;
     } finally {
       tlAddGenerating = false;
+    }
+  }
+
+  async function acceptTlDateSuggestion() {
+    try {
+      await createConsultationKeyDate(timelineResponseId, { title: tlDateSuggestion.title, date: tlDateSuggestion.date });
+      await refreshData();
+      return true;
+    } catch (err) {
+      alert('Failed to add key date: ' + err.message);
+      return false;
     }
   }
 
@@ -617,6 +641,143 @@
       );
     } catch (err) {
       alert(err.message);
+    }
+  }
+
+  // ── Linked quotes (from surveyor management) — mirrors
+  // ConditionsTrackerTab.svelte / ProgressTrackerTab.svelte ──────────────────
+  let showQuotePicker = false;
+  let projectQuotes = [];
+  let quotesLoading = false;
+  let quotesLoaded = false;
+
+  async function toggleQuotePicker() {
+    showQuotePicker = !showQuotePicker;
+    if (showQuotePicker && !quotesLoaded) {
+      quotesLoading = true;
+      try {
+        const data = await getProjectQuotesForConsultation(projectId);
+        projectQuotes = data.quotes;
+        quotesLoaded = true;
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        quotesLoading = false;
+      }
+    }
+  }
+
+  function quoteMatchesConsultant(q, r) {
+    const name = (r?.original_consultant || '').trim().toLowerCase();
+    if (!name) return false;
+    const org = (q.organisation || '').trim().toLowerCase();
+    const contact = (q.contact_name || '').trim().toLowerCase();
+    return (org && (org.includes(name) || name.includes(org)))
+        || (contact && (contact.includes(name) || name.includes(contact)));
+  }
+
+  $: pickerQuotes = timelineResponse
+    ? [...projectQuotes].sort((a, b) =>
+        (quoteMatchesConsultant(b, timelineResponse) ? 1 : 0) - (quoteMatchesConsultant(a, timelineResponse) ? 1 : 0))
+    : projectQuotes;
+
+  function isQuoteLinked(quoteId) {
+    return (timelineResponse?.linked_quotes || []).some(q => q.quote_id === quoteId);
+  }
+
+  async function refreshData() {
+    try {
+      const data = await getConsultationData(projectId);
+      responses = data.responses;
+      meta = data.meta;
+      availableConsultants = data.availableConsultants || [];
+    } catch (err) {
+      console.error('consultation refresh failed:', err);
+    }
+  }
+
+  async function handleLinkQuote(quoteId) {
+    try {
+      await linkConsultationQuote(timelineResponseId, quoteId);
+      await refreshData();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function handleUnlinkQuote(quoteId) {
+    try {
+      await unlinkConsultationQuote(timelineResponseId, quoteId);
+      await refreshData();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  function formatQuoteTotal(total) {
+    const n = Number(total);
+    return Number.isFinite(n) && n > 0 ? `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}` : null;
+  }
+
+  // ── Key dates for a linked quote ────────────────────────────────────────
+  let showAddKeyDateModal = false;
+  let keyDateForQuote = null;
+
+  function openAddKeyDate(q) {
+    keyDateForQuote = q;
+    showAddKeyDateModal = true;
+  }
+
+  async function handleAddKeyDateSubmit(event) {
+    const { data } = event.detail;
+    try {
+      await createQuoteKeyDate(keyDateForQuote.quote_id, { title: data.title, date: data.date, colour: data.color });
+      await refreshData();
+    } catch (err) {
+      alert('Failed to add key date: ' + err.message);
+    }
+    showAddKeyDateModal = false;
+    keyDateForQuote = null;
+  }
+
+  // ── Key dates owned directly by the response — no linked quote required.
+  // Independent of the per-linked-quote dates above; Programme shows both. ──
+  let showDirectKeyDateModal = false;
+  let editingDirectKeyDate = null; // null = adding new, row = editing existing
+
+  function openAddDirectKeyDate() {
+    editingDirectKeyDate = null;
+    showDirectKeyDateModal = true;
+  }
+
+  function openEditDirectKeyDate(kd) {
+    editingDirectKeyDate = kd;
+    showDirectKeyDateModal = true;
+  }
+
+  async function handleDirectKeyDateSubmit(event) {
+    const { data, isEdit } = event.detail;
+    try {
+      if (isEdit) {
+        await updateConsultationKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+      } else {
+        await createConsultationKeyDate(timelineResponseId, { title: data.title, date: data.date, colour: data.color });
+      }
+      await refreshData();
+    } catch (err) {
+      alert('Failed to save key date: ' + err.message);
+    }
+    showDirectKeyDateModal = false;
+    editingDirectKeyDate = null;
+  }
+
+  async function removeDirectKeyDate(id) {
+    if (!confirm('Delete this key date?')) return;
+    try {
+      await deleteConsultationKeyDate(id);
+      await refreshData();
+    } catch (err) {
+      alert('Failed to delete key date: ' + err.message);
     }
   }
 
@@ -1029,6 +1190,92 @@ ${sections.join('<br>')}`;
       </div>
 
       <div class="tl-body">
+        <!-- Linked quotes from surveyor management -->
+        <div class="tl-quotes">
+          <div class="tl-quotes-hd">
+            <span class="tl-quotes-label"><i class="las la-file-invoice-dollar"></i> Linked Quotes</span>
+            <button class="ct-expand-btn" on:click={toggleQuotePicker}>
+              {showQuotePicker ? 'Close' : '+ Link quote'}
+            </button>
+          </div>
+          {#each timelineResponse.linked_quotes || [] as q (q.quote_id)}
+            <div class="card tl-quote-card">
+              <div class="tl-quote-chip">
+                <span class="tl-quote-org">{q.organisation || 'Quote'}</span>
+                {#if q.discipline}<span class="tl-quote-meta">{q.discipline}</span>{/if}
+                {#if formatQuoteTotal(q.quote_total)}<span class="tl-quote-meta">{formatQuoteTotal(q.quote_total)}</span>{/if}
+                <button class="btn btn-icon btn-ghost tl-quote-unlink" title="Unlink quote" on:click={() => handleUnlinkQuote(q.quote_id)}>
+                  <i class="las la-times"></i>
+                </button>
+              </div>
+              <div class="tl-quote-statuses">
+                {#if q.instruction_status}<span class="tl-quote-status-pill">Instruction: {q.instruction_status}</span>{/if}
+                {#if q.work_status}<span class="tl-quote-status-pill">Work: {q.work_status}</span>{/if}
+              </div>
+              {#if q.key_dates?.length}
+                <div class="tl-quote-keydates">
+                  <span class="tl-quote-keydates-label">Key dates</span>
+                  {#each q.key_dates as kd (kd.id)}
+                    <span class="tl-quote-keydate">{kd.title} - {formatDate(kd.date)}</span>
+                  {/each}
+                </div>
+              {/if}
+              <button class="ct-expand-btn" on:click={() => openAddKeyDate(q)}>
+                <i class="las la-calendar-plus"></i> Add key date
+              </button>
+            </div>
+          {:else}
+            {#if !showQuotePicker}
+              <p class="tl-quotes-none">No quotes linked. Link one to pull its updates into this timeline.</p>
+            {/if}
+          {/each}
+          {#if showQuotePicker}
+            <div class="tl-quote-picker">
+              {#if quotesLoading}
+                <p class="tl-quotes-none">Loading quotes…</p>
+              {:else}
+                {#each pickerQuotes as q (q.id)}
+                  {@const linked = isQuoteLinked(q.id)}
+                  <div class="tl-quote-option" class:tl-quote-option-match={quoteMatchesConsultant(q, timelineResponse)}>
+                    <div class="tl-quote-option-info">
+                      <span class="tl-quote-org">{q.organisation || 'Unnamed quote'}</span>
+                      <span class="tl-quote-meta">
+                        {[q.discipline, q.status, formatQuoteTotal(q.total), q.contact_name].filter(Boolean).join(' · ')}
+                      </span>
+                    </div>
+                    <button class="btn btn-sm {linked ? 'btn-ghost' : 'btn-secondary'}" on:click={() => linked ? handleUnlinkQuote(q.id) : handleLinkQuote(q.id)}>
+                      {linked ? 'Unlink' : 'Link'}
+                    </button>
+                  </div>
+                {:else}
+                  <p class="tl-quotes-none">No quotes recorded for this project yet.</p>
+                {/each}
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        <div class="tl-quotes">
+          <div class="tl-quotes-hd">
+            <span class="tl-quotes-label"><i class="las la-calendar-alt"></i> Key Dates</span>
+            <button class="ct-expand-btn" on:click={openAddDirectKeyDate}>+ Add key date</button>
+          </div>
+          {#if timelineResponse.key_dates?.length}
+            <div class="tl-quote-keydates">
+              {#each timelineResponse.key_dates as kd (kd.id)}
+                <span class="tl-quote-keydate tl-direct-keydate" on:click={() => openEditDirectKeyDate(kd)}>
+                  {kd.title} - {formatDate(kd.date)}
+                  <button class="tl-quote-unlink" title="Delete" on:click|stopPropagation={() => removeDirectKeyDate(kd.id)}>
+                    <i class="las la-times"></i>
+                  </button>
+                </span>
+              {/each}
+            </div>
+          {:else}
+            <p class="tl-quotes-none">No key dates on this response yet.</p>
+          {/if}
+        </div>
+
         {#if showTlAdd}
           <div class="tl-add-form">
             <AdvancementEntryFields
@@ -1049,6 +1296,9 @@ ${sections.join('<br>')}`;
               placeholder="Summary - leave blank to auto-summarise from the text above…"></textarea>
             {#if tlAddGenerated}
               <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
+            {/if}
+            {#if tlDateSuggestion}
+              <KeyDateSuggestionCard suggestion={tlDateSuggestion} onAccept={acceptTlDateSuggestion} onDismiss={() => tlDateSuggestion = null} />
             {/if}
             {#if tlAddError}<div class="tl-error">{tlAddError}</div>{/if}
             <div class="tl-add-btns">
@@ -1128,6 +1378,24 @@ ${sections.join('<br>')}`;
   format={exportFormat}
   on:export={handleExportOptions}
   on:close={() => showExportModal = false}
+/>
+
+<AddKeyDateModal
+  bind:show={showAddKeyDateModal}
+  type="quote"
+  quotes={keyDateForQuote ? [{ id: keyDateForQuote.quote_id, discipline: keyDateForQuote.discipline, surveyor_organisation: keyDateForQuote.organisation }] : []}
+  preSelectedQuote={keyDateForQuote ? { id: keyDateForQuote.quote_id } : null}
+  on:submit={handleAddKeyDateSubmit}
+  on:close={() => { showAddKeyDateModal = false; keyDateForQuote = null; }}
+/>
+
+<AddKeyDateModal
+  bind:show={showDirectKeyDateModal}
+  type="consultation"
+  typeLabel="Key Date"
+  existingDate={editingDirectKeyDate}
+  on:submit={handleDirectKeyDateSubmit}
+  on:close={() => { showDirectKeyDateModal = false; editingDirectKeyDate = null; }}
 />
 
 <!-- ── Statutory consultees content ──────────────────────────────────────── -->
@@ -1765,6 +2033,140 @@ ${sections.join('<br>')}`;
     font-family: inherit;
   }
   .tl-add-btn:hover { background: var(--color-primary-50); border-color: var(--color-primary-600); }
+
+  /* Linked quotes + key dates — mirrors ConditionsTrackerTab.svelte / ProgressTrackerTab.svelte */
+  .tl-quotes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 10px;
+    padding: 0.75rem 0.875rem;
+    background: var(--color-slate-50);
+  }
+  .tl-quotes-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .tl-quotes-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-slate-500);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .tl-quotes-none {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--color-slate-400);
+  }
+  .tl-quote-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem 0.65rem;
+  }
+  .tl-quote-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .tl-quote-statuses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .tl-quote-status-pill {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--color-slate-700);
+    background: var(--color-slate-100);
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+  .tl-quote-keydates {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--color-slate-500);
+  }
+  .tl-quote-keydates-label { font-weight: 600; color: var(--color-slate-600); }
+  .tl-quote-keydate {
+    background: var(--color-red-50);
+    border: 1px solid var(--color-amber-200);
+    color: var(--color-amber-800);
+    border-radius: 6px;
+    padding: 1px 7px;
+  }
+  .tl-direct-keydate {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+  }
+  .tl-direct-keydate .tl-quote-unlink {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border: none;
+    background: none;
+    padding: 0;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 0.65rem;
+  }
+  .tl-direct-keydate .tl-quote-unlink:hover { opacity: 1; }
+  .tl-quote-org {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-slate-800);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-quote-meta {
+    font-size: 0.7rem;
+    color: var(--color-slate-500);
+    flex-shrink: 0;
+  }
+  .tl-quote-unlink { flex-shrink: 0; }
+  .tl-quote-picker {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 8px;
+    background: var(--color-white);
+    overflow-y: auto;
+    max-height: 220px;
+  }
+  .tl-quote-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--color-slate-100);
+  }
+  .tl-quote-option:last-child { border-bottom: none; }
+  .tl-quote-option-match { background: var(--color-purple-50); }
+  .tl-quote-option-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+  }
 
   .tl-add-form {
     display: flex;

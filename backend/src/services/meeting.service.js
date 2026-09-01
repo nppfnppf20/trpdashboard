@@ -3,7 +3,7 @@ import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Process a meeting transcript into a structured record.
 
-Return your response using EXACTLY these delimiters — nothing before <MEETING_TITLE> and nothing after </COMPLETED_ACTIONS_JSON>:
+Return your response using EXACTLY these delimiters — nothing before <MEETING_TITLE> and nothing after </DATE_SUGGESTIONS_JSON>:
 
 <MEETING_TITLE>short title or leave blank</MEETING_TITLE>
 <MEETING_DATE>YYYY-MM-DD or leave blank</MEETING_DATE>
@@ -17,6 +17,9 @@ HTML summary here
 <COMPLETED_ACTIONS_JSON>
 [{"id":123,"evidence":"..."}]
 </COMPLETED_ACTIONS_JSON>
+<DATE_SUGGESTIONS_JSON>
+[{"title":"...","date":"YYYY-MM-DD"}]
+</DATE_SUGGESTIONS_JSON>
 
 ════════════════════════════════════════
 METADATA
@@ -77,6 +80,17 @@ JSON array. Each item: {"id": <the existing action's id, as a number>, "evidence
 - Never invent an id — only use ids from the EXISTING OPEN ACTIONS list you were given.
 - If no existing open actions were provided, or none appear complete: []`;
 
+const PROMPT_DATE_SUGGESTIONS = `════════════════════════════════════════
+DATE_SUGGESTIONS_JSON
+════════════════════════════════════════
+
+Separately from ACTIONS_JSON, scan the transcript for specific dates that matter for SCHEDULING this project going forward — a site visit, a committee date, a submission or report deadline, a follow-up meeting date, a decision date. Not the date of this meeting itself, and not a date already in the past relative to TODAY'S DATE given below.
+
+JSON array. Each item: {"title":"short label for what happens on that date, e.g. \\"Committee date\\"","date":"YYYY-MM-DD"}
+- Only include a genuinely new, specific, future, schedulable date. Never invent one or guess from vague phrasing ("in a few weeks").
+- Do not duplicate a due_date already captured on an action in ACTIONS_JSON — only include dates that aren't already represented there.
+- If no such dates are mentioned: []`;
+
 async function buildSystemPrompt() {
   const brief = await getGuidingBrief('meeting_notes', null).catch(() => null);
 
@@ -98,7 +112,7 @@ The following is an example of the required format and style. Match its structur
 ${brief.style_example.trim()}`
     : '';
 
-  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS, PROMPT_COMPLETED_ACTIONS].join('\n\n');
+  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS, PROMPT_COMPLETED_ACTIONS, PROMPT_DATE_SUGGESTIONS].join('\n\n');
 }
 
 function extractTag(text, tag) {
@@ -160,7 +174,7 @@ export async function extractInsights(transcriptText, meetingType) {
 export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null, existingOpenActions = []) {
   const systemPrompt = await buildSystemPrompt();
 
-  const parts = [];
+  const parts = [`TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}`];
 
   let lengthInstruction;
   if (summaryType === 'custom' && customPrompt?.trim()) {
@@ -221,6 +235,19 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
     console.warn('[meeting.service] Could not parse COMPLETED_ACTIONS_JSON, defaulting to []:', completedRaw.slice(0, 200));
   }
 
+  const dateSuggestionsRaw = extractTag(raw, 'DATE_SUGGESTIONS_JSON') || '[]';
+  let dateSuggestions = [];
+  try {
+    const parsed = JSON.parse(dateSuggestionsRaw);
+    if (Array.isArray(parsed)) {
+      dateSuggestions = parsed
+        .map(item => ({ title: item.title?.trim() || '', date: item.date || null }))
+        .filter(d => d.title && d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date));
+    }
+  } catch {
+    console.warn('[meeting.service] Could not parse DATE_SUGGESTIONS_JSON, defaulting to []:', dateSuggestionsRaw.slice(0, 200));
+  }
+
   return {
     meeting_title: extractTag(raw, 'MEETING_TITLE') || null,
     meeting_date: extractTag(raw, 'MEETING_DATE') || null,
@@ -232,6 +259,7 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
       due_date: a.due_date || null,
       notes: a.notes?.trim() || null
     })).filter(a => a.action_text),
-    completedActions
+    completedActions,
+    dateSuggestions
   };
 }

@@ -4,10 +4,11 @@
   export let show = false;
   export let quotes = [];
   export let projectId = '';
-  export let type = 'quote'; // 'quote' or 'project'
+  export let type = 'quote'; // 'quote', 'project', or a row-owned kind (e.g. 'condition'/'issue'/'consultation') — anything but 'quote' skips the quote picker
   export let preSelectedQuote = null;
   export let preSelectedDate = null;
   export let existingDate = null; // Pass this to edit an existing date
+  export let typeLabel = null; // Overrides the header wording for row-owned kinds, e.g. "Key Date" instead of the "quote"/"project" default
 
   const dispatch = createEventDispatcher();
   
@@ -129,7 +130,9 @@
     <div class="modal-content" on:click|stopPropagation>
       <div class="modal-header">
         <h2>
-          {#if isEditMode}
+          {#if typeLabel}
+            {isEditMode ? 'Edit' : 'Add'} {typeLabel}
+          {:else if isEditMode}
             {#if type === 'quote'}
               Edit Quote Key Date
             {:else}

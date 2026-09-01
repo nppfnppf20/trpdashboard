@@ -166,3 +166,32 @@ export async function unlinkIssueQuote(issueId, quoteId) {
   if (!res.ok) throw new Error('Failed to unlink quote');
   return res.json();
 }
+
+export async function createIssueKeyDate(issueId, fields) {
+  const res = await authFetch(`${BASE}/issues/${issueId}/key-dates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to create key date');
+  }
+  return res.json();
+}
+
+export async function updateIssueKeyDate(keyDateId, fields) {
+  const res = await authFetch(`${BASE}/key-dates/${keyDateId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) throw new Error('Failed to update key date');
+  return res.json();
+}
+
+export async function deleteIssueKeyDate(keyDateId) {
+  const res = await authFetch(`${BASE}/key-dates/${keyDateId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete key date');
+  return res.json();
+}

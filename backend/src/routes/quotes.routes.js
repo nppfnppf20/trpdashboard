@@ -29,6 +29,9 @@ router.get('/projects/:projectId/conditions', quotesController.listProjectCondit
 // GET /api/admin-console/quotes/projects/:projectId/issues - Lightweight issue list for linking (optional ?quoteId=)
 router.get('/projects/:projectId/issues', quotesController.listProjectIssues);
 
+// GET /api/admin-console/quotes/projects/:projectId/consultation-responses - Lightweight consultation response list for linking (optional ?quoteId=)
+router.get('/projects/:projectId/consultation-responses', quotesController.listProjectConsultationResponses);
+
 // GET /api/admin-console/quotes/projects/:projectId/programme-events - Get programme events
 router.get('/projects/:projectId/programme-events', quotesController.getProgrammeEvents);
 

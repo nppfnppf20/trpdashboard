@@ -29,7 +29,7 @@ export async function processMeetingNote(req, res) {
       [projectId]
     );
 
-    const { meeting_title, meeting_date, attendees, summary_html, actions, completedActions } = await processMeetingTranscript(
+    const { meeting_title, meeting_date, attendees, summary_html, actions, completedActions, dateSuggestions } = await processMeetingTranscript(
       text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null, existingOpenActions
     );
 
@@ -56,7 +56,7 @@ export async function processMeetingNote(req, res) {
       );
 
       await client.query('COMMIT');
-      res.status(201).json({ transcript, summary, suggestedActions: actions, completedActions });
+      res.status(201).json({ transcript, summary, suggestedActions: actions, completedActions, dateSuggestions });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

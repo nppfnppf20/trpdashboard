@@ -10,6 +10,12 @@ import {
   suggestAdvancements,
   updateAdvancement,
   deleteAdvancement,
+  listProjectQuotes,
+  linkConsultationQuote,
+  unlinkConsultationQuote,
+  createConsultationKeyDate,
+  updateConsultationKeyDate,
+  deleteConsultationKeyDate,
   markExported,
   markIssuedToClient,
   emailConsultant,
@@ -32,5 +38,11 @@ router.post('/projects/:projectId/advancements', createAdvancements);
 router.post('/projects/:projectId/advancements/suggest', suggestAdvancements);
 router.put('/advancements/:advancementId', updateAdvancement);
 router.delete('/advancements/:advancementId', deleteAdvancement);
+router.get('/projects/:projectId/quotes', listProjectQuotes);
+router.post('/responses/:responseId/quote-links', linkConsultationQuote);
+router.delete('/responses/:responseId/quote-links/:quoteId', unlinkConsultationQuote);
+router.post('/responses/:responseId/key-dates', createConsultationKeyDate);
+router.put('/key-dates/:keyDateId', updateConsultationKeyDate);
+router.delete('/key-dates/:keyDateId', deleteConsultationKeyDate);
 
 export default router;

@@ -56,7 +56,11 @@ export async function processConsultation(req, res) {
 export async function getConsultationData(req, res) {
   const { projectId } = req.params;
   try {
-    const [{ rows: responses }, { rows: advancements }, { rows: meta }] = await Promise.all([
+    const [
+      { rows: responses }, { rows: advancements },
+      { rows: quoteLinks }, { rows: quoteActions }, { rows: quoteKeyDates }, { rows: keyDates },
+      { rows: meta },
+    ] = await Promise.all([
       pool.query(
         `SELECT id, consultee_name, date_received, position, comments, action_required, conditions_suggested, status,
                 discipline, original_consultant, original_consultant_email,
@@ -77,11 +81,55 @@ export async function getConsultationData(req, res) {
       ),
       pool.query(
         `SELECT cra.id, cra.response_id, cra.advancement_date, cra.summary,
-                cra.full_text, cra.source_type, cra.created_at, cra.updated_at
+                cra.full_text, cra.source_type, cra.quote_id, cra.created_at, cra.updated_at
          FROM planning_applications.consultation_response_advancements cra
          JOIN planning_applications.consultation_responses cr ON cr.id = cra.response_id
          WHERE cr.project_id = $1
          ORDER BY cra.advancement_date DESC, cra.id DESC`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT crql.response_id, crql.quote_id,
+                q.total AS quote_total,
+                q.instruction_status, q.instruction_status_changed_at, q.work_status,
+                so.organisation, so.discipline
+         FROM planning_applications.consultation_response_quote_links crql
+         JOIN planning_applications.consultation_responses cr ON cr.id = crql.response_id
+         JOIN admin_console.quotes q ON q.id = crql.quote_id
+         LEFT JOIN admin_console.surveyor_organisations so ON so.id = q.surveyor_organisation_id
+         WHERE cr.project_id = $1`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT qa.quote_id, qa.id, qa.action_date, qa.summary, qa.full_text, qa.source_type
+         FROM admin_console.quote_actions qa
+         WHERE qa.quote_id IN (
+           SELECT crql.quote_id
+           FROM planning_applications.consultation_response_quote_links crql
+           JOIN planning_applications.consultation_responses cr ON cr.id = crql.response_id
+           WHERE cr.project_id = $1
+         )
+         ORDER BY qa.action_date DESC, qa.id DESC`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT qkd.quote_id, qkd.id, qkd.title, qkd.date, qkd.colour
+         FROM admin_console.quote_key_dates qkd
+         WHERE qkd.quote_id IN (
+           SELECT crql.quote_id
+           FROM planning_applications.consultation_response_quote_links crql
+           JOIN planning_applications.consultation_responses cr ON cr.id = crql.response_id
+           WHERE cr.project_id = $1
+         )
+         ORDER BY qkd.date ASC, qkd.id ASC`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT crkd.id, crkd.response_id, crkd.title, crkd.date, crkd.colour
+         FROM planning_applications.consultation_response_key_dates crkd
+         JOIN planning_applications.consultation_responses cr ON cr.id = crkd.response_id
+         WHERE cr.project_id = $1
+         ORDER BY crkd.date ASC, crkd.id ASC`,
         [projectId]
       ),
       pool.query(
@@ -96,7 +144,38 @@ export async function getConsultationData(req, res) {
     for (const a of advancements) {
       (advByResponse[a.response_id] ||= []).push(a);
     }
-    const withAdvancements = responses.map(r => ({ ...r, advancements: advByResponse[r.id] || [] }));
+    const actionsByQuote = {};
+    for (const qa of quoteActions) {
+      (actionsByQuote[qa.quote_id] ||= []).push(qa);
+    }
+    const keyDatesByQuote = {};
+    for (const kd of quoteKeyDates) {
+      (keyDatesByQuote[kd.quote_id] ||= []).push(kd);
+    }
+    const quotesByResponse = {};
+    for (const link of quoteLinks) {
+      (quotesByResponse[link.response_id] ||= []).push({
+        quote_id: link.quote_id,
+        quote_total: link.quote_total,
+        instruction_status: link.instruction_status,
+        instruction_status_changed_at: link.instruction_status_changed_at,
+        work_status: link.work_status,
+        organisation: link.organisation,
+        discipline: link.discipline,
+        actions: actionsByQuote[link.quote_id] || [],
+        key_dates: keyDatesByQuote[link.quote_id] || [],
+      });
+    }
+    const keyDatesByResponse = {};
+    for (const kd of keyDates) {
+      (keyDatesByResponse[kd.response_id] ||= []).push(kd);
+    }
+    const withAdvancements = responses.map(r => ({
+      ...r,
+      advancements: advByResponse[r.id] || [],
+      linked_quotes: quotesByResponse[r.id] || [],
+      key_dates: keyDatesByResponse[r.id] || [],
+    }));
 
     // Consultants on this project (via quotes) — fail-safe: empty array if query errors
     let availableConsultants = [];
@@ -250,13 +329,21 @@ export async function createAdvancements(req, res) {
     await client.query('BEGIN');
     const created = [];
     for (const item of items) {
+      const quoteId = item.quote_id || null;
       const { rows } = await client.query(
         `INSERT INTO planning_applications.consultation_response_advancements
-           (response_id, advancement_date, summary, full_text, source_type)
-         SELECT $1, $2, $3, $4, $5
+           (response_id, advancement_date, summary, full_text, source_type, quote_id)
+         SELECT $1, $2, $3, $4, $5, $7::uuid
          WHERE EXISTS (
            SELECT 1 FROM planning_applications.consultation_responses cr
            WHERE cr.id = $1 AND cr.project_id = $6
+         )
+         AND (
+           $7::uuid IS NULL
+           OR EXISTS (
+             SELECT 1 FROM planning_applications.consultation_response_quote_links crql
+             WHERE crql.response_id = $1 AND crql.quote_id = $7::uuid
+           )
          )
          RETURNING *`,
         [
@@ -266,9 +353,10 @@ export async function createAdvancements(req, res) {
           full_text?.trim() || null,
           source_type?.trim() || 'note',
           projectId,
+          quoteId,
         ]
       );
-      if (!rows[0]) throw new Error(`Response ${item.response_id} does not belong to this project`);
+      if (!rows[0]) throw new Error(`Response ${item.response_id} does not belong to this project, or the tagged quote isn't linked to it`);
       created.push(rows[0]);
     }
     await client.query('COMMIT');
@@ -364,14 +452,27 @@ export async function suggestAdvancements(req, res) {
 
 export async function updateAdvancement(req, res) {
   const { advancementId } = req.params;
-  const { advancement_date, summary, full_text, source_type } = req.body;
+  const { advancement_date, summary, full_text, source_type, quote_id } = req.body;
   try {
+    if ('quote_id' in req.body && quote_id) {
+      const { rows: [ok] } = await pool.query(
+        `SELECT 1
+         FROM planning_applications.consultation_response_advancements cra
+         JOIN planning_applications.consultation_response_quote_links crql
+           ON crql.response_id = cra.response_id AND crql.quote_id = $2::uuid
+         WHERE cra.id = $1`,
+        [advancementId, quote_id]
+      );
+      if (!ok) return res.status(400).json({ error: "That quote isn't linked to this response" });
+    }
+
     const { rows } = await pool.query(
       `UPDATE planning_applications.consultation_response_advancements SET
          advancement_date = COALESCE($2, advancement_date),
          summary          = COALESCE($3, summary),
          full_text        = CASE WHEN $4 THEN $5 ELSE full_text END,
          source_type      = COALESCE($6, source_type),
+         quote_id         = CASE WHEN $7 THEN $8::uuid ELSE quote_id END,
          updated_at       = NOW()
        WHERE id = $1 RETURNING *`,
       [
@@ -380,6 +481,7 @@ export async function updateAdvancement(req, res) {
         summary != null ? summary.trim() || null : null,
         'full_text' in req.body, full_text?.trim() || null,
         source_type?.trim() || null,
+        'quote_id' in req.body, quote_id || null,
       ]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
@@ -401,6 +503,126 @@ export async function deleteAdvancement(req, res) {
   } catch (err) {
     console.error('consultation.deleteAdvancement error:', err);
     res.status(500).json({ error: 'Failed to delete advancement' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quote links: attach quotes from surveyor management to consultation responses
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Quotes on this project, for the link picker
+export async function listProjectQuotes(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT q.id, q.status, q.total,
+              so.organisation, so.discipline,
+              c.name AS contact_name
+       FROM admin_console.quotes q
+       JOIN public.projects p ON p.unique_id = q.project_id
+       LEFT JOIN admin_console.surveyor_organisations so ON so.id = q.surveyor_organisation_id
+       LEFT JOIN admin_console.contacts c ON c.id = q.contact_id
+       WHERE p.id = $1
+       ORDER BY so.organisation ASC NULLS LAST, q.created_at DESC`,
+      [projectId]
+    );
+    res.json({ quotes: rows });
+  } catch (err) {
+    console.error('consultation.listProjectQuotes error:', err);
+    res.status(500).json({ error: 'Failed to fetch project quotes' });
+  }
+}
+
+export async function linkConsultationQuote(req, res) {
+  const { responseId } = req.params;
+  const { quote_id } = req.body;
+  if (!quote_id) return res.status(400).json({ error: 'quote_id is required' });
+  try {
+    await pool.query(
+      `INSERT INTO planning_applications.consultation_response_quote_links (response_id, quote_id)
+       SELECT r.id, q.id
+       FROM planning_applications.consultation_responses r
+       JOIN public.projects p ON p.id = r.project_id
+       JOIN admin_console.quotes q ON q.project_id = p.unique_id
+       WHERE r.id = $1 AND q.id = $2
+       ON CONFLICT DO NOTHING`,
+      [responseId, quote_id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('consultation.linkConsultationQuote error:', err);
+    res.status(500).json({ error: 'Failed to link quote' });
+  }
+}
+
+export async function unlinkConsultationQuote(req, res) {
+  const { responseId, quoteId } = req.params;
+  try {
+    await pool.query(
+      `DELETE FROM planning_applications.consultation_response_quote_links
+       WHERE response_id = $1 AND quote_id = $2`,
+      [responseId, quoteId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('consultation.unlinkConsultationQuote error:', err);
+    res.status(500).json({ error: 'Failed to unlink quote' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Key dates owned directly by the response — no linked quote required.
+// Independent of the quote-linking above; Programme shows both.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createConsultationKeyDate(req, res) {
+  const { responseId } = req.params;
+  const { title, date, colour } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  if (!date) return res.status(400).json({ error: 'date is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.consultation_response_key_dates (response_id, title, date, colour)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [responseId, title.trim(), date, colour?.trim() || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('consultation.createConsultationKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to create key date' });
+  }
+}
+
+export async function updateConsultationKeyDate(req, res) {
+  const { keyDateId } = req.params;
+  const { title, date, colour } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.consultation_response_key_dates SET
+         title      = COALESCE($2, title),
+         date       = COALESCE($3, date),
+         colour     = CASE WHEN $4 THEN $5 ELSE colour END,
+         updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [keyDateId, title?.trim() || null, date || null, 'colour' in req.body, colour?.trim() || null]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('consultation.updateConsultationKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to update key date' });
+  }
+}
+
+export async function deleteConsultationKeyDate(req, res) {
+  const { keyDateId } = req.params;
+  try {
+    await pool.query(`DELETE FROM planning_applications.consultation_response_key_dates WHERE id = $1`, [keyDateId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('consultation.deleteConsultationKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to delete key date' });
   }
 }
 

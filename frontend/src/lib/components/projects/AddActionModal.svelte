@@ -3,7 +3,7 @@
   import {
     createActions, suggestActionSummaries,
     listMeetingNotesForPicker, draftFromMeetingNotes, commitDraftedActions,
-    getProgressData,
+    getProgressData, createIssueKeyDate,
   } from '$lib/api/progressTracker.js';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
@@ -274,13 +274,33 @@
         draftError = 'Nothing relevant to the tracked issues was found in the selected notes.';
         proposals = [];
       } else {
-        proposals = raw.map((p, i) => ({ ...p, _key: i, accepted: true }));
+        // A date suggestion can only be accepted straight away for an
+        // existing issue — new issues/sub-issues don't have a real id to
+        // attach a key date to until after commit, so it's just shown there.
+        proposals = raw.map((p, i) => ({ ...p, _key: i, accepted: true, dsStatus: p.date_suggestion ? 'pending' : null }));
       }
     } catch (err) {
       draftError = err.message;
     } finally {
       drafting = false;
     }
+  }
+
+  async function acceptDateSuggestion(p) {
+    p.dsStatus = 'saving';
+    proposals = proposals;
+    try {
+      await createIssueKeyDate(p.issue_id, { title: p.date_suggestion.title, date: p.date_suggestion.date });
+      p.dsStatus = 'accepted';
+    } catch (err) {
+      p.dsStatus = 'error';
+    }
+    proposals = proposals;
+  }
+
+  function dismissDateSuggestion(p) {
+    p.dsStatus = 'dismissed';
+    proposals = proposals;
   }
 
   async function commitAccepted() {
@@ -500,6 +520,22 @@
                       {/if}
                     </label>
                     <textarea class="adv-summary-input proposal-summary" rows="2" bind:value={p.summary}></textarea>
+                    {#if p.date_suggestion && p.kind === 'existing_issue' && p.dsStatus !== 'dismissed'}
+                      <div class="ds-row">
+                        {#if p.dsStatus === 'pending'}
+                          <span class="ds-text"><i class="las la-calendar-plus"></i> Add key date "<strong>{p.date_suggestion.title}</strong>" on <strong>{new Date(p.date_suggestion.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</strong>?</span>
+                          <button class="ds-btn ds-btn-accept" on:click={() => acceptDateSuggestion(p)}>Add</button>
+                          <button class="ds-btn ds-btn-dismiss" on:click={() => dismissDateSuggestion(p)}>Not now</button>
+                        {:else if p.dsStatus === 'saving'}
+                          <span class="ds-text">Saving key date…</span>
+                        {:else if p.dsStatus === 'accepted'}
+                          <span class="ds-text ds-text-ok"><i class="las la-check-circle"></i> Key date added</span>
+                        {:else if p.dsStatus === 'error'}
+                          <span class="ds-text ds-text-error">Failed to add key date.</span>
+                          <button class="ds-btn ds-btn-accept" on:click={() => acceptDateSuggestion(p)}>Retry</button>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                 {/each}
               </div>
@@ -818,6 +854,33 @@
   .proposal-title-input { flex: 1; min-width: 8rem; }
   .proposal-discipline-input { flex: 0 0 8rem; }
   .proposal-summary { margin-left: 0; }
+
+  .ds-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: var(--color-amber-100);
+    border: 1px solid var(--color-amber-200);
+    border-radius: 6px;
+  }
+  .ds-text { font-size: 0.78rem; color: var(--color-amber-800); display: flex; align-items: center; gap: 0.3rem; }
+  .ds-text-ok { color: var(--color-emerald-600); }
+  .ds-text-error { color: var(--color-red-600); }
+  .ds-btn {
+    padding: 0.2rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .ds-btn-accept { background: var(--color-primary-600); color: white; }
+  .ds-btn-accept:hover { background: var(--color-primary-700); }
+  .ds-btn-dismiss { background: none; border-color: var(--color-amber-200); color: var(--color-amber-800); }
+  .ds-btn-dismiss:hover { background: var(--color-amber-200); }
 
   .adv-notice {
     display: flex;

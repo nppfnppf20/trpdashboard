@@ -10,7 +10,7 @@ export async function getProgressData(req, res) {
   try {
     const [
       { rows: issues }, { rows: subIssues }, { rows: actions }, { rows: actionSubLinks },
-      { rows: quoteLinks }, { rows: quoteActions }, { rows: quoteKeyDates }, { rows: meta },
+      { rows: quoteLinks }, { rows: quoteActions }, { rows: quoteKeyDates }, { rows: keyDates }, { rows: meta },
     ] = await Promise.all([
       pool.query(
         `SELECT id, discipline, title, status, sort_order, created_at, updated_at
@@ -86,6 +86,14 @@ export async function getProgressData(req, res) {
         [projectId]
       ),
       pool.query(
+        `SELECT pikd.id, pikd.issue_id, pikd.title, pikd.date, pikd.colour
+         FROM planning_applications.progress_issue_key_dates pikd
+         JOIN planning_applications.progress_issues i ON i.id = pikd.issue_id
+         WHERE i.project_id = $1
+         ORDER BY pikd.date ASC, pikd.id ASC`,
+        [projectId]
+      ),
+      pool.query(
         `SELECT last_exported_at, last_issued_to_client_at
          FROM planning_applications.progress_tracker_meta
          WHERE project_id = $1`,
@@ -127,11 +135,16 @@ export async function getProgressData(req, res) {
         key_dates: keyDatesByQuote[link.quote_id] || [],
       });
     }
+    const keyDatesByIssue = {};
+    for (const kd of keyDates) {
+      (keyDatesByIssue[kd.issue_id] ||= []).push(kd);
+    }
     const withDetail = issues.map(i => ({
       ...i,
       sub_issues: subByIssue[i.id] || [],
       actions: actionsByIssue[i.id] || [],
       linked_quotes: quotesByIssue[i.id] || [],
+      key_dates: keyDatesByIssue[i.id] || [],
     }));
 
     res.json({
@@ -589,6 +602,62 @@ export async function unlinkIssueQuote(req, res) {
   } catch (err) {
     console.error('progressTracker.unlinkIssueQuote error:', err);
     res.status(500).json({ error: 'Failed to unlink quote' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Key dates owned directly by the issue — no linked quote required.
+// Independent of the quote-linking above; Programme shows both.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createIssueKeyDate(req, res) {
+  const { issueId } = req.params;
+  const { title, date, colour } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  if (!date) return res.status(400).json({ error: 'date is required' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO planning_applications.progress_issue_key_dates (issue_id, title, date, colour)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [issueId, title.trim(), date, colour?.trim() || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('progressTracker.createIssueKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to create key date' });
+  }
+}
+
+export async function updateIssueKeyDate(req, res) {
+  const { keyDateId } = req.params;
+  const { title, date, colour } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.progress_issue_key_dates SET
+         title      = COALESCE($2, title),
+         date       = COALESCE($3, date),
+         colour     = CASE WHEN $4 THEN $5 ELSE colour END,
+         updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [keyDateId, title?.trim() || null, date || null, 'colour' in req.body, colour?.trim() || null]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('progressTracker.updateIssueKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to update key date' });
+  }
+}
+
+export async function deleteIssueKeyDate(req, res) {
+  const { keyDateId } = req.params;
+  try {
+    await pool.query(`DELETE FROM planning_applications.progress_issue_key_dates WHERE id = $1`, [keyDateId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('progressTracker.deleteIssueKeyDate error:', err);
+    res.status(500).json({ error: 'Failed to delete key date' });
   }
 }
 
