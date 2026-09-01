@@ -23,6 +23,7 @@
     grid-template-columns: 1.6fr 1fr 1fr;
     grid-template-rows: minmax(320px, 2fr) minmax(160px, 1fr);
     gap: 1rem;
+    flex: 1;
     min-height: 600px;
     padding: 1.25rem 1.75rem 0;
   }

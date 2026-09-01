@@ -795,9 +795,6 @@
             {#if projectData?.status}<span class="status-badge status-{statusClass(projectData.status)}">{projectData.status}</span>{/if}
           </h2>
         </div>
-        <div class="header-actions">
-          <button class="close-btn" on:click={handleClose}>&times;</button>
-        </div>
       </div>
 
       <div class="modal-body">
@@ -1421,10 +1418,6 @@
           {/if}
         {/if}
       </div>
-
-      <div class="modal-footer">
-        <button class="btn-close" on:click={handleClose}>Close</button>
-      </div>
     </div>
   </div>
 {/if}
@@ -1612,29 +1605,6 @@
     color: var(--color-badge-success-fg);
   }
 
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .close-btn {
-    background: none;
-    border: none;
-    font-size: 2rem;
-    color: var(--color-slate-500);
-    cursor: pointer;
-    padding: 0;
-    width: 2rem;
-    height: 2rem;
-    line-height: 1;
-    transition: color 0.2s;
-  }
-
-  .close-btn:hover {
-    color: var(--color-slate-800);
-  }
-
   .modal-body {
     display: flex;
     flex-direction: column;
@@ -1737,30 +1707,6 @@
     overflow: hidden;
     border: 1px solid var(--color-slate-300);
     min-height: 0;
-  }
-
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    padding: 1.5rem 2rem;
-    border-top: 1px solid var(--color-slate-200);
-    gap: 1rem;
-  }
-
-  .btn-close {
-    padding: 0.625rem 1.5rem;
-    background: var(--color-slate-500);
-    color: white;
-    border: none;
-    border-radius: 0.5rem;
-    font-size: 1rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .btn-close:hover {
-    background: var(--color-slate-600);
   }
 
   /* HLPV Analysis Section */

@@ -90,7 +90,12 @@
   // Falls back to item count on a tie or when nothing has advancements yet,
   // so a populated-but-quiet tracker still beats an empty one. Only runs on
   // the first load — later refreshes (after adding/editing an entry) leave
-  // whatever the user has manually selected alone.
+  // whatever the user has manually selected alone. The same ranking also
+  // orders the pills themselves (most-data tracker sits leftmost) — set once
+  // here rather than kept live, so the pills don't reshuffle every time the
+  // user just clicks between tabs.
+  let pillOrder = ['consultation', 'conditions', 'progress'];
+
   function autoSelectActiveType() {
     const entryCounts = {
       consultation: responses.reduce((sum, r) => sum + (r.advancements?.length || 0), 0),
@@ -99,14 +104,19 @@
     };
     const itemCounts = { consultation: responses.length, conditions: conditions.length, progress: issues.length };
 
-    const [bestType, bestEntries] = Object.entries(entryCounts).sort(([aType, aEntries], [bType, bEntries]) =>
-      bEntries - aEntries || itemCounts[bType] - itemCounts[aType]
-    )[0];
+    const ranked = Object.keys(entryCounts).sort((aType, bType) =>
+      entryCounts[bType] - entryCounts[aType] || itemCounts[bType] - itemCounts[aType]
+    );
+    pillOrder = ranked;
 
+    const bestType = ranked[0];
+    const bestEntries = entryCounts[bestType];
     if (bestEntries > 0 || itemCounts[bestType] > 0) {
       activeType = bestType;
     }
   }
+
+  const PILL_LABELS = { consultation: 'Consultation', conditions: 'Conditions', progress: 'Project' };
 
   function sortByDateDesc(arr, key) {
     return [...arr].sort((a, b) =>
@@ -442,15 +452,11 @@
         Trackers
       </div>
       <div class="tr-pills">
-        <button class="tab-pill" class:active={activeType === 'consultation'} on:click={() => activeType = 'consultation'}>
-          Consultation <span class="tr-pill-count">{responses.length}</span>
-        </button>
-        <button class="tab-pill" class:active={activeType === 'conditions'} on:click={() => activeType = 'conditions'}>
-          Conditions <span class="tr-pill-count">{conditions.length}</span>
-        </button>
-        <button class="tab-pill" class:active={activeType === 'progress'} on:click={() => activeType = 'progress'}>
-          Progress <span class="tr-pill-count">{issues.length}</span>
-        </button>
+        {#each pillOrder as type (type)}
+          <button class="tab-pill" class:active={activeType === type} on:click={() => activeType = type}>
+            {PILL_LABELS[type]}
+          </button>
+        {/each}
       </div>
     </div>
     <div class="tr-head-actions">
@@ -556,7 +562,7 @@
 <style>
   .tr-widget { grid-row: span 2; }
   .tr-head { align-items: flex-start; }
-  .tr-pills { display: flex; gap: 6px; margin-top: 8px; }
+  .tr-pills { display: flex; gap: 6px; margin-top: 16px; }
   .tab-pill {
     font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
     display: flex; align-items: center; gap: 5px;
@@ -564,7 +570,6 @@
     border: none; cursor: pointer; font-family: inherit;
   }
   .tab-pill.active { background: var(--color-slate-900); color: var(--color-white); }
-  .tr-pill-count { opacity: 0.7; }
   .tr-head-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 
   .tr-body { display: flex; flex-direction: column; gap: 0; padding-top: 6px; }
