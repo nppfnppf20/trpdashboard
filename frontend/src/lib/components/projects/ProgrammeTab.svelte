@@ -372,7 +372,7 @@
             <tr>
               <th class="c1" rowspan="2">Item</th>
               <th class="weeks-heading" colspan={weeks.length}>
-                Week Commencing <span class="weeks-heading-hint">each column below is one week, dated by its Monday — scroll left for earlier weeks</span>
+                Week Commencing <span class="weeks-heading-hint">Each column represents one week</span>
               </th>
             </tr>
             <tr>

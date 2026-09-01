@@ -136,7 +136,7 @@
 
 <div class="sidebar">
   <div class="brand">
-    <div class="brand-mark">TR</div>
+    <img class="brand-mark" src="/logo.png" alt="TRP logo" />
     <div class="brand-name">TRP Dashboard</div>
   </div>
 
@@ -305,14 +305,7 @@
   .brand-mark {
     width: 30px;
     height: 30px;
-    border-radius: var(--radius-md);
-    background: var(--color-primary-600);
-    color: var(--color-white);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 800;
-    font-size: 0.8125rem;
+    object-fit: contain;
     flex-shrink: 0;
   }
 
