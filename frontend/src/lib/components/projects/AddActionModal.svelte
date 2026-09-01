@@ -387,8 +387,6 @@
             onGenerate={generateSummaries}
             {generating}
             canGenerate={canGenerate && !saving}
-            fullTextHint="optional fuller detail behind the summaries - paste an email trail, notes, whatever you've got"
-            fullTextPlaceholder="Type or paste the detail here…"
             generateHint="Tick rows to summarise into them, or leave everything unticked and it'll suggest which ones apply."
           />
 
@@ -411,7 +409,7 @@
 
           <div class="field">
             <div class="adv-applies-header">
-              <label>Applies to <span class="label-hint">tick the issues - leave a summary blank to auto-summarise from the pasted text</span></label>
+              <label>Applies to <span class="label-hint">tick the issues - leave a summary blank to auto-summarise from the source text above</span></label>
               <button type="button" class="select-all-btn" on:click={toggleSelectAll}>{allChecked ? 'Deselect all' : 'Select all'}</button>
             </div>
             <div class="adv-cond-list">
@@ -447,7 +445,7 @@
                     <textarea
                       class="adv-summary-input"
                       rows="2"
-                      placeholder="Optional - leave blank to auto-summarise; anything typed here takes precedence"
+                      placeholder="Write it yourself, or leave blank to auto-summarise from the source text above"
                       bind:value={selections[iss.id].summary}
                     ></textarea>
                   {/if}

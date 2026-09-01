@@ -12,9 +12,9 @@
   export let generateLabel = 'Generate & Fill Rows';
   export let generateHint = 'Summarises text into ticked rows below. Rows must be selected first.';
   export let dateLabel = 'Date';
-  export let fullTextLabel = 'What happened';
-  export let fullTextHint = 'optional fuller detail behind the summaries';
-  export let fullTextPlaceholder = 'Type the full detail of what happened (optional)…';
+  export let fullTextLabel = 'Source text (optional)';
+  export let fullTextHint = 'AI reads this to draft the summary below';
+  export let fullTextPlaceholder = 'Paste a note, email, or transcript. Generate will draft the summary below from this.';
   export let rows = 7;
 </script>
 

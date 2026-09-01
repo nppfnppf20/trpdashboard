@@ -1306,16 +1306,13 @@ ${sections.join('<br>')}`;
               onGenerate={generateTlSummary}
               generating={tlAddGenerating}
               canGenerate={tlCanGenerate && !tlAddSaving}
-              fullTextLabel="Detail"
-              fullTextHint="optional — feeds the summary below"
-              fullTextPlaceholder="Fuller detail…"
-              generateLabel="Generate & Fill Summary"
-              generateHint="Fills the summary below from this text - leave it if you've already typed one"
+              generateLabel="Generate Summary"
+              generateHint=""
               rows={5}
             />
-            <label class="form-label" for="tl-add-summary">Summary</label>
+            <label class="form-label" for="tl-add-summary">Summary <span class="ct-label-hint">saved exactly as typed</span></label>
             <textarea id="tl-add-summary" class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
-              placeholder="Summary - leave blank to auto-summarise from the text above…"></textarea>
+              placeholder="Write it yourself, or use Generate above to draft one from the source text."></textarea>
             {#if tlAddGenerated}
               <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
             {/if}

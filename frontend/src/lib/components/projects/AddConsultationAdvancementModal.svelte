@@ -199,7 +199,7 @@
 
         <div class="field">
           <div class="adv-applies-header">
-            <label>Applies to <span class="label-hint">tick the responses - leave a summary blank to auto-summarise from the pasted text</span></label>
+            <label>Applies to <span class="label-hint">tick the responses - leave a summary blank to auto-summarise from the source text above</span></label>
             <button type="button" class="select-all-btn" on:click={toggleSelectAll}>{allChecked ? 'Deselect all' : 'Select all'}</button>
           </div>
           <div class="adv-cond-list">
@@ -217,7 +217,7 @@
                   <textarea
                     class="adv-summary-input"
                     rows="2"
-                    placeholder="Optional - leave blank to auto-summarise; anything typed here takes precedence"
+                    placeholder="Write it yourself, or leave blank to auto-summarise from the source text above"
                     bind:value={selections[r.id].summary}
                   ></textarea>
                 {/if}

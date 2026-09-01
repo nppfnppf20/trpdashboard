@@ -252,17 +252,14 @@
               onGenerate={onGenerate ? generate : null}
               {generating}
               canGenerate={!!formFullText.trim()}
-              fullTextLabel="Detail"
-              fullTextHint="optional — paste the full note or email trail"
-              fullTextPlaceholder="Paste the full detail here…"
-              generateLabel="Generate summary"
+              generateLabel="Generate Summary"
               generateHint=""
               rows={3}
             />
 
             <div class="field">
-              <label class="form-label">Summary</label>
-              <textarea class="form-input" rows="2" bind:value={formSummary} placeholder="What happened…"></textarea>
+              <label class="form-label">Summary <span class="atm-label-hint">saved exactly as typed</span></label>
+              <textarea class="form-input" rows="2" bind:value={formSummary} placeholder="Write it yourself, or use Generate above to draft one from the source text."></textarea>
             </div>
 
             {#if error}<div class="atm-error">{error}</div>{/if}
@@ -362,6 +359,7 @@
   .atm-add-btn { align-self: flex-start; }
   .atm-form-title { font-size: 0.78rem; font-weight: 700; color: var(--color-slate-600); }
   .field { display: flex; flex-direction: column; gap: 0.3rem; }
+  .atm-label-hint { font-size: 0.72rem; font-weight: 400; color: var(--color-slate-400); margin-left: 0.3rem; }
 
   .atm-error {
     font-size: 0.78rem; color: var(--color-red-600); background: var(--color-red-50);

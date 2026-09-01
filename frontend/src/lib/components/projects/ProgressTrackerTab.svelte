@@ -977,11 +977,8 @@
               onGenerate={generateTlSummary}
               generating={tlAddGenerating}
               canGenerate={tlCanGenerate && !tlAddSaving}
-              fullTextLabel="Detail"
-              fullTextHint="optional — feeds the summary below"
-              fullTextPlaceholder="Fuller detail - paste an email trail, notes, whatever you've got…"
-              generateLabel="Generate & Fill Summary"
-              generateHint="Fills the summary below from this text - leave it if you've already typed one"
+              generateLabel="Generate Summary"
+              generateHint=""
               rows={4}
             />
             <div class="tl-add-row">
@@ -1026,9 +1023,9 @@
                 </select>
               </div>
             {/if}
-            <label class="form-label" for="tl-add-summary">Summary</label>
+            <label class="form-label" for="tl-add-summary">Summary <span class="pt-label-hint">saved exactly as typed</span></label>
             <textarea id="tl-add-summary" class="form-input tl-input" rows="2" bind:value={tlAddForm.summary}
-              placeholder="Summary - leave blank to auto-summarise from the text above…"></textarea>
+              placeholder="Write it yourself, or use Generate above to draft one from the source text."></textarea>
             {#if tlAddGenerated}
               <div class="tl-notice"><i class="las la-magic"></i> Summary generated - review or edit it above.</div>
             {/if}
@@ -1619,6 +1616,7 @@
   .tl-stage-add-toggle:hover { text-decoration: underline; }
   .tl-req-picker { display: flex; flex-direction: column; gap: 0.3rem; background: white; border: 1px solid var(--color-slate-200); border-radius: 6px; padding: 0.5rem; }
   .tl-req-picker-label { font-size: 0.7rem; font-weight: 600; color: var(--color-slate-500); }
+  .pt-label-hint { font-size: 0.72rem; font-weight: 400; color: var(--color-slate-400); margin-left: 0.3rem; }
   .tl-req-check { display: flex; align-items: flex-start; gap: 0.4rem; font-size: 0.78rem; color: var(--color-slate-700); cursor: pointer; }
   .tl-add-btns { display: flex; justify-content: flex-end; gap: 0.5rem; }
   .tl-notice { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--color-teal-600); background: var(--color-primary-50); border: 1px solid var(--color-sky-200); border-radius: 6px; padding: 0.5rem 0.6rem; }
