@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte';
   import {
     getQuotes,
     getProgrammeEvents,
@@ -131,7 +132,11 @@
   }
 
   function buildWeeks(events, keyDates, quotesForDates, directKeyDates) {
+    const now = new Date();
+    // `now` is always included so the current week's column exists even if
+    // every actual date on the programme is weeks away from it.
     const allDates = [
+      now,
       ...events.map(e => new Date(e.date)),
       ...keyDates.map(kd => new Date(kd.date)),
       ...directKeyDates.map(kd => new Date(kd.date)),
@@ -139,15 +144,16 @@
         .filter(Boolean).map(d => new Date(d))
     ].filter(d => !Number.isNaN(d.getTime()));
 
-    const now = new Date();
-    const startWeek = allDates.length ? getWeekCommencing(new Date(Math.min(...allDates))) : getWeekCommencing(now);
+    const startWeek = getWeekCommencing(new Date(Math.min(...allDates)));
     startWeek.setDate(startWeek.getDate() - 14);
 
-    const endWeek = allDates.length ? getWeekCommencing(new Date(Math.max(...allDates))) : getWeekCommencing(now);
+    const endWeek = getWeekCommencing(new Date(Math.max(...allDates)));
     endWeek.setDate(endWeek.getDate() + 14);
 
     const minWeeks = 12;
     const spanWeeks = Math.max(minWeeks, Math.round((endWeek - startWeek) / (7 * 24 * 60 * 60 * 1000)) + 1);
+
+    const currentWeekStart = getWeekCommencing(now);
 
     const weeks = [];
     const current = new Date(startWeek);
@@ -155,7 +161,8 @@
       weeks.push({
         date: new Date(current),
         label: `${current.getDate()}/${current.getMonth() + 1}`,
-        field: current.toISOString().split('T')[0]
+        field: current.toISOString().split('T')[0],
+        isCurrent: current.getTime() === currentWeekStart.getTime()
       });
       current.setDate(current.getDate() + 7);
     }
@@ -163,6 +170,32 @@
   }
 
   $: weeks = buildWeeks(programmeEvents, visibleKeyDates, visibleQuotes, allDirectKeyDates);
+
+  // ── Land on the current week, past weeks reachable by scrolling left ───────
+  // Only runs once, right after the first real set of weeks renders — later
+  // recomputes of `weeks` (e.g. after adding a date) leave the scroll
+  // position wherever the user left it.
+  let scrollEl;
+  let weekThEls = [];
+  let hasScrolledToToday = false;
+
+  // Gated on !loading, not just weeks.length — weeks is non-empty even
+  // before the real data arrives (buildWeeks always includes "now"), so
+  // scrolling on that placeholder range could land on the wrong column
+  // once the real date range shifts things after load() resolves.
+  $: if (!loading && weeks.length && !hasScrolledToToday) {
+    hasScrolledToToday = true;
+    tick().then(scrollToCurrentWeek);
+  }
+
+  function scrollToCurrentWeek() {
+    const idx = weeks.findIndex(w => w.isCurrent);
+    const th = weekThEls[idx];
+    if (idx < 0 || !th || !scrollEl) return;
+    const stickyItemColWidth = 230;
+    const delta = th.getBoundingClientRect().left - scrollEl.getBoundingClientRect().left - stickyItemColWidth;
+    scrollEl.scrollLeft += delta;
+  }
 
   // ── Chips per row/week ───────────────────────────────────────────────────
   function milestoneChipsForWeek(weekStart) {
@@ -179,6 +212,14 @@
         id: kd.id, title: kd.title, date: kd.date, colour: kd.colour || 'var(--color-amber-500)',
         label: (kd.title || '?').charAt(0).toUpperCase(), type: `direct-${group.kind}`
       }));
+  }
+
+  // All chips for a row's own cell: its direct key dates plus every linked
+  // quote's dates, merged together rather than split onto a separate
+  // per-quote row — the quote's dates belong under this item's umbrella,
+  // not off on their own line.
+  function allChipsForWeek(group, weekStart) {
+    return [...directChipsForWeek(group, weekStart), ...group.quotes.flatMap(q => quoteChipsForWeek(q, weekStart))];
   }
 
   function quoteChipsForWeek(quote, weekStart) {
@@ -318,24 +359,27 @@
     </div>
   {:else}
     <div class="pg-grid-card">
-      <div class="pg-scroll">
+      <div class="pg-scroll" bind:this={scrollEl}>
         <table class="pg-grid">
           <thead>
             <tr>
-              <th class="c1">Item / Surveyor</th>
-              <th class="c2">Organisation</th>
-              <th class="c3">Discipline</th>
-              {#each weeks as week}<th class="week">{week.label}</th>{/each}
+              <th class="c1" rowspan="2">Item</th>
+              <th class="weeks-heading" colspan={weeks.length}>
+                Week Commencing <span class="weeks-heading-hint">each column below is one week, dated by its Monday — scroll left for earlier weeks</span>
+              </th>
+            </tr>
+            <tr>
+              {#each weeks as week, i}
+                <th class="week" class:week-current={week.isCurrent} bind:this={weekThEls[i]}>{week.label}</th>
+              {/each}
             </tr>
           </thead>
           <tbody>
             <tr class="row-milestone">
               <td class="c1">Key Project Dates</td>
-              <td class="c2"></td>
-              <td class="c3"></td>
               {#each weeks as week}
                 {@const chips = milestoneChipsForWeek(week.date)}
-                <td class="week" on:click={() => chips.length === 0 && handleAddProjectDate(week.field)}>
+                <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddProjectDate(week.field)}>
                   {#each chips as chip}
                     <span class="chip-diamond" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click|stopPropagation={() => handleViewDate(chip)}></span>
                   {/each}
@@ -344,110 +388,62 @@
             </tr>
 
             {#if conditionGroups.length}
-              <tr class="row-section"><td colspan={3 + weeks.length}><span class="dot dot-cond"></span>Conditions Tracker</td></tr>
+              <tr class="row-section"><td colspan={1 + weeks.length}><span class="dot dot-cond"></span>Conditions Tracker</td></tr>
               {#each conditionGroups as g (g.id)}
                 <tr class="row-cond">
                   <td class="c1">
                     <span class="item-title">{g.condition_number ? `Condition ${g.condition_number} — ` : ''}{g.title}</span>
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
-                  <td class="c2"></td><td class="c3"></td>
                   {#each weeks as week}
-                    {@const chips = directChipsForWeek(g, week.date)}
-                    <td class="week">
+                    {@const chips = allChipsForWeek(g, week.date)}
+                    <td class="week" class:week-current={week.isCurrent}>
                       {#each chips as chip}
                         <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
                       {/each}
                     </td>
                   {/each}
                 </tr>
-                {#each g.quotes as quote (quote.id)}
-                  <tr class="row-sub under-cond">
-                    <td class="c1"><span class="sub-org">{quote.surveyor_organisation || 'Unnamed surveyor'}</span></td>
-                    <td class="c2">{quote.surveyor_organisation || '—'}</td>
-                    <td class="c3"><span class="sub-discipline">{quote.discipline || '—'}</span></td>
-                    {#each weeks as week}
-                      {@const chips = quoteChipsForWeek(quote, week.date)}
-                      <td class="week">
-                        {#each chips as chip}
-                          <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
-                        {/each}
-                      </td>
-                    {/each}
-                  </tr>
-                {/each}
               {/each}
             {/if}
 
             {#if issueGroups.length}
-              <tr class="row-section"><td colspan={3 + weeks.length}><span class="dot dot-issue"></span>Progress (Issues) Tracker</td></tr>
+              <tr class="row-section"><td colspan={1 + weeks.length}><span class="dot dot-issue"></span>Progress (Issues) Tracker</td></tr>
               {#each issueGroups as g (g.id)}
                 <tr class="row-issue">
                   <td class="c1">
                     <span class="item-title">{g.title}</span>
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
-                  <td class="c2"></td><td class="c3"></td>
                   {#each weeks as week}
-                    {@const chips = directChipsForWeek(g, week.date)}
-                    <td class="week">
+                    {@const chips = allChipsForWeek(g, week.date)}
+                    <td class="week" class:week-current={week.isCurrent}>
                       {#each chips as chip}
                         <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
                       {/each}
                     </td>
                   {/each}
                 </tr>
-                {#each g.quotes as quote (quote.id)}
-                  <tr class="row-sub under-issue">
-                    <td class="c1"><span class="sub-org">{quote.surveyor_organisation || 'Unnamed surveyor'}</span></td>
-                    <td class="c2">{quote.surveyor_organisation || '—'}</td>
-                    <td class="c3"><span class="sub-discipline">{quote.discipline || '—'}</span></td>
-                    {#each weeks as week}
-                      {@const chips = quoteChipsForWeek(quote, week.date)}
-                      <td class="week">
-                        {#each chips as chip}
-                          <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
-                        {/each}
-                      </td>
-                    {/each}
-                  </tr>
-                {/each}
               {/each}
             {/if}
 
             {#if consultationGroups.length}
-              <tr class="row-section"><td colspan={3 + weeks.length}><span class="dot dot-consultation"></span>Consultation Tracker</td></tr>
+              <tr class="row-section"><td colspan={1 + weeks.length}><span class="dot dot-consultation"></span>Consultation Tracker</td></tr>
               {#each consultationGroups as g (g.id)}
                 <tr class="row-consultation">
                   <td class="c1">
                     <span class="item-title">{g.title}</span>
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
-                  <td class="c2"></td><td class="c3"></td>
                   {#each weeks as week}
-                    {@const chips = directChipsForWeek(g, week.date)}
-                    <td class="week">
+                    {@const chips = allChipsForWeek(g, week.date)}
+                    <td class="week" class:week-current={week.isCurrent}>
                       {#each chips as chip}
                         <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
                       {/each}
                     </td>
                   {/each}
                 </tr>
-                {#each g.quotes as quote (quote.id)}
-                  <tr class="row-sub under-consultation">
-                    <td class="c1"><span class="sub-org">{quote.surveyor_organisation || 'Unnamed surveyor'}</span></td>
-                    <td class="c2">{quote.surveyor_organisation || '—'}</td>
-                    <td class="c3"><span class="sub-discipline">{quote.discipline || '—'}</span></td>
-                    {#each weeks as week}
-                      {@const chips = quoteChipsForWeek(quote, week.date)}
-                      <td class="week">
-                        {#each chips as chip}
-                          <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
-                        {/each}
-                      </td>
-                    {/each}
-                  </tr>
-                {/each}
               {/each}
             {/if}
           </tbody>
@@ -555,11 +551,25 @@
   }
   thead th.week { text-align: center; width: 48px; }
 
-  .c1, .c2, .c3 { position: sticky; z-index: 1; background: white; }
-  .c1 { left: 0; width: 230px; min-width: 230px; white-space: normal; }
-  .c2 { left: 230px; width: 140px; min-width: 140px; }
-  .c3 { left: 370px; width: 120px; min-width: 120px; box-shadow: 4px 0 8px -6px rgba(15, 23, 42, 0.25); }
-  thead th.c1, thead th.c2, thead th.c3 { z-index: 2; background: var(--color-slate-50); }
+  .weeks-heading {
+    text-align: center;
+    font-size: 0.7rem;
+  }
+  .weeks-heading-hint {
+    display: block;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+    font-size: 0.68rem;
+    color: var(--color-slate-400);
+    margin-top: 2px;
+  }
+
+  th.week-current { background: var(--color-slate-200); }
+  td.week-current { background: var(--color-slate-100); }
+
+  .c1 { position: sticky; left: 0; z-index: 1; background: white; width: 230px; min-width: 230px; white-space: normal; box-shadow: 4px 0 8px -6px rgba(15, 23, 42, 0.25); }
+  thead th.c1 { z-index: 2; background: var(--color-slate-50); }
 
   td.week { text-align: center; cursor: default; }
   tr.row-milestone td.week { cursor: pointer; }
@@ -581,25 +591,14 @@
 
   tr.row-cond .c1, tr.row-issue .c1, tr.row-consultation .c1 { border-left: 3px solid transparent; }
   tr.row-cond .c1 { border-left-color: var(--color-indigo-800); background: var(--color-badge-indigo-bg); }
-  tr.row-cond .c2, tr.row-cond .c3 { background: var(--color-badge-indigo-bg); }
   tr.row-issue .c1 { border-left-color: var(--color-amber-500); background: var(--color-badge-warning-bg); }
-  tr.row-issue .c2, tr.row-issue .c3 { background: var(--color-badge-warning-bg); }
   tr.row-consultation .c1 { border-left-color: var(--color-violet-600); background: var(--color-badge-purple-bg); }
-  tr.row-consultation .c2, tr.row-consultation .c3 { background: var(--color-badge-purple-bg); }
 
   .item-title { display: block; font-weight: 700; font-size: 0.83rem; }
   tr.row-cond .item-title { color: var(--color-badge-indigo-fg); }
   tr.row-issue .item-title { color: var(--color-badge-warning-fg); }
   tr.row-consultation .item-title { color: var(--color-badge-purple-fg); }
   .item-meta { display: block; font-size: 0.72rem; color: var(--color-slate-500); font-weight: 500; margin-top: 0.1rem; }
-
-  tr.row-sub .c1 { padding-left: 1.85rem; border-left: 3px solid var(--color-slate-200); }
-  tr.row-sub.under-cond .c1 { border-left-color: var(--color-indigo-800); }
-  tr.row-sub.under-issue .c1 { border-left-color: var(--color-amber-500); }
-  tr.row-sub.under-consultation .c1 { border-left-color: var(--color-violet-600); }
-
-  .sub-org { font-weight: 600; color: var(--color-slate-700); font-size: 0.8rem; }
-  .sub-discipline { color: var(--color-slate-500); font-size: 0.75rem; }
 
   .chip {
     display: inline-flex;

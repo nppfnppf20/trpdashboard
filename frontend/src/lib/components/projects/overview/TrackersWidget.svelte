@@ -272,9 +272,15 @@
     load();
   }
 
-  $: timelineItems = timelineRow ? buildTimelineItems(timelineRow) : [];
+  // responses/conditions/issues are passed in explicitly (rather than just
+  // closed over) so they appear directly in the reactive statement below —
+  // Svelte's dependency tracking only looks at identifiers referenced in the
+  // statement itself, not inside a called function's body, so without this
+  // the list would go stale after `load()` reassigns those arrays (e.g.
+  // right after adding an entry) until timelineRow itself next changes.
+  $: timelineItems = timelineRow ? buildTimelineItems(timelineRow, responses, conditions, issues) : [];
 
-  function buildTimelineItems(row) {
+  function buildTimelineItems(row, responses, conditions, issues) {
     if (row.kind === 'consultation') {
       const r = responses.find(x => x.id === row.id);
       return sortByDateDesc(r?.advancements || [], 'advancement_date').map(a => ({
@@ -301,9 +307,9 @@
   }
 
   // ── Per-row direct key dates (shown inside the timeline popup) ─────────────
-  $: timelineKeyDates = timelineRow ? buildKeyDates(timelineRow) : [];
+  $: timelineKeyDates = timelineRow ? buildKeyDates(timelineRow, responses, conditions, issues) : [];
 
-  function buildKeyDates(row) {
+  function buildKeyDates(row, responses, conditions, issues) {
     if (row.kind === 'consultation') return responses.find(x => x.id === row.id)?.key_dates || [];
     if (row.kind === 'conditions') return conditions.find(x => x.id === row.id)?.key_dates || [];
     return issues.find(x => x.id === row.id)?.key_dates || [];
