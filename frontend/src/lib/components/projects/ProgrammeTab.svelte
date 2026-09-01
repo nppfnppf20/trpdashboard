@@ -17,6 +17,8 @@
   import ViewDateModal from '$lib/components/admin-console/ViewDateModal.svelte';
 
   export let project;
+  export let onClose = null; // set when embedded in a popup (e.g. from the Overview page) — renders a close button in the header
+
   $: projectId = project?.unique_id;
   $: projectPk = project?.id;
 
@@ -342,9 +344,14 @@
 <div class="pg-tab">
   <div class="pg-header">
     <h2>Programme</h2>
-    <button class="btn btn-primary" on:click={() => handleAddProjectDate()}>
-      <i class="las la-calendar-plus"></i> Add Project Date
-    </button>
+    <div class="pg-header-actions">
+      <button class="btn btn-primary" on:click={() => handleAddProjectDate()}>
+        <i class="las la-calendar-plus"></i> Add Project Date
+      </button>
+      {#if onClose}
+        <button class="pg-close-btn" on:click={onClose} title="Close">&times;</button>
+      {/if}
+    </div>
   </div>
 
   {#if loading}
@@ -490,6 +497,12 @@
     justify-content: space-between;
   }
   .pg-header h2 { margin: 0; font-size: 1.125rem; font-weight: 700; color: var(--color-slate-800); }
+  .pg-header-actions { display: flex; align-items: center; gap: 0.75rem; }
+  .pg-close-btn {
+    background: none; border: none; font-size: 1.6rem; color: var(--color-slate-500);
+    cursor: pointer; line-height: 1; padding: 0; width: 2rem; height: 2rem;
+  }
+  .pg-close-btn:hover { color: var(--color-slate-800); }
 
   .pg-state, .pg-empty {
     display: flex;

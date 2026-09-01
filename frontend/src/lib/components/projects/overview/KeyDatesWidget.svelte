@@ -1,12 +1,14 @@
 <script>
-  import { openProjectModal } from '$lib/stores/projectViewModal.js';
+  import ProgrammeTab from '$lib/components/projects/ProgrammeTab.svelte';
 
   // Sourced directly from the project's own date fields (already loaded with
-  // the project — no fetch needed). "Programme" deep-links to the project-level
-  // Programme tab, which additionally covers quote-derived programme events
-  // these fields don't (see ProgrammeTab.svelte).
+  // the project — no fetch needed). "Programme" opens the project-level
+  // Programme view in a popup over this page (rather than navigating away
+  // to its own tab), which additionally covers quote-derived programme
+  // events these fields don't (see ProgrammeTab.svelte).
   export let project;
-  $: projectId = project?.id;
+
+  let showProgrammeModal = false;
 
   const FIELDS = [
     ['submission_date', 'Submission Date'],
@@ -34,7 +36,7 @@
   }
 
   function openProgramme() {
-    openProjectModal(projectId, 'programme', 'details');
+    showProgrammeModal = true;
   }
 </script>
 
@@ -63,6 +65,14 @@
   </div>
 </div>
 
+{#if showProgrammeModal}
+  <div class="pgm-backdrop" on:click|self={() => showProgrammeModal = false} role="presentation">
+    <div class="pgm-modal">
+      <ProgrammeTab {project} onClose={() => showProgrammeModal = false} />
+    </div>
+  </div>
+{/if}
+
 <style>
   .kd-body { display: flex; flex-direction: column; gap: 9px; }
   .kd-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.5rem 0; }
@@ -70,4 +80,26 @@
   .kd-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary-600); flex-shrink: 0; margin-top: 5px; }
   .kd-date { color: var(--color-slate-500); white-space: nowrap; flex-shrink: 0; padding-top: 1px; }
   .kd-title { color: var(--color-slate-800); }
+
+  .pgm-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 1.5rem;
+  }
+  .pgm-modal {
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+    width: 95%;
+    max-width: 1400px;
+    height: 88vh;
+    padding: 1.75rem;
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
 </style>
