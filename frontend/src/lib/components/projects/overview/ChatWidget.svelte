@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
-  import { renderReply, buildSourceLabels } from '$lib/utils/chatMarkdown.js';
+  import { renderReply, buildSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
 
   export let project;
@@ -194,6 +194,18 @@
     if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
   }
 
+  let copiedIdx = null;
+
+  async function copyReply(idx, content) {
+    try {
+      await navigator.clipboard.writeText(stripCitations(content));
+      copiedIdx = idx;
+      setTimeout(() => { if (copiedIdx === idx) copiedIdx = null; }, 1500);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
+  }
+
   function handleKeydown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -232,13 +244,16 @@
       {#if !messages.length}
         <p class="cw-empty">Ask a question about this project.</p>
       {/if}
-      {#each messages as m}
+      {#each messages as m, idx}
         <div class="cw-bubble" class:cw-bubble-user={m.role === 'user'} class:cw-bubble-assistant={m.role === 'assistant'}>
           {#if m.role === 'assistant'}
             {@html renderReply(m.content, sourceLabels)}
             {#each m.suggestions ?? [] as suggestion}
               <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} compact />
             {/each}
+            <button class="cw-copy-btn" on:click={() => copyReply(idx, m.content)} title="Copy response (citations excluded)">
+              <i class="las {copiedIdx === idx ? 'la-check' : 'la-copy'}"></i> {copiedIdx === idx ? 'Copied' : 'Copy'}
+            </button>
           {:else}
             {m.content}
           {/if}
@@ -388,6 +403,21 @@
     vertical-align: baseline;
     white-space: nowrap;
   }
+
+  .cw-copy-btn {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-top: 5px;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.625rem;
+    color: var(--color-slate-500);
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .cw-copy-btn:hover { color: var(--color-slate-700); }
 
   .cw-error { font-size: 0.72rem; color: var(--color-red-600); }
 

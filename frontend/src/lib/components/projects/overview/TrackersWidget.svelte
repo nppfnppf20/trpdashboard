@@ -1,5 +1,4 @@
 <script>
-  import { onMount } from 'svelte';
   import {
     getConsultationData,
     createConsultationAdvancements,
@@ -31,6 +30,7 @@
   $: projectId = project?.id;
 
   let activeType = 'consultation'; // 'consultation' | 'conditions' | 'progress'
+  let hasAutoSelected = false;
 
   let responses = [];
   let conditions = [];
@@ -38,7 +38,16 @@
   let loading = true;
   let error = null;
 
-  onMount(load);
+  // Reload whenever projectId changes to a different project — not just on
+  // first mount — so switching projects from the sidebar while already on
+  // the Overview page actually refreshes this widget instead of leaving the
+  // previous project's data (and tracker selection) showing.
+  let loadedProjectId = null;
+  $: if (projectId && projectId !== loadedProjectId) {
+    loadedProjectId = projectId;
+    hasAutoSelected = false;
+    load();
+  }
 
   async function load() {
     loading = true;
@@ -52,10 +61,40 @@
       responses = c.responses || [];
       conditions = k.conditions || [];
       issues = p.issues || [];
+
+      if (!hasAutoSelected) {
+        hasAutoSelected = true;
+        autoSelectActiveType();
+      }
     } catch (err) {
       error = err.message;
     } finally {
       loading = false;
+    }
+  }
+
+  // Default to whichever tracker has the most information for this project —
+  // same "most content" heuristic Project Chat uses to auto-pick a default
+  // source, just measured as total advancement/action entries here (chars
+  // aren't available without a dedicated catalogue call like chat's).
+  // Falls back to item count on a tie or when nothing has advancements yet,
+  // so a populated-but-quiet tracker still beats an empty one. Only runs on
+  // the first load — later refreshes (after adding/editing an entry) leave
+  // whatever the user has manually selected alone.
+  function autoSelectActiveType() {
+    const entryCounts = {
+      consultation: responses.reduce((sum, r) => sum + (r.advancements?.length || 0), 0),
+      conditions: conditions.reduce((sum, c) => sum + mergedConditionTimeline(c).length, 0),
+      progress: issues.reduce((sum, iss) => sum + mainIssueActions(iss).length, 0),
+    };
+    const itemCounts = { consultation: responses.length, conditions: conditions.length, progress: issues.length };
+
+    const [bestType, bestEntries] = Object.entries(entryCounts).sort(([aType, aEntries], [bType, bEntries]) =>
+      bEntries - aEntries || itemCounts[bType] - itemCounts[aType]
+    )[0];
+
+    if (bestEntries > 0 || itemCounts[bestType] > 0) {
+      activeType = bestType;
     }
   }
 
@@ -149,11 +188,11 @@
     const merged = mergedConditionTimeline(c);
     return {
       id: c.id,
-      name: `Condition ${c.condition_number || '—'}`,
-      badgeLabel: toTitleCase(c.status || 'Not Started'),
-      badgeClass: conditionStatusBadgeClass(c.status),
-      statusLabel: null,
-      statusClass: null,
+      name: c.condition_number ? `Condition ${c.condition_number} — ${c.title}` : c.title,
+      badgeLabel: null,
+      badgeClass: null,
+      statusLabel: toTitleCase(c.status || 'Not Started'),
+      statusClass: conditionStatusBadgeClass(c.status),
       latest: merged[0] ? { date: merged[0].advancement_date, summary: merged[0].summary } : null,
       count: merged.length,
     };

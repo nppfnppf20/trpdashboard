@@ -32,9 +32,11 @@
   let generating = false;
   let error = null;
   let seeded = false;
+  let showForm = false; // form is hidden by default — just the timeline + an "Add Advancement" button to reveal it
 
   $: if (show && !seeded) {
     resetForm();
+    showForm = false;
     seeded = true;
   }
   $: if (!show && seeded) {
@@ -50,6 +52,11 @@
     error = null;
   }
 
+  function openAddForm() {
+    resetForm();
+    showForm = true;
+  }
+
   function startEdit(item) {
     editingId = item.id;
     formDate = item.date ? item.date.slice(0, 10) : '';
@@ -57,10 +64,12 @@
     formFullText = item.fullText || '';
     formSummary = item.summary || '';
     error = null;
+    showForm = true;
   }
 
   function cancelEdit() {
     resetForm();
+    showForm = false;
   }
 
   async function generate() {
@@ -95,6 +104,7 @@
         await onAdd(form);
       }
       resetForm();
+      showForm = false;
     } catch (err) {
       error = err.message;
     } finally {
@@ -159,38 +169,42 @@
           {/each}
         </div>
 
-        <div class="atm-form">
-          <div class="atm-form-title">{editingId ? 'Edit entry' : 'Add entry'}</div>
-          <AdvancementEntryFields
-            bind:date={formDate}
-            bind:fullText={formFullText}
-            onGenerate={onGenerate ? generate : null}
-            {generating}
-            canGenerate={!!formFullText.trim()}
-            fullTextLabel="Detail"
-            fullTextHint="optional — paste the full note or email trail"
-            fullTextPlaceholder="Paste the full detail here…"
-            generateLabel="Generate summary"
-            generateHint=""
-            rows={3}
-          />
+        {#if showForm}
+          <div class="atm-form">
+            <div class="atm-form-title">{editingId ? 'Edit entry' : 'Add entry'}</div>
+            <AdvancementEntryFields
+              bind:date={formDate}
+              bind:fullText={formFullText}
+              onGenerate={onGenerate ? generate : null}
+              {generating}
+              canGenerate={!!formFullText.trim()}
+              fullTextLabel="Detail"
+              fullTextHint="optional — paste the full note or email trail"
+              fullTextPlaceholder="Paste the full detail here…"
+              generateLabel="Generate summary"
+              generateHint=""
+              rows={3}
+            />
 
-          <div class="field">
-            <label class="form-label">Summary</label>
-            <textarea class="form-input" rows="2" bind:value={formSummary} placeholder="What happened…"></textarea>
+            <div class="field">
+              <label class="form-label">Summary</label>
+              <textarea class="form-input" rows="2" bind:value={formSummary} placeholder="What happened…"></textarea>
+            </div>
+
+            {#if error}<div class="atm-error">{error}</div>{/if}
+
+            <div class="atm-form-actions">
+              <button class="btn btn-secondary btn-sm" on:click={cancelEdit} disabled={saving}>Cancel</button>
+              <button class="btn btn-primary btn-sm" on:click={save} disabled={saving}>
+                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add entry'}
+              </button>
+            </div>
           </div>
-
-          {#if error}<div class="atm-error">{error}</div>{/if}
-
-          <div class="atm-form-actions">
-            {#if editingId}
-              <button class="btn btn-secondary btn-sm" on:click={cancelEdit} disabled={saving}>Cancel edit</button>
-            {/if}
-            <button class="btn btn-primary btn-sm" on:click={save} disabled={saving}>
-              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add entry'}
-            </button>
-          </div>
-        </div>
+        {:else}
+          <button class="btn btn-primary btn-sm atm-add-btn" on:click={openAddForm}>
+            <i class="las la-plus"></i> Add Advancement
+          </button>
+        {/if}
       </div>
     </div>
   </div>
@@ -247,6 +261,7 @@
   .atm-empty { margin: 0; padding: 0.9rem; text-align: center; font-size: 0.83rem; color: var(--color-slate-400); }
 
   .atm-form { border-top: 1px dashed var(--color-slate-200); padding-top: 0.9rem; display: flex; flex-direction: column; gap: 0.7rem; }
+  .atm-add-btn { align-self: flex-start; }
   .atm-form-title { font-size: 0.78rem; font-weight: 700; color: var(--color-slate-600); }
   .field { display: flex; flex-direction: column; gap: 0.3rem; }
 

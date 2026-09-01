@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
   import { exportConditionsPdf, exportConditionsWithExtras } from '$lib/services/conditionsPdfExport.js';
@@ -106,7 +106,10 @@
     if (_mirrorCleanup) { _mirrorCleanup(); _mirrorCleanup = null; }
 
     const inner = scrollTopEl.querySelector('.ct-scroll-top-inner');
-    const updateWidth = () => { inner.style.width = tableEl.scrollWidth + 'px'; };
+    // Guarded — a ResizeObserver callback can still be in flight the instant
+    // this component is torn down (e.g. navigating away from this tab), by
+    // which point tableEl/inner have already gone back to null.
+    const updateWidth = () => { if (tableEl && inner) inner.style.width = tableEl.scrollWidth + 'px'; };
     updateWidth();
 
     const ro = new ResizeObserver(updateWidth);
@@ -125,6 +128,8 @@
       tableWrapperEl.removeEventListener('scroll', syncFromWrapper);
     };
   }
+
+  onDestroy(() => { if (_mirrorCleanup) _mirrorCleanup(); });
 
   onMount(() => { if (projectId) load(); });
   $: if (projectId) load();

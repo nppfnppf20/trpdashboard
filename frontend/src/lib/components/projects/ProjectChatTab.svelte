@@ -1,7 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
-  import { renderReply, buildSourceLabels } from '$lib/utils/chatMarkdown.js';
+  import { renderReply, buildSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
 
   export let project;
@@ -151,6 +151,18 @@
     expandedCitations = expandedCitations.has(idx)
       ? new Set([...expandedCitations].filter(i => i !== idx))
       : new Set([...expandedCitations, idx]);
+  }
+
+  let copiedIdx = null;
+
+  async function copyReply(idx, content) {
+    try {
+      await navigator.clipboard.writeText(stripCitations(content));
+      copiedIdx = idx;
+      setTimeout(() => { if (copiedIdx === idx) copiedIdx = null; }, 1500);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
   }
 
   // ── Chat ───────────────────────────────────────────────────────────────────
@@ -361,6 +373,9 @@
               {#each msg.suggestions ?? [] as suggestion}
                 <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} />
               {/each}
+              <button class="pc-copy-btn" on:click={() => copyReply(idx, msg.content)} title="Copy response (citations excluded)">
+                <i class="las {copiedIdx === idx ? 'la-check' : 'la-copy'}"></i> {copiedIdx === idx ? 'Copied' : 'Copy'}
+              </button>
             </div>
           {/if}
         </div>
@@ -635,6 +650,21 @@
     flex-direction: column;
     gap: 0.4rem;
   }
+
+  .pc-copy-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.6rem;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.75rem;
+    color: var(--color-slate-500);
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .pc-copy-btn:hover { color: var(--color-slate-700); }
 
   .pc-citation {
     padding: 0.45rem 0.6rem;

@@ -639,18 +639,16 @@
   }
 
   function handleClose() {
-    projectData = null;
-    loading = true;
-    error = null;
-    activeTab = 'site_boundary';
-    policyFormOpen = false;
-    conflictResults = null;
-    conflictError = null;
-    expandedCategories = {};
-    savedCheckInfo = null;
-    loadingSavedCheck = false;
+    // Don't reset projectData/loading/activeTab/etc. here — this component
+    // isn't necessarily being destroyed. Closing a tab drilled into from
+    // another tab (e.g. the Overview widget's "expand tracker" button) calls
+    // openProjectModal again for the SAME project instead of unmounting, so
+    // resetting here used to force a pointless reload (and, since the load
+    // guard now only reloads on an actual project change, would otherwise
+    // leave it stuck on the loading state forever). If this instance really
+    // is being destroyed, none of this state matters anyway.
     showExtractModal = false;
-    cleanupMap();
+    policyFormOpen = false;
     onClose();
   }
 

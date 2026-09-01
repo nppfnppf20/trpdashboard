@@ -1,10 +1,10 @@
 <script>
-  import { openSurveyorManagement } from '$lib/stores/projectViewModal.js';
+  import { openProjectModal } from '$lib/stores/projectViewModal.js';
 
   // Sourced directly from the project's own date fields (already loaded with
-  // the project — no fetch needed). "Programme" still deep-links to the
-  // fuller Gantt view under Surveyor Management, which additionally covers
-  // quote-derived programme events these fields don't.
+  // the project — no fetch needed). "Programme" deep-links to the project-level
+  // Programme tab, which additionally covers quote-derived programme events
+  // these fields don't (see ProgrammeTab.svelte).
   export let project;
   $: projectId = project?.id;
 
@@ -34,7 +34,7 @@
   }
 
   function openProgramme() {
-    openSurveyorManagement(projectId, 'programme', 'details');
+    openProjectModal(projectId, 'programme', 'details');
   }
 </script>
 

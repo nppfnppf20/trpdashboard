@@ -13,6 +13,17 @@ export function buildSourceLabels(groups) {
   return map;
 }
 
+// Same citation markers renderReply() turns into chips, removed outright —
+// for copying a reply as plain text without the [D12]/[COND]/etc. clutter.
+export function stripCitations(text) {
+  return text
+    .replace(/\s*\[(?:D\d+|M\d+|COND|IT|POL|PD|PC|P|C|K|A|H|S)(?:\s*[§·][^\]]*)?\]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([.,;:!?])/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function renderReply(text, sourceLabels = {}) {
   const escaped = escapeHtml(text);
   return escaped
