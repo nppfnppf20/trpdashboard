@@ -10,9 +10,9 @@
     updateQuoteKeyDate,
     deleteQuoteKeyDate
   } from '$lib/api/quotes.js';
-  import { getConditionsData, updateConditionKeyDate, deleteConditionKeyDate } from '$lib/api/conditions.js';
-  import { getProgressData, updateIssueKeyDate, deleteIssueKeyDate } from '$lib/api/progressTracker.js';
-  import { getConsultationData, updateConsultationKeyDate, deleteConsultationKeyDate } from '$lib/api/consultation.js';
+  import { getConditionsData, createConditionKeyDate, updateConditionKeyDate, deleteConditionKeyDate } from '$lib/api/conditions.js';
+  import { getProgressData, createIssueKeyDate, updateIssueKeyDate, deleteIssueKeyDate } from '$lib/api/progressTracker.js';
+  import { getConsultationData, createConsultationKeyDate, updateConsultationKeyDate, deleteConsultationKeyDate } from '$lib/api/consultation.js';
   import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
   import ViewDateModal from '$lib/components/admin-console/ViewDateModal.svelte';
 
@@ -244,20 +244,31 @@
   }
 
   // ── Add / view / edit / delete ──────────────────────────────────────────
-  // Project milestones and editing existing dates all happen here. Adding a
-  // NEW date to a row or a linked quote happens from inside that Condition /
-  // Issue / Consultation response's own timeline drawer, where it belongs.
+  // Project milestones, row-owned dates (condition/issue/consultation) and
+  // editing existing dates all happen here, from clicking the relevant cell.
+  // Adding a NEW date to a linked quote still happens from that quote's own
+  // place in Surveyor Management — quotes aren't owned by Programme.
   let showAddKeyDateModal = false;
   let showViewDateModal = false;
   let selectedDate = null;
   let keyDateType = 'project';
   let preSelectedDate = null;
   let existingDateForEdit = null;
+  let targetRow = null; // { kind: 'condition'|'issue'|'consultation', id } — which row a new date is being added to
 
   function handleAddProjectDate(date = null) {
     keyDateType = 'project';
     preSelectedDate = date;
     existingDateForEdit = null;
+    targetRow = null;
+    showAddKeyDateModal = true;
+  }
+
+  function handleAddRowDate(group, date = null) {
+    keyDateType = `direct-${group.kind}`;
+    preSelectedDate = date;
+    existingDateForEdit = null;
+    targetRow = { kind: group.kind, id: group.id };
     showAddKeyDateModal = true;
   }
 
@@ -306,14 +317,25 @@
   async function handleSubmitDate(event) {
     const { type, data, isEdit } = event.detail;
     if (!isEdit) {
-      // Only project milestones can be created from Programme itself.
       try {
-        const newEvent = await createProgrammeEvent(projectId, { title: data.title, date: data.date, colour: data.color });
-        programmeEvents = [...programmeEvents, newEvent];
+        if (type === 'direct-condition') {
+          await createConditionKeyDate(targetRow.id, { title: data.title, date: data.date, colour: data.color });
+          await load();
+        } else if (type === 'direct-issue') {
+          await createIssueKeyDate(targetRow.id, { title: data.title, date: data.date, colour: data.color });
+          await load();
+        } else if (type === 'direct-consultation') {
+          await createConsultationKeyDate(targetRow.id, { title: data.title, date: data.date, colour: data.color });
+          await load();
+        } else {
+          const newEvent = await createProgrammeEvent(projectId, { title: data.title, date: data.date, colour: data.color });
+          programmeEvents = [...programmeEvents, newEvent];
+        }
       } catch (err) {
         alert('Failed to save date: ' + err.message);
       }
       showAddKeyDateModal = false;
+      targetRow = null;
       return;
     }
     try {
@@ -404,7 +426,7 @@
                   </td>
                   {#each weeks as week}
                     {@const chips = allChipsForWeek(g, week.date)}
-                    <td class="week" class:week-current={week.isCurrent}>
+                    <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
                         <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
                       {/each}
@@ -424,7 +446,7 @@
                   </td>
                   {#each weeks as week}
                     {@const chips = allChipsForWeek(g, week.date)}
-                    <td class="week" class:week-current={week.isCurrent}>
+                    <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
                         <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
                       {/each}
@@ -444,7 +466,7 @@
                   </td>
                   {#each weeks as week}
                     {@const chips = allChipsForWeek(g, week.date)}
-                    <td class="week" class:week-current={week.isCurrent}>
+                    <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
                         <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
                       {/each}
@@ -455,14 +477,6 @@
             {/if}
           </tbody>
         </table>
-      </div>
-
-      <div class="pg-legend">
-        <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-primary-500)"></span>Site Visit</span>
-        <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-violet-600)"></span>Draft Report</span>
-        <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-emerald-500)"></span>Final Report</span>
-        <span class="pg-legend-item"><span class="pg-swatch" style="background:var(--color-amber-500)"></span>Key date</span>
-        <span class="pg-legend-item"><span class="chip-diamond" style="background:var(--color-primary-700)"></span>Project milestone</span>
       </div>
     </div>
   {/if}
@@ -552,6 +566,11 @@
     white-space: nowrap;
   }
 
+  /* Vertical rule between every week column (and after the sticky Item
+     column) — without this the grid had row separators but no column
+     separators, so it was impossible to tell which week a cell belonged to. */
+  th.week, td.week { border-left: 1px solid var(--color-slate-200); }
+
   thead th {
     background: var(--color-slate-50);
     color: var(--color-slate-500);
@@ -585,7 +604,14 @@
   thead th.c1 { z-index: 2; background: var(--color-slate-50); }
 
   td.week { text-align: center; cursor: default; }
-  tr.row-milestone td.week { cursor: pointer; }
+  tr.row-milestone td.week,
+  tr.row-cond td.week,
+  tr.row-issue td.week,
+  tr.row-consultation td.week { cursor: pointer; }
+  tr.row-milestone td.week:hover,
+  tr.row-cond td.week:hover,
+  tr.row-issue td.week:hover,
+  tr.row-consultation td.week:hover { background: var(--color-slate-100); }
 
   tr.row-section td {
     padding: 0.45rem 0.85rem;
@@ -635,17 +661,4 @@
     cursor: pointer;
     margin: 1px;
   }
-
-  .pg-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.1rem;
-    padding: 0.75rem 1rem;
-    background: var(--color-slate-50);
-    border-top: 1px solid var(--color-slate-200);
-    font-size: 0.75rem;
-    color: var(--color-slate-500);
-  }
-  .pg-legend-item { display: inline-flex; align-items: center; gap: 0.4rem; }
-  .pg-swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
 </style>
