@@ -10,6 +10,8 @@
 import { pool } from '../db.js';
 import { resolveBriefingSourceTexts } from '../services/quoteRequests.service.js';
 import { draftIssuesFromBriefingNote } from '../services/planningStatement.service.js';
+import { summariseSpecialistReportForIssue } from '../services/appeal.service.js';
+import { parseFile } from '../services/parser.service.js';
 
 async function loadCustomActionPrompt(key) {
   const { rows } = await pool.query(
@@ -421,5 +423,65 @@ export async function draftIssuesFromBriefing(req, res) {
   } catch (err) {
     console.error('draftingIssues.draftFromBriefing error:', err);
     res.status(500).json({ error: 'Failed to draft issues from briefing' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Specialist report → working note (drag-and-drop / paste on the Specialist
+// Report field). Generates only — the frontend appends the returned text to
+// whatever is already in the field and saves it via the normal PUT /:id.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function summarizeSpecialistReport(req, res) {
+  const { id } = req.params;
+  const { text: pastedText, provider } = req.body ?? {};
+
+  if (!req.file && !pastedText?.trim()) {
+    return res.status(400).json({ error: 'file or text is required' });
+  }
+
+  try {
+    let reportText, filename;
+    if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      reportText = parsed.text;
+      filename = req.file.originalname;
+    } else {
+      reportText = pastedText;
+      filename = req.body.file_name || null;
+    }
+    if (!reportText?.trim()) {
+      return res.status(400).json({ error: 'No text could be extracted from the report' });
+    }
+
+    const [{ rows: issueRows }, { rows: policyRows }] = await Promise.all([
+      pool.query(`SELECT label, discipline, argument_for FROM admin_console.drafting_issues WHERE id = $1`, [id]),
+      pool.query(
+        `SELECT pp.policy_reference, pp.policy_name, pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy, pd.plan_name
+         FROM public.project_policies pp
+         JOIN admin_console.drafting_issue_policy_relevance dipr ON dipr.policy_id = pp.id
+         LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+         WHERE dipr.drafting_issue_id = $1
+         ORDER BY pp.policy_type, pp.policy_reference`,
+        [id]
+      ),
+    ]);
+    if (!issueRows.length) return res.status(404).json({ error: 'Drafting issue not found' });
+
+    const note = await summariseSpecialistReportForIssue({
+      reportText,
+      filename,
+      issueLabel: issueRows[0].label,
+      issueDiscipline: issueRows[0].discipline,
+      argumentFor: issueRows[0].argument_for,
+      linkedPolicies: policyRows,
+      customPrompt: await loadCustomActionPrompt('summarise_specialist_report'),
+      provider: provider || null,
+    });
+
+    res.json({ note });
+  } catch (err) {
+    console.error('draftingIssues.summarizeSpecialistReport error:', err);
+    res.status(500).json({ error: 'Failed to summarise specialist report' });
   }
 }

@@ -4,6 +4,7 @@
     deleteDraftingIssue, draftIssuesFromBriefing,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
     getDraftingIssueSnippetRelevance, toggleDraftingIssueSnippet,
+    summarizeSpecialistReport,
   } from '$lib/api/draftingIssues.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { listIssueTypes } from '$lib/api/issueTypes.js';
@@ -143,6 +144,77 @@
     }
   }
 
+  // ── Specialist report → working note (drag-and-drop / paste + LLM summary) ──
+  const defaultReportPanel = {
+    open: false, tab: 'upload', file: null, fileLabel: '', dragOver: false,
+    pasteText: '', loading: false, error: null, note: null,
+  };
+  let reportPanels = {}; // { [issueId]: { open, tab, file, fileLabel, dragOver, pasteText, loading, error, note } }
+  let reportFileInputs = {}; // { [issueId]: HTMLInputElement }
+
+  function getReportPanel(issueId) {
+    return reportPanels[issueId] ?? defaultReportPanel;
+  }
+
+  function setReportPanel(issueId, patch) {
+    reportPanels = { ...reportPanels, [issueId]: { ...getReportPanel(issueId), ...patch } };
+  }
+
+  function toggleReportPanel(issueId) {
+    setReportPanel(issueId, getReportPanel(issueId).open ? { ...defaultReportPanel } : { open: true });
+  }
+
+  function selectReportFile(issueId, file) {
+    setReportPanel(issueId, { open: true, tab: 'upload', file, fileLabel: file.name, error: null, note: null });
+  }
+
+  function onReportDrop(issueId, e) {
+    e.preventDefault();
+    setReportPanel(issueId, { dragOver: false });
+    const file = e.dataTransfer?.files?.[0];
+    if (file) selectReportFile(issueId, file);
+  }
+
+  function onReportFileChange(issueId, e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) selectReportFile(issueId, file);
+  }
+
+  async function generateReportNote(issueId) {
+    const panel = getReportPanel(issueId);
+    if (panel.tab === 'upload' && !panel.file) return;
+    if (panel.tab === 'paste' && !panel.pasteText.trim()) return;
+    setReportPanel(issueId, { loading: true, error: null });
+    try {
+      const result = await summarizeSpecialistReport(issueId, {
+        file: panel.tab === 'upload' ? panel.file : null,
+        text: panel.tab === 'paste' ? panel.pasteText : null,
+      });
+      setReportPanel(issueId, { loading: false, note: result.note });
+    } catch (err) {
+      setReportPanel(issueId, { loading: false, error: err.message });
+    }
+  }
+
+  async function appendReportNote(issue) {
+    const panel = getReportPanel(issue.id);
+    if (!panel.note) return;
+    const existing = issue.specialist_report?.trim() ?? '';
+    const combined = existing ? `${existing}\n\n${panel.note}` : panel.note;
+    try {
+      const updated = await updateDraftingIssue(issue.id, { specialist_report: combined });
+      issues = issues.map(i => i.id === issue.id ? { ...i, ...updated } : i);
+      reportPanels = { ...reportPanels, [issue.id]: { ...defaultReportPanel } };
+    } catch (err) {
+      setReportPanel(issue.id, { error: `Failed to save note: ${err.message}` });
+    }
+  }
+
+  function discardReportNote(issueId) {
+    setReportPanel(issueId, { note: null, file: null, fileLabel: '', pasteText: '' });
+  }
+
   async function handlePolicyToggle(issueId, policyId) {
     const result = await toggleDraftingIssuePolicy(issueId, policyId);
     const current = policyRelevance[issueId] ?? [];
@@ -196,6 +268,7 @@
     {:else}
       <div class="di-list">
         {#each issues as issue (issue.id)}
+          {@const reportPanel = reportPanels[issue.id] ?? defaultReportPanel}
           <div class="di-card">
             <div class="di-card-top">
               <input
@@ -229,13 +302,100 @@
                 on:blur={e => handleFieldBlur(issue, 'argument_for', e.target.value)}
               ></textarea>
 
-              <label class="di-field-label">Specialist report</label>
+              <div class="di-field-label-row">
+                <label class="di-field-label">Specialist report</label>
+                <button class="di-report-toggle" type="button" on:click={() => toggleReportPanel(issue.id)}>
+                  <i class="las la-magic"></i> {reportPanel.open ? 'Close' : 'Summarise report'}
+                </button>
+              </div>
               <textarea
                 class="di-textarea"
+                class:di-textarea-drag={reportPanel.dragOver}
                 value={issue.specialist_report ?? ''}
-                placeholder="Who prepared the specialist report for this issue, when, and its key findings relevant to the argument..."
+                placeholder="Who prepared the specialist report for this issue, when, and its key findings relevant to the argument... or drag/drop a report above to have it summarised for you"
                 on:blur={e => handleFieldBlur(issue, 'specialist_report', e.target.value)}
+                on:dragover|preventDefault={() => setReportPanel(issue.id, { dragOver: true })}
+                on:dragleave={() => setReportPanel(issue.id, { dragOver: false })}
+                on:drop={e => onReportDrop(issue.id, e)}
               ></textarea>
+
+              {#if reportPanel.open}
+                <div class="di-report-panel">
+                  {#if reportPanel.note}
+                    <div class="di-report-preview">
+                      <p class="di-report-preview-label"><i class="las la-magic"></i> Generated note (review before adding)</p>
+                      <p class="di-report-preview-text">{reportPanel.note}</p>
+                      {#if reportPanel.error}<p class="di-report-error">{reportPanel.error}</p>{/if}
+                      <div class="di-report-actions">
+                        <button class="btn btn-secondary" type="button" on:click={() => discardReportNote(issue.id)}>Discard</button>
+                        <button class="btn btn-primary" type="button" on:click={() => appendReportNote(issue)}>
+                          <i class="las la-plus"></i> Add to note
+                        </button>
+                      </div>
+                    </div>
+                  {:else}
+                    <div class="di-report-tabs">
+                      <button type="button" class="di-report-tab" class:active={reportPanel.tab === 'upload'} on:click={() => setReportPanel(issue.id, { tab: 'upload' })}>
+                        <i class="las la-upload"></i> Upload
+                      </button>
+                      <button type="button" class="di-report-tab" class:active={reportPanel.tab === 'paste'} on:click={() => setReportPanel(issue.id, { tab: 'paste' })}>
+                        <i class="las la-paste"></i> Paste text
+                      </button>
+                    </div>
+
+                    {#if reportPanel.tab === 'upload'}
+                      <div
+                        class="di-report-dropzone"
+                        class:drag-over={reportPanel.dragOver}
+                        class:file-selected={!!reportPanel.file}
+                        on:dragover|preventDefault={() => setReportPanel(issue.id, { dragOver: true })}
+                        on:dragleave={() => setReportPanel(issue.id, { dragOver: false })}
+                        on:drop={e => onReportDrop(issue.id, e)}
+                        on:click={() => reportFileInputs[issue.id]?.click()}
+                        role="button"
+                        tabindex="0"
+                        on:keydown={e => e.key === 'Enter' && reportFileInputs[issue.id]?.click()}
+                      >
+                        {#if reportPanel.file}
+                          <i class="las la-file-check" style="color:var(--color-emerald-600)"></i>
+                          <span>{reportPanel.fileLabel}</span>
+                          <span class="di-report-sub">Click to replace</span>
+                        {:else}
+                          <i class="las la-cloud-upload-alt"></i>
+                          <span>Drop a specialist report or click to upload</span>
+                          <span class="di-report-sub">PDF, Word or text</span>
+                        {/if}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,.md"
+                        bind:this={reportFileInputs[issue.id]}
+                        on:change={e => onReportFileChange(issue.id, e)}
+                        style="display:none"
+                      />
+                    {:else}
+                      <textarea
+                        class="di-report-paste"
+                        placeholder="Paste the specialist report text here..."
+                        value={reportPanel.pasteText}
+                        on:input={e => setReportPanel(issue.id, { pasteText: e.target.value })}
+                      ></textarea>
+                    {/if}
+
+                    {#if reportPanel.error}<p class="di-report-error">{reportPanel.error}</p>{/if}
+                    <div class="di-report-actions">
+                      <button
+                        class="btn btn-primary"
+                        type="button"
+                        disabled={reportPanel.loading || (reportPanel.tab === 'upload' ? !reportPanel.file : !reportPanel.pasteText.trim())}
+                        on:click={() => generateReportNote(issue.id)}
+                      >
+                        {#if reportPanel.loading}<div class="mini-spinner"></div> Summarising...{:else}<i class="las la-magic"></i> Summarise{/if}
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
             </div>
           </div>
         {/each}
@@ -405,6 +565,55 @@
     font-size: 0.825rem; font-family: inherit; color: var(--color-slate-700); resize: vertical;
   }
   .di-textarea:focus { outline: none; border-color: var(--color-violet-300); }
+  .di-textarea-drag { border-color: var(--color-violet-600); background: var(--color-purple-50); }
+
+  .di-field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.4rem; }
+  .di-field-label-row .di-field-label { margin-top: 0; }
+
+  .di-report-toggle {
+    display: flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.5rem; background: none;
+    border: 1px solid var(--color-slate-200); border-radius: 5px; font-size: 0.7rem; font-weight: 600;
+    color: var(--color-violet-600); cursor: pointer; font-family: inherit; transition: all 0.12s;
+  }
+  .di-report-toggle:hover { background: var(--color-purple-50); border-color: var(--color-violet-300); }
+
+  .di-report-panel {
+    display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.4rem; padding: 0.625rem;
+    border: 1px solid var(--color-slate-200); border-radius: 6px; background: var(--color-slate-50);
+  }
+
+  .di-report-tabs { display: flex; gap: 0.3rem; }
+  .di-report-tab {
+    display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.625rem; border: 1px solid var(--color-slate-200);
+    background: white; border-radius: 5px; font-size: 0.75rem; font-weight: 500; color: var(--color-slate-500);
+    cursor: pointer; font-family: inherit; transition: all 0.12s;
+  }
+  .di-report-tab.active { color: var(--color-violet-600); border-color: var(--color-violet-300); background: var(--color-purple-50); }
+
+  .di-report-dropzone {
+    display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 1rem;
+    border: 1.5px dashed var(--color-slate-300); border-radius: 6px; background: white; cursor: pointer;
+    text-align: center; transition: all 0.15s;
+  }
+  .di-report-dropzone:hover, .di-report-dropzone.drag-over { border-color: var(--color-violet-600); background: var(--color-purple-50); }
+  .di-report-dropzone.file-selected { border-color: var(--color-slate-400); background: var(--color-slate-100); }
+  .di-report-dropzone i { font-size: 1.25rem; color: var(--color-slate-400); }
+  .di-report-dropzone span { font-size: 0.775rem; color: var(--color-slate-600); font-weight: 500; }
+  .di-report-sub { font-size: 0.7rem !important; color: var(--color-slate-400) !important; font-weight: 400 !important; }
+
+  .di-report-paste {
+    width: 100%; min-height: 6rem; box-sizing: border-box; padding: 0.5rem 0.625rem; border: 1px solid var(--color-slate-200);
+    border-radius: 6px; font-size: 0.8rem; font-family: inherit; color: var(--color-slate-700); background: white; resize: vertical;
+  }
+  .di-report-paste:focus { outline: none; border-color: var(--color-violet-300); }
+
+  .di-report-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+  .di-report-error { margin: 0; font-size: 0.75rem; color: var(--color-red-600); }
+
+  .di-report-preview { display: flex; flex-direction: column; gap: 0.4rem; }
+  .di-report-preview-label { margin: 0; display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-weight: 600; color: var(--color-violet-600); text-transform: uppercase; letter-spacing: 0.03em; }
+  .di-report-preview-text { margin: 0; padding: 0.5rem 0.625rem; background: white; border: 1px solid var(--color-slate-200); border-radius: 6px; font-size: 0.8125rem; line-height: 1.55; color: var(--color-slate-700); white-space: pre-wrap; }
 
   .mini-spinner {
     width: 14px; height: 14px; border: 2px solid rgba(124, 58, 237, 0.25); border-top-color: var(--color-violet-600);

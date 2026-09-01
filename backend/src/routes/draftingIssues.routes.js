@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import {
   listDraftingIssues,
   createDraftingIssue,
@@ -11,9 +12,11 @@ import {
   toggleDraftingIssuePolicy,
   getDraftingIssueSnippetRelevance,
   toggleDraftingIssueSnippet,
+  summarizeSpecialistReport,
 } from '../controllers/draftingIssues.controller.js';
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 router.get('/projects/:projectId', listDraftingIssues);
 router.post('/projects/:projectId', createDraftingIssue);
@@ -25,6 +28,7 @@ router.get('/projects/:projectId/snippet-relevance', getDraftingIssueSnippetRele
 router.put('/:id', updateDraftingIssue);
 router.put('/:id/issue-type', setDraftingIssueType);
 router.delete('/:id', deleteDraftingIssue);
+router.post('/:id/specialist-report/summarize', upload.single('file'), summarizeSpecialistReport);
 
 router.post('/:draftingIssueId/policies/:policyId/toggle', toggleDraftingIssuePolicy);
 router.post('/:draftingIssueId/snippets/:issueTypeId/:field/toggle', toggleDraftingIssueSnippet);

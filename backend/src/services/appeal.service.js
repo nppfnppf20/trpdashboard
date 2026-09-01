@@ -927,6 +927,59 @@ export async function incorporateSpecialistReportIntoIssue({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Specialist report → working note (pre-generation, Drafting Issues tab)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const DEFAULT_SUMMARISE_SPECIALIST_REPORT_PROMPT = `You are a planning consultant preparing working notes for one issue in a planning appeal. A specialist or technical report has just been uploaded for this issue. Read it and write a short working note capturing what it found — not a neutral summary of the report, but a note framed specifically as evidence for this issue's policy-compliance argument.
+
+Think of it this way: the note exists to answer "how does this report help us show the scheme complies with the policies below?" Identify the findings that speak to that, and state plainly how they support (or, where relevant, complicate) the compliance conclusion for this issue.
+
+This is a working note for the consultant's own reference — it will later be used as source material when the actual document is drafted. Write it the way the consultant would jot it down: plain, direct, specific. Cover who prepared the report and when, if stated, then the finding(s) relevant to this issue's argument. Two to five sentences is normally enough. Do not restate the whole report; extract only what matters for this issue and this argument.
+
+Issue: {{ISSUE_LABEL}}{{ISSUE_DISCIPLINE}}
+{{ARGUMENT_NOTES_BLOCK}}
+Linked policies for this issue:
+{{LINKED_POLICIES}}
+
+Specialist report{{FILENAME_SUFFIX}}:
+{{REPORT_TEXT}}
+
+Return plain text only — no markdown, no headings, no bullet points, just the note itself.`;
+
+export async function summariseSpecialistReportForIssue({
+  reportText, filename = null, issueLabel, issueDiscipline = null, argumentFor = null,
+  linkedPolicies = [], customPrompt = null, provider = 'anthropic',
+}) {
+  const policyText = linkedPolicies.length
+    ? linkedPolicies.map(p => policyBlockLines(p).join('\n')).join('\n\n')
+    : '(no policies linked to this issue yet)';
+
+  const argumentNotesBlock = argumentFor?.trim()
+    ? `\nWhat this issue's section is trying to establish (argument notes):\n${argumentFor.trim()}\n`
+    : '';
+
+  const basePrompt = customPrompt?.trim() || DEFAULT_SUMMARISE_SPECIALIST_REPORT_PROMPT;
+
+  const prompt = basePrompt
+    .replace(/\{\{ISSUE_LABEL\}\}/g, issueLabel)
+    .replace(/\{\{ISSUE_DISCIPLINE\}\}/g, issueDiscipline ? ` (${issueDiscipline})` : '')
+    .replace(/\{\{ARGUMENT_NOTES_BLOCK\}\}/g, argumentNotesBlock)
+    .replace(/\{\{LINKED_POLICIES\}\}/g, policyText)
+    .replace(/\{\{FILENAME_SUFFIX\}\}/g, filename ? ` (${filename})` : '')
+    .replace(/\{\{REPORT_TEXT\}\}/g, reportText);
+
+  const note = await callLLM({
+    provider,
+    model: MODEL_SONNET,
+    maxTokens: 1024,
+    system: 'You are a planning consultant. Return plain text only, no markdown formatting.',
+    prompt,
+    stream: true,
+  });
+  return noEmDash(note.trim());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Document incorporation — interactive two-panel flow (full-draft fallback)
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -95,3 +95,26 @@ export async function draftIssuesFromBriefing(projectId, sources, { allowNewIssu
   }
   return res.json();
 }
+
+export async function summarizeSpecialistReport(draftingIssueId, { file, text, fileName } = {}) {
+  let res;
+  if (file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    res = await authFetch(`${BASE}/${draftingIssueId}/specialist-report/summarize`, {
+      method: 'POST',
+      body: formData
+    });
+  } else {
+    res = await authFetch(`${BASE}/${draftingIssueId}/specialist-report/summarize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, file_name: fileName || null })
+    });
+  }
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to summarise specialist report');
+  }
+  return res.json();
+}
