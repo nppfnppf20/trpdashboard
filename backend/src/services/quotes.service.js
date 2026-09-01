@@ -52,7 +52,6 @@ export async function getQuotes(filters = {}) {
       q.dependencies,
       q.site_visit_date,
       q.report_draft_date,
-      q.report_final_date,
       q.operational_notes,
       q.quality,
       q.responsiveness,

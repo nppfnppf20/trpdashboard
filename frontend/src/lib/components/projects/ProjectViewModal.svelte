@@ -82,8 +82,19 @@
 
   let showMeetingGuide = false;
 
-  // Load project data when modal opens
-  $: if (browser && isOpen && projectId && !projectData) {
+  // Load project data when the modal opens, and reload whenever projectId
+  // changes to a different project (e.g. switching projects via the sidebar
+  // while already inside this workspace) — also clears state scoped to the
+  // previous project so it can't be shown against the new one.
+  let loadedProjectId = null;
+  $: if (browser && isOpen && projectId && projectId !== loadedProjectId) {
+    loadedProjectId = projectId;
+    projectData = null;
+    conflictResults = null;
+    conflictError = null;
+    savedCheckInfo = null;
+    loadingSavedCheck = false;
+    cleanupMap();
     loadProject();
   }
 

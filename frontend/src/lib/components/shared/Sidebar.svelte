@@ -78,16 +78,24 @@
   }
 
   function pickProject(id) {
-    // If you're picking a project from a global page (not already inside a
-    // project workspace), jump straight into that project's Overview
-    // rather than leaving you on the same global page with just the
-    // switcher updated underneath you.
-    const wasGeneralView = $mainView === null;
+    const view = $mainView;
+    const currentTab = $mainViewInitialTab;
     selectProject(id);
     switcherOpen = false;
-    if (wasGeneralView) {
+    if (view === null) {
+      // Picking a project from a global page (not already inside a project
+      // workspace) — jump straight into that project's Overview rather than
+      // leaving you on the same global page with just the switcher updated
+      // underneath you.
       openProjectModal(id, 'details');
+    } else if (view === 'project') {
+      // ProjectViewModal reads its project from mainViewProjectId, not the
+      // selection store directly, so switching project while already inside
+      // it needs an explicit re-open — same tab, new project's data.
+      openProjectModal(id, currentTab);
     }
+    // 'surveyor' and 'planning' read the selection store directly, so
+    // selectProject(id) above is enough to swap their data in place.
   }
 
   function openWorkspaceTab(tab) {
