@@ -6,7 +6,7 @@
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
   import { argumentPointsByTrack, initArgumentPoints } from '$lib/stores/planning-analysis.js';
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt } from '$lib/stores/planning-suggestion.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sectionsTypeId, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt, appealSelectedNoteIds, appealDropdownOpenId} from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sectionsTypeId, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML, getProjectDeliverables } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
@@ -258,6 +258,29 @@
   // Per-card AI provider choice for draft generation — session-only override,
   // not persisted. Empty/unset means "use the AI Providers admin default".
   let draftProviderByType = {};
+
+  // Which draft-type card's "Config" dropdown is open (LLM choice, dev type,
+  // version picker, Meeting Guide, edit prompt) — at most one at a time.
+  let configOpenTypeId = null;
+  let configDropdownStyle = '';
+
+  // Cards near the left edge (e.g. the grid's first column) would otherwise
+  // open the dropdown further left still, off-screen under the sidebar — so
+  // position it from the button's actual on-screen position and flip to
+  // open rightward whenever opening leftward would run out of room.
+  function toggleConfig(e, id) {
+    if (configOpenTypeId === id) {
+      configOpenTypeId = null;
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropdownWidth = 220; // matches .draft-config-dropdown's min-width
+    const top = rect.bottom + 4;
+    configDropdownStyle = (rect.right - dropdownWidth < 16)
+      ? `top:${top}px; left:${rect.left}px;`
+      : `top:${top}px; right:${window.innerWidth - rect.right}px;`;
+    configOpenTypeId = id;
+  }
 
   let activeTab = 'draft';
 
@@ -553,15 +576,8 @@
     </div>
   </div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab" class:active={activeTab === 'draft'} on:click={() => activeTab = 'draft'}>
-      Draft Document
-    </button>
-    <button class="tab" class:active={activeTab === 'key-issues'} on:click={() => activeTab = 'key-issues'}>
-      Planning Issues
-    </button>
-  </div>
+  <!-- Tabs — Planning Issues hidden for now, not needed currently. Draft
+       Document stays the only tab, so the bar itself is hidden too. -->
 
   <!-- Body -->
   {#if loading}
@@ -828,67 +844,13 @@
                   {#if draft}
                     <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
-                  {#if type.tool === 'appeal' || type.tool === 'stage1' || type.tool === 'hlpv'}
-                    {@const selectedNoteId = $appealSelectedNoteIds[type.id] ?? null}
-                    {@const selectedNote = selectedNoteId ? $briefingNotes.find(n => n.id === selectedNoteId) : null}
-                    {#if type.slug === 'hlpv_narrative'}
-                      <select
-                        class="card-dev-type-select"
-                        value={appealCardDevTypes[type.id] ?? ''}
-                        on:change={(e) => { appealCardDevTypes[type.id] = e.target.value; appealCardDevTypes = appealCardDevTypes; }}
-                        title="Development type, selects which guiding brief to use"
-                      >
-                        <option value="">Dev type...</option>
-                        {#each DEV_TYPES as dt}
-                          <option value={dt}>{dt}</option>
-                        {/each}
-                      </select>
-                    {/if}
-                    <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft - Default uses the AI Providers admin setting">
-                      <option value="">Default</option>
-                      <option value="anthropic">Claude</option>
-                      <option value="openai">GPT-5.6</option>
-                    </select>
-                    <div class="briefing-btn-group" use:clickOutside={() => { if ($appealDropdownOpenId === type.id) appealDropdownOpenId.set(null); }}>
-                      <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { briefingNoteId: selectedNoteId, developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || '' }, !!draft)}>
-                        {#if $draftGenerating === type.id}
-                          <div class="mini-spinner"></div> Generating...
-                        {:else}
-                          <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
-                          {#if selectedNote}<span class="briefing-note-pill">{selectedNote.title || selectedNote.file_name}</span>{/if}
-                        {/if}
-                      </button>
-                      <button class="btn-briefing-chevron" title="Select briefing note" on:click={() => appealDropdownOpenId.set($appealDropdownOpenId === type.id ? null : type.id)}>
-                        <i class="las la-angle-down"></i>
-                      </button>
-                      {#if $appealDropdownOpenId === type.id}
-                        <div class="briefing-dropdown">
-                          <button class="briefing-dropdown-item" class:active={!selectedNoteId} on:click={() => { appealSelectedNoteIds.update(m => ({ ...m, [type.id]: null })); appealDropdownOpenId.set(null); }}>
-                            <span>Latest briefing note</span>
-                          </button>
-                          {#each $briefingNotes as note}
-                            <button class="briefing-dropdown-item" class:active={selectedNoteId === note.id} on:click={() => { appealSelectedNoteIds.update(m => ({ ...m, [type.id]: note.id })); appealDropdownOpenId.set(null); }}>
-                              <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
-                              <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                            </button>
-                          {/each}
-                        </div>
-                      {/if}
-                    </div>
-                  {:else}
-                  <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft - Default uses the AI Providers admin setting">
-                    <option value="">Default</option>
-                    <option value="anthropic">Claude</option>
-                    <option value="openai">GPT-5.6</option>
-                  </select>
-                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { provider: draftProviderByType[type.id] || '' }, !!draft)}>
+                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || '' }, !!draft)}>
                     {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
                     {:else}
                       <i class="las la-magic"></i> {draft ? 'Regenerate' : 'Generate'}
                     {/if}
                   </button>
-                  {/if}
                   {#if type.tool === 'appeal'}
                     <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name }}>
                       <i class="las la-file-import"></i> Starting docs
@@ -897,11 +859,7 @@
                       <button class="draft-setting-btn" title="View / edit the drafting issues this draft is generated from" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
-                      <button class="draft-setting-btn" title="Open the briefing meeting guide for this document type" on:click={() => openMeetingGuide({ id: type.id, slug: type.slug, name: type.name })}>
-                        <i class="las la-clipboard-list"></i> Meeting Guide
-                      </button>
                     {/if}
-                    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openAppealPrompt(type.id)}><i class="las la-sliders-h"></i></button>
                   {:else if type.tool === 'stage1'}
                     <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name, tool: type.tool }}>
                       <i class="las la-file-import"></i> Starting docs
@@ -910,46 +868,103 @@
                       <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
-                      <button class="draft-setting-btn" title="Open the briefing meeting guide for this document type" on:click={() => openMeetingGuide({ id: type.id, slug: type.slug, name: type.name })}>
-                        <i class="las la-clipboard-list"></i> Meeting Guide
-                      </button>
                     {/if}
-                    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
                   {:else if type.tool === 'hlpv'}
+                    <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name }}>
+                      <i class="las la-file-import"></i> Starting docs
+                    </button>
                     {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
                       <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
-                      <button class="draft-setting-btn" title="Open the briefing meeting guide for this document type" on:click={() => openMeetingGuide({ id: type.id, slug: type.slug, name: type.name })}>
-                        <i class="las la-clipboard-list"></i> Meeting Guide
-                      </button>
                     {/if}
-                    <button class="prompt-info-btn" title="Edit generation prompt" on:click={() => openActionPrompt(type.slug)}><i class="las la-sliders-h"></i></button>
-                  {:else}
-                    <button class="prompt-info-btn" title="View / edit section prompts" on:click={() => openSectionsModal(type.id)}><i class="las la-sliders-h"></i></button>
                   {/if}
-                  {#if type.slug === 'planning_statement_v3' && legacyPlanningStatementTypes.length}
-                    <select class="card-dev-type-select" bind:value={visibleLegacyPlanningStatementSlug} title="Show an older Planning Statement version as its own card">
-                      <option value="">v3 only</option>
-                      {#each legacyPlanningStatementTypes as t (t.id)}
-                        <option value={t.slug}>{LEGACY_PLANNING_STATEMENT_LABELS[t.slug] ?? t.name}</option>
-                      {/each}
-                    </select>
-                  {:else if type.slug === 'stage1_review_v3' && legacyStage1Types.length}
-                    <select class="card-dev-type-select" bind:value={visibleLegacyStage1Slug} title="Show an older Stage 1 Review version as its own card">
-                      <option value="">v3 only</option>
-                      {#each legacyStage1Types as t (t.id)}
-                        <option value={t.slug}>{LEGACY_STAGE1_LABELS[t.slug] ?? t.name}</option>
-                      {/each}
-                    </select>
-                  {:else if type.slug === 'hlpv_v3' && legacyHlpvTypes.length}
-                    <select class="card-dev-type-select" bind:value={visibleLegacyHlpvSlug} title="Show an older HLPV version as its own card">
-                      <option value="">v3 only</option>
-                      {#each legacyHlpvTypes as t (t.id)}
-                        <option value={t.slug}>{LEGACY_HLPV_LABELS[t.slug] ?? t.name}</option>
-                      {/each}
-                    </select>
-                  {/if}
+
+                  <!-- Config — everything else (LLM choice, dev type, version, Meeting
+                       Guide, the generation prompt itself) tucked behind one toggle so
+                       the card's primary actions above aren't crowded out. -->
+                  <div class="draft-config-group" use:clickOutside={() => { if (configOpenTypeId === type.id) configOpenTypeId = null; }}>
+                    <button class="draft-config-btn" on:click={(e) => toggleConfig(e, type.id)}>
+                      <i class="las la-cog"></i> Config <i class="las la-angle-down"></i>
+                    </button>
+                    {#if configOpenTypeId === type.id}
+                      <div class="draft-config-dropdown" style={configDropdownStyle}>
+                        {#if type.slug === 'hlpv_narrative'}
+                          <div class="draft-config-row">
+                            <span class="draft-config-label">Dev type</span>
+                            <select
+                              class="card-dev-type-select"
+                              value={appealCardDevTypes[type.id] ?? ''}
+                              on:change={(e) => { appealCardDevTypes[type.id] = e.target.value; appealCardDevTypes = appealCardDevTypes; }}
+                              title="Development type, selects which guiding brief to use"
+                            >
+                              <option value="">Dev type...</option>
+                              {#each DEV_TYPES as dt}
+                                <option value={dt}>{dt}</option>
+                              {/each}
+                            </select>
+                          </div>
+                        {/if}
+                        <div class="draft-config-row">
+                          <span class="draft-config-label">AI Model</span>
+                          <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft - Default uses the AI Providers admin setting">
+                            <option value="">Default</option>
+                            <option value="anthropic">Claude</option>
+                            <option value="openai">GPT-5.6</option>
+                          </select>
+                        </div>
+                        {#if (type.tool === 'appeal' || type.tool === 'stage1' || type.tool === 'hlpv') && DRAFTING_ISSUES_SLUGS.includes(type.slug)}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openMeetingGuide({ id: type.id, slug: type.slug, name: type.name }); }}>
+                            <i class="las la-clipboard-list"></i> Meeting Guide
+                          </button>
+                        {/if}
+                        {#if type.tool === 'appeal'}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openAppealPrompt(type.id); }}>
+                            <i class="las la-sliders-h"></i> Edit Prompt
+                          </button>
+                        {:else if type.tool === 'stage1' || type.tool === 'hlpv'}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openActionPrompt(type.slug); }}>
+                            <i class="las la-sliders-h"></i> Edit Prompt
+                          </button>
+                        {:else}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionsModal(type.id); }}>
+                            <i class="las la-sliders-h"></i> Edit Section Prompts
+                          </button>
+                        {/if}
+                        {#if type.slug === 'planning_statement_v3' && legacyPlanningStatementTypes.length}
+                          <div class="draft-config-row">
+                            <span class="draft-config-label">Version</span>
+                            <select class="card-dev-type-select" bind:value={visibleLegacyPlanningStatementSlug} title="Show an older Planning Statement version as its own card">
+                              <option value="">v3 only</option>
+                              {#each legacyPlanningStatementTypes as t (t.id)}
+                                <option value={t.slug}>{LEGACY_PLANNING_STATEMENT_LABELS[t.slug] ?? t.name}</option>
+                              {/each}
+                            </select>
+                          </div>
+                        {:else if type.slug === 'stage1_review_v3' && legacyStage1Types.length}
+                          <div class="draft-config-row">
+                            <span class="draft-config-label">Version</span>
+                            <select class="card-dev-type-select" bind:value={visibleLegacyStage1Slug} title="Show an older Stage 1 Review version as its own card">
+                              <option value="">v3 only</option>
+                              {#each legacyStage1Types as t (t.id)}
+                                <option value={t.slug}>{LEGACY_STAGE1_LABELS[t.slug] ?? t.name}</option>
+                              {/each}
+                            </select>
+                          </div>
+                        {:else if type.slug === 'hlpv_v3' && legacyHlpvTypes.length}
+                          <div class="draft-config-row">
+                            <span class="draft-config-label">Version</span>
+                            <select class="card-dev-type-select" bind:value={visibleLegacyHlpvSlug} title="Show an older HLPV version as its own card">
+                              <option value="">v3 only</option>
+                              {#each legacyHlpvTypes as t (t.id)}
+                                <option value={t.slug}>{LEGACY_HLPV_LABELS[t.slug] ?? t.name}</option>
+                              {/each}
+                            </select>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
                 </div>
               </div>
 
@@ -3508,6 +3523,72 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
+
+  .draft-config-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.625rem;
+    background: transparent;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 5px;
+    font-size: 0.75rem;
+    color: var(--color-slate-500);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .draft-config-btn:hover { background: var(--color-slate-100); color: var(--color-slate-700); }
+
+  .draft-config-dropdown {
+    /* top/left or top/right set inline per-open from the button's actual
+       on-screen position — see toggleConfig() — so it can flip to open
+       rightward near the left edge instead of running under the sidebar. */
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.65rem;
+    background: white;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    min-width: 220px;
+    z-index: 100;
+  }
+
+  .draft-config-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .draft-config-row .card-dev-type-select { flex: 1; min-width: 0; }
+
+  .draft-config-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-slate-500);
+    flex-shrink: 0;
+  }
+
+  .draft-config-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.4rem 0.55rem;
+    background: transparent;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 5px;
+    font-size: 0.78rem;
+    color: var(--color-slate-600);
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: all 0.15s;
+  }
+  .draft-config-item:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
 
   .briefing-dropdown-upload {
     color: var(--color-violet-600);

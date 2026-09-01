@@ -10,8 +10,8 @@
   export let saving = false;
   export let saved = false;
 
-  let activeTab = 'edit';
-  $: if (!open) activeTab = 'edit';
+  let activeTab = 'preview';
+  $: if (!open) activeTab = 'preview';
 
   const dispatch = createEventDispatcher();
 
