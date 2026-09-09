@@ -1,4 +1,4 @@
-import { callClaude } from './llm.shared.js';
+import { callClaude, MODEL_FAST } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Summary from pasted text — same mechanism as Conditions Tracker's
@@ -102,6 +102,62 @@ ${issueBlocks}`;
 
   const raw = await callClaude(SUMMARY_SYSTEM_PROMPT, content, undefined, 8000);
   return parseIssueActionItems(raw, 'progressTracker.service', 'Could not generate summaries from the provided text');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Date-only check, run after a manual-mode advancement is saved (whether the
+// summary was typed by hand or came from suggestActionSummaries above). Much
+// smaller/cheaper than the full summary prompt — the summary is already
+// final by this point, so this only asks the model to spot a schedulable
+// date, nothing else.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DATE_ONLY_SYSTEM_PROMPT = `You are checking a planning issues tracker entry for a date worth scheduling. The user will provide SOURCE MATERIAL and one or more ISSUES, each with its title, discipline, and the summary just logged against it.
+
+For each issue, only if the source material or its summary mentions a specific date that matters for SCHEDULING that issue going forward (a report due date, a meeting date, a submission deadline, a re-inspection date) — not the date of this update itself, and not a date already in the past relative to TODAY'S DATE given below — return an <ITEM> with a <DATE_SUGGESTION>. Never invent a date or guess one from vague phrasing ("in a few weeks"). Most issues will have nothing to report — omit them entirely.
+
+If nothing qualifies for any issue, return exactly:
+<NONE/>
+
+Return your response using EXACTLY this XML structure, one <ITEM> per issue that has a date, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<ISSUE_ID>the numeric id given for the issue</ISSUE_ID>
+<DATE_SUGGESTION>
+<DATE>the date in YYYY-MM-DD format</DATE>
+<TITLE>a short label for what happens on that date, e.g. "Revised drawings due"</TITLE>
+</DATE_SUGGESTION>
+</ITEM>`;
+
+export async function suggestActionDates(fullText, issues) {
+  const issueBlocks = issues.map(iss => `ISSUE (id: ${iss.id})
+Title: ${iss.title}
+Discipline: ${iss.discipline || 'n/a'}
+Summary just logged: ${iss.user_summary || '(none)'}`).join('\n\n');
+
+  const content = `TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}
+
+SOURCE MATERIAL:
+
+${(fullText || '').slice(0, 80000)}
+
+════════════════════════════════════════
+
+${issueBlocks}`;
+
+  const raw = await callClaude(DATE_ONLY_SYSTEM_PROMPT, content, MODEL_FAST, 2000);
+  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
+  if (!blocks.length && !/<NONE\s*\/?>/i.test(raw)) {
+    console.error('[progressTracker.service] suggestActionDates: no ITEM blocks and no <NONE/>. Raw (first 400):', raw.slice(0, 400));
+  }
+  const parsed = blocks
+    .map(block => ({
+      issue_id: parseInt(extractTag(block, 'ISSUE_ID'), 10),
+      date_suggestion: extractDateSuggestion(block),
+    }))
+    .filter(s => Number.isFinite(s.issue_id) && s.date_suggestion);
+  console.log('[progressTracker.service] suggestActionDates result:', JSON.stringify(parsed), '| raw (first 300):', raw.slice(0, 300));
+  return parsed;
 }
 
 // Same job, but for when nothing has been ticked yet: given every issue

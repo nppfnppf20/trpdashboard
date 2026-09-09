@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { suggestActionSummaries, suggestActionCandidates, draftActionsFromMeetingNotes } from '../services/progressTracker.service.js';
+import { suggestActionSummaries, suggestActionCandidates, suggestActionDates as suggestActionDatesService, draftActionsFromMeetingNotes } from '../services/progressTracker.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Get all issues (with sub-issues + actions) + tracker meta for a project
@@ -452,6 +452,34 @@ export async function suggestActions(req, res) {
   } catch (err) {
     console.error('progressTracker.suggestActions error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate summaries' });
+  }
+}
+
+// Advisory-only date check run right after a manual-mode advancement is
+// saved — the summary is already final, this only spots a schedulable date.
+export async function suggestActionDates(req, res) {
+  const { projectId } = req.params;
+  const { full_text, items } = req.body;
+  if (!Array.isArray(items) || !items.length) return res.json({ suggestions: [] });
+
+  try {
+    const ids = items.map(i => i.issue_id);
+    const { rows: issues } = await pool.query(
+      `SELECT id, title, discipline
+       FROM planning_applications.progress_issues
+       WHERE project_id = $1 AND id = ANY($2::int[])`,
+      [projectId, ids]
+    );
+    if (!issues.length) return res.json({ suggestions: [] });
+
+    const userSummaries = Object.fromEntries(items.map(i => [i.issue_id, i.user_summary?.trim() || null]));
+    const enriched = issues.map(iss => ({ ...iss, user_summary: userSummaries[iss.id] || null }));
+
+    const suggestions = await suggestActionDatesService(full_text, enriched);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('progressTracker.suggestActionDates error:', err);
+    res.json({ suggestions: [] });
   }
 }
 

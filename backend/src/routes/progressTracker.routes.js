@@ -9,6 +9,7 @@ import {
   deleteSubIssue,
   createActions,
   suggestActions,
+  suggestActionDates,
   updateAction,
   deleteAction,
   listMeetingNotesForPicker,
@@ -37,6 +38,7 @@ router.put('/sub-issues/:subIssueId', updateSubIssue);
 router.delete('/sub-issues/:subIssueId', deleteSubIssue);
 router.post('/projects/:projectId/actions', createActions);
 router.post('/projects/:projectId/actions/suggest', suggestActions);
+router.post('/projects/:projectId/actions/suggest-dates', suggestActionDates);
 router.put('/actions/:actionId', updateAction);
 router.delete('/actions/:actionId', deleteAction);
 router.get('/projects/:projectId/meeting-notes', listMeetingNotesForPicker);

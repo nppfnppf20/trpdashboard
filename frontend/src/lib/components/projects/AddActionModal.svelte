@@ -1,12 +1,13 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import {
-    createActions, suggestActionSummaries,
+    createActions, suggestActionSummaries, suggestActionDates,
     listMeetingNotesForPicker, draftFromMeetingNotes, commitDraftedActions,
     getProgressData, createIssueKeyDate,
   } from '$lib/api/progressTracker.js';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
+  import KeyDateSuggestionCard from './KeyDateSuggestionCard.svelte';
 
   export let show = false;
   export let projectId;
@@ -67,6 +68,10 @@
   let error = null;
   let seeded = false;
 
+  // Post-save date check — advisory only, shown after a successful manual
+  // save if the source text/summaries mentioned a schedulable date.
+  let postSaveDateSuggestions = []; // [{ issue_id, issueLabel, date_suggestion }]
+
   $: if (show && !seeded) {
     actionDate = new Date().toISOString().slice(0, 10);
     fullText = '';
@@ -75,6 +80,7 @@
     skippedLabels = [];
     autoTickedCount = 0;
     lastGeneratedText = null;
+    postSaveDateSuggestions = [];
     stageInstanceId = defaultStageInstanceId;
     selections = {};
     for (const iss of issues) {
@@ -200,10 +206,40 @@
       });
       dispatch('done', { rows });
       saving = false;
+      await checkForDateSuggestions(items);
+      if (postSaveDateSuggestions.length) return; // stay open to show them
       close();
     } catch (err) {
       error = err.message;
       saving = false;
+    }
+  }
+
+  // Advisory-only — never blocks or surfaces an error, the save above has
+  // already committed by the time this runs.
+  async function checkForDateSuggestions(items) {
+    try {
+      const { suggestions } = await suggestActionDates(projectId, {
+        full_text: fullText.trim() || null,
+        items: items.map(i => ({ issue_id: i.issue_id, user_summary: i.summary })),
+      });
+      postSaveDateSuggestions = suggestions.map(s => ({
+        ...s,
+        issueLabel: issueLabel(issues.find(iss => iss.id === s.issue_id) || {}),
+      }));
+    } catch (err) {
+      console.error('checkForDateSuggestions failed:', err);
+      postSaveDateSuggestions = [];
+    }
+  }
+
+  async function acceptPostSaveDate(item) {
+    try {
+      await createIssueKeyDate(item.issue_id, { title: item.date_suggestion.title, date: item.date_suggestion.date });
+      return true;
+    } catch (err) {
+      alert('Failed to add key date: ' + err.message);
+      return false;
     }
   }
 
@@ -380,6 +416,28 @@
       </div>
 
       {#if mode === 'manual'}
+        {#if postSaveDateSuggestions.length}
+          <!-- Advancement already saved — show any date suggestions found before closing -->
+          <div class="adv-body">
+            <div class="field">
+              <label>Advancement saved <span class="label-hint">a date worth scheduling was mentioned - review before closing</span></label>
+              <div class="proposal-list">
+                {#each postSaveDateSuggestions as item (item.issue_id)}
+                  <div class="proposal-row">
+                    <span class="proposal-badge">{item.issueLabel}</span>
+                    <KeyDateSuggestionCard suggestion={item.date_suggestion} onAccept={() => acceptPostSaveDate(item)} />
+                  </div>
+                {/each}
+              </div>
+            </div>
+          </div>
+          <div class="adv-footer">
+            <span class="adv-count-hint"></span>
+            <div class="adv-footer-actions">
+              <button class="btn-save" on:click={close}>Done</button>
+            </div>
+          </div>
+        {:else}
         <div class="adv-body">
           <AdvancementEntryFields
             bind:date={actionDate}
@@ -475,6 +533,7 @@
             </button>
           </div>
         </div>
+        {/if}
 
       {:else}
         <!-- Meeting notes mode -->

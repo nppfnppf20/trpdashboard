@@ -83,6 +83,20 @@ export async function suggestActionSummaries(projectId, data) {
   return res.json();
 }
 
+// Advisory-only date check, run after a manual-mode advancement is saved.
+export async function suggestActionDates(projectId, data) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/actions/suggest-dates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    console.warn('suggestActionDates: request failed', res.status, await res.text().catch(() => ''));
+    return { suggestions: [] };
+  }
+  return res.json();
+}
+
 export async function updateAction(actionId, updates) {
   const res = await authFetch(`${BASE}/actions/${actionId}`, {
     method: 'PUT',
