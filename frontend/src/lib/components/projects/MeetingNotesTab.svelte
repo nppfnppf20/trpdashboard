@@ -9,6 +9,7 @@
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
   import { createProgrammeEvent } from '$lib/api/quotes.js';
+  import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
   import {
     consumePendingMeetingUploadFile,
     consumePendingMeetingUploadText
@@ -512,6 +513,7 @@
   async function acceptReviewDateSuggestion(suggestion) {
     try {
       await createProgrammeEvent(project.unique_id, { title: suggestion.title, date: suggestion.date });
+      bumpKeyDatesVersion();
       return true;
     } catch (err) {
       alert('Failed to add key date: ' + err.message);

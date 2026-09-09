@@ -8,6 +8,7 @@
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
   import KeyDateSuggestionCard from './KeyDateSuggestionCard.svelte';
+  import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
 
   export let show = false;
   export let projectId;
@@ -18,6 +19,13 @@
   export let preselectedTranscriptId = null;   // meeting-notes mode: skip picking a note, draft from this one straight away
 
   const dispatch = createEventDispatcher();
+
+  // Post-save date check — advisory only. Deliberately NOT reset by the
+  // seed block below or by close(): it's a small toast shown after the
+  // modal has already closed, independent of the modal's own open/close
+  // lifecycle, so a re-open while a check is still running can't collide
+  // with it.
+  let pendingDateSuggestions = []; // [{ issue_id, issueLabel, date_suggestion }]
 
   let mode = 'manual';   // 'manual' | 'meeting-notes'
 
@@ -68,10 +76,6 @@
   let error = null;
   let seeded = false;
 
-  // Post-save date check — advisory only, shown after a successful manual
-  // save if the source text/summaries mentioned a schedulable date.
-  let postSaveDateSuggestions = []; // [{ issue_id, issueLabel, date_suggestion }]
-
   $: if (show && !seeded) {
     actionDate = new Date().toISOString().slice(0, 10);
     fullText = '';
@@ -80,7 +84,6 @@
     skippedLabels = [];
     autoTickedCount = 0;
     lastGeneratedText = null;
-    postSaveDateSuggestions = [];
     stageInstanceId = defaultStageInstanceId;
     selections = {};
     for (const iss of issues) {
@@ -206,41 +209,53 @@
       });
       dispatch('done', { rows });
       saving = false;
-      await checkForDateSuggestions(items);
-      if (postSaveDateSuggestions.length) return; // stay open to show them
+      const capturedFullText = fullText;
       close();
+      checkForDateSuggestions(items, capturedFullText); // fire-and-forget — pops up its own toast if it finds anything
     } catch (err) {
       error = err.message;
       saving = false;
     }
   }
 
-  // Advisory-only — never blocks or surfaces an error, the save above has
-  // already committed by the time this runs.
-  async function checkForDateSuggestions(items) {
+  // Advisory-only, and runs after the modal has already closed — never
+  // blocks the save, never reopens the modal. Time-boxed: the backend call
+  // behind this can retry for a while on rate limits, so this is capped to
+  // make sure it can't hang around forever in the background.
+  async function checkForDateSuggestions(items, capturedFullText) {
     try {
-      const { suggestions } = await suggestActionDates(projectId, {
-        full_text: fullText.trim() || null,
-        items: items.map(i => ({ issue_id: i.issue_id, user_summary: i.summary })),
-      });
-      postSaveDateSuggestions = suggestions.map(s => ({
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 8000));
+      const { suggestions } = await Promise.race([
+        suggestActionDates(projectId, {
+          full_text: capturedFullText.trim() || null,
+          items: items.map(i => ({ issue_id: i.issue_id, user_summary: i.summary })),
+        }),
+        timeout,
+      ]);
+      if (!suggestions.length) return;
+      pendingDateSuggestions = suggestions.map(s => ({
         ...s,
         issueLabel: issueLabel(issues.find(iss => iss.id === s.issue_id) || {}),
       }));
     } catch (err) {
       console.error('checkForDateSuggestions failed:', err);
-      postSaveDateSuggestions = [];
     }
   }
 
-  async function acceptPostSaveDate(item) {
+  async function acceptPendingDate(item) {
     try {
       await createIssueKeyDate(item.issue_id, { title: item.date_suggestion.title, date: item.date_suggestion.date });
+      pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
+      bumpKeyDatesVersion();
       return true;
     } catch (err) {
       alert('Failed to add key date: ' + err.message);
       return false;
     }
+  }
+
+  function dismissPendingDate(item) {
+    pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
   }
 
   // ── Meeting notes mode ──────────────────────────────────────────────────────
@@ -328,6 +343,7 @@
     try {
       await createIssueKeyDate(p.issue_id, { title: p.date_suggestion.title, date: p.date_suggestion.date });
       p.dsStatus = 'accepted';
+      bumpKeyDatesVersion();
     } catch (err) {
       p.dsStatus = 'error';
     }
@@ -416,28 +432,6 @@
       </div>
 
       {#if mode === 'manual'}
-        {#if postSaveDateSuggestions.length}
-          <!-- Advancement already saved — show any date suggestions found before closing -->
-          <div class="adv-body">
-            <div class="field">
-              <label>Advancement saved <span class="label-hint">a date worth scheduling was mentioned - review before closing</span></label>
-              <div class="proposal-list">
-                {#each postSaveDateSuggestions as item (item.issue_id)}
-                  <div class="proposal-row">
-                    <span class="proposal-badge">{item.issueLabel}</span>
-                    <KeyDateSuggestionCard suggestion={item.date_suggestion} onAccept={() => acceptPostSaveDate(item)} />
-                  </div>
-                {/each}
-              </div>
-            </div>
-          </div>
-          <div class="adv-footer">
-            <span class="adv-count-hint"></span>
-            <div class="adv-footer-actions">
-              <button class="btn-save" on:click={close}>Done</button>
-            </div>
-          </div>
-        {:else}
         <div class="adv-body">
           <AdvancementEntryFields
             bind:date={actionDate}
@@ -533,7 +527,6 @@
             </button>
           </div>
         </div>
-        {/if}
 
       {:else}
         <!-- Meeting notes mode -->
@@ -623,6 +616,44 @@
           </div>
         </div>
       {/if}
+    </div>
+  </div>
+{/if}
+
+<!-- ── Post-save date suggestion popup — independent of the modal above, so
+     it can appear after the modal has already closed. Same backdrop/modal
+     styling and size as the modal that just closed, reappearing in the same
+     spot, so it's obvious rather than an easy-to-miss corner toast. ────── -->
+{#if pendingDateSuggestions.length}
+  <div class="adv-backdrop" on:click|self={() => pendingDateSuggestions = []} role="presentation">
+    <div class="adv-modal date-popup">
+      <div class="adv-header">
+        <h3>Date{pendingDateSuggestions.length > 1 ? 's' : ''} found</h3>
+        <button class="adv-close-btn" on:click={() => pendingDateSuggestions = []}>&times;</button>
+      </div>
+      <div class="adv-body">
+        <div class="field">
+          <label>Advancement saved <span class="label-hint">a date worth scheduling was mentioned - review before closing</span></label>
+          <div class="proposal-list">
+            {#each pendingDateSuggestions as item (item.issue_id)}
+              <div class="proposal-row">
+                <span class="proposal-badge">{item.issueLabel}</span>
+                <KeyDateSuggestionCard
+                  suggestion={item.date_suggestion}
+                  onAccept={() => acceptPendingDate(item)}
+                  onDismiss={() => dismissPendingDate(item)}
+                />
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+      <div class="adv-footer">
+        <span class="adv-count-hint"></span>
+        <div class="adv-footer-actions">
+          <button class="btn-save" on:click={() => pendingDateSuggestions = []}>Done</button>
+        </div>
+      </div>
     </div>
   </div>
 {/if}
@@ -1008,4 +1039,6 @@
   }
   .btn-save:hover:not(:disabled) { background: var(--color-teal-600); }
   .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .date-popup { max-height: none; }
 </style>

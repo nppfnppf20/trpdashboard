@@ -16,6 +16,7 @@
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
   import { cleanPastedText } from '$lib/utils/pdfText.js';
   import { getQuotes, getProgrammeEvents, getQuoteKeyDates, createQuoteKeyDate } from '$lib/api/quotes.js';
+  import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
   import { getQuoteActions } from '$lib/api/quoteActions.js';
   import {
@@ -732,6 +733,7 @@
     try {
       await createConditionKeyDate(timelineConditionId, { title: tlDateSuggestion.title, date: tlDateSuggestion.date });
       await refreshData();
+      bumpKeyDatesVersion();
       return true;
     } catch (err) {
       alert('Failed to add key date: ' + err.message);

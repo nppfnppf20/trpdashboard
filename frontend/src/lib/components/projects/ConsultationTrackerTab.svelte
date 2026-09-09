@@ -16,6 +16,7 @@
   import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
   import { createQuoteKeyDate } from '$lib/api/quotes.js';
+  import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
 
   let showBatchImport = false;
   let showExportModal = false;
@@ -590,6 +591,7 @@
     try {
       await createConsultationKeyDate(timelineResponseId, { title: tlDateSuggestion.title, date: tlDateSuggestion.date });
       await refreshData();
+      bumpKeyDatesVersion();
       return true;
     } catch (err) {
       alert('Failed to add key date: ' + err.message);
