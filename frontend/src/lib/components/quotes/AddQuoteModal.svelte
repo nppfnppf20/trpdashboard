@@ -13,6 +13,19 @@
   export let projectId = null;
   export let projectPk = null;   // integer project id — for the "link to condition(s)/issue(s)" picker
 
+  // A file or pasted text handed off from the Overview page's Surveyor
+  // Management widget (drag-drop / paste there routes here instead of
+  // parsing inline) — seed the queue with it once, the same way a manual
+  // drop/paste inside this modal would.
+  export let initialFile = null;
+  export let initialPastedText = null;
+  let initialSeeded = false;
+  $: if (show && !initialSeeded && (initialFile || initialPastedText)) {
+    initialSeeded = true;
+    if (initialFile) enqueueFiles([initialFile]);
+    if (initialPastedText) enqueuePastedText(initialPastedText);
+  }
+
   // Conditions Tracker / Issues Tracker linking — optional, only offered when
   // the project has conditions/issues. Not part of the queue item's
   // captured/restored form state (unlike the fields below); resets to

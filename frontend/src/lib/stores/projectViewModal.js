@@ -55,6 +55,33 @@ export function consumePendingMeetingUploadText() {
   return text;
 }
 
+// Same one-shot handoff pattern, for a file dropped (or text pasted) on the
+// Overview page's Surveyor Management widget — QuotesPanel picks this up on
+// mount and seeds/opens the Add Quote modal with it, then clears it.
+export const pendingQuoteUploadFile = writable(null);
+
+export function setPendingQuoteUploadFile(file) {
+  pendingQuoteUploadFile.set(file);
+}
+
+export function consumePendingQuoteUploadFile() {
+  let file;
+  pendingQuoteUploadFile.update(f => { file = f; return null; });
+  return file;
+}
+
+export const pendingQuoteUploadText = writable(null);
+
+export function setPendingQuoteUploadText(text) {
+  pendingQuoteUploadText.set(text);
+}
+
+export function consumePendingQuoteUploadText() {
+  let text;
+  pendingQuoteUploadText.update(t => { text = t; return null; });
+  return text;
+}
+
 export function openProjectModal(projectId, tab = null, returnTab = null) {
   mainView.set('project');
   mainViewProjectId.set(projectId);

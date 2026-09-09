@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import NotesModal from '$lib/components/shared/NotesModal.svelte';
   import ContactModal from '$lib/components/admin-console/ContactModal.svelte';
   import LineItemsModal from '$lib/components/admin-console/LineItemsModal.svelte';
@@ -17,6 +17,10 @@
   import { exportQuotesPdf } from '$lib/services/quotesPdfExport.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
+  import {
+    consumePendingQuoteUploadFile,
+    consumePendingQuoteUploadText
+  } from '$lib/stores/projectViewModal.js';
 
   export let quotes = [];
   export let loading = false;
@@ -25,6 +29,21 @@
 
   let sentRequests = [];
   let exporting = false;
+  let pendingFileForModal = null;
+  let pendingTextForModal = null;
+
+  // A file or pasted text handed off from the Overview page's Surveyor
+  // Management widget — seed the Add Quote modal's queue with it and open
+  // it, same extraction/review/save flow as adding a quote from here.
+  onMount(() => {
+    const pendingFile = consumePendingQuoteUploadFile();
+    const pendingText = consumePendingQuoteUploadText();
+    if (pendingFile || pendingText) {
+      pendingFileForModal = pendingFile;
+      pendingTextForModal = pendingText;
+      showAddQuoteModal = true;
+    }
+  });
 
   $: if (projectId) loadSentRequests(projectId); else sentRequests = [];
 
@@ -693,6 +712,8 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
   show={showAddQuoteModal}
   {projectId}
   projectPk={project?.id}
+  initialFile={pendingFileForModal}
+  initialPastedText={pendingTextForModal}
   on:save={handleAddQuote}
   on:close={() => showAddQuoteModal = false}
 />
