@@ -28,8 +28,7 @@
     {#each visibleIssues as { provider, entry, key } (key)}
       <div class="llm-status-banner">
         <span class="llm-status-banner-text">
-          <strong>{PROVIDER_LABELS[provider] ?? provider}</strong> is out of credit/quota — AI features using
-          {PROVIDER_LABELS[provider] ?? provider} will fail until this is resolved.
+          <strong>{PROVIDER_LABELS[provider] ?? provider}</strong> is out of credit
           <span class="llm-status-banner-detail">{entry.message}</span>
         </span>
         <button
