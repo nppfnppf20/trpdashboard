@@ -7,7 +7,7 @@
   } from '$lib/api/progressTracker.js';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
-  import KeyDateSuggestionCard from './KeyDateSuggestionCard.svelte';
+  import DateSuggestionPopup from './DateSuggestionPopup.svelte';
   import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
 
   export let show = false;
@@ -234,8 +234,10 @@
       ]);
       if (!suggestions.length) return;
       pendingDateSuggestions = suggestions.map(s => ({
-        ...s,
-        issueLabel: issueLabel(issues.find(iss => iss.id === s.issue_id) || {}),
+        key: s.issue_id,
+        label: issueLabel(issues.find(iss => iss.id === s.issue_id) || {}),
+        issue_id: s.issue_id,
+        date_suggestion: s.date_suggestion,
       }));
     } catch (err) {
       console.error('checkForDateSuggestions failed:', err);
@@ -621,42 +623,13 @@
 {/if}
 
 <!-- ── Post-save date suggestion popup — independent of the modal above, so
-     it can appear after the modal has already closed. Same backdrop/modal
-     styling and size as the modal that just closed, reappearing in the same
-     spot, so it's obvious rather than an easy-to-miss corner toast. ────── -->
-{#if pendingDateSuggestions.length}
-  <div class="adv-backdrop" on:click|self={() => pendingDateSuggestions = []} role="presentation">
-    <div class="adv-modal date-popup">
-      <div class="adv-header">
-        <h3>Date{pendingDateSuggestions.length > 1 ? 's' : ''} found</h3>
-        <button class="adv-close-btn" on:click={() => pendingDateSuggestions = []}>&times;</button>
-      </div>
-      <div class="adv-body">
-        <div class="field">
-          <label>Advancement saved <span class="label-hint">a date worth scheduling was mentioned - review before closing</span></label>
-          <div class="proposal-list">
-            {#each pendingDateSuggestions as item (item.issue_id)}
-              <div class="proposal-row">
-                <span class="proposal-badge">{item.issueLabel}</span>
-                <KeyDateSuggestionCard
-                  suggestion={item.date_suggestion}
-                  onAccept={() => acceptPendingDate(item)}
-                  onDismiss={() => dismissPendingDate(item)}
-                />
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
-      <div class="adv-footer">
-        <span class="adv-count-hint"></span>
-        <div class="adv-footer-actions">
-          <button class="btn-save" on:click={() => pendingDateSuggestions = []}>Done</button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+     it can appear after the modal has already closed. ─────────────────── -->
+<DateSuggestionPopup
+  suggestions={pendingDateSuggestions}
+  onAccept={acceptPendingDate}
+  onDismiss={dismissPendingDate}
+  onClose={() => pendingDateSuggestions = []}
+/>
 
 <style>
   .adv-backdrop {
@@ -1039,6 +1012,4 @@
   }
   .btn-save:hover:not(:disabled) { background: var(--color-teal-600); }
   .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
-
-  .date-popup { max-height: none; }
 </style>

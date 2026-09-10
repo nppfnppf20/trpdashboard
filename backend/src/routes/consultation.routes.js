@@ -8,6 +8,7 @@ import {
   deleteResponse,
   createAdvancements,
   suggestAdvancements,
+  suggestAdvancementDates,
   updateAdvancement,
   deleteAdvancement,
   listProjectQuotes,
@@ -36,6 +37,7 @@ router.post('/responses/:responseId/email-consultant', emailConsultant);
 router.post('/projects/:projectId/summarise', summarise);
 router.post('/projects/:projectId/advancements', createAdvancements);
 router.post('/projects/:projectId/advancements/suggest', suggestAdvancements);
+router.post('/projects/:projectId/advancements/suggest-dates', suggestAdvancementDates);
 router.put('/advancements/:advancementId', updateAdvancement);
 router.delete('/advancements/:advancementId', deleteAdvancement);
 router.get('/projects/:projectId/quotes', listProjectQuotes);

@@ -104,6 +104,18 @@ export async function suggestConditionAdvancementSummaries(projectId, { full_tex
   return res.json(); // { suggestions: [{ condition_id, summary }] }
 }
 
+// Advisory-only date check, run after a row is quick-added from Overview's
+// Trackers widget.
+export async function suggestConditionAdvancementDates(projectId, { full_text, items }) {
+  const res = await authFetch(`/api/conditions/projects/${projectId}/advancements/suggest-dates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ full_text, items }),
+  });
+  if (!res.ok) return { suggestions: [] };
+  return res.json();
+}
+
 export async function updateConditionAdvancement(advancementId, fields) {
   const res = await authFetch(`/api/conditions/advancements/${advancementId}`, {
     method: 'PUT',

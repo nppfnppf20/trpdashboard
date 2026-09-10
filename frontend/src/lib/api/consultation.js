@@ -101,6 +101,18 @@ export async function suggestConsultationAdvancementSummaries(projectId, { full_
   return res.json(); // { suggestions: [{ response_id, summary }] }
 }
 
+// Advisory-only date check, run after a row is quick-added from Overview's
+// Trackers widget.
+export async function suggestConsultationAdvancementDates(projectId, { full_text, items }) {
+  const res = await authFetch(`/api/consultation/projects/${projectId}/advancements/suggest-dates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ full_text, items }),
+  });
+  if (!res.ok) return { suggestions: [] };
+  return res.json();
+}
+
 export async function updateConsultationAdvancement(advancementId, fields) {
   const res = await authFetch(`/api/consultation/advancements/${advancementId}`, {
     method: 'PUT',

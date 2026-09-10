@@ -206,6 +206,7 @@
   // recomputes of `weeks` (e.g. after adding a date) leave the scroll
   // position wherever the user left it.
   let scrollEl;
+  let itemColEl;
   let weekThEls = [];
   let hasScrolledToToday = false;
 
@@ -221,29 +222,31 @@
   function scrollToCurrentWeek() {
     const idx = weeks.findIndex(w => w.isCurrent);
     const th = weekThEls[idx];
-    if (idx < 0 || !th || !scrollEl) return;
-    const stickyItemColWidth = 230;
-    const delta = th.getBoundingClientRect().left - scrollEl.getBoundingClientRect().left - stickyItemColWidth;
-    scrollEl.scrollLeft += delta;
+    if (idx < 0 || !th || !scrollEl || !itemColEl) return;
+    // Centers the current week within the visible scrollable area — i.e.
+    // excluding the sticky Item column, measured against its actual
+    // rendered width rather than a hardcoded guess (which drifted out of
+    // sync and left the target column partly hidden behind it).
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const itemColRect = itemColEl.getBoundingClientRect();
+    const thRect = th.getBoundingClientRect();
+
+    const visibleContentWidth = scrollRect.width - itemColRect.width;
+    const desiredGap = (visibleContentWidth - thRect.width) / 2;
+    const currentGap = thRect.left - itemColRect.right;
+
+    scrollEl.scrollLeft += currentGap - desiredGap;
   }
 
-  // ── Semi-infinite scroll — open up more weeks as the user nears either
-  // edge, rather than hard-stopping at whatever range the data happened to
-  // produce. ───────────────────────────────────────────────────────────────
-  const EDGE_THRESHOLD_PX = 400;
+  // ── "Load more weeks" — a deliberate click at either end, rather than
+  // triggering automatically off scroll position (which made the grid jitter
+  // as it re-rendered while you were mid-scroll). ────────────────────────────
   const EXTEND_BY_WEEKS = 8;
   let extendingBack = false;
   let extendingForward = false;
 
-  function handleGridScroll() {
-    if (!scrollEl) return;
-    const { scrollLeft, scrollWidth, clientWidth } = scrollEl;
-    if (scrollLeft < EDGE_THRESHOLD_PX) extendBackward();
-    if (scrollWidth - (scrollLeft + clientWidth) < EDGE_THRESHOLD_PX) extendForward();
-  }
-
   async function extendBackward() {
-    if (extendingBack || !rangeStart) return;
+    if (extendingBack || !rangeStart || !scrollEl) return;
     extendingBack = true;
     const prevScrollWidth = scrollEl.scrollWidth;
     rangeStart = shiftWeeks(rangeStart, -EXTEND_BY_WEEKS);
@@ -430,6 +433,9 @@
   <div class="pg-header">
     <h2>Programme</h2>
     <div class="pg-header-actions">
+      <button class="btn btn-secondary" on:click={scrollToCurrentWeek}>
+        <i class="las la-calendar-day"></i> Today
+      </button>
       <button class="btn btn-primary" on:click={() => handleAddProjectDate()}>
         <i class="las la-calendar-plus"></i> Add Project Date
       </button>
@@ -455,13 +461,13 @@
         <table class="pg-grid">
           <thead>
             <tr>
-              <th class="c1" rowspan="2">Item</th>
+              <th class="c1" rowspan="2" bind:this={itemColEl}>Item</th>
               <th class="weeks-heading" colspan={weeks.length}>
                 Week Commencing <span class="weeks-heading-hint">Each column represents one week</span>
               </th>
             </tr>
             <tr>
-              {#each weeks as week, i}
+              {#each weeks as week, i (week.field)}
                 <th class="week" class:week-current={week.isCurrent} bind:this={weekThEls[i]}>{week.label}</th>
               {/each}
             </tr>
@@ -469,7 +475,7 @@
           <tbody>
             <tr class="row-milestone">
               <td class="c1">Key Project Dates</td>
-              {#each weeks as week}
+              {#each weeks as week (week.field)}
                 {@const chips = milestoneChipsForWeek(week.date)}
                 <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddProjectDate(week.field)}>
                   {#each chips as chip}
@@ -487,7 +493,7 @@
                     <span class="item-title">{g.condition_number ? `Condition ${g.condition_number} — ` : ''}{g.title}</span>
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
-                  {#each weeks as week}
+                  {#each weeks as week (week.field)}
                     {@const chips = allChipsForWeek(g, week.date)}
                     <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
@@ -507,7 +513,7 @@
                     <span class="item-title">{g.title}</span>
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
-                  {#each weeks as week}
+                  {#each weeks as week (week.field)}
                     {@const chips = allChipsForWeek(g, week.date)}
                     <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
@@ -527,7 +533,7 @@
                     <span class="item-title">{g.title}</span>
                     <span class="item-meta">{g.quotes.length} linked quote{g.quotes.length !== 1 ? 's' : ''}</span>
                   </td>
-                  {#each weeks as week}
+                  {#each weeks as week (week.field)}
                     {@const chips = allChipsForWeek(g, week.date)}
                     <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}

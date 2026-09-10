@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { suggestAdvancementSummaries, suggestAdvancementCandidates, suggestFeeQuoteWorks, draftAdvancementsSummaryEmail } from '../services/conditionsTracker.service.js';
+import { suggestAdvancementSummaries, suggestAdvancementCandidates, suggestFeeQuoteWorks, draftAdvancementsSummaryEmail, suggestConditionAdvancementDates } from '../services/conditionsTracker.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee quote drafting: per condition, list the works the wording requires.
@@ -547,6 +547,35 @@ export async function suggestAdvancements(req, res) {
   } catch (err) {
     console.error('conditions.suggestAdvancements error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate summaries' });
+  }
+}
+
+// Advisory-only date check run right after a row is quick-added from
+// Overview's Trackers widget — the summary is already final, this only
+// spots a schedulable date.
+export async function suggestAdvancementDates(req, res) {
+  const { projectId } = req.params;
+  const { full_text, items } = req.body;
+  if (!Array.isArray(items) || !items.length) return res.json({ suggestions: [] });
+
+  try {
+    const ids = items.map(i => i.condition_id);
+    const { rows: conditions } = await pool.query(
+      `SELECT id, condition_number, title
+       FROM planning_applications.conditions
+       WHERE project_id = $1 AND id = ANY($2::int[])`,
+      [projectId, ids]
+    );
+    if (!conditions.length) return res.json({ suggestions: [] });
+
+    const userSummaries = Object.fromEntries(items.map(i => [i.condition_id, i.user_summary?.trim() || null]));
+    const enriched = conditions.map(c => ({ ...c, user_summary: userSummaries[c.id] || null }));
+
+    const suggestions = await suggestConditionAdvancementDates(full_text, enriched);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('conditions.suggestAdvancementDates error:', err);
+    res.json({ suggestions: [] });
   }
 }
 

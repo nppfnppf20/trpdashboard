@@ -10,6 +10,7 @@ import {
   deleteRequirement,
   createAdvancements,
   suggestAdvancements,
+  suggestAdvancementDates,
   advancementsSummaryEmail,
   updateAdvancement,
   deleteAdvancement,
@@ -36,6 +37,7 @@ router.put('/requirements/:requirementId', updateRequirement);
 router.delete('/requirements/:requirementId', deleteRequirement);
 router.post('/projects/:projectId/advancements', createAdvancements);
 router.post('/projects/:projectId/advancements/suggest', suggestAdvancements);
+router.post('/projects/:projectId/advancements/suggest-dates', suggestAdvancementDates);
 router.post('/projects/:projectId/advancements/summary-email', advancementsSummaryEmail);
 router.post('/projects/:projectId/fee-quote-works', feeQuoteWorks);
 router.put('/advancements/:advancementId', updateAdvancement);

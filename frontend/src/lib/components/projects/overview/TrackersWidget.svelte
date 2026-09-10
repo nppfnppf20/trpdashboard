@@ -3,6 +3,7 @@
     getConsultationData,
     createConsultationAdvancements,
     suggestConsultationAdvancementSummaries,
+    suggestConsultationAdvancementDates,
     updateConsultationAdvancement,
     deleteConsultationAdvancement,
     createConsultationKeyDate,
@@ -13,6 +14,7 @@
     getConditionsData,
     createConditionAdvancements,
     suggestConditionAdvancementSummaries,
+    suggestConditionAdvancementDates,
     updateConditionAdvancement,
     deleteConditionAdvancement,
     createConditionKeyDate,
@@ -23,6 +25,7 @@
     getProgressData,
     createActions,
     suggestActionSummaries,
+    suggestActionDates,
     updateAction,
     deleteAction,
     createIssueKeyDate,
@@ -34,7 +37,9 @@
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import AdvancementTimelineModal from './AdvancementTimelineModal.svelte';
   import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
+  import DateSuggestionPopup from '$lib/components/projects/DateSuggestionPopup.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
+  import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
 
   export let project;
   $: projectId = project?.id;
@@ -262,6 +267,7 @@
 
   // ── Per-row timeline popup ────────────────────────────────────────────────
   let timelineRow = null; // { kind, id, name }
+  let pendingDateSuggestions = []; // post-add date check — see checkForRowDateSuggestion
 
   function openTimelineFor(row) {
     timelineRow = { kind: activeType, id: row.id, name: row.name };
@@ -385,23 +391,73 @@
   }
 
   async function timelineAdd(form) {
-    if (timelineRow.kind === 'consultation') {
+    // Captured up front — timelineRow can go null (modal closed) before the
+    // fire-and-forget date check below resolves.
+    const kind = timelineRow.kind;
+    const rowId = timelineRow.id;
+    const rowName = timelineRow.name;
+
+    if (kind === 'consultation') {
       await createConsultationAdvancements(projectId, {
         advancement_date: form.date, full_text: form.fullText, source_type: form.sourceType,
-        items: [{ response_id: timelineRow.id, summary: form.summary }],
+        items: [{ response_id: rowId, summary: form.summary }],
       });
-    } else if (timelineRow.kind === 'conditions') {
+    } else if (kind === 'conditions') {
       await createConditionAdvancements(projectId, {
         advancement_date: form.date, full_text: form.fullText, source_type: form.sourceType,
-        items: [{ condition_id: timelineRow.id, summary: form.summary }],
+        items: [{ condition_id: rowId, summary: form.summary }],
       });
     } else {
       await createActions(projectId, {
         action_date: form.date, full_text: form.fullText, source_type: form.sourceType, stage_instance_id: null,
-        items: [{ issue_id: timelineRow.id, summary: form.summary, sub_issue_ids: [], quote_id: null }],
+        items: [{ issue_id: rowId, summary: form.summary, sub_issue_ids: [], quote_id: null }],
       });
     }
     await load();
+    checkForRowDateSuggestion(kind, rowId, rowName, form.fullText, form.summary); // fire-and-forget
+  }
+
+  // Advisory-only date check, mirroring AddActionModal.svelte's
+  // checkForDateSuggestions — same 8s cap so it can never hang around.
+  // Covers all three tracker kinds since this one quick-add surface does.
+  async function checkForRowDateSuggestion(kind, rowId, rowName, fullText, summary) {
+    try {
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 8000));
+      const call = kind === 'consultation'
+        ? suggestConsultationAdvancementDates(projectId, { full_text: fullText || null, items: [{ response_id: rowId, user_summary: summary }] })
+        : kind === 'conditions'
+        ? suggestConditionAdvancementDates(projectId, { full_text: fullText || null, items: [{ condition_id: rowId, user_summary: summary }] })
+        : suggestActionDates(projectId, { full_text: fullText || null, items: [{ issue_id: rowId, user_summary: summary }] });
+      const { suggestions } = await Promise.race([call, timeout]);
+      if (!suggestions?.length) return;
+      pendingDateSuggestions = suggestions.map((s, i) => ({
+        key: `${kind}-${rowId}-${i}`,
+        label: rowName,
+        kind,
+        rowId,
+        date_suggestion: s.date_suggestion,
+      }));
+    } catch (err) {
+      console.error('checkForRowDateSuggestion failed:', err);
+    }
+  }
+
+  async function acceptPendingDate(item) {
+    try {
+      if (item.kind === 'consultation') await createConsultationKeyDate(item.rowId, { title: item.date_suggestion.title, date: item.date_suggestion.date });
+      else if (item.kind === 'conditions') await createConditionKeyDate(item.rowId, { title: item.date_suggestion.title, date: item.date_suggestion.date });
+      else await createIssueKeyDate(item.rowId, { title: item.date_suggestion.title, date: item.date_suggestion.date });
+      pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
+      bumpKeyDatesVersion();
+      return true;
+    } catch (err) {
+      alert('Failed to add key date: ' + err.message);
+      return false;
+    }
+  }
+
+  function dismissPendingDate(item) {
+    pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
   }
 
   async function timelineUpdate(id, form) {
@@ -564,6 +620,13 @@
     onDeleteKeyDate={timelineDeleteKeyDate}
   />
 {/if}
+
+<DateSuggestionPopup
+  suggestions={pendingDateSuggestions}
+  onAccept={acceptPendingDate}
+  onDismiss={dismissPendingDate}
+  onClose={() => pendingDateSuggestions = []}
+/>
 
 <style>
   .tr-widget { grid-row: span 2; }

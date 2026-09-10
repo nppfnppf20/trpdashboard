@@ -1,4 +1,4 @@
-import { callClaude, noEmDash } from './llm.shared.js';
+import { callClaude, noEmDash, MODEL_FAST } from './llm.shared.js';
 import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Extract key information from a statutory consultation response document.
@@ -202,6 +202,58 @@ ${responseBlocks}`;
 
   const raw = await callClaude(ADVANCEMENT_SYSTEM_PROMPT, content, undefined, 8000);
   return parseAdvancementItems(raw, 'consultation.service', 'Could not generate summaries from the provided text');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Date-only check, run after a row is quick-added from Overview's Trackers
+// widget (see TrackersWidget.svelte). Much smaller/cheaper than the full
+// summary prompt above — the summary is already final by this point, so
+// this only asks the model to spot a schedulable date, nothing else.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DATE_ONLY_SYSTEM_PROMPT = `You are checking a statutory consultation tracker entry for a date worth scheduling. The user will provide SOURCE MATERIAL and one or more RESPONSES, each with the consultee's name and the summary just logged against it.
+
+For each response, only if the source material or its summary mentions a specific date that matters for SCHEDULING that response going forward (a reply deadline, a submission deadline, a follow-up date) — not the date of this update itself, and not a date already in the past relative to TODAY'S DATE given below — return an <ITEM> with a <DATE_SUGGESTION>. Never invent a date or guess one from vague phrasing ("in a few weeks"). Most responses will have nothing to report — omit them entirely.
+
+If nothing qualifies for any response, return exactly:
+<NONE/>
+
+Return your response using EXACTLY this XML structure, one <ITEM> per response that has a date, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<RESPONSE_ID>the numeric id given for the response</RESPONSE_ID>
+<DATE_SUGGESTION>
+<DATE>the date in YYYY-MM-DD format</DATE>
+<TITLE>a short label for what happens on that date, e.g. "Reply due to Highways"</TITLE>
+</DATE_SUGGESTION>
+</ITEM>`;
+
+export async function suggestConsultationAdvancementDates(fullText, responses) {
+  const responseBlocks = responses.map(r => `RESPONSE (id: ${r.id})
+Consultee: ${r.consultee_name}
+Summary just logged: ${r.user_summary || '(none)'}`).join('\n\n');
+
+  const content = `TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}
+
+SOURCE MATERIAL:
+
+${(fullText || '').slice(0, 80000)}
+
+════════════════════════════════════════
+
+${responseBlocks}`;
+
+  const raw = await callClaude(DATE_ONLY_SYSTEM_PROMPT, content, MODEL_FAST, 2000);
+  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
+  if (!blocks.length && !/<NONE\s*\/?>/i.test(raw)) {
+    console.error('[consultation.service] suggestConsultationAdvancementDates: no ITEM blocks and no <NONE/>. Raw (first 400):', raw.slice(0, 400));
+  }
+  return blocks
+    .map(block => ({
+      response_id: parseInt(extractTag(block, 'RESPONSE_ID'), 10),
+      date_suggestion: extractDateSuggestion(block),
+    }))
+    .filter(s => Number.isFinite(s.response_id) && s.date_suggestion);
 }
 
 // Same job, but for when nothing has been ticked yet: given every response

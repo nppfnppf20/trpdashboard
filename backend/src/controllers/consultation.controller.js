@@ -1,6 +1,6 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processConsultationResponse, summariseConsultation, suggestConsultationAdvancementSummaries, suggestConsultationAdvancementCandidates } from '../services/consultation.service.js';
+import { processConsultationResponse, summariseConsultation, suggestConsultationAdvancementSummaries, suggestConsultationAdvancementCandidates, suggestConsultationAdvancementDates } from '../services/consultation.service.js';
 import { sendEmail } from '../services/emailService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -447,6 +447,35 @@ export async function suggestAdvancements(req, res) {
   } catch (err) {
     console.error('consultation.suggestAdvancements error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate summaries' });
+  }
+}
+
+// Advisory-only date check run right after a row is quick-added from
+// Overview's Trackers widget — the summary is already final, this only
+// spots a schedulable date.
+export async function suggestAdvancementDates(req, res) {
+  const { projectId } = req.params;
+  const { full_text, items } = req.body;
+  if (!Array.isArray(items) || !items.length) return res.json({ suggestions: [] });
+
+  try {
+    const ids = items.map(i => i.response_id);
+    const { rows: responses } = await pool.query(
+      `SELECT id, consultee_name
+       FROM planning_applications.consultation_responses
+       WHERE project_id = $1 AND id = ANY($2::int[])`,
+      [projectId, ids]
+    );
+    if (!responses.length) return res.json({ suggestions: [] });
+
+    const userSummaries = Object.fromEntries(items.map(i => [i.response_id, i.user_summary?.trim() || null]));
+    const enriched = responses.map(r => ({ ...r, user_summary: userSummaries[r.id] || null }));
+
+    const suggestions = await suggestConsultationAdvancementDates(full_text, enriched);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('consultation.suggestAdvancementDates error:', err);
+    res.json({ suggestions: [] });
   }
 }
 

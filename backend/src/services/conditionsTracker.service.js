@@ -1,4 +1,4 @@
-import { callClaude } from './llm.shared.js';
+import { callClaude, MODEL_FAST } from './llm.shared.js';
 
 const SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a planning conditions discharge tracker. The user will provide:
 
@@ -102,6 +102,59 @@ ${conditionBlocks}`;
 
   const raw = await callClaude(SYSTEM_PROMPT, content, undefined, 8000);
   return parseConditionAdvancementItems(raw, 'conditionsTracker.service', 'Could not generate summaries from the provided text');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Date-only check, run after a row is quick-added from Overview's Trackers
+// widget (see TrackersWidget.svelte). Much smaller/cheaper than the full
+// summary prompt above — the summary is already final by this point, so
+// this only asks the model to spot a schedulable date, nothing else.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DATE_ONLY_SYSTEM_PROMPT = `You are checking a planning conditions discharge tracker entry for a date worth scheduling. The user will provide SOURCE MATERIAL and one or more CONDITIONS, each with its number/title and the summary just logged against it.
+
+For each condition, only if the source material or its summary mentions a specific date that matters for SCHEDULING that condition's discharge going forward (a report due date, a site visit date, a submission deadline, a re-inspection date) — not the date of this update itself, and not a date already in the past relative to TODAY'S DATE given below — return an <ITEM> with a <DATE_SUGGESTION>. Never invent a date or guess one from vague phrasing ("in a few weeks"). Most conditions will have nothing to report — omit them entirely.
+
+If nothing qualifies for any condition, return exactly:
+<NONE/>
+
+Return your response using EXACTLY this XML structure, one <ITEM> per condition that has a date, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<CONDITION_ID>the numeric id given for the condition</CONDITION_ID>
+<DATE_SUGGESTION>
+<DATE>the date in YYYY-MM-DD format</DATE>
+<TITLE>a short label for what happens on that date, e.g. "Draft report due"</TITLE>
+</DATE_SUGGESTION>
+</ITEM>`;
+
+export async function suggestConditionAdvancementDates(fullText, conditions) {
+  const conditionBlocks = conditions.map(c => `CONDITION (id: ${c.id})
+Number: ${c.condition_number || 'n/a'}
+Title: ${c.title}
+Summary just logged: ${c.user_summary || '(none)'}`).join('\n\n');
+
+  const content = `TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}
+
+SOURCE MATERIAL:
+
+${(fullText || '').slice(0, 80000)}
+
+════════════════════════════════════════
+
+${conditionBlocks}`;
+
+  const raw = await callClaude(DATE_ONLY_SYSTEM_PROMPT, content, MODEL_FAST, 2000);
+  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
+  if (!blocks.length && !/<NONE\s*\/?>/i.test(raw)) {
+    console.error('[conditionsTracker.service] suggestConditionAdvancementDates: no ITEM blocks and no <NONE/>. Raw (first 400):', raw.slice(0, 400));
+  }
+  return blocks
+    .map(block => ({
+      condition_id: parseInt(extractTag(block, 'CONDITION_ID'), 10),
+      date_suggestion: extractDateSuggestion(block),
+    }))
+    .filter(s => Number.isFinite(s.condition_id) && s.date_suggestion);
 }
 
 // Same job, but for when nothing has been ticked yet: given every condition
