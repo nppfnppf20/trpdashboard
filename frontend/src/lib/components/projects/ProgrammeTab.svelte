@@ -125,15 +125,28 @@
     return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
   }
 
-  function isDateInWeek(dateString, weekStart) {
+  function startOfDay(date) {
+    const d = new Date(date);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  // mode-aware: a "period" is either a 7-day week or a single day, depending
+  // on the Week/Day toggle. Day mode compares by date string rather than
+  // Date range math to sidestep any timezone drift between the column's
+  // local-midnight boundary and a stored date's own time component.
+  function isDateInPeriod(dateString, periodStart, mode) {
     if (!dateString) return false;
+    if (mode === 'day') {
+      return String(dateString).slice(0, 10) === periodStart.toISOString().slice(0, 10);
+    }
     const date = new Date(dateString);
-    const weekEnd = new Date(weekStart);
+    const weekEnd = new Date(periodStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
-    return date >= weekStart && date <= weekEnd;
+    return date >= periodStart && date <= weekEnd;
   }
 
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const DAY_MS = 24 * 60 * 60 * 1000;
 
   function shiftWeeks(date, n) {
     const d = new Date(date);
@@ -168,21 +181,35 @@
     return { start, end };
   }
 
-  function buildWeeksArray(start, end) {
-    const currentWeekStart = getWeekCommencing(new Date());
-    const spanWeeks = Math.round((end - start) / WEEK_MS) + 1;
+  function buildWeeksArray(start, end, mode) {
+    const isDay = mode === 'day';
+    const stepDays = isDay ? 1 : 7;
+    const stepMs = isDay ? DAY_MS : WEEK_MS;
+    const currentPeriodStart = isDay ? startOfDay(new Date()) : getWeekCommencing(new Date());
+    const spanCount = Math.round((end - start) / stepMs) + 1;
     const weeks = [];
     const current = new Date(start);
-    for (let i = 0; i < spanWeeks; i++) {
+    for (let i = 0; i < spanCount; i++) {
       weeks.push({
         date: new Date(current),
         label: `${current.getDate()}/${current.getMonth() + 1}`,
+        weekday: isDay ? current.toLocaleDateString('en-GB', { weekday: 'short' }) : null,
         field: current.toISOString().split('T')[0],
-        isCurrent: current.getTime() === currentWeekStart.getTime()
+        isCurrent: current.getTime() === currentPeriodStart.getTime()
       });
-      current.setDate(current.getDate() + 7);
+      current.setDate(current.getDate() + stepDays);
     }
     return weeks;
+  }
+
+  // 'week' (default, as before) or 'day' — each column becomes one day
+  // instead of one week, over the same underlying date range.
+  let viewMode = 'week';
+
+  function setViewMode(mode) {
+    if (viewMode === mode) return;
+    viewMode = mode;
+    tick().then(scrollToCurrentWeek);
   }
 
   $: baseRange = computeBaseRange(programmeEvents, visibleKeyDates, visibleQuotes, allDirectKeyDates);
@@ -200,7 +227,7 @@
     if (!rangeEnd || baseRange.end > rangeEnd) rangeEnd = baseRange.end;
   }
 
-  $: weeks = (rangeStart && rangeEnd) ? buildWeeksArray(rangeStart, rangeEnd) : [];
+  $: weeks = (rangeStart && rangeEnd) ? buildWeeksArray(rangeStart, rangeEnd, viewMode) : [];
 
   // ── Land on the current week, past weeks reachable by scrolling left ───────
   // Only runs once, right after the first real set of weeks renders — later
@@ -269,14 +296,14 @@
   // ── Chips per row/week ───────────────────────────────────────────────────
   function milestoneChipsForWeek(weekStart) {
     return programmeEvents
-      .filter(pe => isDateInWeek(pe.date, weekStart))
+      .filter(pe => isDateInPeriod(pe.date, weekStart, viewMode))
       .map(pe => ({ id: pe.id, title: pe.title, date: pe.date, colour: pe.colour || 'var(--color-primary-700)', type: 'project' }));
   }
 
   // Direct key dates owned by a condition/issue/consultation row itself
   function directChipsForWeek(group, weekStart) {
     return group.key_dates
-      .filter(kd => isDateInWeek(kd.date, weekStart))
+      .filter(kd => isDateInPeriod(kd.date, weekStart, viewMode))
       .map(kd => ({
         id: kd.id, title: kd.title, date: kd.date, colour: kd.colour || 'var(--color-amber-500)',
         label: (kd.title || '?').charAt(0).toUpperCase(), type: `direct-${group.kind}`
@@ -293,17 +320,17 @@
 
   function quoteChipsForWeek(quote, weekStart) {
     const chips = [];
-    if (isDateInWeek(quote.site_visit_date, weekStart)) {
+    if (isDateInPeriod(quote.site_visit_date, weekStart, viewMode)) {
       chips.push({ title: 'Site Visit', date: quote.site_visit_date, colour: 'var(--color-primary-500)', label: 'SV', type: 'quote-builtin', discipline: quote.discipline, surveyor_organisation: quote.surveyor_organisation });
     }
-    if (isDateInWeek(quote.report_draft_date, weekStart)) {
+    if (isDateInPeriod(quote.report_draft_date, weekStart, viewMode)) {
       chips.push({ title: 'Draft Report', date: quote.report_draft_date, colour: 'var(--color-violet-600)', label: 'D', type: 'quote-builtin', discipline: quote.discipline, surveyor_organisation: quote.surveyor_organisation });
     }
-    if (isDateInWeek(quote.report_final_date, weekStart)) {
+    if (isDateInPeriod(quote.report_final_date, weekStart, viewMode)) {
       chips.push({ title: 'Final Report', date: quote.report_final_date, colour: 'var(--color-emerald-500)', label: 'F', type: 'quote-builtin', discipline: quote.discipline, surveyor_organisation: quote.surveyor_organisation });
     }
     for (const kd of quoteKeyDates) {
-      if (kd.quote_id === quote.id && isDateInWeek(kd.date, weekStart)) {
+      if (kd.quote_id === quote.id && isDateInPeriod(kd.date, weekStart, viewMode)) {
         chips.push({ id: kd.id, title: kd.title, date: kd.date, colour: kd.colour || 'var(--color-amber-500)', label: (kd.title || '?').charAt(0).toUpperCase(), type: 'quote', discipline: quote.discipline, surveyor_organisation: quote.surveyor_organisation });
       }
     }
@@ -437,6 +464,10 @@
       <button class="btn btn-secondary" on:click={scrollToCurrentWeek}>
         <i class="las la-calendar-day"></i> Today
       </button>
+      <div class="pg-view-toggle">
+        <button class="pg-view-btn" class:active={viewMode === 'week'} on:click={() => setViewMode('week')}>Week</button>
+        <button class="pg-view-btn" class:active={viewMode === 'day'} on:click={() => setViewMode('day')}>Day</button>
+      </div>
       <button class="btn btn-primary" on:click={() => handleAddProjectDate()}>
         <i class="las la-calendar-plus"></i> Add Project Date
       </button>
@@ -467,12 +498,16 @@
             <tr>
               <th class="c1" rowspan="2" bind:this={itemColEl}>Item</th>
               <th class="weeks-heading" colspan={weeks.length}>
-                Week Commencing <span class="weeks-heading-hint">Each column represents one week</span>
+                {viewMode === 'day' ? 'Date' : 'Week Commencing'}
+                <span class="weeks-heading-hint">Each column represents one {viewMode}</span>
               </th>
             </tr>
             <tr>
               {#each weeks as week, i (week.field)}
-                <th class="week" class:week-current={week.isCurrent} bind:this={weekThEls[i]}>{week.label}</th>
+                <th class="week" class:week-current={week.isCurrent} bind:this={weekThEls[i]}>
+                  {#if week.weekday}<span class="week-weekday">{week.weekday}</span>{/if}
+                  {week.label}
+                </th>
               {/each}
             </tr>
           </thead>
@@ -588,6 +623,21 @@
   }
   .pg-header h2 { margin: 0; font-size: 1.125rem; font-weight: 700; color: var(--color-slate-800); }
   .pg-header-actions { display: flex; align-items: center; gap: 0.75rem; }
+
+  .pg-view-toggle { display: flex; gap: 2px; background: var(--color-slate-100); border-radius: 6px; padding: 2px; }
+  .pg-view-btn {
+    padding: 0.3rem 0.7rem;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-slate-500);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .pg-view-btn:hover:not(.active) { color: var(--color-slate-700); }
+  .pg-view-btn.active { background: var(--color-white); color: var(--color-slate-800); box-shadow: var(--shadow-sm); }
   .pg-close-btn {
     background: none; border: none; font-size: 1.6rem; color: var(--color-slate-500);
     cursor: pointer; line-height: 1; padding: 0; width: 2rem; height: 2rem;
@@ -677,6 +727,7 @@
     border-bottom: 1px solid var(--color-slate-300);
   }
   thead th.week { text-align: center; width: 48px; }
+  .week-weekday { display: block; font-size: 0.62rem; color: var(--color-slate-400); font-weight: 700; letter-spacing: 0.03em; }
 
   .weeks-heading {
     text-align: center;

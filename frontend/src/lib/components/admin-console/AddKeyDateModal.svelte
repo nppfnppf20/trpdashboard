@@ -335,6 +335,7 @@
   input[type="date"],
   select,
   textarea {
+    box-sizing: border-box;
     width: 100%;
     padding: 0.625rem;
     border: 1px solid var(--color-slate-300);
