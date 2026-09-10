@@ -255,13 +255,16 @@ export async function createProgrammeEvent(req, res) {
 export async function updateProgrammeEvent(req, res) {
   try {
     const { id } = req.params;
-    const { title, date, colour } = req.body;
+    const { title, date, colour, is_resolved } = req.body;
 
     if (!title || !date) {
       return res.status(400).json({ error: 'title and date are required' });
     }
 
-    const event = await quotesService.updateProgrammeEvent(id, { title, date, colour });
+    const event = await quotesService.updateProgrammeEvent(id, {
+      title, date, colour,
+      ...('is_resolved' in req.body ? { is_resolved } : {})
+    });
 
     if (!event) {
       return res.status(404).json({ error: 'Programme event not found' });
@@ -338,17 +341,20 @@ export async function createQuoteKeyDate(req, res) {
 export async function updateQuoteKeyDate(req, res) {
   try {
     const { id } = req.params;
-    const { title, date, colour } = req.body;
+    const { title, date, colour, is_resolved } = req.body;
 
     console.log('updateQuoteKeyDate controller called');
     console.log('ID from params:', id);
-    console.log('Body:', { title, date, colour });
+    console.log('Body:', { title, date, colour, is_resolved });
 
     if (!title || !date) {
       return res.status(400).json({ error: 'title and date are required' });
     }
 
-    const keyDate = await quotesService.updateQuoteKeyDate(id, { title, date, colour });
+    const keyDate = await quotesService.updateQuoteKeyDate(id, {
+      title, date, colour,
+      ...('is_resolved' in req.body ? { is_resolved } : {})
+    });
 
     console.log('Result from service:', keyDate);
 

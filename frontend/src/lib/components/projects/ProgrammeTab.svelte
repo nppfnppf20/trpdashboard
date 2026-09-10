@@ -297,7 +297,7 @@
   function milestoneChipsForWeek(weekStart) {
     return programmeEvents
       .filter(pe => isDateInPeriod(pe.date, weekStart, viewMode))
-      .map(pe => ({ id: pe.id, title: pe.title, date: pe.date, colour: pe.colour || 'var(--color-primary-700)', type: 'project' }));
+      .map(pe => ({ id: pe.id, title: pe.title, date: pe.date, colour: pe.colour || 'var(--color-primary-700)', type: 'project', is_resolved: pe.is_resolved }));
   }
 
   // Direct key dates owned by a condition/issue/consultation row itself
@@ -306,7 +306,7 @@
       .filter(kd => isDateInPeriod(kd.date, weekStart, viewMode))
       .map(kd => ({
         id: kd.id, title: kd.title, date: kd.date, colour: kd.colour || 'var(--color-amber-500)',
-        label: (kd.title || '?').charAt(0).toUpperCase(), type: `direct-${group.kind}`
+        label: (kd.title || '?').charAt(0).toUpperCase(), type: `direct-${group.kind}`, is_resolved: kd.is_resolved
       }));
   }
 
@@ -331,7 +331,7 @@
     }
     for (const kd of quoteKeyDates) {
       if (kd.quote_id === quote.id && isDateInPeriod(kd.date, weekStart, viewMode)) {
-        chips.push({ id: kd.id, title: kd.title, date: kd.date, colour: kd.colour || 'var(--color-amber-500)', label: (kd.title || '?').charAt(0).toUpperCase(), type: 'quote', discipline: quote.discipline, surveyor_organisation: quote.surveyor_organisation });
+        chips.push({ id: kd.id, title: kd.title, date: kd.date, colour: kd.colour || 'var(--color-amber-500)', label: (kd.title || '?').charAt(0).toUpperCase(), type: 'quote', discipline: quote.discipline, surveyor_organisation: quote.surveyor_organisation, is_resolved: kd.is_resolved });
       }
     }
     return chips;
@@ -405,6 +405,29 @@
       }
     } catch (err) {
       alert('Failed to delete date: ' + err.message);
+    }
+  }
+
+  async function handleResolveDate(date) {
+    try {
+      if (date.type === 'project') {
+        const updated = await updateProgrammeEvent(date.id, { title: date.title, date: date.date, colour: date.colour, is_resolved: date.is_resolved });
+        programmeEvents = programmeEvents.map(pe => pe.id === date.id ? { ...pe, ...updated } : pe);
+      } else if (date.type === 'quote') {
+        const updated = await updateQuoteKeyDate(date.id, { title: date.title, date: date.date, colour: date.colour, is_resolved: date.is_resolved });
+        quoteKeyDates = quoteKeyDates.map(kd => kd.id === date.id ? { ...kd, ...updated } : kd);
+      } else if (date.type === 'direct-condition') {
+        await updateConditionKeyDate(date.id, { is_resolved: date.is_resolved });
+        await load();
+      } else if (date.type === 'direct-issue') {
+        await updateIssueKeyDate(date.id, { is_resolved: date.is_resolved });
+        await load();
+      } else if (date.type === 'direct-consultation') {
+        await updateConsultationKeyDate(date.id, { is_resolved: date.is_resolved });
+        await load();
+      }
+    } catch (err) {
+      alert('Failed to update date: ' + err.message);
     }
   }
 
@@ -518,7 +541,7 @@
                 {@const chips = milestoneChipsForWeek(week.date)}
                 <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddProjectDate(week.field)}>
                   {#each chips as chip}
-                    <span class="chip-diamond" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click|stopPropagation={() => handleViewDate(chip)}></span>
+                    <span class="chip-diamond" class:resolved={chip.is_resolved} style="background:{chip.colour}" title="{chip.title} — {chip.date}{chip.is_resolved ? ' (resolved)' : ''}" on:click|stopPropagation={() => handleViewDate(chip)}></span>
                   {/each}
                 </td>
               {/each}
@@ -536,7 +559,9 @@
                     {@const chips = allChipsForWeek(g, week.date)}
                     <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
-                        <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
+                        <span class="chip" class:resolved={chip.is_resolved} style="background:{chip.colour}" title="{chip.title} — {chip.date}{chip.is_resolved ? ' (resolved)' : ''}" on:click={() => handleViewDate(chip)}>
+                          {#if chip.is_resolved}<i class="las la-check"></i>{:else}{chip.label}{/if}
+                        </span>
                       {/each}
                     </td>
                   {/each}
@@ -556,7 +581,9 @@
                     {@const chips = allChipsForWeek(g, week.date)}
                     <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
-                        <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
+                        <span class="chip" class:resolved={chip.is_resolved} style="background:{chip.colour}" title="{chip.title} — {chip.date}{chip.is_resolved ? ' (resolved)' : ''}" on:click={() => handleViewDate(chip)}>
+                          {#if chip.is_resolved}<i class="las la-check"></i>{:else}{chip.label}{/if}
+                        </span>
                       {/each}
                     </td>
                   {/each}
@@ -576,7 +603,9 @@
                     {@const chips = allChipsForWeek(g, week.date)}
                     <td class="week" class:week-current={week.isCurrent} on:click={() => chips.length === 0 && handleAddRowDate(g, week.field)}>
                       {#each chips as chip}
-                        <span class="chip" style="background:{chip.colour}" title="{chip.title} — {chip.date}" on:click={() => handleViewDate(chip)}>{chip.label}</span>
+                        <span class="chip" class:resolved={chip.is_resolved} style="background:{chip.colour}" title="{chip.title} — {chip.date}{chip.is_resolved ? ' (resolved)' : ''}" on:click={() => handleViewDate(chip)}>
+                          {#if chip.is_resolved}<i class="las la-check"></i>{:else}{chip.label}{/if}
+                        </span>
                       {/each}
                     </td>
                   {/each}
@@ -610,6 +639,7 @@
   date={selectedDate}
   on:edit={(e) => handleEditDate(e.detail)}
   on:delete={(e) => handleDeleteDate(e.detail)}
+  on:resolve={(e) => handleResolveDate(e.detail)}
   on:close={() => { showViewDateModal = false; selectedDate = null; }}
 />
 

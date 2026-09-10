@@ -101,7 +101,7 @@ export async function getConditionsData(req, res) {
         [projectId]
       ),
       pool.query(
-        `SELECT qkd.quote_id, qkd.id, qkd.title, qkd.date, qkd.colour
+        `SELECT qkd.quote_id, qkd.id, qkd.title, qkd.date, qkd.colour, qkd.is_resolved
          FROM admin_console.quote_key_dates qkd
          WHERE qkd.quote_id IN (
            SELECT cql.quote_id
@@ -113,7 +113,7 @@ export async function getConditionsData(req, res) {
         [projectId]
       ),
       pool.query(
-        `SELECT ckd.id, ckd.condition_id, ckd.title, ckd.date, ckd.colour
+        `SELECT ckd.id, ckd.condition_id, ckd.title, ckd.date, ckd.colour, ckd.is_resolved
          FROM planning_applications.condition_key_dates ckd
          JOIN planning_applications.conditions c ON c.id = ckd.condition_id
          WHERE c.project_id = $1
@@ -832,16 +832,17 @@ export async function createConditionKeyDate(req, res) {
 
 export async function updateConditionKeyDate(req, res) {
   const { keyDateId } = req.params;
-  const { title, date, colour } = req.body;
+  const { title, date, colour, is_resolved } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.condition_key_dates SET
-         title      = COALESCE($2, title),
-         date       = COALESCE($3, date),
-         colour     = CASE WHEN $4 THEN $5 ELSE colour END,
-         updated_at = NOW()
+         title       = COALESCE($2, title),
+         date        = COALESCE($3, date),
+         colour      = CASE WHEN $4 THEN $5 ELSE colour END,
+         is_resolved = CASE WHEN $6 THEN $7 ELSE is_resolved END,
+         updated_at  = NOW()
        WHERE id = $1 RETURNING *`,
-      [keyDateId, title?.trim() || null, date || null, 'colour' in req.body, colour?.trim() || null]
+      [keyDateId, title?.trim() || null, date || null, 'colour' in req.body, colour?.trim() || null, 'is_resolved' in req.body, !!is_resolved]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);

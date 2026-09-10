@@ -22,6 +22,13 @@
     }
   }
 
+  function handleToggleResolve() {
+    const willResolve = !date.is_resolved;
+    if (!confirm(willResolve ? 'Mark this date as resolved?' : 'Mark this date as unresolved?')) return;
+    dispatch('resolve', { ...date, is_resolved: willResolve });
+    handleClose();
+  }
+
   function formatDate(dateString) {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('en-GB', {
@@ -62,9 +69,28 @@
             <span class="value">{date.surveyor_organisation}</span>
           </div>
         {/if}
+
+        {#if date.type !== 'quote-builtin'}
+          <div class="info-row">
+            <span class="label">Status</span>
+            <span class="value">
+              {#if date.is_resolved}
+                <span class="resolved-badge"><i class="las la-check-circle"></i> Resolved</span>
+              {:else}
+                <span class="unresolved-badge">Unresolved</span>
+              {/if}
+            </span>
+          </div>
+        {/if}
       </div>
 
       <div class="modal-actions">
+        {#if date.type !== 'quote-builtin'}
+          <button class="btn btn-secondary btn-modal" on:click={handleToggleResolve}>
+            <i class="las {date.is_resolved ? 'la-times-circle' : 'la-check-circle'}"></i>
+            {date.is_resolved ? 'Mark Unresolved' : 'Mark Resolved'}
+          </button>
+        {/if}
         <button class="btn btn-secondary btn-modal" on:click={handleEdit}>
           <i class="las la-edit"></i>
           Edit
@@ -170,6 +196,7 @@
 
   .modal-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.5rem;
     padding: 1rem 1.25rem;
@@ -180,5 +207,17 @@
   .btn-modal {
     padding: 0.4rem 0.875rem;
     font-size: 0.8125rem;
+  }
+
+  .resolved-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--color-emerald-600);
+    font-weight: 600;
+  }
+
+  .unresolved-badge {
+    color: var(--color-slate-400);
   }
 </style>

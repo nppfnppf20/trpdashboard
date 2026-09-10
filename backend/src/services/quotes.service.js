@@ -306,6 +306,7 @@ export async function getProgrammeEvents(projectId) {
       title,
       date,
       colour,
+      is_resolved,
       created_at,
       updated_at
     FROM admin_console.programme_events
@@ -344,13 +345,15 @@ export async function createProgrammeEvent(data) {
  * Update a programme event
  */
 export async function updateProgrammeEvent(id, data) {
+  const hasResolved = Object.prototype.hasOwnProperty.call(data, 'is_resolved');
   const query = `
     UPDATE admin_console.programme_events
     SET
       title = $1,
       date = $2,
-      colour = $3
-    WHERE id = $4
+      colour = $3,
+      is_resolved = CASE WHEN $4 THEN $5 ELSE is_resolved END
+    WHERE id = $6
     RETURNING *
   `;
 
@@ -358,6 +361,8 @@ export async function updateProgrammeEvent(id, data) {
     data.title,
     data.date,
     data.colour || null,
+    hasResolved,
+    !!data.is_resolved,
     id
   ]);
   return result.rows[0];
@@ -404,31 +409,34 @@ export async function createQuoteKeyDate(data) {
  * Update a quote key date
  */
 export async function updateQuoteKeyDate(id, data) {
+  const hasResolved = Object.prototype.hasOwnProperty.call(data, 'is_resolved');
   const query = `
     UPDATE admin_console.quote_key_dates
     SET
       title = $1,
       date = $2,
-      colour = $3
-    WHERE id = $4
+      colour = $3,
+      is_resolved = CASE WHEN $4 THEN $5 ELSE is_resolved END
+    WHERE id = $6
     RETURNING *
   `;
 
   console.log('updateQuoteKeyDate service called');
   console.log('ID:', id);
   console.log('Data:', data);
-  console.log('Query params:', [data.title, data.date, data.colour || null, id]);
 
   const result = await pool.query(query, [
     data.title,
     data.date,
     data.colour || null,
+    hasResolved,
+    !!data.is_resolved,
     id
   ]);
-  
+
   console.log('Query result rowCount:', result.rowCount);
   console.log('Query result rows:', result.rows);
-  
+
   return result.rows[0];
 }
 
