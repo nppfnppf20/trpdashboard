@@ -805,6 +805,17 @@
     }
   }
 
+  async function toggleDirectKeyDateResolved(kd) {
+    const willResolve = !kd.is_resolved;
+    if (!confirm(willResolve ? 'Mark this key date as resolved?' : 'Mark this key date as unresolved?')) return;
+    try {
+      await updateConsultationKeyDate(kd.id, { is_resolved: willResolve });
+      await refreshData();
+    } catch (err) {
+      alert('Failed to update key date: ' + err.message);
+    }
+  }
+
   // ── Export ────────────────────────────────────────────────────────────────
   // Word and PDF share the same options modal - exportFormat tracks which
   // button opened it so the on:export handler knows which one to run.
@@ -1287,8 +1298,12 @@ ${sections.join('<br>')}`;
           {#if timelineResponse.key_dates?.length}
             <div class="tl-quote-keydates">
               {#each timelineResponse.key_dates as kd (kd.id)}
-                <span class="tl-quote-keydate tl-direct-keydate" on:click={() => openEditDirectKeyDate(kd)}>
+                <span class="tl-quote-keydate tl-direct-keydate" class:resolved={kd.is_resolved} on:click={() => openEditDirectKeyDate(kd)}>
+                  {#if kd.is_resolved}<i class="las la-check-circle tl-resolved-icon"></i>{/if}
                   {kd.title} - {formatDate(kd.date)}
+                  <button class="tl-quote-unlink" title={kd.is_resolved ? 'Mark unresolved' : 'Mark resolved'} on:click|stopPropagation={() => toggleDirectKeyDateResolved(kd)}>
+                    <i class="las {kd.is_resolved ? 'la-times-circle' : 'la-check-circle'}"></i>
+                  </button>
                   <button class="tl-quote-unlink" title="Delete" on:click|stopPropagation={() => removeDirectKeyDate(kd.id)}>
                     <i class="las la-times"></i>
                   </button>
@@ -2143,6 +2158,8 @@ ${sections.join('<br>')}`;
     gap: 0.3rem;
     cursor: pointer;
   }
+  .tl-direct-keydate.resolved { opacity: 0.55; filter: grayscale(60%); }
+  .tl-resolved-icon { color: var(--color-emerald-600); font-size: 0.75rem; }
   .tl-direct-keydate .tl-quote-unlink {
     display: inline-flex;
     align-items: center;

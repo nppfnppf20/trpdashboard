@@ -829,6 +829,7 @@
     transition: transform 0.12s ease;
   }
   .chip:hover { transform: scale(1.15); }
+  .chip.resolved { filter: grayscale(70%) opacity(0.55); font-size: 0.68rem; }
 
   .chip-diamond {
     display: inline-block;
@@ -837,4 +838,5 @@
     cursor: pointer;
     margin: 1px;
   }
+  .chip-diamond.resolved { filter: grayscale(70%) opacity(0.55); }
 </style>

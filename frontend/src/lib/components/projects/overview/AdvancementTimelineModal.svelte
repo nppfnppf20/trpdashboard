@@ -182,6 +182,16 @@
     }
   }
 
+  async function toggleKeyDateResolved(kd) {
+    const willResolve = !kd.is_resolved;
+    if (!confirm(willResolve ? 'Mark this key date as resolved?' : 'Mark this key date as unresolved?')) return;
+    try {
+      await onUpdateKeyDate(kd.id, { is_resolved: willResolve });
+    } catch (err) {
+      keyDateError = err.message;
+    }
+  }
+
   function formatDate(d) {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -206,8 +216,12 @@
             {#if keyDates.length}
               <div class="atm-keydates-list">
                 {#each keyDates as kd (kd.id)}
-                  <span class="atm-keydate" on:click={() => openEditKeyDate(kd)}>
+                  <span class="atm-keydate" class:resolved={kd.is_resolved} on:click={() => openEditKeyDate(kd)}>
+                    {#if kd.is_resolved}<i class="las la-check-circle atm-resolved-icon"></i>{/if}
                     {kd.title} - {formatDate(kd.date)}
+                    <button class="atm-keydate-remove" title={kd.is_resolved ? 'Mark unresolved' : 'Mark resolved'} on:click|stopPropagation={() => toggleKeyDateResolved(kd)}>
+                      <i class="las {kd.is_resolved ? 'la-times-circle' : 'la-check-circle'}"></i>
+                    </button>
                     <button class="atm-keydate-remove" title="Delete" on:click|stopPropagation={() => removeKeyDate(kd.id)}>
                       <i class="las la-times"></i>
                     </button>
@@ -343,6 +357,8 @@
   }
   .atm-keydate-remove { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: none; background: none; padding: 0; color: inherit; opacity: 0.6; cursor: pointer; font-size: 0.65rem; }
   .atm-keydate-remove:hover { opacity: 1; }
+  .atm-keydate.resolved { opacity: 0.55; filter: grayscale(60%); }
+  .atm-resolved-icon { color: var(--color-emerald-600); font-size: 0.75rem; }
 
   .atm-list { display: flex; flex-direction: column; border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); overflow: hidden; }
   .atm-row { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--color-slate-100); }
