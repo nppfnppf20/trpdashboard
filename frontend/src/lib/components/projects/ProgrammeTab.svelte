@@ -189,8 +189,9 @@
 
   // The actually-rendered range — starts from baseRange, then only ever
   // grows, either because the data-driven range widens, or because the user
-  // scrolled near an edge (see handleGridScroll below). Never shrinks, so a
-  // manual scroll-extension survives a data reload (e.g. after adding a date).
+  // clicked one of the "load more weeks" edge buttons (see extendBackward /
+  // extendForward below). Never shrinks, so a manual extension survives a
+  // data reload (e.g. after adding a date).
   let rangeStart = null;
   let rangeEnd = null;
 
@@ -457,7 +458,10 @@
     </div>
   {:else}
     <div class="pg-grid-card">
-      <div class="pg-scroll" bind:this={scrollEl} on:scroll={handleGridScroll}>
+      <button class="pg-edge-btn" on:click={extendBackward} disabled={extendingBack} title="Load earlier weeks">
+        <i class="las la-plus"></i>
+      </button>
+      <div class="pg-scroll" bind:this={scrollEl}>
         <table class="pg-grid">
           <thead>
             <tr>
@@ -547,6 +551,9 @@
           </tbody>
         </table>
       </div>
+      <button class="pg-edge-btn" on:click={extendForward} disabled={extendingForward} title="Load later weeks">
+        <i class="las la-plus"></i>
+      </button>
     </div>
   {/if}
 </div>
@@ -612,6 +619,8 @@
   @keyframes pg-spin { to { transform: rotate(360deg); } }
 
   .pg-grid-card {
+    display: flex;
+    align-items: stretch;
     background: white;
     border: 1px solid var(--color-slate-200);
     border-radius: var(--radius-md);
@@ -619,7 +628,24 @@
     overflow: hidden;
   }
 
-  .pg-scroll { overflow-x: auto; }
+  .pg-scroll { flex: 1; min-width: 0; overflow-x: auto; }
+
+  .pg-edge-btn {
+    flex-shrink: 0;
+    width: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-slate-50);
+    border: none;
+    color: var(--color-slate-400);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .pg-edge-btn:first-child { border-right: 1px solid var(--color-slate-200); }
+  .pg-edge-btn:last-child { border-left: 1px solid var(--color-slate-200); }
+  .pg-edge-btn:hover:not(:disabled) { background: var(--color-slate-100); color: var(--color-primary-600); }
+  .pg-edge-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   table.pg-grid {
     border-collapse: separate;
