@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { suggestActionSummaries } from '../services/quoteActions.service.js';
+import { suggestActionSummaries, suggestQuoteWorkStatus } from '../services/quoteActions.service.js';
 
 /**
  * GET /api/admin-console/quote-actions/projects/:projectId
@@ -135,6 +135,34 @@ export async function suggestActions(req, res) {
   } catch (err) {
     console.error('suggestActions error:', err);
     res.status(500).json({ error: 'Failed to generate summaries', details: err.message });
+  }
+}
+
+/**
+ * POST /api/admin-console/quote-actions/projects/:projectId/actions/suggest-work-status
+ * Advisory-only check run after an advancement is saved against a tracker
+ * row tagged with a linked quote — shared across all three planning
+ * trackers, since this is about the quote, not the row the advancement was
+ * logged against. Body: { full_text, items: [{ quote_id }] }
+ */
+export async function suggestWorkStatus(req, res) {
+  const { projectId } = req.params;
+  const { full_text, items } = req.body;
+  if (!Array.isArray(items) || !items.length) return res.json({ suggestions: [] });
+
+  try {
+    const ids = items.map(i => i.quote_id);
+    const { rows: quotes } = await pool.query(
+      `SELECT id, discipline, work_status FROM admin_console.quotes WHERE id = ANY($1::uuid[]) AND project_id = $2`,
+      [ids, projectId]
+    );
+    if (!quotes.length) return res.json({ suggestions: [] });
+
+    const suggestions = await suggestQuoteWorkStatus(full_text, quotes);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error('suggestWorkStatus error:', err);
+    res.json({ suggestions: [] });
   }
 }
 

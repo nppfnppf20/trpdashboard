@@ -267,7 +267,7 @@
 
   // ── Per-row timeline popup ────────────────────────────────────────────────
   let timelineRow = null; // { kind, id, name }
-  let pendingDateSuggestions = []; // post-add date check — see checkForRowDateSuggestion
+  let pendingSuggestions = []; // post-add date check — see checkForRowDateSuggestion
 
   function openTimelineFor(row) {
     timelineRow = { kind: activeType, id: row.id, name: row.name };
@@ -420,34 +420,38 @@
   // Advisory-only date check, mirroring AddActionModal.svelte's
   // checkForDateSuggestions — same 8s cap so it can never hang around.
   // Covers all three tracker kinds since this one quick-add surface does.
-  async function checkForRowDateSuggestion(kind, rowId, rowName, fullText, summary) {
+  // Note: `trackerKind` (consultation/conditions/progress) here is distinct
+  // from each suggestion's `kind` below, which tells DateSuggestionPopup
+  // which card to render ('date' vs 'status') — don't conflate the two.
+  async function checkForRowDateSuggestion(trackerKind, rowId, rowName, fullText, summary) {
     try {
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 8000));
-      const call = kind === 'consultation'
+      const call = trackerKind === 'consultation'
         ? suggestConsultationAdvancementDates(projectId, { full_text: fullText || null, items: [{ response_id: rowId, user_summary: summary }] })
-        : kind === 'conditions'
+        : trackerKind === 'conditions'
         ? suggestConditionAdvancementDates(projectId, { full_text: fullText || null, items: [{ condition_id: rowId, user_summary: summary }] })
         : suggestActionDates(projectId, { full_text: fullText || null, items: [{ issue_id: rowId, user_summary: summary }] });
       const { suggestions } = await Promise.race([call, timeout]);
       if (!suggestions?.length) return;
-      pendingDateSuggestions = suggestions.map((s, i) => ({
-        key: `${kind}-${rowId}-${i}`,
+      pendingSuggestions = [...pendingSuggestions, ...suggestions.map((s, i) => ({
+        key: `date-${trackerKind}-${rowId}-${i}`,
         label: rowName,
-        kind,
+        kind: 'date',
+        trackerKind,
         rowId,
-        date_suggestion: s.date_suggestion,
-      }));
+        suggestion: s.date_suggestion,
+      }))];
     } catch (err) {
       console.error('checkForRowDateSuggestion failed:', err);
     }
   }
 
-  async function acceptPendingDate(item) {
+  async function acceptPendingSuggestion(item) {
     try {
-      if (item.kind === 'consultation') await createConsultationKeyDate(item.rowId, { title: item.date_suggestion.title, date: item.date_suggestion.date });
-      else if (item.kind === 'conditions') await createConditionKeyDate(item.rowId, { title: item.date_suggestion.title, date: item.date_suggestion.date });
-      else await createIssueKeyDate(item.rowId, { title: item.date_suggestion.title, date: item.date_suggestion.date });
-      pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
+      if (item.trackerKind === 'consultation') await createConsultationKeyDate(item.rowId, { title: item.suggestion.title, date: item.suggestion.date });
+      else if (item.trackerKind === 'conditions') await createConditionKeyDate(item.rowId, { title: item.suggestion.title, date: item.suggestion.date });
+      else await createIssueKeyDate(item.rowId, { title: item.suggestion.title, date: item.suggestion.date });
+      pendingSuggestions = pendingSuggestions.filter(p => p !== item);
       bumpKeyDatesVersion();
       return true;
     } catch (err) {
@@ -456,8 +460,8 @@
     }
   }
 
-  function dismissPendingDate(item) {
-    pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
+  function dismissPendingSuggestion(item) {
+    pendingSuggestions = pendingSuggestions.filter(p => p !== item);
   }
 
   async function timelineUpdate(id, form) {
@@ -622,10 +626,10 @@
 {/if}
 
 <DateSuggestionPopup
-  suggestions={pendingDateSuggestions}
-  onAccept={acceptPendingDate}
-  onDismiss={dismissPendingDate}
-  onClose={() => pendingDateSuggestions = []}
+  suggestions={pendingSuggestions}
+  onAccept={acceptPendingSuggestion}
+  onDismiss={dismissPendingSuggestion}
+  onClose={() => pendingSuggestions = []}
 />
 
 <style>

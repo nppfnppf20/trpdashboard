@@ -1,4 +1,4 @@
-import { callClaude, noEmDash } from './llm.shared.js';
+import { callClaude, noEmDash, MODEL_FAST } from './llm.shared.js';
 
 // Actions tracker for instructed surveys — LLM summariser, mirroring the
 // conditions tracker's advancement summaries (conditionsTracker.service.js).
@@ -115,4 +115,65 @@ ${quoteBlocks}`;
       summary: noEmDash(extractTag(block, 'SUMMARY') || ''),
     }))
     .filter(s => s.quote_id && s.summary);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Work-status check, run after an advancement is saved against a tracker row
+// tagged with a linked quote (see TrackersWidget/AddActionModal/
+// AddAdvancementModal/AddConsultationAdvancementModal's post-save date check
+// for the sibling feature this mirrors). One shared check regardless of
+// which tracker the advancement came from — this is about the quote, not
+// the row.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// No DB enum backs admin_console.quotes.work_status (it's free text, set via
+// a hardcoded <option> list in InstructedSurveyorsPanel.svelte) — this
+// whitelist is the actual safety boundary, same role the YYYY-MM-DD regex
+// plays for date suggestions.
+const WORK_STATUSES = ['In progress', 'TRP Review', 'Client Review', 'Back with author', 'Completed'];
+
+const STATUS_ONLY_SYSTEM_PROMPT = `You are checking a note about a specialist survey for a mentioned change to its work status. The user will provide SOURCE MATERIAL and one or more SURVEYS, each with its discipline and current work status.
+
+The only valid work statuses are: In progress, TRP Review, Client Review, Back with author, Completed.
+
+For each survey, only if the source material clearly indicates the survey has moved to a different one of these statuses — not a guess, not a status that already matches what's recorded — return an <ITEM> with a <STATUS_SUGGESTION> set to EXACTLY one of the five values above, spelled exactly as shown. Most surveys will have nothing to report — omit them entirely.
+
+If nothing qualifies for any survey, return exactly:
+<NONE/>
+
+Return your response using EXACTLY this XML structure, one <ITEM> per survey with a status change, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<QUOTE_ID>the id given for the survey</QUOTE_ID>
+<STATUS_SUGGESTION>one of the five exact values above</STATUS_SUGGESTION>
+</ITEM>`;
+
+export async function suggestQuoteWorkStatus(fullText, quotes) {
+  const quoteBlocks = quotes.map(q => `SURVEY (id: ${q.id})
+Discipline: ${q.discipline || 'n/a'}
+Current work status: ${q.work_status || 'In progress'}`).join('\n\n');
+
+  const content = `SOURCE MATERIAL:
+
+${(fullText || '').slice(0, 80000)}
+
+════════════════════════════════════════
+
+${quoteBlocks}`;
+
+  const raw = await callClaude(STATUS_ONLY_SYSTEM_PROMPT, content, MODEL_FAST, 2000);
+  const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
+  if (!blocks.length && !/<NONE\s*\/?>/i.test(raw)) {
+    console.error('[quoteActions.service] suggestQuoteWorkStatus: no ITEM blocks and no <NONE/>. Raw (first 400):', raw.slice(0, 400));
+  }
+  return blocks
+    .map(block => ({
+      quote_id: extractTag(block, 'QUOTE_ID'),
+      status: extractTag(block, 'STATUS_SUGGESTION'),
+    }))
+    .filter(s => s.quote_id && WORK_STATUSES.includes(s.status))
+    .filter(s => {
+      const q = quotes.find(q => q.id === s.quote_id);
+      return q && (q.work_status || 'In progress') !== s.status;
+    });
 }

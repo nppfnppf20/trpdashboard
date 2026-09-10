@@ -5,6 +5,8 @@
     listMeetingNotesForPicker, draftFromMeetingNotes, commitDraftedActions,
     getProgressData, createIssueKeyDate,
   } from '$lib/api/progressTracker.js';
+  import { suggestQuoteWorkStatus } from '$lib/api/quoteActions.js';
+  import { updateQuoteWorkStatus } from '$lib/api/quotes.js';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
   import DateSuggestionPopup from './DateSuggestionPopup.svelte';
@@ -20,12 +22,12 @@
 
   const dispatch = createEventDispatcher();
 
-  // Post-save date check — advisory only. Deliberately NOT reset by the
-  // seed block below or by close(): it's a small toast shown after the
-  // modal has already closed, independent of the modal's own open/close
-  // lifecycle, so a re-open while a check is still running can't collide
-  // with it.
-  let pendingDateSuggestions = []; // [{ issue_id, issueLabel, date_suggestion }]
+  // Post-save checks — advisory only (a date mentioned, or a status change
+  // for a tagged linked quote). Deliberately NOT reset by the seed block
+  // below or by close(): it's a small popup shown after the modal has
+  // already closed, independent of the modal's own open/close lifecycle, so
+  // a re-open while a check is still running can't collide with it.
+  let pendingSuggestions = []; // [{ key, label, kind: 'date' | 'status', suggestion }]
 
   let mode = 'manual';   // 'manual' | 'meeting-notes'
 
@@ -211,7 +213,9 @@
       saving = false;
       const capturedFullText = fullText;
       close();
-      checkForDateSuggestions(items, capturedFullText); // fire-and-forget — pops up its own toast if it finds anything
+      // Fire-and-forget — each pops its own findings into the shared popup.
+      checkForDateSuggestions(items, capturedFullText);
+      checkForQuoteStatusSuggestions(items, capturedFullText);
     } catch (err) {
       error = err.message;
       saving = false;
@@ -233,31 +237,63 @@
         timeout,
       ]);
       if (!suggestions.length) return;
-      pendingDateSuggestions = suggestions.map(s => ({
-        key: s.issue_id,
+      pendingSuggestions = [...pendingSuggestions, ...suggestions.map(s => ({
+        key: `date-${s.issue_id}`,
         label: issueLabel(issues.find(iss => iss.id === s.issue_id) || {}),
+        kind: 'date',
         issue_id: s.issue_id,
-        date_suggestion: s.date_suggestion,
-      }));
+        suggestion: s.date_suggestion,
+      }))];
     } catch (err) {
       console.error('checkForDateSuggestions failed:', err);
     }
   }
 
-  async function acceptPendingDate(item) {
+  // Same idea, but for a linked quote's work status — only relevant for
+  // items the user tagged with a "Relevant quote" (see buildItems' quote_id).
+  async function checkForQuoteStatusSuggestions(items, capturedFullText) {
+    const tagged = items.filter(i => i.quote_id);
+    if (!tagged.length) return;
     try {
-      await createIssueKeyDate(item.issue_id, { title: item.date_suggestion.title, date: item.date_suggestion.date });
-      pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
-      bumpKeyDatesVersion();
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 8000));
+      const { suggestions } = await Promise.race([
+        suggestQuoteWorkStatus(projectId, {
+          full_text: capturedFullText.trim() || null,
+          items: tagged.map(i => ({ quote_id: i.quote_id })),
+        }),
+        timeout,
+      ]);
+      if (!suggestions.length) return;
+      pendingSuggestions = [...pendingSuggestions, ...suggestions.map(s => ({
+        key: `status-${s.quote_id}`,
+        label: issueLabel(issues.find(iss => tagged.some(i => i.issue_id === iss.id && i.quote_id === s.quote_id)) || {}),
+        kind: 'status',
+        quote_id: s.quote_id,
+        suggestion: { field_label: 'Work Status', value: s.status },
+      }))];
+    } catch (err) {
+      console.error('checkForQuoteStatusSuggestions failed:', err);
+    }
+  }
+
+  async function acceptPendingSuggestion(item) {
+    try {
+      if (item.kind === 'status') {
+        await updateQuoteWorkStatus(item.quote_id, item.suggestion.value);
+      } else {
+        await createIssueKeyDate(item.issue_id, { title: item.suggestion.title, date: item.suggestion.date });
+        bumpKeyDatesVersion();
+      }
+      pendingSuggestions = pendingSuggestions.filter(p => p !== item);
       return true;
     } catch (err) {
-      alert('Failed to add key date: ' + err.message);
+      alert('Failed to save: ' + err.message);
       return false;
     }
   }
 
-  function dismissPendingDate(item) {
-    pendingDateSuggestions = pendingDateSuggestions.filter(p => p !== item);
+  function dismissPendingSuggestion(item) {
+    pendingSuggestions = pendingSuggestions.filter(p => p !== item);
   }
 
   // ── Meeting notes mode ──────────────────────────────────────────────────────
@@ -622,13 +658,13 @@
   </div>
 {/if}
 
-<!-- ── Post-save date suggestion popup — independent of the modal above, so
+<!-- ── Post-save suggestion popup — independent of the modal above, so
      it can appear after the modal has already closed. ─────────────────── -->
 <DateSuggestionPopup
-  suggestions={pendingDateSuggestions}
-  onAccept={acceptPendingDate}
-  onDismiss={dismissPendingDate}
-  onClose={() => pendingDateSuggestions = []}
+  suggestions={pendingSuggestions}
+  onAccept={acceptPendingSuggestion}
+  onDismiss={dismissPendingSuggestion}
+  onClose={() => pendingSuggestions = []}
 />
 
 <style>

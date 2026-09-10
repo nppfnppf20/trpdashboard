@@ -1,7 +1,10 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { createConditionAdvancements, suggestConditionAdvancementSummaries } from '$lib/api/conditions.js';
+  import { suggestQuoteWorkStatus } from '$lib/api/quoteActions.js';
+  import { updateQuoteWorkStatus } from '$lib/api/quotes.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
+  import DateSuggestionPopup from './DateSuggestionPopup.svelte';
 
   export let show = false;
   export let projectId;
@@ -9,6 +12,13 @@
   export let preselectedConditionId = null;   // open with one condition already ticked
 
   const dispatch = createEventDispatcher();
+
+  // Post-save check — advisory only, for a linked quote's work status (only
+  // relevant for items tagged with a "Relevant quote"). Deliberately NOT
+  // reset by the seed block below or by close(): it's a small popup shown
+  // after the modal has already closed, independent of this modal's own
+  // open/close lifecycle.
+  let pendingSuggestions = []; // [{ key, label, kind: 'status', suggestion }]
 
   let advDate = '';
   let fullText = '';
@@ -202,11 +212,56 @@
       });
       dispatch('done', { rows });
       saving = false;
+      const capturedFullText = fullText;
       close();
+      checkForQuoteStatusSuggestions(items, capturedFullText); // fire-and-forget
     } catch (err) {
       error = err.message;
       saving = false;
     }
+  }
+
+  // Advisory-only, and runs after the modal has already closed — never
+  // blocks the save, never reopens the modal. Time-boxed so the backend
+  // call behind this can't hang around forever in the background.
+  async function checkForQuoteStatusSuggestions(items, capturedFullText) {
+    const tagged = items.filter(i => i.quote_id);
+    if (!tagged.length) return;
+    try {
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 8000));
+      const { suggestions } = await Promise.race([
+        suggestQuoteWorkStatus(projectId, {
+          full_text: capturedFullText.trim() || null,
+          items: tagged.map(i => ({ quote_id: i.quote_id })),
+        }),
+        timeout,
+      ]);
+      if (!suggestions.length) return;
+      pendingSuggestions = [...pendingSuggestions, ...suggestions.map(s => ({
+        key: `status-${s.quote_id}`,
+        label: conditionLabel(conditions.find(c => tagged.some(i => i.condition_id === c.id && i.quote_id === s.quote_id)) || {}),
+        kind: 'status',
+        quote_id: s.quote_id,
+        suggestion: { field_label: 'Work Status', value: s.status },
+      }))];
+    } catch (err) {
+      console.error('checkForQuoteStatusSuggestions failed:', err);
+    }
+  }
+
+  async function acceptPendingSuggestion(item) {
+    try {
+      await updateQuoteWorkStatus(item.quote_id, item.suggestion.value);
+      pendingSuggestions = pendingSuggestions.filter(p => p !== item);
+      return true;
+    } catch (err) {
+      alert('Failed to save: ' + err.message);
+      return false;
+    }
+  }
+
+  function dismissPendingSuggestion(item) {
+    pendingSuggestions = pendingSuggestions.filter(p => p !== item);
   }
 
   function close() {
@@ -331,6 +386,15 @@
     </div>
   </div>
 {/if}
+
+<!-- ── Post-save suggestion popup — independent of the modal above, so
+     it can appear after the modal has already closed. ─────────────────── -->
+<DateSuggestionPopup
+  suggestions={pendingSuggestions}
+  onAccept={acceptPendingSuggestion}
+  onDismiss={dismissPendingSuggestion}
+  onClose={() => pendingSuggestions = []}
+/>
 
 <style>
   .adv-backdrop {

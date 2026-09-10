@@ -1,11 +1,17 @@
 <script>
-  // Shared "date(s) found" popup shown after an advancement is quick-added
-  // (Add Advancement's manual mode, and Overview's per-row tracker quick-add)
-  // — same backdrop/modal size and position as the modal that just closed,
-  // so it's obvious rather than an easy-to-miss corner toast.
+  // Shared "found something worth reviewing" popup shown after an
+  // advancement is quick-added (Add Advancement's manual mode, and
+  // Overview's per-row tracker quick-add) — same backdrop/modal size and
+  // position as the modal that just closed, so it's obvious rather than an
+  // easy-to-miss corner toast. Each item picks its own card by `kind`, so a
+  // date suggestion and a quote work-status suggestion can appear together
+  // in one popup rather than two sequential ones.
   import KeyDateSuggestionCard from './KeyDateSuggestionCard.svelte';
+  import FieldSuggestionCard from './FieldSuggestionCard.svelte';
 
-  export let suggestions = []; // [{ key, label, date_suggestion: { date, title } }]
+  const CARDS = { date: KeyDateSuggestionCard, status: FieldSuggestionCard };
+
+  export let suggestions = []; // [{ key, label, kind: 'date' | 'status', suggestion }]
   export let onAccept;         // (item) => Promise<boolean>
   export let onDismiss;        // (item) => void
   export let onClose;          // () => void — "Done", the close button, or backdrop click
@@ -15,18 +21,19 @@
   <div class="dsp-backdrop" on:click|self={onClose} role="presentation">
     <div class="dsp-modal">
       <div class="dsp-header">
-        <h3>Date{suggestions.length > 1 ? 's' : ''} found</h3>
+        <h3>Update{suggestions.length > 1 ? 's' : ''} found</h3>
         <button class="dsp-close-btn" on:click={onClose}>&times;</button>
       </div>
       <div class="dsp-body">
         <div class="dsp-field">
-          <label class="dsp-label">Advancement saved <span class="dsp-hint">a date worth scheduling was mentioned - review before closing</span></label>
+          <label class="dsp-label">Advancement saved <span class="dsp-hint">something worth reviewing was mentioned - review before closing</span></label>
           <div class="dsp-list">
             {#each suggestions as item (item.key)}
               <div class="dsp-row">
                 <span class="dsp-badge">{item.label}</span>
-                <KeyDateSuggestionCard
-                  suggestion={item.date_suggestion}
+                <svelte:component
+                  this={CARDS[item.kind] || KeyDateSuggestionCard}
+                  suggestion={item.suggestion}
                   onAccept={() => onAccept(item)}
                   onDismiss={() => onDismiss(item)}
                 />

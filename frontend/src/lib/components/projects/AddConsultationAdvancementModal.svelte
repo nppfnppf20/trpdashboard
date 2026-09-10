@@ -1,7 +1,10 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { createConsultationAdvancements, suggestConsultationAdvancementSummaries } from '$lib/api/consultation.js';
+  import { suggestQuoteWorkStatus } from '$lib/api/quoteActions.js';
+  import { updateQuoteWorkStatus } from '$lib/api/quotes.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
+  import DateSuggestionPopup from './DateSuggestionPopup.svelte';
 
   export let show = false;
   export let projectId;
@@ -9,6 +12,13 @@
   export let preselectedResponseId = null;   // open with one response already ticked
 
   const dispatch = createEventDispatcher();
+
+  // Post-save check — advisory only, for a linked quote's work status (only
+  // relevant for items tagged with a "Relevant quote"). Deliberately NOT
+  // reset by the seed block below or by close(): it's a small popup shown
+  // after the modal has already closed, independent of this modal's own
+  // open/close lifecycle.
+  let pendingSuggestions = []; // [{ key, label, kind: 'status', suggestion }]
 
   let advDate = '';
   let fullText = '';
@@ -33,9 +43,13 @@
     lastGeneratedText = null;
     selections = {};
     for (const r of responses) {
+      // Default the "relevant quote" tag: auto-select when the response has
+      // exactly one linked quote, otherwise leave untagged.
+      const linked = r.linked_quotes || [];
       selections[r.id] = {
         checked: r.id === preselectedResponseId,
         summary: '',
+        quoteId: linked.length === 1 ? linked[0].quote_id : null,
       };
     }
     seeded = true;
@@ -71,6 +85,7 @@
       .map(r => ({
         response_id: r.id,
         summary: selections[r.id].summary.trim(),
+        quote_id: selections[r.id].quoteId || null,
       }));
   }
 
@@ -147,11 +162,56 @@
       });
       dispatch('done', { rows });
       saving = false;
+      const capturedFullText = fullText;
       close();
+      checkForQuoteStatusSuggestions(items, capturedFullText); // fire-and-forget
     } catch (err) {
       error = err.message;
       saving = false;
     }
+  }
+
+  // Advisory-only, and runs after the modal has already closed — never
+  // blocks the save, never reopens the modal. Time-boxed so the backend
+  // call behind this can't hang around forever in the background.
+  async function checkForQuoteStatusSuggestions(items, capturedFullText) {
+    const tagged = items.filter(i => i.quote_id);
+    if (!tagged.length) return;
+    try {
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 8000));
+      const { suggestions } = await Promise.race([
+        suggestQuoteWorkStatus(projectId, {
+          full_text: capturedFullText.trim() || null,
+          items: tagged.map(i => ({ quote_id: i.quote_id })),
+        }),
+        timeout,
+      ]);
+      if (!suggestions.length) return;
+      pendingSuggestions = [...pendingSuggestions, ...suggestions.map(s => ({
+        key: `status-${s.quote_id}`,
+        label: responseLabel(responses.find(r => tagged.some(i => i.response_id === r.id && i.quote_id === s.quote_id)) || {}),
+        kind: 'status',
+        quote_id: s.quote_id,
+        suggestion: { field_label: 'Work Status', value: s.status },
+      }))];
+    } catch (err) {
+      console.error('checkForQuoteStatusSuggestions failed:', err);
+    }
+  }
+
+  async function acceptPendingSuggestion(item) {
+    try {
+      await updateQuoteWorkStatus(item.quote_id, item.suggestion.value);
+      pendingSuggestions = pendingSuggestions.filter(p => p !== item);
+      return true;
+    } catch (err) {
+      alert('Failed to save: ' + err.message);
+      return false;
+    }
+  }
+
+  function dismissPendingSuggestion(item) {
+    pendingSuggestions = pendingSuggestions.filter(p => p !== item);
   }
 
   function close() {
@@ -214,6 +274,17 @@
                   {/if}
                 </label>
                 {#if sel?.checked}
+                  {#if r.linked_quotes?.length}
+                    <div class="adv-quote-picker">
+                      <span class="adv-quote-picker-label">Relevant quote:</span>
+                      <select class="adv-quote-select" bind:value={selections[r.id].quoteId}>
+                        <option value={null}>Not relevant to a quote</option>
+                        {#each r.linked_quotes as q (q.quote_id)}
+                          <option value={q.quote_id}>{q.organisation || 'Quote'}</option>
+                        {/each}
+                      </select>
+                    </div>
+                  {/if}
                   <textarea
                     class="adv-summary-input"
                     rows="2"
@@ -250,6 +321,15 @@
     </div>
   </div>
 {/if}
+
+<!-- ── Post-save suggestion popup — independent of the modal above, so
+     it can appear after the modal has already closed. ─────────────────── -->
+<DateSuggestionPopup
+  suggestions={pendingSuggestions}
+  onAccept={acceptPendingSuggestion}
+  onDismiss={dismissPendingSuggestion}
+  onClose={() => pendingSuggestions = []}
+/>
 
 <style>
   .adv-backdrop {
@@ -397,6 +477,21 @@
     outline: none;
     border-color: var(--color-primary-600);
     box-shadow: var(--focus-ring-blue);
+  }
+  .adv-quote-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: 1.5rem;
+  }
+  .adv-quote-picker-label { font-size: 0.76rem; font-weight: 600; color: var(--color-slate-600); }
+  .adv-quote-select {
+    font-size: 0.78rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--color-slate-300);
+    border-radius: 6px;
+    font-family: inherit;
+    background: white;
   }
   .adv-no-conditions {
     margin: 0;

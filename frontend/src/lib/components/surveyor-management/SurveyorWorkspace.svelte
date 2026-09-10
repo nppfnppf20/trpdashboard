@@ -12,6 +12,7 @@
     updateQuote,
     deleteQuote
   } from '$lib/api/quotes.js';
+  import { mainViewInitialTab } from '$lib/stores/projectViewModal.js';
 
   export let project;
   export let initialTab = null;
@@ -46,6 +47,10 @@
 
   function handleTabChange(newTab) {
     activeTab = newTab;
+    // Keeps the shared mainViewInitialTab store (mirrored into the URL by
+    // +layout.svelte) in sync, so a reload lands back on this tab instead
+    // of always resetting to 'briefings'.
+    mainViewInitialTab.set(newTab);
   }
 
   async function loadQuotes(projectId) {

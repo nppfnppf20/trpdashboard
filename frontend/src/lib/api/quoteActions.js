@@ -36,6 +36,18 @@ export async function suggestQuoteActionSummaries(projectId, { full_text, stage,
   return res.json(); // { suggestions: [{ quote_id, summary }] }
 }
 
+// Advisory-only work-status check, run after an advancement is saved against
+// a tracker row tagged with a linked quote.
+export async function suggestQuoteWorkStatus(projectId, { full_text, items }) {
+  const res = await authFetch(`${API_BASE}/projects/${projectId}/actions/suggest-work-status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ full_text, items }),
+  });
+  if (!res.ok) return { suggestions: [] };
+  return res.json(); // { suggestions: [{ quote_id, status }] }
+}
+
 export async function updateQuoteAction(actionId, fields) {
   const res = await authFetch(`${API_BASE}/actions/${actionId}`, {
     method: 'PUT',

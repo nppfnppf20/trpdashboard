@@ -2,26 +2,96 @@
   import favicon from '$lib/assets/favicon.svg';
   import '../app.css';
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
+  import { browser } from '$app/environment';
   import { page } from '$app/stores';
+  import { replaceState } from '$app/navigation';
   import { initAuth, loading, sessionIdle } from '$lib/stores/auth.js';
   import Sidebar from '$lib/components/shared/Sidebar.svelte';
   import ProjectViewModal from '$lib/components/projects/ProjectViewModal.svelte';
   import EditProjectModal from '$lib/components/projects/EditProjectModal.svelte';
   import SurveyorWorkspace from '$lib/components/surveyor-management/SurveyorWorkspace.svelte';
   import PlanningWorkspace from '$lib/components/planning-application/PlanningWorkspace.svelte';
-  import { selectedProject } from '$lib/stores/projectSelection.js';
+  import { projects, selectedProject, selectedProjectId, loadProjects, selectProject } from '$lib/stores/projectSelection.js';
   import {
     mainView, mainViewProjectId, mainViewInitialTab, mainViewReturnTab,
     editModalOpen, editModalProjectId,
-    closeProjectModal, openProjectModal, closeEditModal
+    closeProjectModal, openProjectModal, openSurveyorManagement, openPlanningDeliverables, closeEditModal
   } from '$lib/stores/projectViewModal.js';
 
   let { children } = $props();
 
   let isAuthShell = $derived(!$page.url.pathname.startsWith('/auth'));
 
+  // Reloading the page normally drops back to the routed page and loses
+  // whatever project workspace/tab was open, because mainView/mainViewProjectId
+  // are plain in-memory stores. To survive a reload, the same state is
+  // mirrored into the URL (?view=&pid=&tab=) below, and read back once here
+  // on boot. urlSyncEnabled stays false until that one-time restore finishes,
+  // so the sync effect doesn't wipe the params it's still trying to read.
+  let restoring = $state(true);
+  let urlSyncEnabled = $state(false);
+
   onMount(() => {
     initAuth();
+    const unsubscribe = loading.subscribe(async (isLoading) => {
+      if (isLoading || urlSyncEnabled) return;
+      await restoreFromUrl();
+      restoring = false;
+      urlSyncEnabled = true;
+    });
+    return unsubscribe;
+  });
+
+  async function restoreFromUrl() {
+    const params = new URL(window.location.href).searchParams;
+    const view = params.get('view');
+    const pid = params.get('pid');
+    const tab = params.get('tab');
+    if (!view || !pid) return;
+
+    try {
+      await loadProjects();
+      // project.id is a numeric DB id but URLSearchParams always hands back a
+      // string, so match loosely and restore using the real (typed) id from
+      // the loaded list rather than the raw string out of the URL.
+      const match = get(projects).find(p => String(p.id) === pid);
+      if (!match) return; // stale link — leave the normal page showing
+
+      selectProject(match.id);
+      if (view === 'project') openProjectModal(match.id, tab || null);
+      else if (view === 'surveyor') openSurveyorManagement(match.id, tab || null);
+      else if (view === 'planning') openPlanningDeliverables(match.id);
+    } catch (err) {
+      console.warn('Failed to restore project workspace from URL:', err);
+    }
+  }
+
+  function syncUrlFromState(view, projectId, tab) {
+    const url = new URL(window.location.href);
+    if (view && projectId) {
+      url.searchParams.set('view', view);
+      url.searchParams.set('pid', projectId);
+      if (tab) url.searchParams.set('tab', tab);
+      else url.searchParams.delete('tab');
+    } else {
+      url.searchParams.delete('view');
+      url.searchParams.delete('pid');
+      url.searchParams.delete('tab');
+    }
+    replaceState(url, {});
+  }
+
+  // 'surveyor'/'planning' workspaces re-render off $selectedProjectId when you
+  // switch projects mid-workspace (mainViewProjectId only tracks the 'project'
+  // view — see Sidebar's pickProject), so the URL has to follow whichever one
+  // the current view actually reads from.
+  let urlSyncProjectId = $derived($mainView === 'project' ? $mainViewProjectId : $selectedProjectId);
+
+  $effect(() => {
+    if (browser && urlSyncEnabled) {
+      syncUrlFromState($mainView, urlSyncProjectId, $mainViewInitialTab);
+    }
   });
 
   // Closing a tab that was drilled into from another tab (e.g. Overview's
@@ -53,7 +123,7 @@
   </div>
 {/if}
 
-{#if $loading}
+{#if $loading || restoring}
   <div class="app-loading">
     <div class="app-loading-spinner"></div>
     <div class="app-loading-text">Loading...</div>
