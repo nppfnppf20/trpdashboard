@@ -4,6 +4,7 @@
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { renderReply, buildSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
+  import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
 
   export let project;
   export let onAcceptDateSuggestion = null; // async (field, date) => boolean
@@ -212,6 +213,11 @@
       send();
     }
   }
+
+  function onTranscript(e) {
+    const text = e.detail;
+    input = input.trim() ? `${input.trim()} ${text}` : text;
+  }
 </script>
 
 <svelte:window on:click={closeSourcesPopover} />
@@ -272,6 +278,7 @@
         on:keydown={handleKeydown}
         disabled={sending}
       ></textarea>
+      <VoiceDictationButton class="cw-mic-btn" disabled={sending} on:transcript={onTranscript} />
       <button class="cw-send" on:click={send} disabled={!input.trim() || sending || !anySelected || overBudget} title="Send">
         <i class="las la-arrow-right"></i>
       </button>
@@ -454,6 +461,9 @@
     display: flex; align-items: center; justify-content: center;
   }
   .cw-send:disabled { opacity: 0.4; cursor: not-allowed; }
+  :global(.cw-mic-btn) {
+    width: 26px; height: 26px; flex-shrink: 0; font-size: 0.75rem;
+  }
 
   .mini-spinner {
     display: inline-block; width: 0.8rem; height: 0.8rem;

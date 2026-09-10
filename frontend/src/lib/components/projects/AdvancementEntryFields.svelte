@@ -1,5 +1,5 @@
 <script>
-  import { transcribeAudio } from '$lib/api/voice.js';
+  import VoiceDictationButton from './VoiceDictationButton.svelte';
 
   // Shared date + full-text + "Generate & Fill" block for every advancement
   // add/edit form (bulk-add modals, the timeline view/edit popup, and each
@@ -19,45 +19,9 @@
   export let fullTextPlaceholder = 'Paste a note, email, or transcript. Generate will draft the summary below from this.';
   export let rows = 7;
 
-  // Voice dictation — record then transcribe via Whisper. States: idle,
-  // recording, transcribing, error (auto-reverts to idle after a beat).
-  let micState = 'idle';
-  let mediaRecorder = null;
-  let audioChunks = [];
-
-  async function toggleMic() {
-    if (micState === 'recording') {
-      mediaRecorder?.stop();
-      return;
-    }
-    if (micState !== 'idle') return;
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioChunks = [];
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        micState = 'transcribing';
-        try {
-          const blob = new Blob(audioChunks, { type: 'audio/webm' });
-          const text = await transcribeAudio(blob);
-          if (text) fullText = fullText?.trim() ? `${fullText.trim()} ${text}` : text;
-          micState = 'idle';
-        } catch (err) {
-          console.error('Voice transcription failed:', err);
-          micState = 'error';
-          setTimeout(() => { micState = 'idle'; }, 2500);
-        }
-      };
-      mediaRecorder.start();
-      micState = 'recording';
-    } catch (err) {
-      console.error('Microphone access failed:', err);
-      micState = 'error';
-      setTimeout(() => { micState = 'idle'; }, 2500);
-    }
+  function onTranscript(e) {
+    const text = e.detail;
+    fullText = fullText?.trim() ? `${fullText.trim()} ${text}` : text;
   }
 </script>
 
@@ -73,23 +37,7 @@
   </label>
   <div class="aef-textarea-wrap">
     <textarea id="aef-text" class="form-input aef-textarea" {rows} bind:value={fullText} placeholder={fullTextPlaceholder}></textarea>
-    <button
-      type="button"
-      class="aef-mic-btn"
-      class:aef-mic-btn--recording={micState === 'recording'}
-      class:aef-mic-btn--error={micState === 'error'}
-      disabled={micState === 'transcribing'}
-      on:click={toggleMic}
-      title={micState === 'recording' ? 'Stop recording' : micState === 'transcribing' ? 'Transcribing…' : micState === 'error' ? 'Voice dictation failed' : 'Dictate'}
-    >
-      {#if micState === 'transcribing'}
-        <span class="aef-mic-spinner"></span>
-      {:else if micState === 'error'}
-        <i class="las la-exclamation-triangle"></i>
-      {:else}
-        <i class="las la-microphone"></i>
-      {/if}
-    </button>
+    <VoiceDictationButton class="aef-mic-btn" on:transcript={onTranscript} />
   </div>
   {#if onGenerate}
     <div class="aef-generate-row">
@@ -123,55 +71,14 @@
   .aef-textarea {
     padding-right: 2.35rem;
   }
-  /* Voice dictation — records via MediaRecorder, transcribes through the
-     backend's Whisper proxy, and appends the result into fullText. */
-  .aef-mic-btn {
+  /* Positions the shared VoiceDictationButton inside the textarea; its own
+     styling handles color/state. */
+  :global(.aef-mic-btn) {
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
     width: 1.75rem;
     height: 1.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 50%;
-    background: var(--color-white);
-    color: var(--color-slate-400);
-    font-size: 0.85rem;
-    cursor: pointer;
-  }
-  .aef-mic-btn:hover:not(:disabled) {
-    background: var(--color-primary-50);
-    color: var(--color-primary-600);
-    border-color: var(--color-primary-200);
-  }
-  .aef-mic-btn:disabled {
-    cursor: not-allowed;
-  }
-  .aef-mic-btn--recording {
-    background: var(--color-red-50);
-    border-color: var(--color-red-200);
-    color: var(--color-red-600);
-    animation: aef-mic-pulse 1.2s ease-in-out infinite;
-  }
-  .aef-mic-btn--error {
-    background: var(--color-red-50);
-    border-color: var(--color-red-200);
-    color: var(--color-red-600);
-  }
-  @keyframes aef-mic-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 var(--color-red-100); }
-    50% { box-shadow: 0 0 0 4px var(--color-red-100); }
-  }
-  .aef-mic-spinner {
-    display: inline-block;
-    width: 0.75rem;
-    height: 0.75rem;
-    border: 2px solid var(--color-primary-200);
-    border-top-color: var(--color-primary-600);
-    border-radius: 50%;
-    animation: aef-spin 0.6s linear infinite;
   }
 
   .aef-generate-row {

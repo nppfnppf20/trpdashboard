@@ -45,6 +45,7 @@ import sectionChatRoutes from './sectionChat.routes.js';
 import projectChatRoutes from './projectChat.routes.js';
 import documentStyleTemplatesRoutes from './documentStyleTemplates.routes.js';
 import llmSettingsRoutes from './llmSettings.routes.js';
+import llmStatusRoutes from './llmStatus.routes.js';
 import draftCheckRoutes from './draftCheck.routes.js';
 import consultationRoutes from './consultation.routes.js';
 import conditionsRoutes from './conditions.routes.js';
@@ -103,6 +104,9 @@ router.use('/api/admin-console/workflow', workflowRoutes);
 
 // Lookups - dropdown options (GET /api/lookups/*)
 router.use('/api/lookups', lookupsRoutes);
+
+// AI provider credit/quota status — any authenticated user, powers the app-wide warning banner
+router.use('/api/llm-status', llmStatusRoutes);
 
 // Issue tracker — document ingestion + topic timeline (GET/POST /api/ingestion/*)
 router.use('/api/ingestion', ingestionRoutes);

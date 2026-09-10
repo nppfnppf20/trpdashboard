@@ -1,10 +1,7 @@
 import { pool } from '../db.js';
-import Anthropic from '@anthropic-ai/sdk';
-import { MODEL_SONNET } from '../services/llm.shared.js';
+import { client, MODEL_SONNET } from '../services/llm.shared.js';
 import { parseFile } from '../services/parser.service.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
-
-const client = new Anthropic();
 
 export async function sectionChat(req, res) {
   const { projectId } = req.params;

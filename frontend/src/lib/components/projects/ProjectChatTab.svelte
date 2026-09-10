@@ -3,6 +3,7 @@
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
   import { renderReply, buildSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
+  import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
 
   export let project;
   export let onAcceptDateSuggestion = null; // async (field, date) => boolean
@@ -216,6 +217,11 @@
     }
   }
 
+  function onTranscript(e) {
+    const text = e.detail;
+    input = input.trim() ? `${input.trim()} ${text}` : text;
+  }
+
   const fmtChars = c => c >= 1000 ? `${Math.round(c / 1000)}k` : `${c}`;
 </script>
 
@@ -399,6 +405,7 @@
         rows="2"
         disabled={sending || loading}
       ></textarea>
+      <VoiceDictationButton class="pc-mic-btn" disabled={sending || loading} on:transcript={onTranscript} />
       <button
         class="pc-send-btn"
         on:click={send}
@@ -750,6 +757,13 @@
   .pc-send-btn:disabled {
     background: var(--color-slate-300);
     cursor: not-allowed;
+  }
+
+  :global(.pc-mic-btn) {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    font-size: 1rem;
   }
 
   .mini-spinner {

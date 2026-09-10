@@ -1,8 +1,5 @@
 import { pool } from '../db.js';
-import Anthropic from '@anthropic-ai/sdk';
-import { MODEL_FAST } from '../services/llm.shared.js';
-
-const client = new Anthropic();
+import { client, MODEL_FAST } from '../services/llm.shared.js';
 
 export async function listDocumentTypes(req, res) {
   try {

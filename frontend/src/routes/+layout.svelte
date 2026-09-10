@@ -7,7 +7,9 @@
   import { page } from '$app/stores';
   import { replaceState } from '$app/navigation';
   import { initAuth, loading, sessionIdle } from '$lib/stores/auth.js';
+  import { startLlmStatusPolling } from '$lib/stores/llmStatus.js';
   import Sidebar from '$lib/components/shared/Sidebar.svelte';
+  import LlmStatusBanner from '$lib/components/shared/LlmStatusBanner.svelte';
   import ProjectViewModal from '$lib/components/projects/ProjectViewModal.svelte';
   import EditProjectModal from '$lib/components/projects/EditProjectModal.svelte';
   import SurveyorWorkspace from '$lib/components/surveyor-management/SurveyorWorkspace.svelte';
@@ -94,6 +96,14 @@
     }
   });
 
+  // Poll AI provider credit/quota status only once the user is authenticated
+  // (avoids hitting the API from the login page).
+  $effect(() => {
+    if (browser && isAuthShell && !$loading) {
+      return startLlmStatusPolling();
+    }
+  });
+
   // Closing a tab that was drilled into from another tab (e.g. Overview's
   // "expand tracker" button) goes back to that tab instead of exiting the
   // whole workspace.
@@ -129,6 +139,7 @@
     <div class="app-loading-text">Loading...</div>
   </div>
 {:else if isAuthShell}
+  <LlmStatusBanner />
   <div class="app-shell">
     <Sidebar />
     <div class="app-main">

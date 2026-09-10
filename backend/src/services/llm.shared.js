@@ -62,8 +62,67 @@ export const ANTI_AI_SLOP_BLOCK = `\n\nAVOID AI-GENERATED-SOUNDING LANGUAGE — 
 - Do not restate or summarise what you just said at the end of a paragraph ("In summary, this demonstrates that...") — make the point once, clearly, and move on.
 - Do not manufacture false balance or symmetry for its own sake ("On the one hand... on the other hand...") unless the material genuinely presents two sides.`;
 
-export const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-export const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider credit/quota status — tracked centrally by peeking at every
+// response that passes through the shared SDK clients below (via their
+// `fetch` hook), so no individual call site needs its own detection logic.
+// Only the specific "out of credit/quota" error shapes flip the flag —
+// ordinary rate-limit (429) responses are left alone since callClaude/callLLM
+// already retry those on their own.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const providerStatus = { anthropic: null, openai: null };
+
+function setProviderIssue(provider, message) {
+  if (!providerStatus[provider]) {
+    console.error(`[llm.shared] ${provider} reported credit/quota exhaustion: ${message}`);
+  }
+  providerStatus[provider] = { message, since: providerStatus[provider]?.since ?? new Date().toISOString() };
+}
+
+function clearProviderIssue(provider) {
+  if (providerStatus[provider]) {
+    console.log(`[llm.shared] ${provider} credit/quota issue cleared`);
+  }
+  providerStatus[provider] = null;
+}
+
+export function getProviderStatus() {
+  return { anthropic: providerStatus.anthropic, openai: providerStatus.openai };
+}
+
+function isAnthropicCreditError(status, errBody) {
+  return status === 400 && errBody?.type === 'invalid_request_error' && /credit balance/i.test(errBody?.message || '');
+}
+
+function isOpenAiQuotaError(status, errBody) {
+  return status === 429 && (errBody?.code === 'insufficient_quota' || errBody?.type === 'insufficient_quota');
+}
+
+function creditCheckingFetch(provider) {
+  return async function(input, init) {
+    const response = await fetch(input, init);
+    if (response.ok) {
+      clearProviderIssue(provider);
+      return response;
+    }
+    try {
+      const body = await response.clone().json();
+      const errBody = body?.error ?? body;
+      const isCreditIssue = provider === 'anthropic'
+        ? isAnthropicCreditError(response.status, errBody)
+        : isOpenAiQuotaError(response.status, errBody);
+      if (isCreditIssue) setProviderIssue(provider, errBody?.message || `${provider} reported it is out of credit`);
+    } catch {
+      // Response body wasn't JSON or couldn't be read — leave provider status as-is;
+      // the SDK will still surface its own error to the caller as normal.
+    }
+    return response;
+  };
+}
+
+export const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, fetch: creditCheckingFetch('anthropic') });
+export const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, fetch: creditCheckingFetch('openai') });
 
 export const MODEL_FAST   = 'claude-haiku-4-5-20251001';
 export const MODEL_SONNET = 'claude-sonnet-4-6';

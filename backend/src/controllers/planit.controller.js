@@ -5,9 +5,8 @@
  */
 
 import { pool } from '../db.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { client } from '../services/llm.shared.js';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const PLANIT_BASE  = 'https://www.planit.org.uk/api/applics/json';
 const PLANIT_AREAS = 'https://www.planit.org.uk/api/areas/json';
 
