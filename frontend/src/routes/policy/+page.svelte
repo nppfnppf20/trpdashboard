@@ -35,15 +35,16 @@
   // Confirm delete — { sourceType, id }
   let confirmDelete = null;
 
-  // ── Summary strip ────────────────────────────────────────────────────────
-  $: thisMonthCount = items.filter(it => {
-    if (!it.created_at) return false;
-    const d = new Date(it.created_at);
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length;
-  $: supersededCount = items.filter(it => it.superseded).length;
-  $: missingTakeCount = items.filter(it => !it.our_take?.trim()).length;
+  // ── Source filter ─────────────────────────────────────────────────────────
+  let activeFilter = 'all'; // 'all' | 'internal' | 'cpd' | 'document'
+
+  $: filteredItems = items.filter(it => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'document') return it.source_type === 'document';
+    if (activeFilter === 'cpd') return it.source_type !== 'document' && it.meeting_type === 'cpd';
+    if (activeFilter === 'internal') return it.source_type !== 'document' && it.meeting_type !== 'cpd';
+    return true;
+  });
 
   // ── Load ──────────────────────────────────────────────────────────────────
   onMount(load);
@@ -241,47 +242,22 @@
     </p>
   </div>
 
-  <div class="card stat-strip">
-    <div class="stat-chip">
-      <span class="stat-chip-n">{items.length}</span>
-      <span class="stat-chip-l">Total Updates</span>
+  <!-- Upload bar -->
+  <div class="card upload-bar">
+    <div class="input-tabs">
+      <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
+        <i class="las la-upload"></i> Upload File
+      </button>
+      <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
+        <i class="las la-clipboard"></i> Paste Text
+      </button>
     </div>
-    <div class="stat-chip-divider"></div>
-    <div class="stat-chip">
-      <span class="stat-chip-n">{thisMonthCount}</span>
-      <span class="stat-chip-l">This Month</span>
-    </div>
-    <div class="stat-chip-divider"></div>
-    <div class="stat-chip">
-      <span class="stat-chip-n">{supersededCount}</span>
-      <span class="stat-chip-l">Superseded</span>
-    </div>
-    <div class="stat-chip-divider"></div>
-    <div class="stat-chip">
-      <span class="stat-chip-n">{missingTakeCount}</span>
-      <span class="stat-chip-l">Missing "Our Take"</span>
-    </div>
-  </div>
 
-  <div class="content-grid">
-  <!-- Upload panel -->
-  <div class="upload-panel">
-    <div class="card upload-card">
-      <h3 class="card-title">Add Policy / Update</h3>
-
-      <div class="input-tabs">
-        <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
-          <i class="las la-upload"></i> Upload File
-        </button>
-        <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
-          <i class="las la-clipboard"></i> Paste Text
-        </button>
-      </div>
-
+    <div class="upload-bar-row">
       {#if uploadInputTab === 'upload'}
         <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
         <div
-          class="drop-zone"
+          class="drop-zone drop-zone--compact"
           class:drag-over={uploadDragOver}
           role="button"
           tabindex="0"
@@ -294,29 +270,22 @@
           {#if uploadFile}
             <i class="las la-file-alt drop-icon"></i>
             <span class="drop-filename">{uploadFile.name}</span>
-            <span class="drop-hint">Click to change file</span>
           {:else}
             <i class="las la-cloud-upload-alt drop-icon"></i>
-            <span>Drop a file here or click to browse</span>
-            <span class="drop-hint">PDF, DOCX or TXT</span>
+            <span>Drop a file or click to browse</span>
           {/if}
         </div>
         <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
       {:else}
-        <textarea class="form-input paste-area" bind:value={uploadPasteText} placeholder="Paste the policy text here…" rows="4"></textarea>
+        <textarea class="form-input paste-area paste-area--compact" bind:value={uploadPasteText} placeholder="Paste the policy text here…" rows="2"></textarea>
       {/if}
 
-      <div class="form-group">
-        <label class="form-label">Context notes <span class="optional">(why is this relevant?)</span></label>
-        <textarea
-          class="form-input"
-          bind:value={uploadUserNotes}
-          rows="3"
-          placeholder="e.g. Critical for solar farm cumulative impact assessments, replaces previous NPPF guidance on energy. Flag implications for ongoing Wiltshire projects."
-        ></textarea>
-      </div>
-
-      {#if uploadError}<div class="upload-error">{uploadError}</div>{/if}
+      <textarea
+        class="form-input notes-area"
+        bind:value={uploadUserNotes}
+        rows="2"
+        placeholder="Context notes (optional) — why is this relevant?"
+      ></textarea>
 
       <button class="btn btn-primary process-btn" on:click={submitUpload} disabled={uploadProcessing}>
         {#if uploadProcessing}
@@ -326,11 +295,21 @@
         {/if}
       </button>
     </div>
+
+    {#if uploadError}<div class="upload-error">{uploadError}</div>{/if}
   </div>
 
   <!-- All items list -->
   <div class="items-section">
-    <h2 class="section-title">All Updates ({items.length})</h2>
+    <div class="items-header">
+      <h2 class="section-title">Updates ({filteredItems.length})</h2>
+      <div class="filter-tabs">
+        <button class="btn btn-sm" class:btn-secondary={activeFilter === 'all'} class:btn-ghost={activeFilter !== 'all'} on:click={() => activeFilter = 'all'}>All</button>
+        <button class="btn btn-sm" class:btn-secondary={activeFilter === 'internal'} class:btn-ghost={activeFilter !== 'internal'} on:click={() => activeFilter = 'internal'}>Internal Meetings</button>
+        <button class="btn btn-sm" class:btn-secondary={activeFilter === 'cpd'} class:btn-ghost={activeFilter !== 'cpd'} on:click={() => activeFilter = 'cpd'}>CPD</button>
+        <button class="btn btn-sm" class:btn-secondary={activeFilter === 'document'} class:btn-ghost={activeFilter !== 'document'} on:click={() => activeFilter = 'document'}>Uploaded</button>
+      </div>
+    </div>
 
     {#if loading}
       <div class="state-loading"><span class="spinner-blue"></span> Loading…</div>
@@ -341,9 +320,14 @@
         <i class="las la-newspaper"></i>
         <p>No policy updates yet. Upload a document or process an internal/CPD meeting to get started.</p>
       </div>
+    {:else if filteredItems.length === 0}
+      <div class="state-empty">
+        <i class="las la-newspaper"></i>
+        <p>No updates in this category yet.</p>
+      </div>
     {:else}
       <div class="items-list">
-        {#each items as item (item.source_type + '-' + item.id)}
+        {#each filteredItems as item (item.source_type + '-' + item.id)}
           <div class="card policy-card" class:policy-card--superseded={item.superseded}>
 
             <!-- Card header -->
@@ -474,7 +458,6 @@
       </div>
     {/if}
   </div>
-  </div>
 </div>
 
 <style>
@@ -492,44 +475,25 @@
   .page-title i { color: var(--color-teal-600); font-size: 1.125rem; }
   .page-description { font-size: 0.8125rem; color: var(--color-slate-500); margin: 0; max-width: 560px; line-height: 1.5; }
 
-  /* ── Summary strip — .card supplies background/border/radius/shadow ── */
-  .stat-strip {
-    display: flex;
-    gap: 1.25rem;
-    padding: 0.75rem 1.125rem;
-    margin-bottom: 1.25rem;
-  }
-  .stat-chip { display: flex; flex-direction: column; gap: 0.125rem; }
-  .stat-chip-n { font-size: 1.0625rem; font-weight: 700; color: var(--color-slate-900); }
-  .stat-chip-l { font-size: 0.65625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-slate-400); }
-  .stat-chip-divider { width: 1px; background: var(--color-slate-200); }
-
-  /* ── Content grid ── */
-  .content-grid {
-    display: grid;
-    grid-template-columns: 300px 1fr;
-    gap: 1.25rem;
-    align-items: start;
-  }
-
-  /* ── Upload panel ── */
-  .upload-panel {
-    /* sized by the .content-grid column, no local max-width needed */
-  }
-
-  .upload-card {
-    padding: 1rem 1.125rem;
+  /* ── Upload bar ── */
+  .upload-bar {
+    padding: 0.875rem 1.125rem;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+    margin-bottom: 1.25rem;
   }
-
-  .card-title { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); margin: 0; }
 
   /* Input tabs */
   .input-tabs { display: flex; gap: 0.35rem; }
 
-  /* Drop zone — same CSS as meeting notes */
+  .upload-bar-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  /* Drop zone */
   .drop-zone {
     border: 2px dashed var(--color-violet-200); border-radius: 6px; padding: 0.85rem 1rem;
     text-align: center; cursor: pointer; color: var(--color-slate-500); font-size: 0.875rem;
@@ -537,12 +501,22 @@
     transition: background 0.15s, border-color 0.15s;
   }
   .drop-zone:hover, .drop-zone.drag-over { background: var(--color-violet-50); border-color: var(--color-violet-600); }
+  .drop-zone--compact {
+    flex: 0 0 240px;
+    flex-direction: row;
+    justify-content: center;
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+  }
   .drop-icon { font-size: 1.4rem; color: var(--color-violet-300); }
+  .drop-zone--compact .drop-icon { font-size: 1.1rem; }
   .drop-filename { font-weight: 600; color: var(--color-slate-800); font-size: 0.875rem; }
   .drop-hint { font-size: 0.75rem; color: var(--color-slate-400); }
   .paste-area { min-height: 72px; resize: vertical; }
+  .paste-area--compact { flex: 0 0 240px; min-height: 0; resize: none; }
 
-  .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+  .notes-area { flex: 1; min-height: 0; resize: none; }
+
   .optional { font-weight: 400; color: var(--color-slate-400); }
   /* Base .form-input/.form-label come from the shared inputs.css;
      only the teal-tinted focus state (matching this page's accent) stays local. */
@@ -553,13 +527,24 @@
     padding: 0.5rem 0.75rem; color: var(--color-red-800); font-size: 0.8125rem;
   }
 
-  .process-btn { width: 100%; }
+  .process-btn { flex-shrink: 0; align-self: stretch; }
 
-  /* ── Items section — sized by the .content-grid column ── */
+  /* ── Items section ── */
+
+  .items-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.875rem;
+    flex-wrap: wrap;
+  }
 
   .section-title {
-    font-size: 1rem; font-weight: 700; color: var(--color-slate-800); margin: 0 0 0.875rem;
+    font-size: 1rem; font-weight: 700; color: var(--color-slate-800); margin: 0;
   }
+
+  .filter-tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 
   .state-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--color-slate-500); font-size: 0.875rem; padding: 2rem; }
   .state-error { background: var(--color-red-50); border: 1px solid var(--color-red-200); border-radius: 8px; padding: 1rem; color: var(--color-red-800); font-size: 0.875rem; }
@@ -762,8 +747,8 @@
   /* Responsive */
   @media (max-width: 768px) {
     .pol-page { padding: 1rem; }
-    .content-grid { grid-template-columns: 1fr; }
-    .stat-strip { flex-wrap: wrap; gap: 0.75rem 1.25rem; }
+    .upload-bar-row { flex-direction: column; }
+    .drop-zone--compact, .paste-area--compact { flex: 1 1 auto; }
     .page-title { font-size: 1.5rem; }
   }
 </style>
