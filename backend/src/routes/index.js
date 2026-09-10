@@ -21,6 +21,7 @@ import quoteActionsRoutes from './quoteActions.routes.js';
 import lookupsRoutes from './lookups.routes.js';
 import workflowRoutes from './workflow.routes.js';
 import ingestionRoutes from './ingestion.routes.js';
+import voiceRoutes from './voice.routes.js';
 import planitRoutes from './planit.routes.js';
 import tendersRoutes from './tenders.routes.js';
 import lpaAnalysisRoutes from './lpaAnalysis.routes.js';
@@ -105,6 +106,9 @@ router.use('/api/lookups', lookupsRoutes);
 
 // Issue tracker — document ingestion + topic timeline (GET/POST /api/ingestion/*)
 router.use('/api/ingestion', ingestionRoutes);
+
+// Voice dictation — audio-to-text transcription (POST /api/voice/transcribe)
+router.use('/api/voice', voiceRoutes);
 
 // PlanIt — similar schemes search + LLM keyword suggestions
 router.use('/api/planit', planitRoutes);
