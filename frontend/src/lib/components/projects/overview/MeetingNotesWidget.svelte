@@ -5,11 +5,8 @@
   import { buildExportFilename } from '$lib/services/exportFilename.js';
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
-  import {
-    openProjectModal,
-    setPendingMeetingUploadFile,
-    setPendingMeetingUploadText
-  } from '$lib/stores/projectViewModal.js';
+  import MeetingNoteProcessModal from './MeetingNoteProcessModal.svelte';
+  import { openProjectModal } from '$lib/stores/projectViewModal.js';
 
   export let project;
   $: projectId = project?.id;
@@ -24,6 +21,12 @@
 
   let editingNote = null;      // note object open in the editor modal, or null
   let viewingTranscript = null; // note object open in the transcript modal, or null
+
+  // A file dropped or text pasted here opens MeetingNoteProcessModal right
+  // over this page instead of navigating to the full Meeting Notes tab —
+  // processFile/processText are its seed input; null hides the popup.
+  let processFile = null;
+  let processText = null;
 
   onMount(load);
 
@@ -42,19 +45,23 @@
     }
   }
 
-  // Hands off to the full Meeting Notes tab rather than processing here —
-  // same pattern for a dropped file, pasted text, or focusing an existing
-  // note: seed the store, then open the tab that picks it up on mount.
   function handOffFile(file) {
     if (!file) return;
-    setPendingMeetingUploadFile(file);
-    openProjectModal(projectId, 'meeting_notes', 'details');
+    processFile = file;
   }
 
   function handOffText() {
     if (!pasteText.trim()) return;
-    setPendingMeetingUploadText(pasteText);
-    openProjectModal(projectId, 'meeting_notes', 'details');
+    processText = pasteText;
+  }
+
+  function closeProcessModal() {
+    processFile = null;
+    processText = null;
+  }
+
+  function handleProcessModalSaved() {
+    load(); // refresh the recent-notes preview once the new note is saved
   }
 
   function handleDrop(e) {
@@ -166,6 +173,16 @@
 
 {#if viewingTranscript}
   <TranscriptViewerModal note={viewingTranscript} onClose={() => viewingTranscript = null} />
+{/if}
+
+{#if processFile || processText}
+  <MeetingNoteProcessModal
+    {project}
+    initialFile={processFile}
+    initialText={processText}
+    onClose={closeProcessModal}
+    onSaved={handleProcessModalSaved}
+  />
 {/if}
 
 <style>
