@@ -3,6 +3,7 @@
   import { browser } from '$app/environment';
   import { authFetch } from '$lib/api/client.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
+  import { getUsers } from '$lib/api/userProfiles.js';
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
 
@@ -39,6 +40,9 @@
     project_lead: '',
     project_manager: '',
     project_director: '',
+    project_lead_user_id: null,
+    project_manager_user_id: null,
+    project_director_user_id: null,
     address: '',
     polygon_geojson: null,
     area: '',
@@ -127,9 +131,25 @@
     finally { clientOptionsLoading = false; }
   }
 
+  // Merges the free-text team_members lookup with real app accounts, so
+  // picking a name that happens to have a login also links the account
+  // (see the on:change handlers on the lead/manager/director dropdowns
+  // below) — options carry a `userId` (null for a plain team_members entry)
+  // that SearchableDropdown now forwards on its `change` event.
   async function loadTeamMemberOptions() {
     teamMemberOptionsLoading = true;
-    try { teamMemberOptions = await getLookupOptions('team_members'); }
+    try {
+      const [teamMembers, users] = await Promise.all([
+        getLookupOptions('team_members'),
+        getUsers()
+      ]);
+      const userOptions = users.map(u => ({ id: `user-${u.id}`, label: u.display_name, userId: u.id }));
+      const usedLabels = new Set(userOptions.map(o => o.label));
+      const teamOptions = teamMembers
+        .filter(tm => !usedLabels.has(tm.label))
+        .map(tm => ({ ...tm, userId: null }));
+      teamMemberOptions = [...userOptions, ...teamOptions].sort((a, b) => a.label.localeCompare(b.label));
+    }
     catch (e) { console.error('Failed to load team member options:', e); }
     finally { teamMemberOptionsLoading = false; }
   }
@@ -185,6 +205,9 @@
         project_lead: project.project_lead || '',
         project_manager: project.project_manager || '',
         project_director: project.project_director || '',
+        project_lead_user_id: project.project_lead_user_id || null,
+        project_manager_user_id: project.project_manager_user_id || null,
+        project_director_user_id: project.project_director_user_id || null,
         address: project.address || '',
         polygon_geojson: project.polygon_geojson || null,
         area: project.area || '',
@@ -348,6 +371,7 @@
     formData = {
       project_id: '', project_name: '', local_planning_authority: [],
       project_lead: '', project_manager: '', project_director: '',
+      project_lead_user_id: null, project_manager_user_id: null, project_director_user_id: null,
       address: '', polygon_geojson: null, area: '', client: '',
       client_spv_name: '', sectors: [], sub_sectors: [], development_types: [],
       designations_on_site: '', relevant_nearby_designations: '', development_description: '', status: '', about_applicant: '',
@@ -518,19 +542,22 @@
                   <div class="form-group">
                     <label for="project_lead">Project Lead</label>
                     <SearchableDropdown id="project_lead" options={teamMemberOptions} bind:value={formData.project_lead}
-                      valueField="label" placeholder="Select project lead..." loading={teamMemberOptionsLoading} />
+                      valueField="label" placeholder="Select project lead..." loading={teamMemberOptionsLoading}
+                      on:change={(e) => formData.project_lead_user_id = e.detail.option?.userId ?? null} />
                   </div>
 
                   <div class="form-group">
                     <label for="project_manager">Project Manager</label>
                     <SearchableDropdown id="project_manager" options={teamMemberOptions} bind:value={formData.project_manager}
-                      valueField="label" placeholder="Select project manager..." loading={teamMemberOptionsLoading} />
+                      valueField="label" placeholder="Select project manager..." loading={teamMemberOptionsLoading}
+                      on:change={(e) => formData.project_manager_user_id = e.detail.option?.userId ?? null} />
                   </div>
 
                   <div class="form-group">
                     <label for="project_director">Project Director</label>
                     <SearchableDropdown id="project_director" options={teamMemberOptions} bind:value={formData.project_director}
-                      valueField="label" placeholder="Select project director..." loading={teamMemberOptionsLoading} />
+                      valueField="label" placeholder="Select project director..." loading={teamMemberOptionsLoading}
+                      on:change={(e) => formData.project_director_user_id = e.detail.option?.userId ?? null} />
                   </div>
                 </div>
 

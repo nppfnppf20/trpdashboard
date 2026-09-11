@@ -10,6 +10,16 @@ export async function getAllUserProfiles(req, res) {
   }
 }
 
+export async function getProjectsForUser(req, res) {
+  try {
+    const projects = await userProfilesService.getProjectsForUser(req.params.id);
+    res.json(projects);
+  } catch (error) {
+    console.error('Error fetching projects for user:', error);
+    res.status(500).json({ error: 'Failed to fetch projects for user', details: error.message });
+  }
+}
+
 export async function syncMyProfile(req, res) {
   try {
     const displayName = req.user.user_metadata?.full_name || req.user.email;

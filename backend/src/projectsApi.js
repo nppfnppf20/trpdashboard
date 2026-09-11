@@ -14,6 +14,9 @@ async function createProject(req, res) {
     project_lead,
     project_manager,
     project_director,
+    project_lead_user_id,
+    project_manager_user_id,
+    project_director_user_id,
     address,
     polygon_geojson,
     area,
@@ -60,8 +63,9 @@ async function createProject(req, res) {
        (project_id, project_name, project_type, local_planning_authority, project_lead,
         project_manager, project_director, address, polygon_geojson, area,
         client, client_spv_name, sectors, sub_sectors, development_types, development_type,
-        designations_on_site, relevant_nearby_designations, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        designations_on_site, relevant_nearby_designations, status,
+        project_lead_user_id, project_manager_user_id, project_director_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
        RETURNING *`,
       [
         project_id,
@@ -82,7 +86,10 @@ async function createProject(req, res) {
         primaryDevType,
         designations_on_site || null,
         relevant_nearby_designations || null,
-        status || null
+        status || null,
+        project_lead_user_id || null,
+        project_manager_user_id || null,
+        project_director_user_id || null
       ]
     );
 
@@ -98,7 +105,9 @@ async function getAllProjects(req, res) {
   try {
     const result = await pool.query(
       `SELECT id, unique_id, project_id, project_name, local_planning_authority,
-              project_lead, project_manager, project_director, address, area,
+              project_lead, project_manager, project_director,
+              project_lead_user_id, project_manager_user_id, project_director_user_id,
+              address, area,
               client, client_spv_name, sectors, sub_sectors,
               designations_on_site, relevant_nearby_designations, status,
               case_officer_name, case_officer_email, case_officer_phone_number,
@@ -178,6 +187,9 @@ async function updateProject(req, res) {
     project_lead,
     project_manager,
     project_director,
+    project_lead_user_id,
+    project_manager_user_id,
+    project_director_user_id,
     address,
     polygon_geojson,
     area,
@@ -253,7 +265,10 @@ async function updateProject(req, res) {
            six_months_appeal_window_date = $32,
            comments = $33,
            about_applicant = $34,
-           project_type = COALESCE($36, project_type)
+           project_type = COALESCE($36, project_type),
+           project_lead_user_id = $37,
+           project_manager_user_id = $38,
+           project_director_user_id = $39
        WHERE id = $35
        RETURNING *`,
       [
@@ -283,7 +298,10 @@ async function updateProject(req, res) {
         comments || null,
         about_applicant || null,
         id,
-        project_type || null
+        project_type || null,
+        project_lead_user_id || null,
+        project_manager_user_id || null,
+        project_director_user_id || null
       ]
     );
 

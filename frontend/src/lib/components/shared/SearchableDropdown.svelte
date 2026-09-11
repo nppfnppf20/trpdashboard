@@ -71,13 +71,13 @@
     searchTerm = '';
     isOpen = false;
     highlightedIndex = -1;
-    dispatch('change', { id: option.id, label: option.label, value: option[valueField] });
+    dispatch('change', { id: option.id, label: option.label, value: option[valueField], option });
   }
 
   function clearSelection() {
     value = valueField === 'id' ? null : '';
     searchTerm = '';
-    dispatch('change', { id: null, label: '', value: null });
+    dispatch('change', { id: null, label: '', value: null, option: null });
     inputElement?.focus();
   }
 
