@@ -91,11 +91,11 @@
             {date.is_resolved ? 'Mark Unresolved' : 'Mark Resolved'}
           </button>
         {/if}
-        <button class="btn btn-secondary btn-modal" on:click={handleEdit}>
+        <button class="btn btn-secondary btn-modal btn-modal-fixed" on:click={handleEdit}>
           <i class="las la-edit"></i>
           Edit
         </button>
-        <button class="btn btn-secondary btn-modal" on:click={handleDelete}>
+        <button class="btn btn-secondary btn-modal btn-modal-fixed" on:click={handleDelete}>
           <i class="las la-trash"></i>
           Delete
         </button>
@@ -207,6 +207,13 @@
   .btn-modal {
     padding: 0.4rem 0.875rem;
     font-size: 0.8125rem;
+  }
+
+  /* Edit and Delete are a matched pair — same width regardless of label
+     length, so they line up flush right instead of Delete being wider. */
+  .btn-modal-fixed {
+    justify-content: center;
+    min-width: 5.75rem;
   }
 
   .resolved-badge {

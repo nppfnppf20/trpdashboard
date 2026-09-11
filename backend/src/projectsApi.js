@@ -298,6 +298,49 @@ async function updateProject(req, res) {
   }
 }
 
+// Whitelist of the project's fixed milestone date fields that can be marked
+// resolved — maps the field key (as used by the frontend/Key Dates widget)
+// to its companion `_resolved` column, so the column name is never built
+// from request input.
+const MILESTONE_RESOLVED_COLUMNS = {
+  submission_date: 'submission_date_resolved',
+  validation_date: 'validation_date_resolved',
+  lpa_consultation_end_date: 'lpa_consultation_end_date_resolved',
+  committee_date: 'committee_date_resolved',
+  target_determination_date: 'target_determination_date_resolved',
+  determined_date: 'determined_date_resolved',
+  expiry_of_1st_stat_period_date: 'expiry_of_1st_stat_period_date_resolved',
+  eot_date: 'eot_date_resolved',
+  six_months_appeal_window_date: 'six_months_appeal_window_date_resolved',
+};
+
+// PATCH project milestone resolved flag
+async function updateMilestoneResolved(req, res) {
+  const { id } = req.params;
+  const { field, is_resolved } = req.body;
+
+  const column = MILESTONE_RESOLVED_COLUMNS[field];
+  if (!column) {
+    return res.status(400).json({ error: 'Unknown milestone date field' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE projects SET ${column} = $1 WHERE id = $2 RETURNING id, ${column}`,
+      [!!is_resolved, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating milestone resolved flag:', error);
+    res.status(500).json({ error: 'Failed to update milestone date' });
+  }
+}
+
 // DELETE project
 async function deleteProject(req, res) {
   const { id } = req.params;
@@ -324,5 +367,6 @@ export {
   getAllProjects,
   getProjectById,
   updateProject,
+  updateMilestoneResolved,
   deleteProject
 };

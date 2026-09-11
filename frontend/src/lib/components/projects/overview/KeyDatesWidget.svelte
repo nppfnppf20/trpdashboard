@@ -1,10 +1,13 @@
 <script>
   import ProgrammeTab from '$lib/components/projects/ProgrammeTab.svelte';
-  import { getConditionsData } from '$lib/api/conditions.js';
-  import { getProgressData } from '$lib/api/progressTracker.js';
-  import { getConsultationData } from '$lib/api/consultation.js';
-  import { getProgrammeEvents } from '$lib/api/quotes.js';
-  import { keyDatesVersion } from '$lib/stores/keyDates.js';
+  import ViewDateModal from '$lib/components/admin-console/ViewDateModal.svelte';
+  import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
+  import { getConditionsData, updateConditionKeyDate, deleteConditionKeyDate } from '$lib/api/conditions.js';
+  import { getProgressData, updateIssueKeyDate, deleteIssueKeyDate } from '$lib/api/progressTracker.js';
+  import { getConsultationData, updateConsultationKeyDate, deleteConsultationKeyDate } from '$lib/api/consultation.js';
+  import { getProgrammeEvents, updateProgrammeEvent, deleteProgrammeEvent } from '$lib/api/quotes.js';
+  import { updateProjectMilestoneResolved } from '$lib/api/projects.js';
+  import { keyDatesVersion, bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
 
   // Sourced from the project's own fixed date fields (already loaded with
   // the project — no fetch needed) PLUS the direct key dates owned by
@@ -35,13 +38,17 @@
         getProgrammeEvents(proj.unique_id),
       ]);
       // `source` labels match ProgrammeTab.svelte's row titles exactly, so
-      // the same row reads the same way in both places.
-      const keyDatesOf = (rows, sourceOf) => (rows || []).flatMap(r => (r.key_dates || []).map(kd => ({ date: kd.date, title: kd.title, source: sourceOf(r) })));
+      // the same row reads the same way in both places. `type`/`id`/`colour`/
+      // `is_resolved` are carried through so a row can be opened in the same
+      // ViewDateModal Programme uses, to resolve/edit/delete it from here too.
+      const keyDatesOf = (rows, type, sourceOf) => (rows || []).flatMap(r => (r.key_dates || []).map(kd => ({
+        id: kd.id, date: kd.date, title: kd.title, colour: kd.colour, is_resolved: kd.is_resolved, type, source: sourceOf(r)
+      })));
       trackerKeyDates = [
-        ...keyDatesOf(condData.conditions, c => c.condition_number ? `Condition ${c.condition_number} — ${c.title}` : c.title),
-        ...keyDatesOf(progData.issues, i => i.title),
-        ...keyDatesOf(consData.responses, r => r.consultee_name),
-        ...(events || []).map(e => ({ date: e.date, title: e.title })),
+        ...keyDatesOf(condData.conditions, 'direct-condition', c => c.condition_number ? `Condition ${c.condition_number} — ${c.title}` : c.title),
+        ...keyDatesOf(progData.issues, 'direct-issue', i => i.title),
+        ...keyDatesOf(consData.responses, 'direct-consultation', r => r.consultee_name),
+        ...(events || []).map(e => ({ id: e.id, date: e.date, title: e.title, colour: e.colour, is_resolved: e.is_resolved, type: 'project' })),
       ];
     } catch (err) {
       console.error('KeyDatesWidget: failed to load tracker key dates', err);
@@ -61,13 +68,28 @@
     ['six_months_appeal_window_date', '6-Month Appeal Window'],
   ];
 
+  // Optimistic local overrides for the fixed fields' resolved state, keyed
+  // by field key — applied on top of the project's own `<field>_resolved`
+  // columns (migration 163) so a toggle here shows instantly without
+  // waiting on the parent modal to refetch the whole project.
+  /** @type {Record<string, boolean>} */
+  let milestoneResolvedOverrides = {};
+
   // No cap — .widget-body already scrolls (see cards.css), so all upcoming
-  // dates are shown, soonest first, rather than just the next few.
+  // dates are shown, soonest first, rather than just the next few. Resolved
+  // dates drop out entirely here (Programme just greys them out instead).
   $: dates = (() => {
     const today = new Date().toISOString().slice(0, 10);
-    const projectDates = FIELDS.map(([key, label]) => ({ date: project?.[key], title: label }));
+    const projectDates = FIELDS.map(([key, label]) => ({
+      id: `project-field-${key}`,
+      date: project?.[key],
+      title: label,
+      type: 'project-field',
+      fieldKey: key,
+      is_resolved: key in milestoneResolvedOverrides ? milestoneResolvedOverrides[key] : !!project?.[`${key}_resolved`],
+    }));
     return [...projectDates, ...trackerKeyDates]
-      .filter(d => d.date && String(d.date).slice(0, 10) >= today)
+      .filter(d => d.date && String(d.date).slice(0, 10) >= today && !d.is_resolved)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   })();
 
@@ -77,6 +99,80 @@
 
   function openProgramme() {
     showProgrammeModal = true;
+  }
+
+  // ── View/resolve/edit/delete a tracker-, programme-event-, or fixed
+  // project-field-owned date — same ViewDateModal/AddKeyDateModal pair
+  // ProgrammeTab.svelte uses, so behaviour matches exactly. The fixed
+  // project fields (FIELDS above, type 'project-field') only support
+  // Resolve here — Edit/Delete redirect to the project's Details tab,
+  // since there's no key-date row behind them, just a plain column. ──────
+  let showViewDateModal = false;
+  let showEditDateModal = false;
+  let selectedDate = null;
+
+  function handleViewDate(d) {
+    if (!d.id) return;
+    selectedDate = d;
+    showViewDateModal = true;
+  }
+
+  function handleEditDate(date) {
+    showViewDateModal = false;
+    if (date.type === 'project-field') {
+      alert("This date comes from the project's own details — edit it from the project's Details tab.");
+      return;
+    }
+    selectedDate = date;
+    showEditDateModal = true;
+  }
+
+  async function handleDeleteDate(date) {
+    if (date.type === 'project-field') {
+      alert("This date comes from the project's own details — it can't be removed here.");
+      return;
+    }
+    try {
+      if (date.type === 'project') await deleteProgrammeEvent(date.id);
+      else if (date.type === 'direct-condition') await deleteConditionKeyDate(date.id);
+      else if (date.type === 'direct-issue') await deleteIssueKeyDate(date.id);
+      else if (date.type === 'direct-consultation') await deleteConsultationKeyDate(date.id);
+      bumpKeyDatesVersion();
+    } catch (err) {
+      alert('Failed to delete date: ' + err.message);
+    }
+  }
+
+  async function handleResolveDate(date) {
+    try {
+      if (date.type === 'project-field') {
+        await updateProjectMilestoneResolved(project.id, date.fieldKey, date.is_resolved);
+        milestoneResolvedOverrides = { ...milestoneResolvedOverrides, [date.fieldKey]: date.is_resolved };
+        return;
+      }
+      if (date.type === 'project') await updateProgrammeEvent(date.id, { title: date.title, date: date.date, colour: date.colour, is_resolved: date.is_resolved });
+      else if (date.type === 'direct-condition') await updateConditionKeyDate(date.id, { is_resolved: date.is_resolved });
+      else if (date.type === 'direct-issue') await updateIssueKeyDate(date.id, { is_resolved: date.is_resolved });
+      else if (date.type === 'direct-consultation') await updateConsultationKeyDate(date.id, { is_resolved: date.is_resolved });
+      bumpKeyDatesVersion();
+    } catch (err) {
+      alert('Failed to update date: ' + err.message);
+    }
+  }
+
+  async function handleSubmitEditDate(event) {
+    const { type, data } = event.detail;
+    try {
+      if (type === 'project') await updateProgrammeEvent(data.id, { title: data.title, date: data.date, colour: data.color });
+      else if (type === 'direct-condition') await updateConditionKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+      else if (type === 'direct-issue') await updateIssueKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+      else if (type === 'direct-consultation') await updateConsultationKeyDate(data.id, { title: data.title, date: data.date, colour: data.color });
+      bumpKeyDatesVersion();
+    } catch (err) {
+      alert('Failed to save date: ' + err.message);
+    }
+    showEditDateModal = false;
+    selectedDate = null;
   }
 </script>
 
@@ -95,7 +191,7 @@
       <div class="kd-state">No upcoming dates.</div>
     {:else}
       {#each dates as d}
-        <div class="kd-row">
+        <div class="kd-row" class:kd-row-clickable={!!d.id} on:click={() => handleViewDate(d)}>
           <span class="kd-dot"></span>
           <span class="kd-date">{formatDate(d.date)}</span>
           <span class="kd-title">{d.title}</span>
@@ -114,10 +210,30 @@
   </div>
 {/if}
 
+<ViewDateModal
+  show={showViewDateModal}
+  date={selectedDate}
+  on:edit={(e) => handleEditDate(e.detail)}
+  on:delete={(e) => handleDeleteDate(e.detail)}
+  on:resolve={(e) => handleResolveDate(e.detail)}
+  on:close={() => { showViewDateModal = false; selectedDate = null; }}
+/>
+
+<AddKeyDateModal
+  show={showEditDateModal}
+  type={selectedDate?.type}
+  typeLabel={selectedDate?.type?.startsWith('direct-') ? 'Key Date' : null}
+  existingDate={selectedDate}
+  on:submit={handleSubmitEditDate}
+  on:close={() => { showEditDateModal = false; selectedDate = null; }}
+/>
+
 <style>
   .kd-body { display: flex; flex-direction: column; gap: 9px; }
   .kd-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.5rem 0; }
   .kd-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; }
+  .kd-row-clickable { cursor: pointer; border-radius: var(--radius-sm); margin: -2px -4px; padding: 2px 4px; }
+  .kd-row-clickable:hover { background: var(--color-slate-50); }
   .kd-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary-600); flex-shrink: 0; margin-top: 5px; }
   .kd-date { color: var(--color-slate-500); white-space: nowrap; flex-shrink: 0; padding-top: 1px; }
   .kd-title { color: var(--color-slate-800); }

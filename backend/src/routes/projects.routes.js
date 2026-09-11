@@ -9,6 +9,7 @@ import {
   getAllProjects,
   getProjectById,
   updateProject,
+  updateMilestoneResolved,
   deleteProject
 } from '../projectsApi.js';
 import * as projectsController from '../controllers/projects.controller.js';
@@ -19,6 +20,10 @@ const router = express.Router();
 // Project information routes (must be before /:id routes)
 router.get('/:projectId/information', projectsController.getProjectInformation);
 router.put('/:projectId/information', projectsController.updateProjectInformation);
+
+// Fixed milestone date fields (Submission, Validation, Committee, etc.) —
+// mark one resolved/unresolved from the Key Dates widget or Programme view
+router.patch('/:id/milestone-resolved', updateMilestoneResolved);
 
 // Development type
 router.patch('/:projectId/development-type', async (req, res) => {

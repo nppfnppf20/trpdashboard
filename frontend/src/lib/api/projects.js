@@ -77,3 +77,26 @@ export async function updateProjectInformation(projectId, data) {
   const result = await response.json();
   return result.data;
 }
+
+/**
+ * Mark one of the project's fixed milestone date fields (Submission,
+ * Validation, Committee, etc.) resolved or unresolved.
+ * @param {string} projectId - Project UUID
+ * @param {string} field - Field key, e.g. 'submission_date'
+ * @param {boolean} isResolved
+ * @returns {Promise<Object>} { id, [field]_resolved }
+ */
+export async function updateProjectMilestoneResolved(projectId, field, isResolved) {
+  const response = await authFetch(`${API_BASE_URL}/${projectId}/milestone-resolved`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field, is_resolved: isResolved })
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to update milestone date');
+  }
+
+  return await response.json();
+}
