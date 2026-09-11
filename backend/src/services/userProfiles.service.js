@@ -33,16 +33,32 @@ export async function getProjectsForUser(userId) {
   return result.rows;
 }
 
-export async function upsertUserProfile({ id, displayName, avatarUrl = null }) {
+// Prefers the name on file in admin_console.team_members (matched by login
+// email) over the Supabase-supplied fallback, since most accounts don't have
+// user_metadata.full_name set — without this, display_name silently falls
+// back to the raw email, which then can't exact-match the "First Last"
+// strings in projects.project_lead/manager/director (see 166_backfill_*.sql).
+export async function upsertUserProfile({ id, email, fallbackDisplayName, avatarUrl = null }) {
   const result = await pool.query(
     `INSERT INTO public.user_profiles (id, display_name, avatar_url, updated_at)
-     VALUES ($1, $2, $3, now())
+     VALUES (
+       $1,
+       COALESCE(
+         (SELECT first_name || ' ' || last_name FROM admin_console.team_members WHERE LOWER(email) = LOWER($4)),
+         $2
+       ),
+       $3,
+       now()
+     )
      ON CONFLICT (id) DO UPDATE
-       SET display_name = EXCLUDED.display_name,
+       SET display_name = COALESCE(
+             (SELECT first_name || ' ' || last_name FROM admin_console.team_members WHERE LOWER(email) = LOWER($4)),
+             EXCLUDED.display_name
+           ),
            avatar_url = COALESCE(EXCLUDED.avatar_url, public.user_profiles.avatar_url),
            updated_at = now()
      RETURNING id, display_name, avatar_url, created_at, updated_at`,
-    [id, displayName, avatarUrl]
+    [id, fallbackDisplayName, avatarUrl, email]
   );
   return result.rows[0];
 }

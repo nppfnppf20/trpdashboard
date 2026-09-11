@@ -22,11 +22,12 @@ export async function getProjectsForUser(req, res) {
 
 export async function syncMyProfile(req, res) {
   try {
-    const displayName = req.user.user_metadata?.full_name || req.user.email;
+    const fallbackDisplayName = req.user.user_metadata?.full_name || req.user.email;
     const avatarUrl = req.user.user_metadata?.avatar_url || null;
     const profile = await userProfilesService.upsertUserProfile({
       id: req.user.id,
-      displayName,
+      email: req.user.email,
+      fallbackDisplayName,
       avatarUrl
     });
     res.json(profile);
