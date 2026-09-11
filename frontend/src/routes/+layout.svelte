@@ -14,11 +14,12 @@
   import EditProjectModal from '$lib/components/projects/EditProjectModal.svelte';
   import SurveyorWorkspace from '$lib/components/surveyor-management/SurveyorWorkspace.svelte';
   import PlanningWorkspace from '$lib/components/planning-application/PlanningWorkspace.svelte';
+  import ProfileWorkspace from '$lib/components/profile/ProfileWorkspace.svelte';
   import { projects, selectedProject, selectedProjectId, loadProjects, selectProject } from '$lib/stores/projectSelection.js';
   import {
-    mainView, mainViewProjectId, mainViewInitialTab, mainViewReturnTab,
+    mainView, mainViewProjectId, mainViewInitialTab, mainViewReturnTab, mainViewUserId,
     editModalOpen, editModalProjectId,
-    closeProjectModal, openProjectModal, openSurveyorManagement, openPlanningDeliverables, closeEditModal
+    closeProjectModal, openProjectModal, openSurveyorManagement, openPlanningDeliverables, openProfile, closeEditModal
   } from '$lib/stores/projectViewModal.js';
 
   let { children } = $props();
@@ -50,6 +51,13 @@
     const view = params.get('view');
     const pid = params.get('pid');
     const tab = params.get('tab');
+    const uid = params.get('uid');
+
+    if (view === 'profile' && uid) {
+      openProfile(uid);
+      return;
+    }
+
     if (!view || !pid) return;
 
     try {
@@ -69,17 +77,24 @@
     }
   }
 
-  function syncUrlFromState(view, projectId, tab) {
+  function syncUrlFromState(view, projectId, tab, userId) {
     const url = new URL(window.location.href);
-    if (view && projectId) {
+    if (view === 'profile' && userId) {
+      url.searchParams.set('view', 'profile');
+      url.searchParams.set('uid', userId);
+      url.searchParams.delete('pid');
+      url.searchParams.delete('tab');
+    } else if (view && projectId) {
       url.searchParams.set('view', view);
       url.searchParams.set('pid', projectId);
       if (tab) url.searchParams.set('tab', tab);
       else url.searchParams.delete('tab');
+      url.searchParams.delete('uid');
     } else {
       url.searchParams.delete('view');
       url.searchParams.delete('pid');
       url.searchParams.delete('tab');
+      url.searchParams.delete('uid');
     }
     replaceState(url, {});
   }
@@ -92,7 +107,7 @@
 
   $effect(() => {
     if (browser && urlSyncEnabled) {
-      syncUrlFromState($mainView, urlSyncProjectId, $mainViewInitialTab);
+      syncUrlFromState($mainView, urlSyncProjectId, $mainViewInitialTab, $mainViewUserId);
     }
   });
 
@@ -154,6 +169,8 @@
         <SurveyorWorkspace project={$selectedProject} initialTab={$mainViewInitialTab} onClose={handlePanelClose} />
       {:else if $mainView === 'planning'}
         <PlanningWorkspace project={$selectedProject} />
+      {:else if $mainView === 'profile'}
+        <ProfileWorkspace userId={$mainViewUserId} onClose={handlePanelClose} />
       {:else}
         {@render children?.()}
       {/if}

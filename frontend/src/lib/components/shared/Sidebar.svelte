@@ -10,7 +10,7 @@
   import {
     mainView, mainViewInitialTab,
     openProjectModal, closeProjectModal,
-    openSurveyorManagement, openPlanningDeliverables
+    openSurveyorManagement, openPlanningDeliverables, openProfile
   } from '$lib/stores/projectViewModal.js';
 
   onMount(() => {
@@ -19,6 +19,7 @@
 
   const globalNavItems = [
     { href: '/', label: 'Projects', icon: 'la-project-diagram' },
+    { href: '/team', label: 'Team', icon: 'la-users' },
     { href: '/policy', label: 'Policy & Industry Updates', icon: 'la-newspaper' },
     { href: '/meeting-notes', label: 'Meeting Notes', icon: 'la-file-signature' },
     { href: '/tenders', label: 'Tenders', icon: 'la-landmark', beta: true },
@@ -271,11 +272,13 @@
   </div>
 
   <div class="profile">
-    <div class="avatar">{initials(displayName)}</div>
-    <div class="profile-text">
-      <div class="profile-name">{displayName}</div>
-      <div class="profile-role">{$userRole}</div>
-    </div>
+    <button class="profile-link" on:click={() => openProfile($user.id)} title="View my profile">
+      <div class="avatar">{initials(displayName)}</div>
+      <div class="profile-text">
+        <div class="profile-name">{displayName}</div>
+        <div class="profile-role">{$userRole}</div>
+      </div>
+    </button>
     <button class="logout-btn" on:click={handleLogout} title="Logout" aria-label="Logout">
       <i class="las la-sign-out-alt"></i>
     </button>
@@ -609,6 +612,24 @@
     gap: var(--space-2);
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--color-slate-200);
+  }
+
+  .profile-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-md, 6px);
+  }
+
+  .profile-link:hover .profile-name {
+    color: var(--color-primary-600);
   }
 
   .avatar {

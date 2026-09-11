@@ -10,10 +10,12 @@
 import { writable } from 'svelte/store';
 
 // Main content area — null shows the routed page; otherwise one of
-// 'project' (ProjectViewModal), 'surveyor' (SurveyorWorkspace), 'planning' (PlanningWorkspace)
+// 'project' (ProjectViewModal), 'surveyor' (SurveyorWorkspace), 'planning' (PlanningWorkspace),
+// 'profile' (ProfileWorkspace)
 export const mainView = writable(null);
 export const mainViewProjectId = writable(null);
 export const mainViewInitialTab = writable(null); // only meaningful for 'project'
+export const mainViewUserId = writable(null); // only meaningful for 'profile'
 
 // Set only when a tab is opened as a drill-down from within another tab
 // (e.g. the Overview page's "expand tracker" button) — tells the panel's
@@ -102,11 +104,17 @@ export function openPlanningDeliverables(projectId) {
   mainViewInitialTab.set(null);
 }
 
+export function openProfile(userId) {
+  mainView.set('profile');
+  mainViewUserId.set(userId);
+}
+
 export function closeProjectModal() {
   mainView.set(null);
   mainViewProjectId.set(null);
   mainViewInitialTab.set(null);
   mainViewReturnTab.set(null);
+  mainViewUserId.set(null);
 }
 
 export function openEditModal(projectId) {
