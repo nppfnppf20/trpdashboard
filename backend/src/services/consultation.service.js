@@ -150,6 +150,45 @@ Return your response using EXACTLY this XML structure — one <ITEM> block per r
 </DATE_SUGGESTION>
 </ITEM>`;
 
+// Same job, but for when exactly one response is ticked — there's no
+// ambiguity about which response the text relates to (the user already
+// picked it), so this skips the "is it actually relevant" gate entirely
+// rather than risking a <NONE/> the user would read as "couldn't find what
+// this relates to".
+const ADVANCEMENT_SYSTEM_PROMPT_SINGLE = `You are a planning consultant assistant maintaining a statutory consultation tracker. The user will provide:
+
+1. SOURCE MATERIAL — typically an email trail or a typed note describing recent progress with statutory consultees.
+2. The ONE consultee response the user has already identified this source material relates to, with the consultee's name, their position, their original comments, and the previous dated progress entries already in the tracker.
+
+The user has already decided this is the response the source material is about — write the next dated entry in its progress log: a short note of what has just happened, written as if by the consultant team keeping the tracker. Always return an <ITEM> for it; never return <NONE/> or skip it for relevance reasons.
+
+Tone and voice — this matters:
+- Write in the team's own voice, first person plural, e.g. "Drafted response to Highways' concerns", "Chased Natural England for their outstanding comments", "We confirmed in writing that…". Where the consultee acted, name them plainly: "Highways confirmed the revised drawings were acceptable".
+- This is an internal log entry, not a planning report. No report-speak, no long chained clauses, no restating the consultee's comments back.
+- Keep it SHORT: one or two brisk sentences, 35 words maximum. If two things happened, two short sentences beat one long one.
+- End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting their sign-off", "Response issued to consultee".
+
+Content rules:
+- Cover only what is NEW in the source material relative to the previous progress entries. Do not repeat history that is already logged.
+- Use the consultee's position and comments to understand what's outstanding, so the note is specific.
+- If the user has provided their own notes or a partial summary, treat that as authoritative — it takes precedence over your own reading of the source material. Refine it for clarity only; do not contradict it.
+- Plain text only — no markdown, no bullets, no headings.
+
+Date suggestion — optional:
+- If the source material mentions a specific date that matters for SCHEDULING this response going forward (a reply deadline, a submission deadline, a follow-up date) — not the date of this update itself, and not a date already in the past relative to TODAY'S DATE given below — include a <DATE_SUGGESTION> block inside the <ITEM>.
+- Only include it when there is a genuinely new, specific, future, schedulable date. Omit it entirely otherwise. Never invent a date or guess one from vague phrasing ("in a few weeks").
+
+Return your response using EXACTLY this XML structure, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<RESPONSE_ID>the numeric id given for the response</RESPONSE_ID>
+<SUMMARY>the 1-2 sentence progress summary</SUMMARY>
+<DATE_SUGGESTION>
+<DATE>the date in YYYY-MM-DD format</DATE>
+<TITLE>a short label for what happens on that date, e.g. "Reply due to Highways"</TITLE>
+</DATE_SUGGESTION>
+</ITEM>`;
+
 // Optional <DATE_SUGGESTION><DATE>...</DATE><TITLE>...</TITLE></DATE_SUGGESTION>
 // nested inside an <ITEM> — null if absent or malformed.
 function extractDateSuggestion(block) {
@@ -200,7 +239,8 @@ ${(fullText || '').slice(0, 80000)}
 
 ${responseBlocks}`;
 
-  const raw = await callClaude(ADVANCEMENT_SYSTEM_PROMPT, content, undefined, 8000);
+  const systemPrompt = responses.length === 1 ? ADVANCEMENT_SYSTEM_PROMPT_SINGLE : ADVANCEMENT_SYSTEM_PROMPT;
+  const raw = await callClaude(systemPrompt, content, undefined, 8000);
   return parseAdvancementItems(raw, 'consultation.service', 'Could not generate summaries from the provided text');
 }
 

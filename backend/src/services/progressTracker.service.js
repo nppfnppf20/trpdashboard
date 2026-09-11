@@ -45,6 +45,43 @@ Return your response using EXACTLY this XML structure — one <ITEM> block per i
 </DATE_SUGGESTION>
 </ITEM>`;
 
+// Same job, but for when exactly one issue is ticked — there's no ambiguity
+// about which issue the text relates to (the user already picked it), so
+// this skips the "is it actually relevant" gate entirely rather than risking
+// a <NONE/> the user would read as "couldn't find what this relates to".
+const SUMMARY_SYSTEM_PROMPT_SINGLE = `You are a planning consultant assistant maintaining a pre-decision planning issues tracker. The user will provide:
+
+1. SOURCE MATERIAL — typically an email trail or a typed note describing recent progress on a planning issue being worked through with the LPA/client.
+2. The ONE issue the user has already identified this source material relates to, with its title, discipline, and the previous dated actions already logged against it.
+
+The user has already decided this is the issue the source material is about — write the next dated entry in its action log: a short note of what has just happened, written as if by the consultant team keeping the tracker. Always return an <ITEM> for it; never return <NONE/> or skip it for relevance reasons.
+
+Tone and voice — this matters:
+- Write in the team's own voice, first person plural, e.g. "Raised massing concern with conservation officer", "Agreed revised access strategy with highways". Where another party acted, name them plainly: "LPA confirmed setting impact acceptable", "Applicant provided updated tree survey".
+- This is an internal log entry, not a planning report. No report-speak, no long chained clauses, no restating the issue back.
+- Keep it SHORT: one or two brisk sentences, 35 words maximum. If two things happened, two short sentences beat one long one.
+- End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting officer response", "Agreed in principle".
+
+Content rules:
+- Cover only what is NEW in the source material relative to the previous actions. Do not repeat history that is already logged.
+- If the user has provided their own notes or a partial summary, treat that as authoritative — it takes precedence over your own reading of the source material. Refine it for clarity only; do not contradict it.
+- Plain text only — no markdown, no bullets, no headings.
+
+Date suggestion — optional:
+- If the source material mentions a specific date that matters for SCHEDULING this issue going forward (a report due date, a meeting date, a submission deadline, a re-inspection date) — not the date of this update itself, and not a date already in the past relative to TODAY'S DATE given below — include a <DATE_SUGGESTION> block inside the <ITEM>.
+- Only include it when there is a genuinely new, specific, future, schedulable date. Omit it entirely otherwise. Never invent a date or guess one from vague phrasing ("in a few weeks").
+
+Return your response using EXACTLY this XML structure, nothing before the first <ITEM> and nothing after the last </ITEM>:
+
+<ITEM>
+<ISSUE_ID>the numeric id given for the issue</ISSUE_ID>
+<SUMMARY>the 1-2 sentence progress summary</SUMMARY>
+<DATE_SUGGESTION>
+<DATE>the date in YYYY-MM-DD format</DATE>
+<TITLE>a short label for what happens on that date, e.g. "Revised drawings due"</TITLE>
+</DATE_SUGGESTION>
+</ITEM>`;
+
 function extractTag(text, tag) {
   const re = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
   const m = text.match(re);
@@ -100,7 +137,8 @@ ${(fullText || '').slice(0, 80000)}
 
 ${issueBlocks}`;
 
-  const raw = await callClaude(SUMMARY_SYSTEM_PROMPT, content, undefined, 8000);
+  const systemPrompt = issues.length === 1 ? SUMMARY_SYSTEM_PROMPT_SINGLE : SUMMARY_SYSTEM_PROMPT;
+  const raw = await callClaude(systemPrompt, content, undefined, 8000);
   return parseIssueActionItems(raw, 'progressTracker.service', 'Could not generate summaries from the provided text');
 }
 
