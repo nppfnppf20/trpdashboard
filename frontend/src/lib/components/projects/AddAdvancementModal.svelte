@@ -4,6 +4,7 @@
   import { suggestQuoteWorkStatus } from '$lib/api/quoteActions.js';
   import { updateQuoteWorkStatus } from '$lib/api/quotes.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
+  import VoiceDictationButton from './VoiceDictationButton.svelte';
   import DateSuggestionPopup from './DateSuggestionPopup.svelte';
 
   export let show = false;
@@ -123,6 +124,13 @@
       ...selections,
       [conditionId]: { ...sel, reqIds: { ...sel.reqIds, [reqId]: !sel.reqIds[reqId] } },
     };
+  }
+
+  function onSummaryTranscript(conditionId, e) {
+    const text = e.detail;
+    const sel = selections[conditionId];
+    const summary = sel.summary?.trim() ? `${sel.summary.trim()} ${text}` : text;
+    selections = { ...selections, [conditionId]: { ...sel, summary } };
   }
 
   function buildItems() {
@@ -350,12 +358,15 @@
                       </select>
                     </div>
                   {/if}
-                  <textarea
-                    class="adv-summary-input"
-                    rows="2"
-                    placeholder="Write it yourself, or leave blank to auto-summarise from the source text above"
-                    bind:value={selections[c.id].summary}
-                  ></textarea>
+                  <div class="adv-summary-wrap">
+                    <textarea
+                      class="adv-summary-input"
+                      rows="2"
+                      placeholder="Write it yourself, or leave blank to auto-summarise from the source text above"
+                      bind:value={selections[c.id].summary}
+                    ></textarea>
+                    <VoiceDictationButton class="adv-summary-mic-btn" on:transcript={(e) => onSummaryTranscript(c.id, e)} />
+                  </div>
                 {/if}
               </div>
             {:else}
@@ -554,9 +565,14 @@
     color: var(--color-slate-800);
     font-weight: 500;
   }
-  .adv-summary-input {
+  .adv-summary-wrap {
+    position: relative;
     margin-left: 1.5rem;
-    padding: 0.5rem 0.65rem;
+  }
+  .adv-summary-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 2.35rem 0.5rem 0.65rem;
     border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-family: inherit;
@@ -565,6 +581,13 @@
     line-height: 1.5;
     resize: vertical;
     font-size: 0.8rem;
+  }
+  :global(.adv-summary-mic-btn) {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
   }
   .adv-summary-input:focus {
     outline: none;

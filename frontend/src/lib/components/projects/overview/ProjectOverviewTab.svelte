@@ -24,7 +24,14 @@
     grid-template-rows: minmax(320px, 2fr) minmax(160px, 1fr);
     gap: 1rem;
     flex: 1;
-    min-height: 600px;
+    /* min-height:0 (rather than a fixed floor like 600px) lets the grid
+       actually shrink with its flex parent instead of overflowing it when
+       the window gets shorter — the row minmax() minimums above are still
+       the real floor. overflow-y:auto means that once those minimums are
+       hit, this scrolls instead of getting clipped/squished by the modal
+       body's overflow:hidden above it. */
+    min-height: 0;
+    overflow-y: auto;
     padding: 1.25rem 1.75rem 0;
   }
 

@@ -9,6 +9,7 @@
   import { updateQuoteWorkStatus } from '$lib/api/quotes.js';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
+  import VoiceDictationButton from './VoiceDictationButton.svelte';
   import DateSuggestionPopup from './DateSuggestionPopup.svelte';
   import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
 
@@ -131,6 +132,13 @@
   function toggleSub(issueId, subId) {
     const sel = selections[issueId];
     selections = { ...selections, [issueId]: { ...sel, subIds: { ...sel.subIds, [subId]: !sel.subIds[subId] } } };
+  }
+
+  function onSummaryTranscript(issueId, e) {
+    const text = e.detail;
+    const sel = selections[issueId];
+    const summary = sel.summary?.trim() ? `${sel.summary.trim()} ${text}` : text;
+    selections = { ...selections, [issueId]: { ...sel, summary } };
   }
 
   function buildItems() {
@@ -532,12 +540,15 @@
                         </select>
                       </div>
                     {/if}
-                    <textarea
-                      class="adv-summary-input"
-                      rows="2"
-                      placeholder="Write it yourself, or leave blank to auto-summarise from the source text above"
-                      bind:value={selections[iss.id].summary}
-                    ></textarea>
+                    <div class="adv-summary-wrap">
+                      <textarea
+                        class="adv-summary-input"
+                        rows="2"
+                        placeholder="Write it yourself, or leave blank to auto-summarise from the source text above"
+                        bind:value={selections[iss.id].summary}
+                      ></textarea>
+                      <VoiceDictationButton class="adv-summary-mic-btn" on:transcript={(e) => onSummaryTranscript(iss.id, e)} />
+                    </div>
                   {/if}
                 </div>
               {:else}
@@ -856,9 +867,14 @@
     color: var(--color-slate-800);
     font-weight: 500;
   }
-  .adv-summary-input {
+  .adv-summary-wrap {
+    position: relative;
     margin-left: 1.5rem;
-    padding: 0.5rem 0.65rem;
+  }
+  .adv-summary-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 2.35rem 0.5rem 0.65rem;
     border: 1px solid var(--color-slate-300);
     border-radius: 6px;
     font-family: inherit;
@@ -872,6 +888,13 @@
     outline: none;
     border-color: var(--color-primary-600);
     box-shadow: var(--focus-ring-blue);
+  }
+  :global(.adv-summary-mic-btn) {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
   }
   .adv-req-list {
     display: flex;
@@ -950,7 +973,7 @@
   }
   .proposal-title-input { flex: 1; min-width: 8rem; }
   .proposal-discipline-input { flex: 0 0 8rem; }
-  .proposal-summary { margin-left: 0; }
+  .proposal-summary { margin-left: 0; padding-right: 0.65rem; }
 
   .ds-row {
     display: flex;

@@ -20,6 +20,7 @@
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
+  import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { extractPoliciesFromDocument } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments, createPolicyDocument } from '$lib/api/policyDocuments.js';
 
@@ -638,18 +639,22 @@
     }
   }
 
+  // The header close button (only shown when activeTab isn't already
+  // 'details') always means "back to this project's Overview" — never a
+  // full exit — same as Chat/Meeting Notes/Trackers' own "open full view"
+  // buttons already do via their returnTab='details' argument. Calls
+  // openProjectModal directly (rather than the onClose prop, which fully
+  // unmounts this workspace) so it behaves the same regardless of how the
+  // current tab was reached — including a direct sidebar nav click, which
+  // doesn't set a returnTab.
   function handleClose() {
-    // Don't reset projectData/loading/activeTab/etc. here — this component
-    // isn't necessarily being destroyed. Closing a tab drilled into from
-    // another tab (e.g. the Overview widget's "expand tracker" button) calls
-    // openProjectModal again for the SAME project instead of unmounting, so
-    // resetting here used to force a pointless reload (and, since the load
-    // guard now only reloads on an actual project change, would otherwise
-    // leave it stuck on the loading state forever). If this instance really
-    // is being destroyed, none of this state matters anyway.
+    // Don't reset projectData/loading/etc. here — this component isn't
+    // being destroyed, just switching tabs in place (openProjectModal for
+    // the SAME project doesn't remount it), so resetting would force a
+    // pointless reload.
     showExtractModal = false;
     policyFormOpen = false;
-    onClose();
+    openProjectModal(projectId, 'details');
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -795,6 +800,9 @@
             {#if projectData?.status}<span class="status-badge status-{statusClass(projectData.status)}">{projectData.status}</span>{/if}
           </h2>
         </div>
+        {#if activeTab !== 'details'}
+          <button class="modal-close-btn" on:click={handleClose} title="Back to Overview" aria-label="Back to Overview">&times;</button>
+        {/if}
       </div>
 
       <div class="modal-body">
@@ -1552,6 +1560,24 @@
 
   .header-title {
     min-width: 0;
+  }
+
+  .modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: var(--color-slate-500);
+    cursor: pointer;
+    padding: 0;
+    width: 2rem;
+    height: 2rem;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.2s;
+  }
+
+  .modal-close-btn:hover {
+    color: var(--color-slate-800);
   }
 
   .modal-breadcrumb {
