@@ -1,5 +1,4 @@
 <script>
-  import { onMount } from 'svelte';
   import { getQuotes } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
   import {
@@ -7,8 +6,16 @@
     setPendingQuoteUploadFile,
     setPendingQuoteUploadText
   } from '$lib/stores/projectViewModal.js';
+  import { debounce } from '$lib/utils/debounce.js';
 
   export let project;
+  // Optional — when set (non-empty), sums stats across all these projects
+  // instead of just `project`. A new quote still has to be uploaded/pasted
+  // against one specific project, so merged mode adds a small project
+  // picker above the upload/paste tabs for that.
+  export let projects = null;
+  $: merged = Array.isArray(projects) && projects.length > 0;
+  $: projectList = merged ? projects : (project ? [project] : []);
   $: projectId = project?.id;
   $: uniqueId = project?.unique_id;
 
@@ -19,33 +26,58 @@
   let fileInput;
   let inputMode = 'upload'; // 'upload' | 'paste'
   let pasteText = '';
+  let targetProjectId = null; // merged mode only — which project a new quote belongs to
+  $: if (merged && !projectList.some(p => p.id === targetProjectId)) targetProjectId = projectList[0]?.id ?? null;
 
-  onMount(load);
+  // Per-project cache so re-ticking an already-seen project in the merged
+  // multi-select is instant, and debounced so a burst of quick ticks
+  // collapses into one load instead of one per click.
+  const cache = new Map();
+  const scheduleLoad = debounce(load, 350);
+
+  let loadedKey = null;
+  $: {
+    const key = projectList.map(p => p.id).sort((a, b) => a - b).join(',');
+    if (key !== loadedKey) {
+      loadedKey = key;
+      if (cache.size === 0) load(); else scheduleLoad();
+    }
+  }
 
   async function load() {
     loading = true;
     error = null;
     try {
-      const [quotes, sentRequests] = await Promise.all([
-        getQuotes({ projectId: uniqueId }),
-        getSentRequestsForProject(uniqueId),
-      ]);
-
-      const instructed = quotes.filter(q =>
-        q.instruction_status === 'instructed' || q.instruction_status === 'partially_instructed'
-      );
-      const instructedSpend = instructed.reduce((sum, q) => sum + (parseFloat(q.total) || 0), 0);
-      const worksCompleted = instructed.filter(q => q.work_status === 'completed');
-      const worksOutstanding = instructed.filter(q => q.work_status !== 'completed');
-
-      stats = {
-        quotesSent: sentRequests.length,
-        quotesReceived: quotes.length,
-        quotesInstructed: instructed.length,
-        instructedSpend,
-        worksCompleted: worksCompleted.length,
-        worksOutstanding: worksOutstanding.length,
-      };
+      const missing = projectList.filter(p => !cache.has(p.id));
+      if (missing.length) {
+        const fetched = await Promise.all(missing.map(async (p) => {
+          const [quotes, sentRequests] = await Promise.all([
+            getQuotes({ projectId: p.unique_id }),
+            getSentRequestsForProject(p.unique_id),
+          ]);
+          const instructed = quotes.filter(q =>
+            q.instruction_status === 'instructed' || q.instruction_status === 'partially_instructed'
+          );
+          return [p.id, {
+            quotesSent: sentRequests.length,
+            quotesReceived: quotes.length,
+            quotesInstructed: instructed.length,
+            instructedSpend: instructed.reduce((sum, q) => sum + (parseFloat(q.total) || 0), 0),
+            worksCompleted: instructed.filter(q => q.work_status === 'completed').length,
+            worksOutstanding: instructed.filter(q => q.work_status !== 'completed').length,
+          }];
+        }));
+        for (const [id, s] of fetched) cache.set(id, s);
+      }
+      const perProject = projectList.map(p => cache.get(p.id)).filter(Boolean);
+      stats = perProject.reduce((sum, s) => ({
+        quotesSent: sum.quotesSent + s.quotesSent,
+        quotesReceived: sum.quotesReceived + s.quotesReceived,
+        quotesInstructed: sum.quotesInstructed + s.quotesInstructed,
+        instructedSpend: sum.instructedSpend + s.instructedSpend,
+        worksCompleted: sum.worksCompleted + s.worksCompleted,
+        worksOutstanding: sum.worksOutstanding + s.worksOutstanding,
+      }), { quotesSent: 0, quotesReceived: 0, quotesInstructed: 0, instructedSpend: 0, worksCompleted: 0, worksOutstanding: 0 });
     } catch (err) {
       error = err.message;
     } finally {
@@ -54,7 +86,7 @@
   }
 
   function openManage() {
-    openSurveyorManagement(projectId, null, 'details');
+    openSurveyorManagement(merged ? targetProjectId : projectId, null, 'details');
   }
 
   // Hands off to the full Quotes tab rather than parsing here — same pattern
@@ -63,13 +95,13 @@
   function handOffFile(file) {
     if (!file) return;
     setPendingQuoteUploadFile(file);
-    openSurveyorManagement(projectId, 'quotes', 'details');
+    openSurveyorManagement(merged ? targetProjectId : projectId, 'quotes', 'details');
   }
 
   function handOffText() {
     if (!pasteText.trim()) return;
     setPendingQuoteUploadText(pasteText);
-    openSurveyorManagement(projectId, 'quotes', 'details');
+    openSurveyorManagement(merged ? targetProjectId : projectId, 'quotes', 'details');
   }
 
   function handleDrop(e) {
@@ -94,6 +126,13 @@
     </button>
   </div>
   <div class="widget-body sv-body">
+    {#if merged}
+      <select class="form-input sv-target-select" bind:value={targetProjectId}>
+        {#each projectList as p (p.id)}
+          <option value={p.id}>{p.project_name}</option>
+        {/each}
+      </select>
+    {/if}
     <div class="sv-input-tabs">
       <button class="sv-tab" class:active={inputMode === 'upload'} on:click={() => inputMode = 'upload'}>
         <i class="las la-upload"></i> Upload
@@ -149,6 +188,7 @@
 
 <style>
   .sv-body { display: flex; flex-direction: column; gap: 10px; }
+  .sv-target-select { font-size: 11px; padding: 0.35rem 0.5rem; }
   .sv-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.5rem 0; }
   .sv-state-error { color: var(--color-red-600); }
   .sv-stats { display: flex; gap: 16px; }

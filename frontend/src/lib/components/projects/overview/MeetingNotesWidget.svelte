@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import { getMeetingNotes } from '$lib/api/meetingNotes.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
@@ -7,8 +7,16 @@
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
   import MeetingNoteProcessModal from './MeetingNoteProcessModal.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
+  import { debounce } from '$lib/utils/debounce.js';
 
   export let project;
+  // Optional — when set (non-empty), merges the recent-notes feed across all
+  // these projects instead of just `project`. The page this powers is
+  // read-only, so merged mode drops the upload/paste UI entirely (creating a
+  // note against a specific project happens from that project's own tab).
+  export let projects = null;
+  $: merged = Array.isArray(projects) && projects.length > 0;
+  $: projectList = merged ? projects : (project ? [project] : []);
   $: projectId = project?.id;
 
   let notes = [];
@@ -28,16 +36,39 @@
   let processFile = null;
   let processText = null;
 
-  onMount(load);
+  // Per-project cache so re-ticking an already-seen project in the merged
+  // multi-select is instant, and debounced so a burst of quick ticks
+  // collapses into one load instead of one per click.
+  const cache = new Map();
+  const scheduleLoad = debounce(load, 350);
+
+  let loadedKey = null;
+  $: {
+    const key = projectList.map(p => p.id).sort((a, b) => a - b).join(',');
+    if (key !== loadedKey) {
+      loadedKey = key;
+      if (cache.size === 0) load(); else scheduleLoad();
+    }
+  }
 
   async function load() {
     loading = true;
     error = null;
     try {
-      const all = await getMeetingNotes(projectId);
-      notes = [...(all || [])]
-        .sort((a, b) => String(b.meeting_date || b.created_at || '').localeCompare(String(a.meeting_date || a.created_at || '')))
-        .slice(0, 2);
+      const missing = projectList.filter(p => !cache.has(p.id));
+      if (missing.length) {
+        const fetched = await Promise.all(missing.map(async (p) => {
+          const all = await getMeetingNotes(p.id);
+          const recent = [...(all || [])]
+            .sort((a, b) => String(b.meeting_date || b.created_at || '').localeCompare(String(a.meeting_date || a.created_at || '')))
+            .slice(0, 2)
+            .map(n => ({ ...n, _project: p }));
+          return [p.id, recent];
+        }));
+        for (const [id, recent] of fetched) cache.set(id, recent);
+      }
+      notes = projectList.flatMap(p => cache.get(p.id) || [])
+        .sort((a, b) => String(b.meeting_date || b.created_at || '').localeCompare(String(a.meeting_date || a.created_at || '')));
     } catch (err) {
       error = err.message;
     } finally {
@@ -61,6 +92,9 @@
   }
 
   function handleProcessModalSaved() {
+    // Drop the affected project's cache entry so the refresh actually picks
+    // up the new note instead of serving the stale cached list.
+    if (project) cache.delete(project.id);
     load(); // refresh the recent-notes preview once the new note is saved
   }
 
@@ -93,7 +127,7 @@
       : '';
     const metaLine = [dateStr, n.attendees_text].filter(Boolean).join(' · ');
     const html = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${n.summary_html || '<p>No summary available.</p>'}`;
-    await exportHtmlToWord(html, buildExportFilename(project, `${title}${dateStr ? ` ${dateStr}` : ''}`), '/basicdocument.docx');
+    await exportHtmlToWord(html, buildExportFilename(n._project || project, `${title}${dateStr ? ` ${dateStr}` : ''}`), '/basicdocument.docx');
   }
 
   function formatDate(d) {
@@ -108,43 +142,45 @@
       <i class="las la-file-signature"></i>
       Meeting Notes
     </div>
-    <button class="widget-expand" on:click={() => openProjectModal(projectId, 'meeting_notes', 'details')}>
+    <button class="widget-expand" on:click={() => merged ? goto('/meeting-notes') : openProjectModal(projectId, 'meeting_notes', 'details')}>
       View all <i class="las la-angle-right"></i>
     </button>
   </div>
   <div class="widget-body mnw-body">
-    <div class="mnw-input-tabs">
-      <button class="mnw-tab" class:active={inputMode === 'upload'} on:click={() => inputMode = 'upload'}>
-        <i class="las la-upload"></i> Upload
-      </button>
-      <button class="mnw-tab" class:active={inputMode === 'paste'} on:click={() => inputMode = 'paste'}>
-        <i class="las la-clipboard"></i> Paste Text
-      </button>
-    </div>
-
-    {#if inputMode === 'upload'}
-      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-      <div
-        class="mnw-drop-zone"
-        class:drag-over={dragOver}
-        role="button"
-        tabindex="0"
-        on:dragover|preventDefault={() => dragOver = true}
-        on:dragleave={() => dragOver = false}
-        on:drop={handleDrop}
-        on:click={() => fileInput.click()}
-        on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
-      >
-        <i class="las la-cloud-upload-alt mnw-drop-icon"></i>
-        <span>Drop a file here or click to browse</span>
-        <span class="mnw-drop-hint">PDF, DOCX or TXT</span>
+    {#if !merged}
+      <div class="mnw-input-tabs">
+        <button class="mnw-tab" class:active={inputMode === 'upload'} on:click={() => inputMode = 'upload'}>
+          <i class="las la-upload"></i> Upload
+        </button>
+        <button class="mnw-tab" class:active={inputMode === 'paste'} on:click={() => inputMode = 'paste'}>
+          <i class="las la-clipboard"></i> Paste Text
+        </button>
       </div>
-      <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
-    {:else}
-      <textarea class="form-input mnw-paste" bind:value={pasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
-      <button class="btn btn-primary btn-sm mnw-process-btn" on:click={handOffText} disabled={!pasteText.trim()}>
-        <i class="las la-magic"></i> Process
-      </button>
+
+      {#if inputMode === 'upload'}
+        <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+        <div
+          class="mnw-drop-zone"
+          class:drag-over={dragOver}
+          role="button"
+          tabindex="0"
+          on:dragover|preventDefault={() => dragOver = true}
+          on:dragleave={() => dragOver = false}
+          on:drop={handleDrop}
+          on:click={() => fileInput.click()}
+          on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
+        >
+          <i class="las la-cloud-upload-alt mnw-drop-icon"></i>
+          <span>Drop a file here or click to browse</span>
+          <span class="mnw-drop-hint">PDF, DOCX or TXT</span>
+        </div>
+        <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
+      {:else}
+        <textarea class="form-input mnw-paste" bind:value={pasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+        <button class="btn btn-primary btn-sm mnw-process-btn" on:click={handOffText} disabled={!pasteText.trim()}>
+          <i class="las la-magic"></i> Process
+        </button>
+      {/if}
     {/if}
 
     {#if loading}
@@ -154,7 +190,10 @@
     {:else}
       {#each notes as n}
         <div class="mnw-note">
-          <div class="mnw-note-title">{n.title}</div>
+          <div class="mnw-note-title">
+            {n.title}
+            {#if merged}<span class="badge badge-neutral mnw-project-tag">{n._project?.project_name}</span>{/if}
+          </div>
           <div class="mnw-note-date">{formatDate(n.meeting_date || n.created_at)}</div>
           <div class="mnw-note-btns">
             <button class="mnw-note-btn" on:click={() => viewNotes(n)}><i class="las la-eye"></i> View Notes</button>
@@ -168,7 +207,7 @@
 </div>
 
 {#if editingNote}
-  <NoteEditorModal note={editingNote} {project} onClose={() => editingNote = null} onUpdated={handleNoteUpdated} />
+  <NoteEditorModal note={editingNote} project={editingNote._project || project} onClose={() => editingNote = null} onUpdated={handleNoteUpdated} />
 {/if}
 
 {#if viewingTranscript}
@@ -187,6 +226,7 @@
 
 <style>
   .mnw-body { display: flex; flex-direction: column; gap: 8px; }
+  .mnw-project-tag { margin-left: 6px; }
 
   .mnw-input-tabs { display: flex; gap: 5px; }
   .mnw-tab {

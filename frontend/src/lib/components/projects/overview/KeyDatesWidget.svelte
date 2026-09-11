@@ -8,6 +8,7 @@
   import { getProgrammeEvents, updateProgrammeEvent, deleteProgrammeEvent } from '$lib/api/quotes.js';
   import { updateProjectMilestoneResolved } from '$lib/api/projects.js';
   import { keyDatesVersion, bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
+  import { debounce } from '$lib/utils/debounce.js';
 
   // Sourced from the project's own fixed date fields (already loaded with
   // the project — no fetch needed) PLUS the direct key dates owned by
@@ -19,37 +20,70 @@
   // over this page (rather than navigating away to its own tab), which
   // additionally covers quote-linked dates these don't.
   export let project;
+  // Optional — when set (non-empty), merges upcoming dates from all these
+  // projects instead of just `project`, each tagged with its own project so
+  // per-row Resolve/Edit/Delete keep working correctly no matter which
+  // project a given row came from (see `dates` and the handle* functions).
+  export let projects = null;
+  $: merged = Array.isArray(projects) && projects.length > 0;
+  $: projectList = merged ? projects : (project ? [project] : []);
 
   let showProgrammeModal = false;
-  let trackerKeyDates = []; // [{ date, title, source? }] merged from conditions/issues/consultation/programme events
-  let loadedForId = null;
+  let trackerKeyDates = []; // [{ date, title, source?, _project }] merged from conditions/issues/consultation/programme events
+
+  // Per-project cache so re-ticking an already-seen project in the merged
+  // multi-select is instant and doesn't refetch. bumpKeyDatesVersion()
+  // (fired elsewhere after a tracker mutation) clears it, since that's a
+  // "something changed, refetch for real" signal — everything else (the
+  // multi-select toggling) is debounced so a burst of quick ticks collapses
+  // into one load instead of one per click.
+  const cache = new Map();
+  const scheduleLoad = debounce(loadTrackerKeyDates, 350);
+
+  let loadedKey = null;
   let loadedAtVersion = null;
 
-  $: if (project?.id && (project.id !== loadedForId || $keyDatesVersion !== loadedAtVersion)) loadTrackerKeyDates(project, $keyDatesVersion);
+  $: {
+    const key = projectList.map(p => p.id).sort((a, b) => a - b).join(',');
+    const versionChanged = $keyDatesVersion !== loadedAtVersion;
+    if (versionChanged) cache.clear();
+    if (key && (key !== loadedKey || versionChanged)) {
+      loadedKey = key;
+      loadedAtVersion = $keyDatesVersion;
+      if (versionChanged || cache.size === 0) loadTrackerKeyDates(projectList);
+      else scheduleLoad(projectList);
+    }
+  }
 
-  async function loadTrackerKeyDates(proj, version) {
-    loadedForId = proj.id;
-    loadedAtVersion = version;
+  async function loadTrackerKeyDates(projs) {
     try {
-      const [condData, progData, consData, events] = await Promise.all([
-        getConditionsData(proj.id),
-        getProgressData(proj.id),
-        getConsultationData(proj.id),
-        getProgrammeEvents(proj.unique_id),
-      ]);
-      // `source` labels match ProgrammeTab.svelte's row titles exactly, so
-      // the same row reads the same way in both places. `type`/`id`/`colour`/
-      // `is_resolved` are carried through so a row can be opened in the same
-      // ViewDateModal Programme uses, to resolve/edit/delete it from here too.
-      const keyDatesOf = (rows, type, sourceOf) => (rows || []).flatMap(r => (r.key_dates || []).map(kd => ({
-        id: kd.id, date: kd.date, title: kd.title, colour: kd.colour, is_resolved: kd.is_resolved, type, source: sourceOf(r)
-      })));
-      trackerKeyDates = [
-        ...keyDatesOf(condData.conditions, 'direct-condition', c => c.condition_number ? `Condition ${c.condition_number} — ${c.title}` : c.title),
-        ...keyDatesOf(progData.issues, 'direct-issue', i => i.title),
-        ...keyDatesOf(consData.responses, 'direct-consultation', r => r.consultee_name),
-        ...(events || []).map(e => ({ id: e.id, date: e.date, title: e.title, colour: e.colour, is_resolved: e.is_resolved, type: 'project' })),
-      ];
+      const missing = projs.filter(p => !cache.has(p.id));
+      if (missing.length) {
+        const fetched = await Promise.all(missing.map(async (proj) => {
+          const [condData, progData, consData, events] = await Promise.all([
+            getConditionsData(proj.id),
+            getProgressData(proj.id),
+            getConsultationData(proj.id),
+            getProgrammeEvents(proj.unique_id),
+          ]);
+          // `source` labels match ProgrammeTab.svelte's row titles exactly, so
+          // the same row reads the same way in both places. `type`/`id`/`colour`/
+          // `is_resolved` are carried through so a row can be opened in the same
+          // ViewDateModal Programme uses, to resolve/edit/delete it from here too.
+          const keyDatesOf = (rows, type, sourceOf) => (rows || []).flatMap(r => (r.key_dates || []).map(kd => ({
+            id: kd.id, date: kd.date, title: kd.title, colour: kd.colour, is_resolved: kd.is_resolved, type, source: sourceOf(r), _project: proj
+          })));
+          const rows = [
+            ...keyDatesOf(condData.conditions, 'direct-condition', c => c.condition_number ? `Condition ${c.condition_number} — ${c.title}` : c.title),
+            ...keyDatesOf(progData.issues, 'direct-issue', i => i.title),
+            ...keyDatesOf(consData.responses, 'direct-consultation', r => r.consultee_name),
+            ...(events || []).map(e => ({ id: e.id, date: e.date, title: e.title, colour: e.colour, is_resolved: e.is_resolved, type: 'project', _project: proj })),
+          ];
+          return [proj.id, rows];
+        }));
+        for (const [id, rows] of fetched) cache.set(id, rows);
+      }
+      trackerKeyDates = projs.flatMap(p => cache.get(p.id) || []);
     } catch (err) {
       console.error('KeyDatesWidget: failed to load tracker key dates', err);
       trackerKeyDates = [];
@@ -69,9 +103,9 @@
   ];
 
   // Optimistic local overrides for the fixed fields' resolved state, keyed
-  // by field key — applied on top of the project's own `<field>_resolved`
-  // columns (migration 163) so a toggle here shows instantly without
-  // waiting on the parent modal to refetch the whole project.
+  // by `${projectId}:${fieldKey}` — applied on top of each project's own
+  // `<field>_resolved` columns (migration 163) so a toggle here shows
+  // instantly without waiting on the parent modal to refetch the project.
   /** @type {Record<string, boolean>} */
   let milestoneResolvedOverrides = {};
 
@@ -80,13 +114,17 @@
   // dates drop out entirely here (Programme just greys them out instead).
   $: dates = (() => {
     const today = new Date().toISOString().slice(0, 10);
-    const projectDates = FIELDS.map(([key, label]) => ({
-      id: `project-field-${key}`,
-      date: project?.[key],
-      title: label,
-      type: 'project-field',
-      fieldKey: key,
-      is_resolved: key in milestoneResolvedOverrides ? milestoneResolvedOverrides[key] : !!project?.[`${key}_resolved`],
+    const projectDates = projectList.flatMap(proj => FIELDS.map(([key, label]) => {
+      const overrideKey = `${proj.id}:${key}`;
+      return {
+        id: `project-field-${proj.id}-${key}`,
+        date: proj?.[key],
+        title: label,
+        type: 'project-field',
+        fieldKey: key,
+        is_resolved: overrideKey in milestoneResolvedOverrides ? milestoneResolvedOverrides[overrideKey] : !!proj?.[`${key}_resolved`],
+        _project: proj,
+      };
     }));
     return [...projectDates, ...trackerKeyDates]
       .filter(d => d.date && String(d.date).slice(0, 10) >= today && !d.is_resolved)
@@ -146,8 +184,8 @@
   async function handleResolveDate(date) {
     try {
       if (date.type === 'project-field') {
-        await updateProjectMilestoneResolved(project.id, date.fieldKey, date.is_resolved);
-        milestoneResolvedOverrides = { ...milestoneResolvedOverrides, [date.fieldKey]: date.is_resolved };
+        await updateProjectMilestoneResolved(date._project.id, date.fieldKey, date.is_resolved);
+        milestoneResolvedOverrides = { ...milestoneResolvedOverrides, [`${date._project.id}:${date.fieldKey}`]: date.is_resolved };
         return;
       }
       if (date.type === 'project') await updateProgrammeEvent(date.id, { title: date.title, date: date.date, colour: date.colour, is_resolved: date.is_resolved });
@@ -182,9 +220,11 @@
       <i class="las la-calendar-alt"></i>
       Key Dates
     </div>
-    <button class="widget-expand" on:click={openProgramme}>
-      Programme <i class="las la-angle-right"></i>
-    </button>
+    {#if !merged}
+      <button class="widget-expand" on:click={openProgramme}>
+        Programme <i class="las la-angle-right"></i>
+      </button>
+    {/if}
   </div>
   <div class="widget-body kd-body">
     {#if !dates.length}
@@ -196,6 +236,7 @@
           <span class="kd-date">{formatDate(d.date)}</span>
           <span class="kd-title">{d.title}</span>
           {#if d.source}<span class="kd-source">· {d.source}</span>{/if}
+          {#if merged}<span class="badge badge-neutral kd-project-tag">{d._project.project_name}</span>{/if}
         </div>
       {/each}
     {/if}
@@ -238,6 +279,7 @@
   .kd-date { color: var(--color-slate-500); white-space: nowrap; flex-shrink: 0; padding-top: 1px; }
   .kd-title { color: var(--color-slate-800); }
   .kd-source { color: var(--color-slate-400); }
+  .kd-project-tag { margin-left: auto; }
 
   .pgm-backdrop {
     position: fixed;

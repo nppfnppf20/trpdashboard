@@ -44,6 +44,7 @@ import planningHistoryRoutes from './planningHistory.routes.js';
 import policyDocumentsRoutes from './policyDocuments.routes.js';
 import sectionChatRoutes from './sectionChat.routes.js';
 import projectChatRoutes from './projectChat.routes.js';
+import crossProjectChatRoutes from './crossProjectChat.routes.js';
 import documentStyleTemplatesRoutes from './documentStyleTemplates.routes.js';
 import llmSettingsRoutes from './llmSettings.routes.js';
 import llmStatusRoutes from './llmStatus.routes.js';
@@ -159,6 +160,11 @@ router.use('/api/stage1-review', stage1ReviewRoutes);
 router.use('/api/hlpv-v3', hlpvV3Routes);
 router.use('/api/planning-application', sectionChatRoutes);
 router.use('/api/project-chat', projectChatRoutes);
+
+// Standalone cross-project chat — kept off /api/project-chat entirely since
+// that router's /:projectId/chat param route would otherwise swallow
+// "cross-project" as if it were a project id.
+router.use('/api/cross-project-chat', crossProjectChatRoutes);
 router.use('/api/lpa', planningHistoryRoutes);
 router.use('/api/lpa', policyDocumentsRoutes);
 

@@ -40,8 +40,20 @@
   import DateSuggestionPopup from '$lib/components/projects/DateSuggestionPopup.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
+  import { debounce } from '$lib/utils/debounce.js';
 
   export let project;
+  // Optional — when set (non-empty), the widget merges rows from all these
+  // projects instead of just `project`. Merged mode is read-focused: rows
+  // from every project are tagged and concatenated, but the write flows
+  // below (bulk-add, timeline add/edit/delete, date suggestions) all close
+  // over a single project id and aren't safe to fire against the wrong
+  // project, so they're hidden when merged — clicking a merged row instead
+  // jumps into that row's own project, where those flows work exactly as
+  // they always have.
+  export let projects = null;
+  $: merged = Array.isArray(projects) && projects.length > 0;
+  $: projectList = merged ? projects : (project ? [project] : []);
   $: projectId = project?.id;
 
   let activeType = 'consultation'; // 'consultation' | 'conditions' | 'progress'
@@ -53,29 +65,51 @@
   let loading = true;
   let error = null;
 
-  // Reload whenever projectId changes to a different project — not just on
-  // first mount — so switching projects from the sidebar while already on
-  // the Overview page actually refreshes this widget instead of leaving the
-  // previous project's data (and tracker selection) showing.
-  let loadedProjectId = null;
-  $: if (projectId && projectId !== loadedProjectId) {
-    loadedProjectId = projectId;
-    hasAutoSelected = false;
-    load();
+  // Per-project cache (keyed by project id) so re-ticking a project already
+  // seen this session is instant, and toggling the merged selection only
+  // ever fetches the newly-added projects — not a full refetch of everyone
+  // still selected. Debounced so a burst of quick ticks in the multi-select
+  // collapses into one load rather than one per click (a handful of
+  // projects × this widget's 3 calls each can otherwise blow through the
+  // API's per-user rate limit in seconds).
+  const cache = new Map();
+  const scheduleLoad = debounce(load, 350);
+
+  let loadedKey = null;
+  $: {
+    const key = projectList.map(p => p.id).sort((a, b) => a - b).join(',');
+    if (key !== loadedKey) {
+      loadedKey = key;
+      hasAutoSelected = false;
+      // First-ever load fires immediately (no perceptible delay opening a
+      // project); a later change to the project set (merged mode's
+      // multi-select) is debounced since that's the rapid-toggle case.
+      if (cache.size === 0) load(); else scheduleLoad();
+    }
   }
 
   async function load() {
     loading = true;
     error = null;
     try {
-      const [c, k, p] = await Promise.all([
-        getConsultationData(projectId),
-        getConditionsData(projectId),
-        getProgressData(projectId),
-      ]);
-      responses = c.responses || [];
-      conditions = k.conditions || [];
-      issues = p.issues || [];
+      const missing = projectList.filter(p => !cache.has(p.id));
+      if (missing.length) {
+        const fetched = await Promise.all(missing.map(async (p) => {
+          const [c, k, pr] = await Promise.all([
+            getConsultationData(p.id),
+            getConditionsData(p.id),
+            getProgressData(p.id),
+          ]);
+          const tag = (rows) => (rows || []).map(r => ({ ...r, _projectId: p.id, _projectName: p.project_name }));
+          return [p.id, { responses: tag(c.responses), conditions: tag(k.conditions), issues: tag(pr.issues) }];
+        }));
+        for (const [id, data] of fetched) cache.set(id, data);
+      }
+
+      const selected = projectList.map(p => cache.get(p.id)).filter(Boolean);
+      responses = selected.flatMap(s => s.responses);
+      conditions = selected.flatMap(s => s.conditions);
+      issues = selected.flatMap(s => s.issues);
 
       if (!hasAutoSelected) {
         hasAutoSelected = true;
@@ -86,6 +120,15 @@
     } finally {
       loading = false;
     }
+  }
+
+  // Mutation-driven refresh (add/edit/delete an advancement or key date) —
+  // unlike the reactive project-list trigger above, this must bypass the
+  // cache for the currently-loaded project(s), or a just-saved change would
+  // silently keep showing the pre-mutation cached data.
+  function refresh() {
+    for (const p of projectList) cache.delete(p.id);
+    return load();
   }
 
   // Default to whichever tracker has the most information for this project —
@@ -199,6 +242,8 @@
     const adv = sortByDateDesc(r.advancements || [], 'advancement_date');
     return {
       id: r.id,
+      projectId: r._projectId,
+      projectName: r._projectName,
       name: r.consultee_name,
       badgeLabel: toTitleCase(r.position),
       badgeClass: positionBadgeClass(r.position),
@@ -210,16 +255,18 @@
   });
 
   $: conditionRows = conditions.map(c => {
-    const merged = mergedConditionTimeline(c);
+    const timeline = mergedConditionTimeline(c);
     return {
       id: c.id,
+      projectId: c._projectId,
+      projectName: c._projectName,
       name: c.condition_number ? `Condition ${c.condition_number} — ${c.title}` : c.title,
       badgeLabel: null,
       badgeClass: null,
       statusLabel: toTitleCase(c.status || 'Not Started'),
       statusClass: conditionStatusBadgeClass(c.status),
-      latest: merged[0] ? { date: merged[0].advancement_date, summary: merged[0].summary } : null,
-      count: merged.length,
+      latest: timeline[0] ? { date: timeline[0].advancement_date, summary: timeline[0].summary } : null,
+      count: timeline.length,
     };
   });
 
@@ -227,6 +274,8 @@
     const acts = sortByDateDesc(mainIssueActions(iss), 'action_date');
     return {
       id: iss.id,
+      projectId: iss._projectId,
+      projectName: iss._projectName,
       name: iss.title,
       badgeLabel: toTitleCase(iss.discipline),
       badgeClass: 'badge-neutral',
@@ -256,13 +305,13 @@
   }
 
   function handleBulkDone() {
-    load();
+    refresh();
   }
 
   function handleBulkClose() {
     showBulkAdd = false;
     bulkPreselectId = null;
-    load();
+    refresh();
   }
 
   // ── Per-row timeline popup ────────────────────────────────────────────────
@@ -270,12 +319,20 @@
   let pendingSuggestions = []; // post-add date check — see checkForRowDateSuggestion
 
   function openTimelineFor(row) {
+    if (merged) {
+      // The timeline modal's add/edit/date-suggestion calls below all close
+      // over the single `projectId` — not safe to open against a merged
+      // row that might belong to a different project. Jump into that
+      // project's own full tracker instead, where they work as normal.
+      openProjectModal(row.projectId, activeTrackerTabId, 'details');
+      return;
+    }
     timelineRow = { kind: activeType, id: row.id, name: row.name };
   }
 
   function closeTimeline() {
     timelineRow = null;
-    load();
+    refresh();
   }
 
   // responses/conditions/issues are passed in explicitly (rather than just
@@ -325,21 +382,21 @@
     if (timelineRow.kind === 'consultation') await createConsultationKeyDate(timelineRow.id, form);
     else if (timelineRow.kind === 'conditions') await createConditionKeyDate(timelineRow.id, form);
     else await createIssueKeyDate(timelineRow.id, form);
-    await load();
+    await refresh();
   }
 
   async function timelineUpdateKeyDate(id, form) {
     if (timelineRow.kind === 'consultation') await updateConsultationKeyDate(id, form);
     else if (timelineRow.kind === 'conditions') await updateConditionKeyDate(id, form);
     else await updateIssueKeyDate(id, form);
-    await load();
+    await refresh();
   }
 
   async function timelineDeleteKeyDate(id) {
     if (timelineRow.kind === 'consultation') await deleteConsultationKeyDate(id);
     else if (timelineRow.kind === 'conditions') await deleteConditionKeyDate(id);
     else await deleteIssueKeyDate(id);
-    await load();
+    await refresh();
   }
 
   // ── Master advancements (all rows of the active tracker, flattened) ────────
@@ -413,7 +470,7 @@
         items: [{ issue_id: rowId, summary: form.summary, sub_issue_ids: [], quote_id: null }],
       });
     }
-    await load();
+    await refresh();
     checkForRowDateSuggestion(kind, rowId, rowName, form.fullText, form.summary); // fire-and-forget
   }
 
@@ -476,14 +533,14 @@
     } else {
       await updateAction(id, { action_date: form.date, full_text: form.fullText, summary: form.summary });
     }
-    await load();
+    await refresh();
   }
 
   async function timelineDelete(id) {
     if (timelineRow.kind === 'consultation') await deleteConsultationAdvancement(id);
     else if (timelineRow.kind === 'conditions') await deleteConditionAdvancement(id);
     else await deleteAction(id);
-    await load();
+    await refresh();
   }
 
   async function timelineGenerate(fullText) {
@@ -525,17 +582,19 @@
         {/each}
       </div>
     </div>
-    <div class="tr-head-actions">
-      <button class="btn btn-primary btn-sm" on:click={() => openBulkAdd(null)} disabled={!activeRows.length}>
-        <i class="las la-history"></i> Add Advancement
-      </button>
-      <button class="btn btn-secondary btn-sm" on:click={() => showMasterAdvancements = true} disabled={!activeRows.length}>
-        <i class="las la-stream"></i> All Advancements
-      </button>
-      <button class="btn btn-icon btn-secondary" title="Open full {activeTrackerLabel}" on:click={openFullTracker}>
-        <i class="las la-expand-arrows-alt"></i>
-      </button>
-    </div>
+    {#if !merged}
+      <div class="tr-head-actions">
+        <button class="btn btn-primary btn-sm" on:click={() => openBulkAdd(null)} disabled={!activeRows.length}>
+          <i class="las la-history"></i> Add Advancement
+        </button>
+        <button class="btn btn-secondary btn-sm" on:click={() => showMasterAdvancements = true} disabled={!activeRows.length}>
+          <i class="las la-stream"></i> All Advancements
+        </button>
+        <button class="btn btn-icon btn-secondary" title="Open full {activeTrackerLabel}" on:click={openFullTracker}>
+          <i class="las la-expand-arrows-alt"></i>
+        </button>
+      </div>
+    {/if}
   </div>
 
   <div class="widget-body tr-body">
@@ -549,14 +608,19 @@
       {#each activeRows as row (row.id)}
         <div class="tr-row">
           <div class="tr-name">
-            <div class="tr-name-text">{row.name}</div>
+            <div class="tr-name-text">
+              {row.name}
+              {#if merged}<span class="badge badge-neutral tr-project-tag">{row.projectName}</span>{/if}
+            </div>
             {#if row.badgeLabel}<span class="badge {row.badgeClass}">{row.badgeLabel}</span>{/if}
           </div>
           {#if row.latest}
-            <button class="progress-cell" on:click={() => openTimelineFor(row)} title="View history">
+            <button class="progress-cell" on:click={() => openTimelineFor(row)} title={merged ? 'Open in project' : 'View history'}>
               <span class="progress-cell-date">{formatDate(row.latest.date)} &middot; {row.count} update{row.count !== 1 ? 's' : ''}</span>
               <span class="progress-cell-summary">{row.latest.summary}</span>
             </button>
+          {:else if merged}
+            <div class="progress-cell-empty"></div>
           {:else}
             <div class="progress-cell-empty">
               <button class="add-icon-btn" on:click={() => openBulkAdd(row.id)} title="Add first advancement">
@@ -571,42 +635,44 @@
   </div>
 </div>
 
-{#if activeType === 'consultation'}
-  <AddConsultationAdvancementModal
-    bind:show={showBulkAdd}
-    {projectId}
-    {responses}
-    preselectedResponseId={bulkPreselectId}
-    on:done={handleBulkDone}
-    on:close={handleBulkClose}
-  />
-{:else if activeType === 'conditions'}
-  <AddAdvancementModal
-    bind:show={showBulkAdd}
-    {projectId}
-    {conditions}
-    preselectedConditionId={bulkPreselectId}
-    on:done={handleBulkDone}
-    on:close={handleBulkClose}
-  />
-{:else}
-  <AddActionModal
-    bind:show={showBulkAdd}
-    {projectId}
-    {issues}
-    preselectedIssueId={bulkPreselectId}
-    on:done={handleBulkDone}
-    on:close={handleBulkClose}
+{#if !merged}
+  {#if activeType === 'consultation'}
+    <AddConsultationAdvancementModal
+      bind:show={showBulkAdd}
+      {projectId}
+      {responses}
+      preselectedResponseId={bulkPreselectId}
+      on:done={handleBulkDone}
+      on:close={handleBulkClose}
+    />
+  {:else if activeType === 'conditions'}
+    <AddAdvancementModal
+      bind:show={showBulkAdd}
+      {projectId}
+      {conditions}
+      preselectedConditionId={bulkPreselectId}
+      on:done={handleBulkDone}
+      on:close={handleBulkClose}
+    />
+  {:else}
+    <AddActionModal
+      bind:show={showBulkAdd}
+      {projectId}
+      {issues}
+      preselectedIssueId={bulkPreselectId}
+      on:done={handleBulkDone}
+      on:close={handleBulkClose}
+    />
+  {/if}
+
+  <MasterAdvancementsModal
+    bind:show={showMasterAdvancements}
+    title="All Advancements · {activeTrackerLabel}"
+    items={masterAdvancementItems}
+    onJumpToRow={jumpToRowFromMaster}
+    onClose={() => showMasterAdvancements = false}
   />
 {/if}
-
-<MasterAdvancementsModal
-  bind:show={showMasterAdvancements}
-  title="All Advancements · {activeTrackerLabel}"
-  items={masterAdvancementItems}
-  onJumpToRow={jumpToRowFromMaster}
-  onClose={() => showMasterAdvancements = false}
-/>
 
 {#if timelineRow}
   <AdvancementTimelineModal
@@ -665,6 +731,7 @@
     flex-shrink: 0;
   }
   .tr-name .badge { margin-top: 2px; }
+  .tr-project-tag { margin-left: 6px; }
 
   .progress-cell {
     flex: 1.6; min-width: 0; height: 40px; box-sizing: border-box;
