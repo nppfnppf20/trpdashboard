@@ -19,6 +19,7 @@ import quotesRoutes from './quotes.routes.js';
 import quoteRequestsRoutes from './quoteRequests.routes.js';
 import quoteActionsRoutes from './quoteActions.routes.js';
 import lookupsRoutes from './lookups.routes.js';
+import userProfilesRoutes from './userProfiles.routes.js';
 import workflowRoutes from './workflow.routes.js';
 import ingestionRoutes from './ingestion.routes.js';
 import voiceRoutes from './voice.routes.js';
@@ -104,6 +105,9 @@ router.use('/api/admin-console/workflow', workflowRoutes);
 
 // Lookups - dropdown options (GET /api/lookups/*)
 router.use('/api/lookups', lookupsRoutes);
+
+// User profiles - app account directory + login-time self-sync (GET /api/users, POST /api/users/me/sync)
+router.use('/api/users', userProfilesRoutes);
 
 // AI provider credit/quota status — any authenticated user, powers the app-wide warning banner
 router.use('/api/llm-status', llmStatusRoutes);

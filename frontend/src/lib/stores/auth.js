@@ -5,6 +5,7 @@
 
 import { writable, derived, get } from 'svelte/store';
 import { supabase, getUserRole, signOut as supabaseSignOut } from '$lib/supabase.js';
+import { syncMyProfile } from '$lib/api/userProfiles.js';
 import { goto } from '$app/navigation';
 
 // Core auth state
@@ -46,6 +47,9 @@ export async function initAuth() {
           console.warn('Failed to fetch user role:', e);
           userRole.set('viewer');
         }
+        // Fire-and-forget: keeps public.user_profiles in sync with the Supabase
+        // account so it can be queried/joined from Postgres. Never blocks login.
+        syncMyProfile().catch(e => console.warn('Failed to sync user profile:', e));
       }
       // SIGNED_IN / TOKEN_REFRESHED: do nothing.
       // The Supabase client already has the fresh token internally,
