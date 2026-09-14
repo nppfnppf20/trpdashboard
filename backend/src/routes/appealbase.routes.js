@@ -1,6 +1,6 @@
 /**
  * Appealbase Routes
- * Planning appeal precedent search — proxied through the backend so the
+ * Planning appeal precedent search, proxied through the backend so the
  * Appealbase API key stays server-side.
  */
 
