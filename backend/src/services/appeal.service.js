@@ -84,7 +84,7 @@ export async function generateAppealArgument({ projectName, refusalReasons, keyI
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 3000,
-    system: systemPrompt,
+    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
     messages: [{ role: 'user', content: userMessage }]
   });
 
@@ -187,7 +187,7 @@ FORMAT RULES (mandatory):
   const text = await callLLM({
     provider,
     maxTokens: 2000,
-    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}`,
+    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown — every paragraph is a <p> tag, lists are <ol> or <ul>, bold is <strong>. If you use **, *, or --- you have made an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}${ANTI_AI_SLOP_BLOCK}`,
     prompt
   });
 
@@ -216,6 +216,7 @@ Produce the complete ${draftTypeName} as HTML now.`;
       provider: resolvedProvider,
       model: MODEL_SONNET,
       maxTokens: 6000,
+      system: ANTI_AI_SLOP_BLOCK.trim(),
       prompt,
     });
     const raw = responseText.trim();
@@ -689,7 +690,7 @@ Return the complete amended document as clean HTML only:
   const raw = (await client.messages.stream({
     model: MODEL_SONNET,
     max_tokens: 16000,
-    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown. Never use em dashes (—).${HOUSE_STYLE_BLOCK}`,
+    system: `You are a planning appeal consultant. You output clean HTML documents. You never use markdown. Never use em dashes (—).${HOUSE_STYLE_BLOCK}${ANTI_AI_SLOP_BLOCK}`,
     messages: [{ role: 'user', content: prompt }],
   }).finalText()).trim();
   return noEmDash(raw.replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
@@ -831,7 +832,7 @@ Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you
     provider,
     model: MODEL_SONNET,
     maxTokens: 16000,
-    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.',
+    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.' + ANTI_AI_SLOP_BLOCK,
     prompt,
     stream: true,
   })).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -919,7 +920,7 @@ export async function incorporateSpecialistReportIntoIssue({
     provider,
     model: MODEL_SONNET,
     maxTokens: 16000,
-    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.',
+    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.' + ANTI_AI_SLOP_BLOCK,
     prompt,
     stream: true,
   })).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -972,7 +973,7 @@ export async function summariseSpecialistReportForIssue({
     provider,
     model: MODEL_SONNET,
     maxTokens: 1024,
-    system: 'You are a planning consultant. Return plain text only, no markdown formatting.',
+    system: 'You are a planning consultant. Return plain text only, no markdown formatting.' + ANTI_AI_SLOP_BLOCK,
     prompt,
     stream: true,
   });
@@ -1032,6 +1033,7 @@ Instructions:
   const raw = (await client.messages.stream({
     model: MODEL_SONNET,
     max_tokens: 8000,
+    system: ANTI_AI_SLOP_BLOCK.trim(),
     messages
   }).finalText()).trim();
 
@@ -1074,7 +1076,7 @@ export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues,
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 4000,
-    system: systemPrompt,
+    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
     prompt: userMessage,
   });
 
@@ -1093,7 +1095,7 @@ export async function draftIssueArgumentsFromBriefing({ briefingSummary, issues,
 export async function evolveArgumentFromBriefing({ issueLabel, existingArgument, newInformation, conversation = [], provider = null }) {
   const hasExisting = existingArgument?.trim();
 
-  const systemPrompt = `You are a planning consultant helping to evolve a planning argument for a specific issue. Your job is to produce a revised, coherent argument that incorporates new strategic information from a briefing note. Be direct and write in formal planning language. Do not use em dashes.`;
+  const systemPrompt = `You are a planning consultant helping to evolve a planning argument for a specific issue. Your job is to produce a revised, coherent argument that incorporates new strategic information from a briefing note. Be direct and write in formal planning language. Do not use em dashes.${ANTI_AI_SLOP_BLOCK}`;
 
   const userPrompt = `Issue: ${issueLabel}
 
@@ -1139,7 +1141,7 @@ Current argument:
 ${existingArgument?.trim() || '(none yet)'}
 
 Briefing note content:
-${briefingContent?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000) || '(no briefing content available)'}`;
+${briefingContent?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000) || '(no briefing content available)'}${ANTI_AI_SLOP_BLOCK}`;
 
   const response = await client.messages.create({
     model: MODEL_SONNET,
@@ -1258,6 +1260,7 @@ export async function suggestArgumentAddition({ text, documentType, documentTitl
   const response = await client.messages.create({
     model: MODEL_SONNET,
     max_tokens: 3000,
+    system: ANTI_AI_SLOP_BLOCK.trim(),
     messages
   });
 

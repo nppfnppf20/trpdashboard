@@ -1,4 +1,4 @@
-import { callClaude, MODEL_FAST } from './llm.shared.js';
+import { callClaude, MODEL_FAST, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Summary from pasted text — same mechanism as Conditions Tracker's
@@ -138,7 +138,7 @@ ${(fullText || '').slice(0, 80000)}
 ${issueBlocks}`;
 
   const systemPrompt = issues.length === 1 ? SUMMARY_SYSTEM_PROMPT_SINGLE : SUMMARY_SYSTEM_PROMPT;
-  const raw = await callClaude(systemPrompt, content, undefined, 8000);
+  const raw = await callClaude(systemPrompt + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
   return parseIssueActionItems(raw, 'progressTracker.service', 'Could not generate summaries from the provided text');
 }
 
@@ -246,7 +246,7 @@ ${(fullText || '').slice(0, 80000)}
 
 ${issueBlocks}`;
 
-  const raw = await callClaude(CANDIDATE_SYSTEM_PROMPT, content, undefined, 8000);
+  const raw = await callClaude(CANDIDATE_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
   return parseIssueActionItems(raw, 'progressTracker.service.candidates', 'Could not identify which issues this relates to');
 }
 
@@ -356,7 +356,7 @@ TRACKED ISSUES:
 
 ${issueBlocks}`;
 
-  const raw = await callClaude(MEETING_DRAFT_SYSTEM_PROMPT, content, undefined, 8000);
+  const raw = await callClaude(MEETING_DRAFT_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
 
   const blocks = raw.match(/<PROPOSAL>[\s\S]*?<\/PROPOSAL>/gi) || [];
   if (!blocks.length) {

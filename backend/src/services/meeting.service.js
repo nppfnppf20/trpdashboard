@@ -1,4 +1,4 @@
-import { callClaude, callLLM, resolveProvider } from './llm.shared.js';
+import { callClaude, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Process a meeting transcript into a structured record.
@@ -112,7 +112,7 @@ The following is an example of the required format and style. Match its structur
 ${brief.style_example.trim()}`
     : '';
 
-  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS, PROMPT_COMPLETED_ACTIONS, PROMPT_DATE_SUGGESTIONS].join('\n\n');
+  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS, PROMPT_COMPLETED_ACTIONS, PROMPT_DATE_SUGGESTIONS].join('\n\n') + ANTI_AI_SLOP_BLOCK;
 }
 
 function extractTag(text, tag) {

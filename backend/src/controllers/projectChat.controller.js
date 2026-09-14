@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { client, MODEL_SONNET } from '../services/llm.shared.js';
+import { client, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 
 function parseCitationsArray(text) {
   const t = text.trim();
@@ -137,7 +137,8 @@ ${sourceBlocks}`
       + (includeDateTool
         ? `\n\nYou additionally have a suggest_project_date tool available. Call it when — and only when — a source or the user explicitly states a specific new date for one of this project's tracked date fields, and it differs from the value already shown for that field above. Do not call it speculatively, for approximate dates, or for a date that matches what is already recorded. Always still produce your normal text reply regardless of whether you call the tool.`
         : '')
-      + emailToneInstructions(emailTone);
+      + emailToneInstructions(emailTone)
+      + ANTI_AI_SLOP_BLOCK;
 
     const response = await client.messages.create({
       model: MODEL_SONNET,

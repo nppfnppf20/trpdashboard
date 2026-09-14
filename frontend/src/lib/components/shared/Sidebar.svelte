@@ -22,6 +22,7 @@
     { href: '/team', label: 'Team', icon: 'la-users' },
     { href: '/policy', label: 'Policy & Industry Updates', icon: 'la-newspaper' },
     { href: '/meeting-notes', label: 'Meeting Notes', icon: 'la-file-signature' },
+    { href: '/appeal-search', label: 'Appeal Precedent Search', icon: 'la-gavel', beta: true },
     { href: '/tenders', label: 'Tenders', icon: 'la-landmark', beta: true },
     { href: '/marketing', label: 'Marketing', icon: 'la-bullhorn', beta: true },
     { href: '/webscraper', label: 'Web Scraper Data', icon: 'la-database' },

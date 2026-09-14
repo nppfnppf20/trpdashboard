@@ -10,13 +10,13 @@
  */
 
 import { pool } from '../db.js';
-import { callLLM, parseJSON, MODEL_FAST, resolveProvider } from '../services/llm.shared.js';
+import { callLLM, callClaude, parseJSON, MODEL_FAST, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 
 const DRAFT_TEXT_CAP = 40000;
 
-const SYSTEM_PROMPT = 'You are a senior planning consultant quality-checking a colleague\'s working draft before it goes to the client. Be precise and specific. Return only valid JSON. Never use em dashes (—) in any output; use a comma, colon, or rewrite the sentence instead.';
+const SYSTEM_PROMPT = 'You are a senior planning consultant quality-checking a colleague\'s working draft before it goes to the client. Be precise and specific. Return only valid JSON. Never use em dashes (—) in any output; use a comma, colon, or rewrite the sentence instead.' + ANTI_AI_SLOP_BLOCK;
 
 export const DEFAULT_BRIEF_CHECK_TEMPLATE = `You are reviewing a working draft of a planning document against the practice's guiding brief for this document type.
 

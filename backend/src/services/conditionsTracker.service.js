@@ -1,4 +1,4 @@
-import { callClaude, MODEL_FAST } from './llm.shared.js';
+import { callClaude, MODEL_FAST, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 const SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a planning conditions discharge tracker. The user will provide:
 
@@ -140,7 +140,7 @@ ${(fullText || '').slice(0, 80000)}
 ${conditionBlocks}`;
 
   const systemPrompt = conditions.length === 1 ? SYSTEM_PROMPT_SINGLE : SYSTEM_PROMPT;
-  const raw = await callClaude(systemPrompt, content, undefined, 8000);
+  const raw = await callClaude(systemPrompt + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
   return parseConditionAdvancementItems(raw, 'conditionsTracker.service', 'Could not generate summaries from the provided text');
 }
 
@@ -246,7 +246,7 @@ ${(fullText || '').slice(0, 80000)}
 
 ${conditionBlocks}`;
 
-  const raw = await callClaude(CANDIDATE_SYSTEM_PROMPT, content, undefined, 8000);
+  const raw = await callClaude(CANDIDATE_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
   return parseConditionAdvancementItems(raw, 'conditionsTracker.service.candidates', 'Could not identify which conditions this relates to');
 }
 
@@ -296,7 +296,7 @@ PERIOD COVERED: ${fromDate} to ${toDate}
 
 ${blocks}`;
 
-  const raw = await callClaude(SUMMARY_EMAIL_PROMPT, content, undefined, 4000);
+  const raw = await callClaude(SUMMARY_EMAIL_PROMPT + ANTI_AI_SLOP_BLOCK, content, undefined, 4000);
 
   const subject = extractTag(raw, 'SUBJECT');
   const body = extractTag(raw, 'BODY');

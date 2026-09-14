@@ -7,7 +7,7 @@ import { pool } from '../db.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { MODEL_SONNET, callLLM, resolveProvider } from '../services/llm.shared.js';
+import { MODEL_SONNET, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 import { parseFile } from '../services/parser.service.js';
@@ -1589,9 +1589,9 @@ export async function generateStage1Review(req, res) {
     // "Embedded Style Template" section heading; don't append the generic file-based
     // example on top of either.
     const hasOwnStyleExample = promptTemplate.includes('BEGIN STYLE EXAMPLE') || promptTemplate.includes('Embedded Style Template');
-    const systemPrompt = (promptTemplate.includes('{{STYLE_GUIDE}}') || hasOwnStyleExample)
+    const systemPrompt = ((promptTemplate.includes('{{STYLE_GUIDE}}') || hasOwnStyleExample)
       ? DEFAULT_STAGE1_SYSTEM_PROMPT
-      : DEFAULT_STAGE1_SYSTEM_PROMPT + TONE_EXAMPLE_BLOCK;
+      : DEFAULT_STAGE1_SYSTEM_PROMPT + TONE_EXAMPLE_BLOCK) + ANTI_AI_SLOP_BLOCK;
 
     // ── 7. Call LLM — expect HTML output directly ─────────────────────────────
     const bodyHtml = (await callLLM({

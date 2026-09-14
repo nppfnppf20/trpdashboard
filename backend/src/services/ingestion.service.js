@@ -6,7 +6,7 @@
 
 import { chunkText } from './parser.service.js';
 import { aggregateChunkResults } from './aggregator.service.js';
-import { callClaude, parseJSON, MAX_CHUNKS, MODEL_FAST, MODEL_SONNET } from './llm.shared.js';
+import { callClaude, parseJSON, MAX_CHUNKS, MODEL_FAST, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt constants
@@ -125,7 +125,7 @@ export async function runIngestion(rawText, topics, stageConfig = null) {
         '{{SUMMARIES}}',
         agg.partialSummaries.join('\n\n---\n\n')
       );
-      summary = (await callClaude(DEFAULT_SYSTEM_PROMPT, mergePrompt)).trim();
+      summary = (await callClaude(DEFAULT_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK, mergePrompt)).trim();
     } else if (agg.partialSummaries.length === 1) {
       summary = agg.partialSummaries[0];
     }
@@ -141,7 +141,7 @@ export async function runIngestion(rawText, topics, stageConfig = null) {
   }
 
   const docSummaryPrompt = DOCUMENT_SUMMARY_PROMPT.replace('{{FULL_RAW_TEXT}}', rawText.slice(0, 40000));
-  const documentSummary = (await callClaude(DEFAULT_SYSTEM_PROMPT, docSummaryPrompt)).trim();
+  const documentSummary = (await callClaude(DEFAULT_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK, docSummaryPrompt)).trim();
 
   const unmatchedPrompt = UNMATCHED_CONTENT_PROMPT
     .replace('{{FULL_RAW_TEXT}}', rawText.slice(0, 40000))

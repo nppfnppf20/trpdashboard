@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { client, MODEL_SONNET } from '../services/llm.shared.js';
+import { client, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 import { parseFile } from '../services/parser.service.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 
@@ -47,7 +47,7 @@ Always end your response with the updated content inside exactly these tags — 
 [updated HTML here]
 </section-draft>
 
-HTML rules: <h2> for section headings, <h3> for subsections, <p> for paragraphs, <ul><li> for lists, <strong> for bold. No markdown. No em dashes (—). If a specific fact is not in the source material or the existing content, write [SOURCE REQUIRED] in its place. Never invent project-specific information.${docBlock}${styleBlock}`;
+HTML rules: <h2> for section headings, <h3> for subsections, <p> for paragraphs, <ul><li> for lists, <strong> for bold. No markdown. No em dashes (—). If a specific fact is not in the source material or the existing content, write [SOURCE REQUIRED] in its place. Never invent project-specific information.${docBlock}${styleBlock}${ANTI_AI_SLOP_BLOCK}`;
 
     const response = await client.messages.create({
       model: MODEL_SONNET,

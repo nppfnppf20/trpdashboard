@@ -5,7 +5,7 @@
  *   suggestEmailEdits             — suggests scope section edits for a specific discipline
  */
 
-import { callClaude, parseJSON, noEmDash, MODEL_SONNET } from './llm.shared.js';
+import { callClaude, parseJSON, noEmDash, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 const DISCIPLINE_SYSTEM = `You are a planning consultant reviewing a project briefing note.
 Your task is to identify which specialist surveyor disciplines are required based on the project description, site characteristics, and constraints mentioned, a project-specific briefing note, and a standing practice guide for this type of development, where one is provided.
@@ -95,7 +95,7 @@ If NO: return hasChanges as false.
 Respond with JSON only:
 { "hasChanges": boolean, "reasoning": string, "suggestedContent": string | null }`;
 
-  const raw = await callClaude(EMAIL_EDIT_SYSTEM, user, MODEL_SONNET);
+  const raw = await callClaude(EMAIL_EDIT_SYSTEM + ANTI_AI_SLOP_BLOCK, user, MODEL_SONNET);
   const parsed = parseJSON(raw);
   if (!parsed) return { hasChanges: false, reasoning: 'Could not parse LLM response', suggestedContent: null };
   if (parsed.suggestedContent) {

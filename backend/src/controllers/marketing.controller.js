@@ -5,7 +5,7 @@
  */
 
 import { pool } from '../db.js';
-import { callClaude, MODEL_SONNET } from '../services/llm.shared.js';
+import { callClaude, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 
 const DEFAULT_PROMPTS = {
@@ -158,6 +158,7 @@ export async function generateDraft(req, res) {
     }
 
     systemPrompt += '\n\n## Formatting rules\n- Never use em dashes (—) under any circumstances. Use a comma, colon, or restructure the sentence instead.';
+    systemPrompt += ANTI_AI_SLOP_BLOCK;
 
     const raw = await callClaude(systemPrompt, userMessage, MODEL_SONNET, 2048);
     const firstTag = raw.indexOf('<');

@@ -1,5 +1,5 @@
 import { pool } from '../db.js';
-import { client, MODEL_SONNET } from '../services/llm.shared.js';
+import { client, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 import { getMultiProjectCatalogue, assembleMultiProjectContext, CONTEXT_BUDGET } from '../services/crossProjectChat.service.js';
 import { getTone } from '../services/emailTones.service.js';
 
@@ -93,7 +93,8 @@ citation rules:
 Source blocks:
 
 ${sourceBlocks}`
-      + emailToneInstructions(emailTone);
+      + emailToneInstructions(emailTone)
+      + ANTI_AI_SLOP_BLOCK;
 
     const response = await client.messages.create({
       model: MODEL_SONNET,

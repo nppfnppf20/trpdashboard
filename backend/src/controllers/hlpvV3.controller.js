@@ -7,9 +7,9 @@
  */
 
 import { pool } from '../db.js';
-import { MODEL_SONNET, callLLM, resolveProvider } from '../services/llm.shared.js';
+import { MODEL_SONNET, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 
-const HLPV_V3_SYSTEM_PROMPT = `You are a specialist planning consultant preparing a High-Level Planning View (HLPV) for a proposed development in England. This is an early-stage, desk-based preliminary appraisal, not a submission document — your entries must be proportionate, cautious, and draw only from the material provided. Write in the third person in clear, professional UK planning language. This document is client-facing: never reference the briefing transcript, the drafting issue notes, or any internal documents in your output — present all information as established fact as if you are the author of the appraisal.`;
+const HLPV_V3_SYSTEM_PROMPT = `You are a specialist planning consultant preparing a High-Level Planning View (HLPV) for a proposed development in England. This is an early-stage, desk-based preliminary appraisal, not a submission document — your entries must be proportionate, cautious, and draw only from the material provided. Write in the third person in clear, professional UK planning language. This document is client-facing: never reference the briefing transcript, the drafting issue notes, or any internal documents in your output — present all information as established fact as if you are the author of the appraisal.${ANTI_AI_SLOP_BLOCK}`;
 
 // User prompt template — stored in admin_console.llm_prompts (key: hlpv_v3); this is the fallback
 export const DEFAULT_HLPV_V3_TEMPLATE = `## Role and Purpose

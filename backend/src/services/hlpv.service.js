@@ -3,12 +3,12 @@
  * Produces professional site appraisal HTML from discipline risk data and briefing notes.
  */
 
-import { callClaude, noEmDash, MODEL_SONNET } from './llm.shared.js';
+import { callClaude, noEmDash, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 
 const HLPV_NARRATIVE_SYSTEM = `You are a specialist planning consultant at Third Revolution Projects writing a High-Level Planning View (HLPV). \
 This is a professional client-facing letter that assesses the planning constraints and opportunities affecting a proposed development. \
-Write with authority and precision in clear, professional planning language. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
+Write with authority and precision in clear, professional planning language. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${ANTI_AI_SLOP_BLOCK}`;
 
 /**
  * Strip any document-level wrapper elements that the LLM might add despite instructions.

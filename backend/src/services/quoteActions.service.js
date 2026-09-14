@@ -1,4 +1,4 @@
-import { callClaude, noEmDash, MODEL_FAST } from './llm.shared.js';
+import { callClaude, noEmDash, MODEL_FAST, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 // Actions tracker for instructed surveys — LLM summariser, mirroring the
 // conditions tracker's advancement summaries (conditionsTracker.service.js).
@@ -101,7 +101,7 @@ ${(fullText || '').slice(0, 80000)}
 
 ${quoteBlocks}`;
 
-  const raw = await callClaude(quoteStage ? QUOTE_STAGE_SYSTEM_PROMPT : SYSTEM_PROMPT, content, undefined, 4000);
+  const raw = await callClaude((quoteStage ? QUOTE_STAGE_SYSTEM_PROMPT : SYSTEM_PROMPT) + ANTI_AI_SLOP_BLOCK, content, undefined, 4000);
 
   const blocks = raw.match(/<ITEM>[\s\S]*?<\/ITEM>/gi) || [];
   if (!blocks.length) {

@@ -1,4 +1,4 @@
-import { callClaude, noEmDash, MODEL_FAST } from './llm.shared.js';
+import { callClaude, noEmDash, MODEL_FAST, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Extract key information from a statutory consultation response document.
@@ -240,7 +240,7 @@ ${(fullText || '').slice(0, 80000)}
 ${responseBlocks}`;
 
   const systemPrompt = responses.length === 1 ? ADVANCEMENT_SYSTEM_PROMPT_SINGLE : ADVANCEMENT_SYSTEM_PROMPT;
-  const raw = await callClaude(systemPrompt, content, undefined, 8000);
+  const raw = await callClaude(systemPrompt + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
   return parseAdvancementItems(raw, 'consultation.service', 'Could not generate summaries from the provided text');
 }
 
@@ -344,7 +344,7 @@ ${(fullText || '').slice(0, 80000)}
 
 ${responseBlocks}`;
 
-  const raw = await callClaude(ADVANCEMENT_CANDIDATE_SYSTEM_PROMPT, content, undefined, 8000);
+  const raw = await callClaude(ADVANCEMENT_CANDIDATE_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
   return parseAdvancementItems(raw, 'consultation.service.candidates', 'Could not identify which responses this relates to');
 }
 

@@ -4,7 +4,7 @@
  * document summarisation, briefing transcript processing, and prose suggestion.
  */
 
-import { client, noEmDash, callClaude, callLLM, resolveProvider, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, HOUSE_STYLE_BLOCK } from './llm.shared.js';
+import { client, noEmDash, callClaude, callLLM, resolveProvider, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, HOUSE_STYLE_BLOCK, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 import { BASE_SECTIONS, ISSUE_QUESTIONS, TAIL_SECTIONS } from './meetingGuideContent.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,7 +241,7 @@ async function generateLlmSlot({ instruction, variables, briefingSummary, styleT
   const text = await callLLM({
     provider: await resolveProvider('planning_statement_draft', provider),
     maxTokens: 600,
-    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${TONE_EXAMPLE_BLOCK}${briefingBlock}${styleBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks\n- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead`,
+    system: `You are writing a single short passage for a formal Planning Statement submission.\n\nProject context (for reference — do not reproduce these verbatim as they appear elsewhere in the document):\n${contextLines}${TONE_EXAMPLE_BLOCK}${briefingBlock}${styleBlock}\n\nRULES:\n- Write [SOURCE REQUIRED] for any project-specific fact not in the context above\n- Output clean HTML using only <p> tags (and <ul>/<li> only if the instruction explicitly asks for a list)\n- No headings, no markdown, no code blocks\n- Do not use em dashes (—); use a comma, colon, or rewrite the sentence instead${ANTI_AI_SLOP_BLOCK}`,
     prompt: instruction
   });
 
@@ -292,7 +292,7 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
     ? `\n\n## Example Document\nThe following is a real example of this document type written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Some elements are universal — how sections open, how conclusions are framed — and can be reflected in your output. Most content is project-specific and must not be reproduced. The guiding brief takes precedence over this example — do not follow the example more closely than the guiding brief.\n\n${styleTemplate.style_text.trim().slice(0, 8000)}`
     : '';
 
-  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`;
+  const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}${ANTI_AI_SLOP_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`;
 
   const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence, issueType);
 
@@ -389,7 +389,7 @@ export async function generatePlanningStatementSection({ section, variables, sec
   const text = await callLLM({
     provider: await resolveProvider('planning_statement_draft', provider),
     maxTokens: 4096,
-    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${HOUSE_STYLE_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`,
+    system: `You are a senior planning consultant writing a formal Planning Statement for submission to a local planning authority. Output clean HTML only — no markdown. Every paragraph is <p>, section headings are <h2>, subsection headings are <h3>, lists are <ul>/<li>, bold is <strong>. Never use **, *, #, or --- — those are errors. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.\n\nCRITICAL RULE: If you need to state a fact, figure, name, date, designation, measurement, or project-specific claim that is not explicitly present in the content provided to you, write [SOURCE REQUIRED] in its place. Never invent or infer project-specific information.${HOUSE_STYLE_BLOCK}${ANTI_AI_SLOP_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`,
     prompt: fullPrompt
   });
 
@@ -476,7 +476,7 @@ export async function summariseDocument(text, fileName, docType, customPrompt = 
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 16000,
-    system: systemPrompt,
+    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
     prompt: userPrompt,
   });
 
@@ -602,6 +602,7 @@ ${userNotesBlock}${paraBlock}`;
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 4000,
+    system: ANTI_AI_SLOP_BLOCK.trim(),
     prompt,
   });
 
@@ -651,7 +652,7 @@ export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issu
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 2000,
-    system: systemPrompt,
+    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
     prompt: userMessage,
   });
 
@@ -748,7 +749,7 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 8000,
-    system: systemPrompt,
+    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
     prompt: userMessage,
   });
 
@@ -816,6 +817,7 @@ Only include issues where the position note gives you enough to work with.`;
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 3000,
+    system: ANTI_AI_SLOP_BLOCK.trim(),
     prompt,
   });
 
@@ -931,6 +933,7 @@ export async function suggestPlanningArgumentAddition({ text, documentType, docu
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 3000,
+    system: ANTI_AI_SLOP_BLOCK.trim(),
     messages,
   });
 
