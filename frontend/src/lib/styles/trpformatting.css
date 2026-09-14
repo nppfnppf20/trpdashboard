@@ -26,18 +26,14 @@
   font-weight: 300;
   margin: 1.25rem 0 0.75rem;
   color: #1F4E78;
-  padding-top: 2rem;
-  position: relative;
 }
 
-/* Page Break visual indicator before H2 */
+/* Page Break visual indicator before H2 — kept in normal document flow
+   (not absolutely positioned) so a drag-selection crossing this boundary in
+   a contenteditable doesn't trip up the browser's selection-rect painting. */
 .trp-document-content h2::before {
   content: '— Page Break —';
   display: block;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
   text-align: center;
   font-size: 0.75rem;
   font-weight: 400;
@@ -45,7 +41,7 @@
   letter-spacing: 0.05em;
   border-top: 1px dashed #cbd5e1;
   padding-top: 0.25rem;
-  margin-bottom: 0.5rem;
+  margin: 1.5rem 0 1rem;
 }
 
 /* First H2 in document shouldn't show page break */

@@ -22,6 +22,9 @@
   import { buildExportFilename } from '$lib/services/exportFilename.js';
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
+  import DraftCommentsList from '$lib/components/planning-application/DraftCommentsList.svelte';
+  import SelectionPopup from '$lib/components/planning-application/SelectionPopup.svelte';
+  import { getDraftComments, updateDraftComment, deleteDraftComment } from '$lib/api/draftComments.js';
   import SectionChatPanel from '$lib/components/planning-application/SectionChatPanel.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
@@ -450,8 +453,11 @@
   let draftingIssuesType = null; // { id, slug, name } of the card whose Issues modal is open
 
   // Meeting Guide — launched from a draft card so it can show the briefing
-  // agenda tailored to that specific document type (only planning_statement_v3
-  // has dedicated content so far; other types fall back to the generic guide).
+  // agenda tailored to that specific document type (planning_statement_v3,
+  // stage1_review_v3, hlpv_v3, statement_of_case and statement_of_common_ground
+  // have dedicated content — see DOC_TYPE_GUIDES in meetingGuideContent.js;
+  // other types, including older non-v3 vintages of the above, fall back to
+  // the generic guide).
   let meetingGuideType = null; // { id, slug, name } of the card whose guide is open
   let meetingGuideIssues = [];
   async function openMeetingGuide(type) {
@@ -554,48 +560,84 @@
   let incorporateReviewMode = false;
   let sectionChatOpen = false;
   let checkPanelOpen = false;
-  let selectionAiScope = null;    // { paragraphIds, quotedText } | null — "Send to AI" from a highlight
-  let selectionCommentScope = null; // { paragraphIds, quotedText } | null — "Comment" from a highlight
+  // A highlight's compose popup: { paragraphIds, quotedText, top, left } | null
+  let selectionPopup = null;
+  // Once "Send to AI" is chosen from that popup, hands off to the review flow:
+  // { paragraphIds, quotedText, top, left, autoRun: { userNotes, file } } | null
+  let selectionAiHandoff = null;
 
   $: activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; selectionAiScope = null; selectionCommentScope = null; }
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; closeSelectionPopup(); closeSelectionAiHandoff(); commentsPanelOpen = false; }
   $: if (!checkPanelOpen) draftEditor?.clearHighlight();
 
-  function handleSelectionAction(e) {
-    const { action, paragraphIds, quotedText } = e.detail;
-    if (action === 'send-to-ai') {
-      selectionAiScope = { paragraphIds, quotedText };
-    } else if (action === 'comment') {
-      selectionCommentScope = { paragraphIds, quotedText };
+  function handleTextSelected(e) {
+    selectionPopup = e.detail;
+    selectionAiHandoff = null;
+  }
+
+  function closeSelectionPopup() {
+    selectionPopup = null;
+    draftEditor?.clearSelectionHighlight();
+  }
+
+  function closeSelectionAiHandoff() {
+    selectionAiHandoff = null;
+    draftEditor?.clearSelectionHighlight();
+  }
+
+  function handleSelectionCommented() {
+    selectionPopup = null;
+    draftEditor?.clearSelectionHighlight();
+    loadDraftComments();
+  }
+
+  function handleSendToAi(e) {
+    if (!selectionPopup) return;
+    // The highlight stays lit through the review step — only cleared once the
+    // AI handoff panel itself closes (see closeSelectionAiHandoff).
+    selectionAiHandoff = { ...selectionPopup, autoRun: e.detail };
+    selectionPopup = null;
+  }
+
+  $: quickIncorporateApi = activeType?.tool === 'appeal' ? appealIncorporateTargeted : null;
+
+  const AI_POPOVER_WIDTH = 460;
+  $: aiPopoverLeft = selectionAiHandoff
+    ? Math.min(Math.max(selectionAiHandoff.left - AI_POPOVER_WIDTH / 2, 16), (typeof window !== 'undefined' ? window.innerWidth : 1200) - AI_POPOVER_WIDTH - 16)
+    : 0;
+
+  // ── Draft paragraph comments (sticky notes) ───────────────────────────────
+  let draftComments = [];
+  let commentsPanelOpen = false;
+  $: draftKind = activeType?.tool === 'appeal' ? 'appeal' : 'planning_application';
+  $: if ($activeDraftTypeId && $activeDraftTypeId !== 'blank') { loadDraftComments(); } else { draftComments = []; }
+
+  async function loadDraftComments() {
+    try {
+      draftComments = await getDraftComments(project.id, draftKind, $activeDraftTypeId);
+    } catch (err) {
+      console.error('Failed to load draft comments:', err);
     }
   }
 
-  $: selectionAiDocTypes = activeType?.tool === 'appeal'
-    ? [
-        { value: 'project_briefing',  label: 'Project Briefing' },
-        { value: 'specialist_report', label: 'Specialist Report' },
-        { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
-        { value: 'revised_document',  label: 'Revised Document' },
-        { value: 'other',             label: 'Other Document' },
-      ]
-    : [
-        ...(activeType?.slug === 'planning_statement' ? [
-          { value: 'pre_app',              label: 'Pre-app Response',      projectDoc: true },
-          { value: 'eia_response',         label: 'EIA / ES Response',     projectDoc: true },
-          { value: 'sci',                  label: 'Statement of Community Involvement', projectDoc: true },
-          { value: 'site_surroundings',    label: 'Site & Surroundings',   projectDoc: true },
-          { value: 'about_applicant',      label: 'About the Applicant',   projectDoc: true },
-          { value: 'proposed_development', label: 'Proposed Development',  projectDoc: true },
-        ] : []),
-        { value: 'project_briefing',  label: 'Project Briefing' },
-        { value: 'specialist_report', label: 'Specialist Report' },
-        { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
-        { value: 'revised_document',  label: 'Revised Document' },
-        { value: 'other',             label: 'Other Document' },
-      ];
-  $: selectionAiApiScope = activeType?.tool === 'appeal' ? appealScopeIncorporation : null;
-  $: selectionAiApiIncorporate = activeType?.tool === 'appeal' ? appealIncorporateTargeted : null;
+  async function toggleCommentResolved(comment) {
+    try {
+      await updateDraftComment(comment.id, { resolved: !comment.resolved });
+      await loadDraftComments();
+    } catch (err) {
+      console.error('Failed to update comment:', err);
+    }
+  }
+
+  async function removeDraftComment(comment) {
+    try {
+      await deleteDraftComment(comment.id);
+      await loadDraftComments();
+    } catch (err) {
+      console.error('Failed to delete comment:', err);
+    }
+  }
 
   function toggleCheckPanel() {
     if (checkPanelOpen) { checkPanelOpen = false; return; }
@@ -757,6 +799,12 @@
             <i class="las la-clipboard-check"></i> Check
           </button>
           {#if $activeDraftTypeId !== 'blank'}
+            <button class="draft-context-btn" class:active={commentsPanelOpen} on:click={() => { commentsPanelOpen = !commentsPanelOpen; if (commentsPanelOpen) { checkPanelOpen = false; sectionChatOpen = false; } }} title="Comments left on this draft">
+              <i class="las la-comment-alt"></i> Comments
+              {#if draftComments.filter(c => !c.resolved).length > 0}<span class="comments-badge">{draftComments.filter(c => !c.resolved).length}</span>{/if}
+            </button>
+          {/if}
+          {#if $activeDraftTypeId !== 'blank'}
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
           </button>
@@ -770,7 +818,13 @@
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
         <div class="draft-left-panel" class:panel-hidden={incorporateReviewMode}>
-          <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={onDraftChange} on:selectionaction={handleSelectionAction} />
+          <RichTextEditor
+            bind:this={draftEditor}
+            content={$draftEditorHtml}
+            enableSelectionPopup={activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv'}
+            on:change={onDraftChange}
+            on:textselected={handleTextSelected}
+          />
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
           {#if checkPanelOpen}
@@ -781,6 +835,14 @@
               getDraftHtml={() => draftEditor?.getHTML() ?? $draftEditorHtml}
               locateText={(text) => draftEditor?.highlightText(text) ?? false}
               on:close={() => checkPanelOpen = false}
+            />
+          {:else if commentsPanelOpen}
+            <DraftCommentsList
+              comments={draftComments}
+              on:resolve={(e) => toggleCommentResolved(e.detail)}
+              on:delete={(e) => removeDraftComment(e.detail)}
+              on:locate={(e) => draftEditor?.highlightText(e.detail.quotedText)}
+              on:close={() => commentsPanelOpen = false}
             />
           {:else if sectionChatOpen}
             {@const _activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
@@ -860,57 +922,46 @@
         </div>
       </div>
 
-      {#if selectionAiScope}
-        <div class="selection-modal-backdrop" on:click={() => selectionAiScope = null}>
-          <div class="selection-modal" on:click|stopPropagation>
-            <div class="selection-modal-header">
-              <span><i class="las la-magic"></i> Send to AI</span>
-              <button class="selection-modal-close" on:click={() => selectionAiScope = null}><i class="las la-times"></i></button>
-            </div>
-            <div class="selection-modal-body">
-              <PlanningDocIncorporatePanel
-                {project}
-                typeId={$activeDraftTypeId}
-                currentDraftHtml={$draftEditorHtml}
-                splitAll={true}
-                manualSelect={true}
-                presetScope={selectionAiScope}
-                apiScope={selectionAiApiScope}
-                apiIncorporate={selectionAiApiIncorporate}
-                docTypes={selectionAiDocTypes}
-                enableIssueLink={activeType?.tool === 'appeal' && activeType?.slug === 'planning_statement_v3'}
-                on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
-                on:accepted={(e) => {
-                  $draftEditorHtml = e.detail.html;
-                  draftEditor?.setHTML(e.detail.html);
-                  $draftSaved = false;
-                  incorporateReviewMode = false;
-                  selectionAiScope = null;
-                }}
-              />
-            </div>
-          </div>
-        </div>
+      {#if selectionPopup}
+        <SelectionPopup
+          {project}
+          {draftKind}
+          draftTypeId={$activeDraftTypeId}
+          paragraphIds={selectionPopup.paragraphIds}
+          quotedText={selectionPopup.quotedText}
+          top={selectionPopup.top}
+          left={selectionPopup.left}
+          on:commented={handleSelectionCommented}
+          on:sendtoai={handleSendToAi}
+          on:close={closeSelectionPopup}
+        />
       {/if}
 
-      {#if selectionCommentScope}
-        <div class="selection-modal-backdrop" on:click={() => selectionCommentScope = null}>
-          <div class="selection-modal selection-modal--comment" on:click|stopPropagation>
-            <div class="selection-modal-header">
-              <span><i class="las la-comment-alt"></i> Comment</span>
-              <button class="selection-modal-close" on:click={() => selectionCommentScope = null}><i class="las la-times"></i></button>
-            </div>
-            <div class="selection-modal-body">
-              <DraftCommentComposer
-                {project}
-                draftKind={activeType?.tool === 'appeal' ? 'appeal' : 'planning_application'}
-                draftTypeId={$activeDraftTypeId}
-                paragraphIds={selectionCommentScope.paragraphIds}
-                quotedText={selectionCommentScope.quotedText}
-                on:saved={() => { selectionCommentScope = null; loadDraftComments(); }}
-                on:cancel={() => selectionCommentScope = null}
-              />
-            </div>
+      {#if selectionAiHandoff}
+        <div class="selection-anchor-popover" style="top:{selectionAiHandoff.top + 8}px; left:{aiPopoverLeft}px; width:{AI_POPOVER_WIDTH}px;">
+          <div class="selection-anchor-header">
+            <span><i class="las la-magic"></i> Send to AI</span>
+            <button class="selection-anchor-close" on:click={closeSelectionAiHandoff}><i class="las la-times"></i></button>
+          </div>
+          <div class="selection-anchor-body">
+            <PlanningDocIncorporatePanel
+              {project}
+              typeId={$activeDraftTypeId}
+              currentDraftHtml={$draftEditorHtml}
+              splitAll={true}
+              manualSelect={true}
+              presetScope={selectionAiHandoff}
+              autoRun={selectionAiHandoff.autoRun}
+              apiIncorporate={quickIncorporateApi}
+              on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
+              on:accepted={(e) => {
+                $draftEditorHtml = e.detail.html;
+                draftEditor?.setHTML(e.detail.html);
+                $draftSaved = false;
+                incorporateReviewMode = false;
+                closeSelectionAiHandoff();
+              }}
+            />
           </div>
         </div>
       {/if}
@@ -3031,6 +3082,49 @@
   }
   .draft-context-btn:hover { background: var(--color-violet-100); }
   .draft-context-btn.active { background: var(--color-violet-600); color: white; border-color: var(--color-violet-600); }
+
+  .comments-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.3rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-badge-danger-bg);
+    color: var(--color-badge-danger-fg);
+    font-size: 0.65rem;
+    font-weight: 700;
+  }
+
+  /* ── Selection anchor popover (Send to AI review, follows a highlight) ── */
+  .selection-anchor-popover {
+    position: fixed;
+    max-width: calc(100vw - 2rem);
+    max-height: calc(100vh - 4rem);
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid var(--color-slate-200);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-dropdown);
+    overflow: hidden;
+    z-index: 1000;
+  }
+  .selection-anchor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid var(--color-slate-200);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-slate-800);
+  }
+  .selection-anchor-header span { display: flex; align-items: center; gap: 0.4rem; }
+  .selection-anchor-close { background: none; border: none; color: var(--color-slate-400); cursor: pointer; font-size: 1rem; line-height: 1; }
+  .selection-anchor-close:hover { color: var(--color-slate-700); }
+  .selection-anchor-body { overflow-y: auto; }
 
   .modal-wide { max-width: 900px; }
 

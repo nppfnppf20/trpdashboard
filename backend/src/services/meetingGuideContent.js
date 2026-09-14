@@ -775,6 +775,123 @@ const HLPV_V3_SOLAR_CHECKLIST_WITH_CAVEAT = withLeadingCaveat(
   'This checklist is written for solar development - it’s the closest fit we have, but not every point will be relevant here. Use judgement on which apply and skip the rest.'
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Statement of Case / Statement of Common Ground
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Built against the actual generation prompts (migrations 069/070) rather
+// than a v3-style master-prompt rewrite - these two haven't had that
+// treatment and still pull their document structure from a runtime
+// {{GUIDING_BRIEF}} maintained in admin_console, not baked into the prompt
+// text, so section content here isn't checked against that brief - only
+// against what the generation prompt itself explicitly instructs.
+//
+// Deliberately NOT reused from the generic guide: that guide is a
+// pre-application briefing agenda (applicant background, pre-app engagement,
+// EIA scoping, community consultation) built for a meeting held before an
+// application goes in. Both these documents are post-refusal appeal
+// documents, built from the Decision Notice, Officer's Report and (for
+// SoCG) Committee Report/Minutes - facts the meeting doesn't need to supply,
+// since they come from uploaded documents. What the meeting genuinely needs
+// to supply is the appeal strategy: which reasons for refusal are being
+// contested and how, and any client instructions the source documents can't
+// carry on their own.
+//
+// Both prompts also read the project's existing drafting issue notes, but
+// frame the document around the Decision Notice's reasons for refusal
+// specifically, not free-standing issues - so the per-issue checklist below
+// is framed as "per reason for refusal" rather than reusing the generic
+// per-issue checklist used elsewhere.
+
+const APPEAL_SOURCE_DOCS_NOTE = 'Sanity check only, not really a meeting topic, but worth confirming before the meeting so any gaps can be chased before drafting starts.';
+
+const STATEMENT_OF_CASE_BASE_SECTIONS = [
+  {
+    title: 'Source Documents on File',
+    feedsLabel: APPEAL_SOURCE_DOCS_NOTE,
+    questions: [
+      'Is the Decision Notice uploaded? This is the spine of the whole document - the reasons for refusal are reproduced verbatim from it.',
+      "Is the Officer's Report uploaded?",
+      'Is the Planning Statement uploaded?',
+      'Are there any other supporting documents to upload - consultee responses, technical reports referenced in the officer\'s report?'
+    ]
+  },
+  {
+    title: 'Case Strategy and Client Instructions',
+    feedsLabel: 'Drives how the appellant\'s case is framed - not something the source documents can supply on their own',
+    questions: [
+      'What is the overall strategy for this appeal - are we contesting every reason for refusal, or conceding or narrowing any of them?',
+      'Has the client given specific instructions on tone, emphasis, or any point they want handled a particular way?',
+      'Which appeal procedure applies - written representations, hearing, or inquiry? This affects how the case should be pitched.',
+      'Are there any sensitivities the drafter should be aware of - e.g. the relationship with the case officer, or prior dealings with this LPA?',
+      'Has anything changed since the refusal - amended plans, new evidence, a completed survey - that should be reflected in the case?'
+    ]
+  }
+];
+
+const STATEMENT_OF_CASE_ISSUE_QUESTIONS = [
+  "What is the LPA's reason for refusal, in their own words?",
+  'What is our answer to it - the core argument?',
+  "Does the Officer's Report show any support, partial agreement, or absence of objection on this point, despite the committee's refusal? This can be useful even where the reason was upheld.",
+  'What evidence supports our position - reports, appeal precedent, policy compliance?',
+  'Is there anything unfavourable in the source material on this issue that needs to be addressed honestly rather than ignored?'
+];
+
+const STATEMENT_OF_CASE_TAIL_SECTIONS = [
+  {
+    title: 'Programme',
+    feedsLabel: 'Project date fields',
+    questions: [
+      'What is the appeal deadline?',
+      'Has a hearing or inquiry date already been set?',
+      'What is the timescale for submitting the Statement of Case?'
+    ]
+  }
+];
+
+const STATEMENT_OF_COMMON_GROUND_BASE_SECTIONS = [
+  {
+    title: 'Source Documents on File',
+    feedsLabel: APPEAL_SOURCE_DOCS_NOTE,
+    questions: [
+      'Is the Decision Notice uploaded?',
+      "Is the Officer's Report uploaded?",
+      'Is the Planning Statement uploaded?',
+      'Is the Committee Report uploaded? Only relevant where this went to committee.',
+      'Are the Committee Minutes uploaded?'
+    ]
+  },
+  {
+    title: 'Officer and Committee Position',
+    feedsLabel: 'Background section, and the starting point for what belongs in the Matters Not in Dispute table',
+    questions: [
+      'Did the officer recommend approval or refusal?',
+      'If the officer recommended approval and committee refused against that recommendation, make sure this is flagged explicitly - it is strategically important for the document.',
+      'Where committee went against the officer, what reason did they give? Is it recorded in the minutes?',
+      'Were there any procedural irregularities or unusual circumstances at committee worth noting?'
+    ]
+  }
+];
+
+const STATEMENT_OF_COMMON_GROUND_ISSUE_QUESTIONS = [
+  "What did the Officer's Report explicitly accept, find no objection to, or support on this issue - even if the overall application was refused?",
+  'Did any technical consultee (highways, ecology, heritage, etc.) confirm no objection on this issue?',
+  'What, if anything, remains genuinely disputed on this issue following refusal?',
+  'Has anything changed since refusal - amended plans, further evidence - that could move this from disputed to agreed?',
+  "Caution: don't treat something as agreed unless it's clearly supported by the source documents - this section should not manufacture common ground that isn't really there."
+];
+
+const STATEMENT_OF_COMMON_GROUND_TAIL_SECTIONS = [
+  {
+    title: 'Negotiation Status',
+    feedsLabel: 'Not read by the generation prompt itself, but useful context for whether this document is realistic to agree in time',
+    questions: [
+      'Has the LPA indicated any willingness to engage on a Statement of Common Ground?',
+      'Is there a deadline - e.g. ahead of a hearing or inquiry - to get it agreed by?'
+    ]
+  }
+];
+
 export const DOC_TYPE_GUIDES = {
   planning_statement_v3: {
     label: 'Planning Statement',
@@ -813,6 +930,22 @@ export const DOC_TYPE_GUIDES = {
       'Change of Use': HLPV_V3_URBAN_TOPIC_SECTIONS,
     },
     tailSections: HLPV_V3_TAIL_SECTIONS,
+  },
+  statement_of_case: {
+    label: 'Statement of Case',
+    baseSections: STATEMENT_OF_CASE_BASE_SECTIONS,
+    issueQuestions: STATEMENT_OF_CASE_ISSUE_QUESTIONS,
+    issueSectionLabel: 'Reason for Refusal',
+    issueSectionFeedsLabel: "Appellant's Case section (per reason for refusal)",
+    tailSections: STATEMENT_OF_CASE_TAIL_SECTIONS,
+  },
+  statement_of_common_ground: {
+    label: 'Statement of Common Ground',
+    baseSections: STATEMENT_OF_COMMON_GROUND_BASE_SECTIONS,
+    issueQuestions: STATEMENT_OF_COMMON_GROUND_ISSUE_QUESTIONS,
+    issueSectionLabel: 'Matters Agreed and Disputed',
+    issueSectionFeedsLabel: 'Matters Not in Dispute table (per reason for refusal)',
+    tailSections: STATEMENT_OF_COMMON_GROUND_TAIL_SECTIONS,
   }
 };
 

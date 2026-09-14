@@ -21,6 +21,7 @@ import quoteActionsRoutes from './quoteActions.routes.js';
 import lookupsRoutes from './lookups.routes.js';
 import userProfilesRoutes from './userProfiles.routes.js';
 import emailTonesRoutes from './emailTones.routes.js';
+import draftCommentsRoutes from './draftComments.routes.js';
 import workflowRoutes from './workflow.routes.js';
 import ingestionRoutes from './ingestion.routes.js';
 import voiceRoutes from './voice.routes.js';
@@ -114,6 +115,9 @@ router.use('/api/users', userProfilesRoutes);
 
 // Email tones - per-user saved tones for project-chat email drafting
 router.use('/api/email-tones', emailTonesRoutes);
+
+// Draft paragraph comments - sticky notes left on a highlighted passage of a draft document
+router.use('/api/draft-comments', draftCommentsRoutes);
 
 // AI provider credit/quota status — any authenticated user, powers the app-wide warning banner
 router.use('/api/llm-status', llmStatusRoutes);

@@ -22,6 +22,10 @@
   // these paragraph ids (from a text highlight in the draft editor) — an
   // attached document becomes optional, since userNotes alone is a valid edit.
   export let presetScope = null;        // { paragraphIds: string[], quotedText: string } | null
+  // When set alongside presetScope, notes/file were already collected by the
+  // caller's own compose UI (SelectionPopup) — skip the idle input form
+  // entirely and fire the incorporate call immediately on mount.
+  export let autoRun = null;            // { userNotes: string, file: File | null } | null
 
   let selectedDocType = docTypes?.[0]?.value ?? null;
 
@@ -74,6 +78,20 @@
   onMount(() => {
     if (!presetScope) return;
     allParagraphs = splitAllParagraphs(currentDraftHtml);
+
+    if (autoRun) {
+      // Notes/file were already collected by the caller's own popup — fire
+      // the incorporate call immediately instead of showing the idle form.
+      userNotes = autoRun.userNotes ?? '';
+      if (autoRun.file) {
+        uploadFile = autoRun.file;
+        inputTab = 'upload';
+      }
+      const targeted = allParagraphs.filter(p => presetScope.paragraphIds.includes(p.id));
+      runIncorporate(targeted);
+      return;
+    }
+
     if (presetScope.quotedText?.trim()) {
       userNotes = `Focus specifically on: "${presetScope.quotedText.trim()}"\n\n`;
     }
@@ -135,7 +153,7 @@
   const dispatch = createEventDispatcher();
 
   // idle | uploading | scoping | scoped | incorporating | review
-  let panelState = 'idle';
+  let panelState = (presetScope && autoRun) ? 'incorporating' : 'idle';
   let reviewRowsEl;
 
   let inputTab = 'upload';

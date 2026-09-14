@@ -5,6 +5,12 @@
   export let content = '';
   export let placeholder = 'Start typing...';
   export let fullHeight = false;
+  // Off for table-format deliverables (Stage 1 Review, HLPV) — their content
+  // is an HTML <table>, and selecting across table cells is a fundamentally
+  // different, cell-bounded browser behavior rather than flowing text
+  // selection. The paragraph-id scoping this popup relies on doesn't map onto
+  // table content sensibly anyway (the whole table is one "paragraph").
+  export let enableSelectionPopup = true;
 
   const dispatch = createEventDispatcher();
 
@@ -13,33 +19,29 @@
   let isItalic = false;
   let isUnderline = false;
 
-  // ── Selection toolbar (Comment / Send to AI) ──────────────────────────────
-  let selectionToolbar = null; // { top, left, paragraphIds, quotedText }
-
   onMount(() => {
     if (editorElement && content) {
       editorElement.innerHTML = content;
     }
 
+    // Firefox's contenteditable implementation has a legacy "object resizing"
+    // feature that can draw a resize box around a block element when a
+    // selection is extended across it — these two calls turn that off. A
+    // no-op (and safe) in browsers that don't support the commands.
+    try {
+      document.execCommand('enableObjectResizing', false, false);
+      document.execCommand('enableInlineTableEditing', false, false);
+    } catch { /* unsupported outside Firefox — harmless */ }
+
     // Listen for selection changes to update toolbar state
     document.addEventListener('selectionchange', updateToolbarState);
     document.addEventListener('mouseup', handleSelectionMouseUp);
-    document.addEventListener('mousedown', handleOutsideMouseDown);
 
     return () => {
       document.removeEventListener('selectionchange', updateToolbarState);
       document.removeEventListener('mouseup', handleSelectionMouseUp);
-      document.removeEventListener('mousedown', handleOutsideMouseDown);
     };
   });
-
-  let toolbarElement;
-
-  function handleOutsideMouseDown(e) {
-    if (toolbarElement && !toolbarElement.contains(e.target) && !editorElement?.contains(e.target)) {
-      selectionToolbar = null;
-    }
-  }
 
   // Maps a selection endpoint to the index of the top-level editor child it
   // falls within — matches the p{idx} scheme PlanningDocIncorporatePanel's
@@ -52,54 +54,73 @@
     return Array.prototype.indexOf.call(editorElement.children, el);
   }
 
-  function handleSelectionMouseUp(e) {
-    if (toolbarElement?.contains(e.target)) return;
+  // Reports a completed text selection up to the caller (paragraph ids touched,
+  // the quoted text, and a viewport anchor point) — the caller owns whatever UI
+  // shows up in response (a comment/AI popup). This component doesn't render
+  // any selection UI itself.
+  function handleSelectionMouseUp() {
+    if (!enableSelectionPopup) return;
     setTimeout(() => {
       const sel = document.getSelection();
       if (!sel || sel.isCollapsed || !editorElement || !editorElement.contains(sel.anchorNode)) {
-        selectionToolbar = null;
         return;
       }
       const range = sel.getRangeAt(0);
       const startIdx = topLevelChildIndex(range.startContainer);
       const endIdx = topLevelChildIndex(range.endContainer);
-      if (startIdx === -1 || endIdx === -1) {
-        selectionToolbar = null;
-        return;
-      }
+      if (startIdx === -1 || endIdx === -1) return;
+
       const lo = Math.min(startIdx, endIdx);
       const hi = Math.max(startIdx, endIdx);
       const paragraphIds = [];
       for (let i = lo; i <= hi; i++) paragraphIds.push(`p${i}`);
 
       const rect = range.getBoundingClientRect();
-      selectionToolbar = {
-        top: rect.top - 44,
-        left: rect.left + rect.width / 2,
+      const quotedText = sel.toString();
+
+      // This is the one point we trust the range: it's settled (drag is over)
+      // and has already passed the topLevelChildIndex checks above. Snapshot
+      // its geometry for our own highlight overlay, then drop the native
+      // selection entirely.
+      selectionHighlightRects = Array.from(range.getClientRects());
+      sel.removeAllRanges();
+
+      dispatch('textselected', {
         paragraphIds,
-        quotedText: sel.toString(),
-      };
+        quotedText,
+        top: rect.bottom,
+        left: rect.left + rect.width / 2,
+      });
     }, 0);
   }
 
-  function triggerSelectionAction(action) {
-    if (!selectionToolbar) return;
-    dispatch('selectionaction', {
-      action,
-      paragraphIds: selectionToolbar.paragraphIds,
-      quotedText: selectionToolbar.quotedText,
-    });
-    selectionToolbar = null;
-  }
-
   function updateToolbarState() {
-    if (!editorElement || !editorElement.contains(document.getSelection().anchorNode)) {
+    const sel = document.getSelection();
+    if (!editorElement || !sel || !editorElement.contains(sel.anchorNode)) {
       return;
     }
 
     isBold = document.queryCommandState('bold');
     isItalic = document.queryCommandState('italic');
     isUnderline = document.queryCommandState('underline');
+  }
+
+  // ── Selection highlight ────────────────────────────────────────────────────
+  // Drawn as plain positioned <div>s from Range.getClientRects(), NOT through
+  // native ::selection or the CSS Custom Highlight API. Both of those go
+  // through Firefox's internal selection-painting code, which has a bug
+  // rendering a contenteditable range that spans multiple block-level
+  // elements (shows as stray lines, or briefly balloons to cover far more
+  // than intended) — switching from ::selection to ::highlight() didn't
+  // escape it because both apparently share that same broken code path.
+  // Plain divs with a background color go through ordinary box painting
+  // instead, so they can't inherit that bug. Only ever set once, from the
+  // settled range at mouseup (see handleSelectionMouseUp) — never kept live
+  // during the drag itself.
+  let selectionHighlightRects = [];
+
+  export function clearSelectionHighlight() {
+    selectionHighlightRects = [];
   }
 
   function execCommand(command, value = null) {
@@ -353,20 +374,12 @@
   ></div>
 </div>
 
-{#if selectionToolbar}
+{#each selectionHighlightRects as r}
   <div
-    class="selection-toolbar"
-    bind:this={toolbarElement}
-    style="top:{selectionToolbar.top}px; left:{selectionToolbar.left}px;"
-  >
-    <button type="button" on:mousedown|preventDefault on:click={() => triggerSelectionAction('comment')}>
-      <i class="las la-comment-alt"></i> Comment
-    </button>
-    <button type="button" class="ai-btn" on:mousedown|preventDefault on:click={() => triggerSelectionAction('send-to-ai')}>
-      <i class="las la-magic"></i> Send to AI
-    </button>
-  </div>
-{/if}
+    class="selection-highlight-box"
+    style="top:{r.top}px; left:{r.left}px; width:{r.width}px; height:{r.height}px;"
+  ></div>
+{/each}
 
 <style>
   .rich-text-editor {
@@ -453,6 +466,25 @@
     font-style: italic;
   }
 
+  /* Native selection is painted invisibly for the entire drag — see
+     selectionHighlightRects in the script, which draws our own highlight as
+     plain positioned boxes instead, once the drag settles. Native selection
+     highlighting is left off throughout (rather than only after mouseup)
+     because Firefox's selection-painting bug for multi-block contenteditable
+     ranges shows up mid-drag too, not just at the end. */
+  .editor-content ::selection {
+    background-color: transparent;
+    color: inherit;
+  }
+
+  .selection-highlight-box {
+    position: fixed;
+    background-color: var(--color-primary-100);
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 5;
+  }
+
   /* Scrollbar styling */
   .editor-content::-webkit-scrollbar {
     width: 8px;
@@ -479,41 +511,6 @@
   }
   :global(.llm-generated *) {
     color: var(--color-slate-500) !important;
-  }
-
-  .selection-toolbar {
-    position: fixed;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 0.25rem;
-    padding: 0.25rem;
-    background: var(--color-slate-900);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-dropdown);
-    z-index: 1000;
-  }
-
-  .selection-toolbar button {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.65rem;
-    border: none;
-    background: transparent;
-    color: white;
-    font-size: 0.8rem;
-    font-weight: 500;
-    border-radius: 4px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .selection-toolbar button:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .selection-toolbar button.ai-btn i {
-    color: var(--color-primary-500);
   }
 </style>
 
