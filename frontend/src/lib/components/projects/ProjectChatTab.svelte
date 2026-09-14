@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
+  import { getEmailTones } from '$lib/api/emailTones.js';
   import { renderReply, buildSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
@@ -35,7 +36,55 @@
   let chatScroll;
   let expandedCitations = new Set();   // message indices with citations open
 
+  // ── Email tones — a user's saved tones for drafting emails in this chat.
+  // The default tone (if any) is pre-selected; sticky for the session only,
+  // not persisted. ──────────────────────────────────────────────────────────
+  let tones = [];
+  let tonesLoaded = false;
+  let tonesLoading = false;
+  let selectedToneId = null;
+  let toneOpen = false;
+  let toneBtn;
+  let tonePopoverStyle = '';
+
   onMount(loadSources);
+  onMount(loadTones);
+
+  async function loadTones() {
+    if (tonesLoaded || tonesLoading) return;
+    tonesLoading = true;
+    try {
+      tones = await getEmailTones();
+      const defaultTone = tones.find(t => t.is_default);
+      if (defaultTone) selectedToneId = defaultTone.id;
+      tonesLoaded = true;
+    } catch (err) {
+      console.error('Error loading email tones:', err);
+    } finally {
+      tonesLoading = false;
+    }
+  }
+
+  $: selectedTone = tones.find(t => t.id === selectedToneId) ?? null;
+
+  async function toggleTonePopover() {
+    if (!tonesLoaded) await loadTones();
+    toneOpen = !toneOpen;
+    if (toneOpen) {
+      await tick();
+      const rect = toneBtn.getBoundingClientRect();
+      tonePopoverStyle = `top:${rect.bottom + 6}px; left:${Math.max(8, rect.right - 260)}px;`;
+    }
+  }
+
+  function closeTonePopover() {
+    toneOpen = false;
+  }
+
+  function pickTone(id) {
+    selectedToneId = id;
+    toneOpen = false;
+  }
 
   async function loadSources() {
     loading = true;
@@ -191,6 +240,7 @@
       const result = await sendProjectChat(project.id, {
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         sources: buildSourcesPayload(),
+        emailToneId: selectedToneId,
       });
       messages = [...messages, { role: 'assistant', content: result.reply, citations: result.citations ?? [], suggestions: result.suggestions ?? [] }];
     } catch (err) {
@@ -224,6 +274,8 @@
 
   const fmtChars = c => c >= 1000 ? `${Math.round(c / 1000)}k` : `${c}`;
 </script>
+
+<svelte:window on:click={closeTonePopover} />
 
 <div class="pc-layout">
   <!-- Source picker -->
@@ -341,6 +393,19 @@
 
   <!-- Chat panel -->
   <div class="pc-chat">
+    <div class="pc-chat-head">
+      <button
+        class="pc-tone-btn"
+        class:pc-tone-btn-active={toneOpen}
+        bind:this={toneBtn}
+        on:click|stopPropagation={toggleTonePopover}
+        title="Pick the tone the assistant should use when it drafts an email"
+      >
+        <i class="las la-envelope"></i>
+        Email
+        {#if selectedTone}<span class="pc-tone-count" title={selectedTone.label}>{selectedTone.label}</span>{/if}
+      </button>
+    </div>
     <div class="pc-messages" bind:this={chatScroll}>
       {#if messages.length === 0}
         <div class="pc-chat-empty">
@@ -417,6 +482,32 @@
     </div>
   </div>
 </div>
+
+{#if toneOpen}
+  <div class="pc-tone-popover" style={tonePopoverStyle} on:click|stopPropagation>
+    {#if tonesLoading && !tonesLoaded}
+      <div class="pc-sources-loading"><div class="mini-spinner"></div> Loading tones…</div>
+    {:else if !tones.length}
+      <div class="pc-tone-empty">
+        No email tones saved yet. Add one from your profile page to have the assistant draft emails in your voice.
+      </div>
+    {:else}
+      <div class="pc-tone-scroll">
+        <button class="pc-tone-row" class:pc-tone-row-active={selectedToneId === null} on:click={() => pickTone(null)}>
+          <i class="las {selectedToneId === null ? 'la-dot-circle' : 'la-circle'}"></i>
+          <span class="pc-tone-row-label">None</span>
+        </button>
+        {#each tones as tone}
+          <button class="pc-tone-row" class:pc-tone-row-active={selectedToneId === tone.id} on:click={() => pickTone(tone.id)}>
+            <i class="las {selectedToneId === tone.id ? 'la-dot-circle' : 'la-circle'}"></i>
+            <span class="pc-tone-row-label">{tone.label}</span>
+            {#if tone.is_default}<span class="pc-tone-default">Default</span>{/if}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+{/if}
 
 <style>
   .pc-layout {
@@ -568,6 +659,38 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+  }
+
+  .pc-chat-head {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.6rem 1.25rem 0;
+    flex-shrink: 0;
+  }
+
+  .pc-tone-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-slate-200);
+    background: var(--color-white);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-slate-600);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .pc-tone-btn:hover { background: var(--color-slate-50); }
+  .pc-tone-btn-active { border-color: var(--color-primary-200); background: var(--color-primary-50); color: var(--color-primary-700); }
+
+  .pc-tone-count {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
   }
 
   .pc-messages {
@@ -778,5 +901,67 @@
 
   @keyframes pc-spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* ── Email tone popover — position:fixed so it escapes any clipping
+     ancestors; coordinates set inline from the trigger button's rect. ── */
+  .pc-tone-popover {
+    position: fixed;
+    width: 260px;
+    max-height: 320px;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-dropdown);
+    z-index: 50;
+  }
+
+  .pc-tone-empty {
+    padding: 1rem;
+    font-size: 0.78rem;
+    color: var(--color-slate-500);
+    line-height: 1.5;
+  }
+
+  .pc-tone-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+
+  .pc-tone-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    color: var(--color-slate-700);
+    cursor: pointer;
+    text-align: left;
+  }
+  .pc-tone-row:hover { background: var(--color-slate-50); }
+  .pc-tone-row-active { color: var(--color-violet-700); font-weight: 600; }
+  .pc-tone-row i { flex-shrink: 0; }
+
+  .pc-tone-row-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pc-tone-default {
+    font-size: 0.65rem;
+    color: var(--color-slate-400);
+    flex-shrink: 0;
   }
 </style>

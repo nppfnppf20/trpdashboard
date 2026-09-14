@@ -79,24 +79,22 @@
   }
 
   function pickProject(id) {
-    const view = $mainView;
-    const currentTab = $mainViewInitialTab;
     selectProject(id);
     switcherOpen = false;
-    if (view === null) {
-      // Picking a project from a global page (not already inside a project
-      // workspace) — jump straight into that project's Overview rather than
-      // leaving you on the same global page with just the switcher updated
-      // underneath you.
-      openProjectModal(id, 'details');
-    } else if (view === 'project') {
-      // ProjectViewModal reads its project from mainViewProjectId, not the
-      // selection store directly, so switching project while already inside
-      // it needs an explicit re-open — same tab, new project's data.
-      openProjectModal(id, currentTab);
-    }
-    // 'surveyor' and 'planning' read the selection store directly, so
-    // selectProject(id) above is enough to swap their data in place.
+    // Always snap to the newly-picked project's Overview — regardless of
+    // what page/tab you were on (a global page, another project's tab,
+    // surveyor/planning, or someone's profile) — rather than leaving you
+    // stranded on a view that no longer matches the selected project.
+    openProjectModal(id, 'details');
+  }
+
+  function goToGlobalPage() {
+    // Global pages aren't about any one project, so drop the selection
+    // entirely — otherwise the switcher and Project Workspace nav below it
+    // keep showing the last-picked project, making it look like you're
+    // still inside its workspace.
+    closeProjectModal();
+    clearProjectSelection();
   }
 
   function openWorkspaceTab(tab) {
@@ -257,7 +255,7 @@
     <div class="divider"></div>
     <div class="section-label">Global</div>
     {#each globalNavItems as item}
-      <a href={item.href} class="nav-item" class:active={$mainView === null && ($page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href)))} on:click={closeProjectModal}>
+      <a href={item.href} class="nav-item" class:active={$mainView === null && ($page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href)))} on:click={goToGlobalPage}>
         <i class="las {item.icon}"></i>
         <span>{item.label}</span>
         {#if item.beta}<span class="beta-tag">BETA</span>{/if}
@@ -265,7 +263,7 @@
     {/each}
 
     <div class="divider"></div>
-    <a href={adminNavItem.href} class="nav-item" class:active={$mainView === null && $page.url.pathname.startsWith(adminNavItem.href)} on:click={closeProjectModal}>
+    <a href={adminNavItem.href} class="nav-item" class:active={$mainView === null && $page.url.pathname.startsWith(adminNavItem.href)} on:click={goToGlobalPage}>
       <i class="las {adminNavItem.icon}"></i>
       <span>{adminNavItem.label}</span>
     </a>
@@ -423,7 +421,7 @@
   }
 
   .beta-tag {
-    margin-left: auto;
+    margin-left: var(--space-1);
     font-size: 0.5625rem;
     font-weight: 700;
     letter-spacing: 0.04em;

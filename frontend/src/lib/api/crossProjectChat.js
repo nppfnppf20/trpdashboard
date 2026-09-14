@@ -31,11 +31,11 @@ export async function getCrossProjectSources(projectIds) {
  * @param {number[]} projectIds
  * @param {{ sources: Record<string, object>, messages: Array<{role: string, content: string}> }} payload
  */
-export async function sendCrossProjectChat(projectIds, { sources, messages }) {
+export async function sendCrossProjectChat(projectIds, { sources, messages, emailToneId }) {
   const response = await authFetch(`${API_BASE_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project_ids: projectIds, sources, messages }),
+    body: JSON.stringify({ project_ids: projectIds, sources, messages, emailToneId }),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));

@@ -214,7 +214,6 @@
   <div class="widget-body ts-body">
     {#if !selectedProject}
       <div class="empty-state ts-empty">
-        <i class="las la-mouse-pointer"></i>
         <p>Choose a project above to view its trackers and Surveyor Management.</p>
       </div>
     {:else}

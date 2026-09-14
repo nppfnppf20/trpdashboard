@@ -12,6 +12,12 @@ function parseCitationsArray(text) {
   return [];
 }
 import { getSourceCatalogue, assembleContext, CONTEXT_BUDGET } from '../services/projectChat.service.js';
+import { getTone } from '../services/emailTones.service.js';
+
+function emailToneInstructions(tone) {
+  if (!tone) return '';
+  return `\n\nIf — and only if — the user asks you to compose, draft, or write an email, write its prose in the following tone/style, modelled on these real examples the user has sent before. This does not apply to normal Q&A answers, and does not relax the citation/grounding rules above for any factual claims the email contains.\n\nTone: ${tone.label}\nExample emails:\n${tone.sample_text}`;
+}
 
 // ── Project date suggestions (tool_use) ─────────────────────────────────────
 // Column/label pairs match EditProjectModal.svelte's date fields exactly, so
@@ -62,11 +68,13 @@ export async function getSources(req, res) {
 
 export async function chat(req, res) {
   const { projectId } = req.params;
-  const { messages, sources } = req.body;
+  const { messages, sources, emailToneId } = req.body;
 
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
   try {
+    const emailTone = emailToneId ? await getTone(req.user.id, emailToneId) : null;
+
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, client, ${PROJECT_DATE_FIELDS.map(f => f.column).join(', ')}
          FROM public.projects WHERE id = $1`,
@@ -128,7 +136,8 @@ Source blocks:
 ${sourceBlocks}`
       + (includeDateTool
         ? `\n\nYou additionally have a suggest_project_date tool available. Call it when — and only when — a source or the user explicitly states a specific new date for one of this project's tracked date fields, and it differs from the value already shown for that field above. Do not call it speculatively, for approximate dates, or for a date that matches what is already recorded. Always still produce your normal text reply regardless of whether you call the tool.`
-        : '');
+        : '')
+      + emailToneInstructions(emailTone);
 
     const response = await client.messages.create({
       model: MODEL_SONNET,

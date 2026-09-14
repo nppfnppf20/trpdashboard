@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
+  import { getEmailTones } from '$lib/api/emailTones.js';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { renderReply, buildSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
@@ -38,7 +39,52 @@
   let sourcesBtn;
   let popoverStyle = '';
 
+  // ── Email tones — a user's saved tones for drafting emails in this chat.
+  // The default tone (if any) is pre-selected; sticky for the session only,
+  // not persisted. ──────────────────────────────────────────────────────────
+  let tones = [];
+  let tonesLoaded = false;
+  let tonesLoading = false;
+  let selectedToneId = null;
+  let toneOpen = false;
+  let toneBtn;
+  let tonePopoverStyle = '';
+
   onMount(loadSources);
+  onMount(loadTones);
+
+  async function loadTones() {
+    if (tonesLoaded || tonesLoading) return;
+    tonesLoading = true;
+    try {
+      tones = await getEmailTones();
+      const defaultTone = tones.find(t => t.is_default);
+      if (defaultTone) selectedToneId = defaultTone.id;
+      tonesLoaded = true;
+    } catch (err) {
+      console.error('Error loading email tones:', err);
+    } finally {
+      tonesLoading = false;
+    }
+  }
+
+  $: selectedTone = tones.find(t => t.id === selectedToneId) ?? null;
+
+  async function toggleTonePopover() {
+    if (!tonesLoaded) await loadTones();
+    sourcesOpen = false;
+    toneOpen = !toneOpen;
+    if (toneOpen) {
+      await tick();
+      const rect = toneBtn.getBoundingClientRect();
+      tonePopoverStyle = `top:${rect.bottom + 6}px; left:${Math.max(8, rect.right - 260)}px;`;
+    }
+  }
+
+  function pickTone(id) {
+    selectedToneId = id;
+    toneOpen = false;
+  }
 
   async function loadSources() {
     if (sourcesLoaded || sourcesLoading) return;
@@ -152,6 +198,7 @@
 
   async function toggleSourcesPopover() {
     if (!sourcesOpen) await loadSources();
+    toneOpen = false;
     sourcesOpen = !sourcesOpen;
     if (sourcesOpen) {
       await tick();
@@ -160,8 +207,9 @@
     }
   }
 
-  function closeSourcesPopover() {
+  function closeAllPopovers() {
     sourcesOpen = false;
+    toneOpen = false;
   }
 
   async function send() {
@@ -178,6 +226,7 @@
       const result = await sendProjectChat(project.id, {
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         sources: buildSourcesPayload(),
+        emailToneId: selectedToneId,
       });
       messages = [...messages, { role: 'assistant', content: result.reply, suggestions: result.suggestions ?? [] }];
     } catch (err) {
@@ -220,7 +269,7 @@
   }
 </script>
 
-<svelte:window on:click={closeSourcesPopover} />
+<svelte:window on:click={closeAllPopovers} />
 
 <div class="widget">
   <div class="widget-head">
@@ -239,6 +288,17 @@
         <i class="las la-layer-group"></i>
         Sources
         {#if sourcesLoaded}<span class="cw-sources-count">{selectedCount}</span>{/if}
+      </button>
+      <button
+        class="cw-sources-btn"
+        class:cw-sources-btn-active={toneOpen}
+        bind:this={toneBtn}
+        on:click|stopPropagation={toggleTonePopover}
+        title="Pick the tone the assistant should use when it drafts an email"
+      >
+        <i class="las la-envelope"></i>
+        Email
+        {#if selectedTone}<span class="cw-sources-count cw-tone-count" title={selectedTone.label}>{selectedTone.label}</span>{/if}
       </button>
       <button class="widget-expand" on:click={() => openProjectModal(projectId, 'project_chat', 'details')}>
         Open <i class="las la-angle-right"></i>
@@ -384,6 +444,32 @@
         <div class="cw-context-track">
           <div class="cw-context-fill" style="width:{contextPct}%; background:{contextColour}"></div>
         </div>
+      </div>
+    {/if}
+  </div>
+{/if}
+
+{#if toneOpen}
+  <div class="cw-sources-popover cw-tone-popover" style={tonePopoverStyle} on:click|stopPropagation>
+    {#if tonesLoading && !tonesLoaded}
+      <div class="cw-sources-loading"><span class="mini-spinner"></span> Loading tones…</div>
+    {:else if !tones.length}
+      <div class="cw-tone-empty">
+        No email tones saved yet. Add one from your profile page to have the assistant draft emails in your voice.
+      </div>
+    {:else}
+      <div class="cw-sources-scroll">
+        <button class="cw-tone-row" class:cw-tone-row-active={selectedToneId === null} on:click={() => pickTone(null)}>
+          <i class="las {selectedToneId === null ? 'la-dot-circle' : 'la-circle'}"></i>
+          <span class="cw-src-label">None</span>
+        </button>
+        {#each tones as tone}
+          <button class="cw-tone-row" class:cw-tone-row-active={selectedToneId === tone.id} on:click={() => pickTone(tone.id)}>
+            <i class="las {selectedToneId === tone.id ? 'la-dot-circle' : 'la-circle'}"></i>
+            <span class="cw-src-label">{tone.label}</span>
+            {#if tone.is_default}<span class="cw-tone-default">Default</span>{/if}
+          </button>
+        {/each}
       </div>
     {/if}
   </div>
@@ -548,4 +634,47 @@
 
   .cw-context-track { height: 5px; border-radius: 3px; background: var(--color-slate-200); overflow: hidden; }
   .cw-context-fill { height: 100%; border-radius: 3px; transition: width 0.2s ease, background 0.2s ease; }
+
+  /* ── Email tone popover ── */
+  .cw-tone-count {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cw-tone-popover { width: 260px; max-height: 320px; }
+
+  .cw-tone-empty {
+    padding: 1rem;
+    font-size: 0.78rem;
+    color: var(--color-slate-500);
+    line-height: 1.5;
+  }
+
+  .cw-tone-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    color: var(--color-slate-700);
+    cursor: pointer;
+    text-align: left;
+  }
+  .cw-tone-row:hover { background: var(--color-slate-50); }
+  .cw-tone-row-active { color: var(--color-primary-700); font-weight: 600; }
+  .cw-tone-row i { flex-shrink: 0; }
+
+  .cw-tone-default {
+    margin-left: auto;
+    font-size: 0.65rem;
+    color: var(--color-slate-400);
+    flex-shrink: 0;
+  }
 </style>

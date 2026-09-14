@@ -1,13 +1,18 @@
 <script>
   import { getUsers, getProjectsForUser } from '$lib/api/userProfiles.js';
+  import { user as currentUser } from '$lib/stores/auth.js';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import KeyDatesWidget from '$lib/components/projects/overview/KeyDatesWidget.svelte';
   import MeetingNotesWidget from '$lib/components/projects/overview/MeetingNotesWidget.svelte';
   import TrackersSurveyorWidget from './TrackersSurveyorWidget.svelte';
   import CrossProjectChatWidget from './CrossProjectChatWidget.svelte';
+  import EmailTonesSettings from './EmailTonesSettings.svelte';
 
   export let userId = null;
   export let onClose = () => {};
+
+  $: isOwnProfile = !!$currentUser && userId === $currentUser.id;
+  let emailTonesOpen = false;
 
   let profile = null;
   let allProjects = [];
@@ -81,6 +86,11 @@
           <h1 class="pw-name">{profile.display_name}</h1>
           {#if profile.role}<span class="badge badge-neutral">{profile.role}</span>{/if}
         </div>
+        {#if isOwnProfile}
+          <button class="btn btn-icon btn-ghost" on:click={() => (emailTonesOpen = true)} title="Email tones" aria-label="Email tones">
+            <i class="las la-sliders-h"></i>
+          </button>
+        {/if}
       </div>
       <button class="btn btn-icon btn-ghost" on:click={onClose} title="Close" aria-label="Close">
         <i class="las la-times"></i>
@@ -123,6 +133,10 @@
     </div>
   {/if}
 </div>
+
+{#if emailTonesOpen}
+  <EmailTonesSettings onClose={() => (emailTonesOpen = false)} />
+{/if}
 
 <style>
   .pw-workspace {

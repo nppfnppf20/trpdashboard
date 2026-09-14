@@ -6,8 +6,9 @@
   // widget has no need for. Same flat "everything ticked goes into the
   // prompt" design, just unioned across a handful of projects — no
   // retrieval/RAG here either.
-  import { tick } from 'svelte';
+  import { tick, onMount } from 'svelte';
   import { getCrossProjectSources, sendCrossProjectChat } from '$lib/api/crossProjectChat.js';
+  import { getEmailTones } from '$lib/api/emailTones.js';
   import { renderReply, buildMultiProjectSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
 
   export let projects = []; // [{ id, project_name, ... }]
@@ -35,6 +36,52 @@
   let sourcesOpen = false;
   let sourcesBtn;
   let popoverStyle = '';
+
+  // ── Email tones — a user's saved tones for drafting emails in this chat.
+  // The default tone (if any) is pre-selected; sticky for the session only,
+  // not persisted. ──────────────────────────────────────────────────────────
+  let tones = [];
+  let tonesLoaded = false;
+  let tonesLoading = false;
+  let selectedToneId = null;
+  let toneOpen = false;
+  let toneBtn;
+  let tonePopoverStyle = '';
+
+  onMount(loadTones);
+
+  async function loadTones() {
+    if (tonesLoaded || tonesLoading) return;
+    tonesLoading = true;
+    try {
+      tones = await getEmailTones();
+      const defaultTone = tones.find(t => t.is_default);
+      if (defaultTone) selectedToneId = defaultTone.id;
+      tonesLoaded = true;
+    } catch (err) {
+      console.error('Error loading email tones:', err);
+    } finally {
+      tonesLoading = false;
+    }
+  }
+
+  $: selectedTone = tones.find(t => t.id === selectedToneId) ?? null;
+
+  async function toggleTonePopover() {
+    if (!tonesLoaded) await loadTones();
+    sourcesOpen = false;
+    toneOpen = !toneOpen;
+    if (toneOpen) {
+      await tick();
+      const rect = toneBtn.getBoundingClientRect();
+      tonePopoverStyle = `top:${rect.bottom + 6}px; left:${Math.max(8, rect.right - 260)}px;`;
+    }
+  }
+
+  function pickTone(id) {
+    selectedToneId = id;
+    toneOpen = false;
+  }
 
   $: {
     const key = projects.map(p => p.id).sort((a, b) => a - b).join(',');
@@ -150,6 +197,7 @@
   }
 
   async function toggleSourcesPopover() {
+    toneOpen = false;
     sourcesOpen = !sourcesOpen;
     if (sourcesOpen) {
       await tick();
@@ -158,8 +206,9 @@
     }
   }
 
-  function closeSourcesPopover() {
+  function closeAllPopovers() {
     sourcesOpen = false;
+    toneOpen = false;
   }
 
   async function send() {
@@ -176,6 +225,7 @@
       const result = await sendCrossProjectChat(projects.map(p => p.id), {
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         sources: buildSourcesPayload(),
+        emailToneId: selectedToneId,
       });
       messages = [...messages, { role: 'assistant', content: result.reply }];
     } catch (err) {
@@ -213,7 +263,7 @@
   }
 </script>
 
-<svelte:window on:click={closeSourcesPopover} />
+<svelte:window on:click={closeAllPopovers} />
 
 <div class="widget">
   <div class="widget-head">
@@ -232,6 +282,17 @@
         <i class="las la-layer-group"></i>
         Sources
         {#if sourcesLoaded}<span class="cpc-sources-count">{selectedCount}</span>{/if}
+      </button>
+      <button
+        class="cpc-sources-btn"
+        class:cpc-sources-btn-active={toneOpen}
+        bind:this={toneBtn}
+        on:click|stopPropagation={toggleTonePopover}
+        title="Pick the tone the assistant should use when it drafts an email"
+      >
+        <i class="las la-envelope"></i>
+        Email
+        {#if selectedTone}<span class="cpc-sources-count cpc-tone-count" title={selectedTone.label}>{selectedTone.label}</span>{/if}
       </button>
     </div>
   </div>
@@ -326,6 +387,32 @@
         <div class="cpc-context-track">
           <div class="cpc-context-fill" style="width:{contextPct}%; background:{contextColour}"></div>
         </div>
+      </div>
+    {/if}
+  </div>
+{/if}
+
+{#if toneOpen}
+  <div class="cpc-sources-popover cpc-tone-popover" style={tonePopoverStyle} on:click|stopPropagation>
+    {#if tonesLoading && !tonesLoaded}
+      <div class="cpc-sources-loading"><span class="mini-spinner"></span> Loading tones…</div>
+    {:else if !tones.length}
+      <div class="cpc-tone-empty">
+        No email tones saved yet. Add one from your profile page to have the assistant draft emails in your voice.
+      </div>
+    {:else}
+      <div class="cpc-sources-scroll">
+        <button class="cpc-tone-row" class:cpc-tone-row-active={selectedToneId === null} on:click={() => pickTone(null)}>
+          <i class="las {selectedToneId === null ? 'la-dot-circle' : 'la-circle'}"></i>
+          <span class="cpc-tone-row-label">None</span>
+        </button>
+        {#each tones as tone}
+          <button class="cpc-tone-row" class:cpc-tone-row-active={selectedToneId === tone.id} on:click={() => pickTone(tone.id)}>
+            <i class="las {selectedToneId === tone.id ? 'la-dot-circle' : 'la-circle'}"></i>
+            <span class="cpc-tone-row-label">{tone.label}</span>
+            {#if tone.is_default}<span class="cpc-tone-default">Default</span>{/if}
+          </button>
+        {/each}
       </div>
     {/if}
   </div>
@@ -458,4 +545,43 @@
 
   .cpc-context-track { height: 5px; border-radius: 3px; background: var(--color-slate-200); overflow: hidden; }
   .cpc-context-fill { height: 100%; border-radius: 3px; transition: width 0.2s ease, background 0.2s ease; }
+
+  /* ── Email tone popover ── */
+  .cpc-tone-count {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cpc-tone-popover { width: 260px; max-height: 320px; }
+
+  .cpc-tone-empty {
+    padding: 1rem;
+    font-size: 0.78rem;
+    color: var(--color-slate-500);
+    line-height: 1.5;
+  }
+
+  .cpc-tone-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.3rem 0.4rem;
+    border: none;
+    background: none;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    color: var(--color-slate-700);
+    cursor: pointer;
+    text-align: left;
+  }
+  .cpc-tone-row:hover { background: var(--color-slate-50); }
+  .cpc-tone-row-active { color: var(--color-primary-700); font-weight: 600; }
+  .cpc-tone-row i { flex-shrink: 0; }
+
+  .cpc-tone-row-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cpc-tone-default { font-size: 0.65rem; color: var(--color-slate-400); flex-shrink: 0; }
 </style>

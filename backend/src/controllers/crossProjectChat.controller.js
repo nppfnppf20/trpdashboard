@@ -1,6 +1,12 @@
 import { pool } from '../db.js';
 import { client, MODEL_SONNET } from '../services/llm.shared.js';
 import { getMultiProjectCatalogue, assembleMultiProjectContext, CONTEXT_BUDGET } from '../services/crossProjectChat.service.js';
+import { getTone } from '../services/emailTones.service.js';
+
+function emailToneInstructions(tone) {
+  if (!tone) return '';
+  return `\n\nIf — and only if — the user asks you to compose, draft, or write an email, write its prose in the following tone/style, modelled on these real examples the user has sent before. This does not apply to normal Q&A answers, and does not relax the citation/grounding rules above for any factual claims the email contains.\n\nTone: ${tone.label}\nExample emails:\n${tone.sample_text}`;
+}
 
 function parseCitationsArray(text) {
   const t = text.trim();
@@ -28,7 +34,7 @@ export async function getSources(req, res) {
 }
 
 export async function chat(req, res) {
-  const { project_ids, messages, sources } = req.body;
+  const { project_ids, messages, sources, emailToneId } = req.body;
 
   if (!Array.isArray(project_ids) || !project_ids.length) {
     return res.status(400).json({ error: 'project_ids required' });
@@ -36,6 +42,8 @@ export async function chat(req, res) {
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
   try {
+    const emailTone = emailToneId ? await getTone(req.user.id, emailToneId) : null;
+
     const { rows: projectRows } = await pool.query(
       `SELECT id, project_name, client FROM public.projects WHERE id = ANY($1::int[])`,
       [project_ids]
@@ -84,7 +92,8 @@ citation rules:
 
 Source blocks:
 
-${sourceBlocks}`;
+${sourceBlocks}`
+      + emailToneInstructions(emailTone);
 
     const response = await client.messages.create({
       model: MODEL_SONNET,

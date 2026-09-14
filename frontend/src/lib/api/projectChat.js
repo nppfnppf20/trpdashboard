@@ -6,11 +6,11 @@ export async function getChatSources(projectId) {
   return res.json(); // { groups: [...], budget }
 }
 
-export async function sendProjectChat(projectId, { messages, sources }) {
+export async function sendProjectChat(projectId, { messages, sources, emailToneId }) {
   const res = await authFetch(`/api/project-chat/${projectId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, sources })
+    body: JSON.stringify({ messages, sources, emailToneId })
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));

@@ -20,6 +20,7 @@ import quoteRequestsRoutes from './quoteRequests.routes.js';
 import quoteActionsRoutes from './quoteActions.routes.js';
 import lookupsRoutes from './lookups.routes.js';
 import userProfilesRoutes from './userProfiles.routes.js';
+import emailTonesRoutes from './emailTones.routes.js';
 import workflowRoutes from './workflow.routes.js';
 import ingestionRoutes from './ingestion.routes.js';
 import voiceRoutes from './voice.routes.js';
@@ -109,6 +110,9 @@ router.use('/api/lookups', lookupsRoutes);
 
 // User profiles - app account directory + login-time self-sync (GET /api/users, POST /api/users/me/sync)
 router.use('/api/users', userProfilesRoutes);
+
+// Email tones - per-user saved tones for project-chat email drafting
+router.use('/api/email-tones', emailTonesRoutes);
 
 // AI provider credit/quota status — any authenticated user, powers the app-wide warning banner
 router.use('/api/llm-status', llmStatusRoutes);
