@@ -11,7 +11,7 @@
   import { getTemplates, createDeliverable, updateDeliverableFromHTML, getProjectDeliverables } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
-  import { appealScopeIncorporation, appealIncorporateTargeted } from '$lib/api/appeal.js';
+  import { appealIncorporateTargeted } from '$lib/api/appeal.js';
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
   import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import DraftingIssuesModal from '$lib/components/planning-application/DraftingIssuesModal.svelte';
@@ -21,7 +21,6 @@
   import { exportHtmlToWord, getExportConfigForSlug } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
   import Stage1ReviewPanel from '$lib/components/planning-application/Stage1ReviewPanel.svelte';
-  import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
   import DraftCommentsList from '$lib/components/planning-application/DraftCommentsList.svelte';
   import SelectionPopup from '$lib/components/planning-application/SelectionPopup.svelte';
   import { splitAllParagraphs, mergeParagraphUpdates, markFragmentPending, markChangedWordsPending, clearPendingMarkers } from '$lib/utils/draftParagraphs.js';
@@ -152,15 +151,6 @@
   let draftEditor;
   let sectionExampleEditor;
 
-  const PROJ_DOC_PLACEHOLDER_LABELS = {
-    pre_app:              'Pre-Application Response Summary',
-    eia_response:         'EIA / Environmental Statement Summary',
-    sci:                  'Statement of Community Involvement Summary',
-    site_surroundings:    'Site and Surroundings',
-    about_applicant:      'About the Applicant',
-    proposed_development: 'Proposed Development',
-  };
-
   // Planning Statement v3 and Stage 1 Review v3 are the ones we actually use
   // day to day — their older versions stay out of the main card list by
   // default, tucked behind a small picker on the v3 card instead of
@@ -221,18 +211,6 @@
       if (bi === -1) return -1;
       return ai - bi;
     });
-
-  function injectSummaryIntoDraft(docType, summaryHtml) {
-    const label = PROJ_DOC_PLACEHOLDER_LABELS[docType];
-    if (!label || !$draftEditorHtml) return;
-    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`<p[^>]*class="draft-placeholder"[^>]*>\\[${escaped}[^\\]]*\\]<\\/p>`, 'i');
-    if (!re.test($draftEditorHtml)) return;
-    const newHtml = $draftEditorHtml.replace(re, summaryHtml);
-    $draftEditorHtml = newHtml;
-    draftEditor?.setHTML(newHtml);
-    $draftSaved = false;
-  }
 
   $: setDraftEditor(draftEditor);
   $: setSectionExampleEditor(sectionExampleEditor);
@@ -571,8 +549,19 @@
 
   $: activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; closeSelectionPopup(); cancelPendingAiEdit(); commentsPanelOpen = false; }
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; closeSelectionPopup(); cancelPendingAiEdit(); commentsPanelOpen = false; lastOpenedDraftId = null; }
   $: if (!checkPanelOpen) draftEditor?.clearHighlight();
+
+  // Default the right panel to Check whenever a (different) draft is opened —
+  // but only once per opening, so closing Check manually afterward sticks
+  // instead of being forced back open on the next reactive tick.
+  let lastOpenedDraftId = null;
+  $: if ($activeDraftTypeId && $activeDraftTypeId !== 'blank' && $activeDraftTypeId !== lastOpenedDraftId) {
+    lastOpenedDraftId = $activeDraftTypeId;
+    checkPanelOpen = true;
+    commentsPanelOpen = false;
+    sectionChatOpen = false;
+  }
 
   function handleTextSelected(e) {
     selectionPopup = e.detail;
@@ -605,9 +594,6 @@
     try {
       const allParagraphs = splitAllParagraphs(originalHtml);
       const targeted = allParagraphs.filter(p => paragraphIds.includes(p.id));
-      const apiTypeId = activeType?.tool === 'appeal'
-        ? parseInt($activeDraftTypeId.replace('appeal_', ''), 10)
-        : $activeDraftTypeId;
       // Without pointing at the exact highlighted text, the model only sees
       // "the paragraph" + a disconnected instruction and has no anchor for
       // what to actually change — it tends to just restate the paragraph.
@@ -615,7 +601,7 @@
         quotedText?.trim() ? `The user highlighted this exact text: "${quotedText.trim()}"` : null,
         notes?.trim() ? `Their instruction: ${notes.trim()}` : null,
       ].filter(Boolean).join('\n\n') || null;
-      const result = await quickIncorporateApi(project.id, apiTypeId, {
+      const result = await quickIncorporateApi(project.id, apiDraftTypeId, {
         file: file ?? null,
         documentText: documentText ?? '',
         documentTitle: documentTitle ?? null,
@@ -679,11 +665,17 @@
   let draftComments = [];
   let commentsPanelOpen = false;
   $: draftKind = activeType?.tool === 'appeal' ? 'appeal' : 'planning_application';
+  // Appeal drafts carry a prefixed frontend-only id ("appeal_8") to disambiguate
+  // them from planning-application ids in the same $draftTypes list — every
+  // backend call needs the raw numeric id underneath instead.
+  $: apiDraftTypeId = activeType?.tool === 'appeal' && $activeDraftTypeId
+    ? parseInt($activeDraftTypeId.replace('appeal_', ''), 10)
+    : $activeDraftTypeId;
   $: if ($activeDraftTypeId && $activeDraftTypeId !== 'blank') { loadDraftComments(); } else { draftComments = []; }
 
   async function loadDraftComments() {
     try {
-      draftComments = await getDraftComments(project.id, draftKind, $activeDraftTypeId);
+      draftComments = await getDraftComments(project.id, draftKind, apiDraftTypeId);
     } catch (err) {
       console.error('Failed to load draft comments:', err);
     }
@@ -711,6 +703,7 @@
     if (checkPanelOpen) { checkPanelOpen = false; return; }
     incorporateReviewMode = false;
     sectionChatOpen = false;
+    commentsPanelOpen = false;
     checkPanelOpen = true;
   }
 </script>
@@ -858,20 +851,6 @@
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
           {/if}
-          {#if activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv' && $activeDraftTypeId !== 'blank'}
-            <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { checkPanelOpen = false; } }} title="Chat with a document to draft a section">
-              <i class="las la-comments"></i> Doc Chat
-            </button>
-          {/if}
-          <button class="draft-context-btn" class:active={checkPanelOpen} on:click={toggleCheckPanel} title="Check the draft against the guiding brief, project information, and grammar">
-            <i class="las la-clipboard-check"></i> Check
-          </button>
-          {#if $activeDraftTypeId !== 'blank'}
-            <button class="draft-context-btn" class:active={commentsPanelOpen} on:click={() => { commentsPanelOpen = !commentsPanelOpen; if (commentsPanelOpen) { checkPanelOpen = false; sectionChatOpen = false; } }} title="Comments left on this draft">
-              <i class="las la-comment-alt"></i> Comments
-              {#if draftComments.filter(c => !c.resolved).length > 0}<span class="comments-badge">{draftComments.filter(c => !c.resolved).length}</span>{/if}
-            </button>
-          {/if}
           {#if $activeDraftTypeId !== 'blank'}
           <button class="draft-save-btn" disabled={$draftSaving} on:click={handleSaveDraft}>
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
@@ -894,99 +873,60 @@
             on:textselected={handleTextSelected}
           />
         </div>
-        <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
-          {#if checkPanelOpen}
-            <DraftCheckPanel
-              {project}
-              docTypeSlug={activeType?.slug ?? 'planning_statement'}
-              developmentType={developmentType || null}
-              getDraftHtml={() => draftEditor?.getHTML() ?? $draftEditorHtml}
-              locateText={(text) => draftEditor?.highlightText(text) ?? false}
-              on:close={() => checkPanelOpen = false}
-            />
-          {:else if commentsPanelOpen}
-            <DraftCommentsList
-              comments={draftComments}
-              on:resolve={(e) => toggleCommentResolved(e.detail)}
-              on:delete={(e) => removeDraftComment(e.detail)}
-              on:locate={(e) => draftEditor?.highlightText(e.detail.quotedText)}
-              on:close={() => commentsPanelOpen = false}
-            />
-          {:else if sectionChatOpen}
-            {@const _activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
-            <SectionChatPanel
-              {project}
-              docTypeSlug={_activeType?.slug ?? 'planning_statement'}
-              currentDraftHtml={$draftEditorHtml}
-              on:close={() => { sectionChatOpen = false; incorporateReviewMode = false; }}
-              on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
-              on:accepted={(e) => {
-                $draftEditorHtml = e.detail.html;
-                draftEditor?.setHTML(e.detail.html);
-                $draftSaved = false;
-                incorporateReviewMode = false;
-              }}
-            />
-          {:else if $activeDraftTypeId === 'blank'}
-            <!-- blank doc — no right panel content -->
-          {:else if activeType?.tool === 'appeal'}
-            <PlanningDocIncorporatePanel
-              {project}
-              typeId={parseInt($activeDraftTypeId.replace('appeal_', ''), 10)}
-              currentDraftHtml={$draftEditorHtml}
-              apiScope={appealScopeIncorporation}
-              apiIncorporate={appealIncorporateTargeted}
-              splitAll={true}
-              manualSelect={true}
-              incorporateLabel="Select paragraphs to update"
-              enableIssueLink={activeType?.slug === 'planning_statement_v3'}
-              docTypes={[
-                { value: 'project_briefing',  label: 'Project Briefing' },
-                { value: 'specialist_report', label: 'Specialist Report' },
-                { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
-                { value: 'revised_document',  label: 'Revised Document' },
-                { value: 'other',             label: 'Other Document' },
-              ]}
-              on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
-              on:accepted={(e) => {
-                $draftEditorHtml = e.detail.html;
-                draftEditor?.setHTML(e.detail.html);
-                $draftSaved = false;
-                incorporateReviewMode = false;
-              }}
-            />
-          {:else if activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv'}
-            <PlanningDocIncorporatePanel
-              {project}
-              typeId={$activeDraftTypeId}
-              currentDraftHtml={$draftEditorHtml}
-              splitAll={true}
-              manualSelect={true}
-              docTypes={[
-                ...(activeType?.slug === 'planning_statement' ? [
-                  { value: 'pre_app',              label: 'Pre-app Response',      projectDoc: true },
-                  { value: 'eia_response',         label: 'EIA / ES Response',     projectDoc: true },
-                  { value: 'sci',                  label: 'Statement of Community Involvement', projectDoc: true },
-                  { value: 'site_surroundings',    label: 'Site & Surroundings',   projectDoc: true },
-                  { value: 'about_applicant',      label: 'About the Applicant',   projectDoc: true },
-                  { value: 'proposed_development', label: 'Proposed Development',  projectDoc: true },
-                ] : []),
-                { value: 'project_briefing',  label: 'Project Briefing' },
-                { value: 'specialist_report', label: 'Specialist Report' },
-                { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
-                { value: 'revised_document',  label: 'Revised Document' },
-                { value: 'other',             label: 'Other Document' },
-              ]}
-              on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
-              on:accepted={(e) => {
-                $draftEditorHtml = e.detail.html;
-                draftEditor?.setHTML(e.detail.html);
-                $draftSaved = false;
-                incorporateReviewMode = false;
-              }}
-              on:summarysaved={(e) => injectSummaryIntoDraft(e.detail.docType, e.detail.summaryHtml)}
-            />
-          {/if}
+        <div class="draft-right-panel">
+        <div class="draft-right-card">
+          <div class="draft-right-panel-header">
+            {#if activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv' && $activeDraftTypeId !== 'blank'}
+              <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { checkPanelOpen = false; commentsPanelOpen = false; } }} title="Chat with a document to draft a section">
+                <i class="las la-comments"></i> Doc Chat
+              </button>
+            {/if}
+            <button class="draft-context-btn" class:active={checkPanelOpen} on:click={toggleCheckPanel} title="Check the draft against the guiding brief, project information, and grammar">
+              <i class="las la-clipboard-check"></i> Check
+            </button>
+            {#if $activeDraftTypeId !== 'blank'}
+              <button class="draft-context-btn" class:active={commentsPanelOpen} on:click={() => { commentsPanelOpen = !commentsPanelOpen; if (commentsPanelOpen) { checkPanelOpen = false; sectionChatOpen = false; } }} title="Comments left on this draft">
+                <i class="las la-comment-alt"></i> Comments
+                {#if draftComments.filter(c => !c.resolved).length > 0}<span class="comments-badge">{draftComments.filter(c => !c.resolved).length}</span>{/if}
+              </button>
+            {/if}
+          </div>
+          <div class="draft-right-panel-body">
+            {#if checkPanelOpen}
+              <DraftCheckPanel
+                {project}
+                docTypeSlug={activeType?.slug ?? 'planning_statement'}
+                developmentType={developmentType || null}
+                getDraftHtml={() => draftEditor?.getHTML() ?? $draftEditorHtml}
+                locateText={(text) => draftEditor?.highlightText(text) ?? false}
+                on:close={() => checkPanelOpen = false}
+              />
+            {:else if commentsPanelOpen}
+              <DraftCommentsList
+                comments={draftComments}
+                on:resolve={(e) => toggleCommentResolved(e.detail)}
+                on:delete={(e) => removeDraftComment(e.detail)}
+                on:locate={(e) => draftEditor?.highlightText(e.detail.quotedText)}
+                on:close={() => commentsPanelOpen = false}
+              />
+            {:else if sectionChatOpen}
+              {@const _activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
+              <SectionChatPanel
+                {project}
+                docTypeSlug={_activeType?.slug ?? 'planning_statement'}
+                currentDraftHtml={$draftEditorHtml}
+                on:close={() => { sectionChatOpen = false; incorporateReviewMode = false; }}
+                on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
+                on:accepted={(e) => {
+                  $draftEditorHtml = e.detail.html;
+                  draftEditor?.setHTML(e.detail.html);
+                  $draftSaved = false;
+                  incorporateReviewMode = false;
+                }}
+              />
+            {/if}
+          </div>
+        </div>
         </div>
       </div>
 
@@ -994,7 +934,7 @@
         <SelectionPopup
           {project}
           {draftKind}
-          draftTypeId={$activeDraftTypeId}
+          draftTypeId={apiDraftTypeId}
           paragraphIds={selectionPopup.paragraphIds}
           quotedText={selectionPopup.quotedText}
           top={selectionPopup.top}
@@ -3105,29 +3045,93 @@
     flex: 1;
     display: flex;
     min-height: 600px;
-    height: calc(100vh - 160px);
+    height: calc(100vh - 120px);
   }
 
   .draft-left-panel {
     flex: 1;
-    overflow-y: auto;
+    min-width: 0;
     padding: 1.5rem;
     background: var(--color-slate-50);
-    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
   .draft-left-panel.panel-hidden { display: none; }
 
-  .draft-right-panel {
-    width: 360px;
-    flex-shrink: 0;
-    border-left: 1px solid var(--color-slate-200);
+  /* Fill the full half of the two-panel layout (not a fixed page-width card)
+     and stretch to the panel's full height so the editor card matches the
+     right-hand card exactly — text scrolls inside .editor-content itself
+     rather than the whole card overflowing. Font-size is bumped ~20% for
+     on-screen readability; this only affects the editing view, the .docx
+     export has its own separate styling and is untouched. */
+  .draft-left-panel :global(.rich-text-editor) {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    background: var(--color-slate-50);
-    height: calc(100vh - 160px);
   }
-  .draft-right-panel--full { width: 100%; border-left: none; }
+  .draft-left-panel :global(.toolbar) {
+    flex-shrink: 0;
+  }
+  .draft-left-panel :global(.editor-content.trp-document-content) {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    font-size: 1rem; /* 12pt */
+  }
+  .draft-left-panel :global(.editor-content.trp-document-content p),
+  .draft-left-panel :global(.editor-content.trp-document-content ul),
+  .draft-left-panel :global(.editor-content.trp-document-content ol) {
+    font-size: 1rem; /* 12pt */
+  }
+  .draft-left-panel :global(.editor-content.trp-document-content h1) { font-size: 2.4rem; }  /* 2rem × 1.2 */
+  .draft-left-panel :global(.editor-content.trp-document-content h2) { font-size: 1.6rem; }  /* 1.333rem × 1.2 */
+  .draft-left-panel :global(.editor-content.trp-document-content h3) { font-size: 1.3rem; }  /* 1.083rem × 1.2 */
+  .draft-left-panel :global(.editor-content.trp-document-content h4) { font-size: 1.6rem; }  /* 1.333rem × 1.2 */
+
+  .draft-right-panel {
+    flex: 1;
+    min-width: 0;
+    padding: 1.5rem;
+    background: var(--color-slate-50);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* Matches .rich-text-editor's own card styling, so the two panels read as a
+     pair — but sized to its own content by default (not stretched to match
+     the editor's full height) rather than leaving a tall empty card when
+     there's not much to show. max-height/overflow-y are a safety net for
+     when content (e.g. a long Check result) genuinely exceeds the available
+     height — it scrolls internally instead of breaking the layout. */
+  .draft-right-card {
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
+    overflow-y: auto;
+    border: 1px solid var(--color-slate-300);
+    border-radius: 8px;
+    background: white;
+  }
+
+  .draft-right-panel-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
+    flex-shrink: 0;
+  }
+  .draft-right-panel-body {
+    padding-bottom: 1rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
 
   /* ── Context button ── */
   .draft-context-btn {
