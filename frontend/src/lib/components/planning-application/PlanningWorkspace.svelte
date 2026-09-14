@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, getPaDraftContext, saveDraft } from '$lib/api/planningApplication.js';
+  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, getPaDraftContext, saveDraft, paIncorporateTargeted } from '$lib/api/planningApplication.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
@@ -24,6 +24,7 @@
   import PlanningDocIncorporatePanel from '$lib/components/planning-application/PlanningDocIncorporatePanel.svelte';
   import DraftCommentsList from '$lib/components/planning-application/DraftCommentsList.svelte';
   import SelectionPopup from '$lib/components/planning-application/SelectionPopup.svelte';
+  import { splitAllParagraphs, mergeParagraphUpdates, markFragmentPending, markChangedWordsPending, clearPendingMarkers } from '$lib/utils/draftParagraphs.js';
   import { getDraftComments, updateDraftComment, deleteDraftComment } from '$lib/api/draftComments.js';
   import SectionChatPanel from '$lib/components/planning-application/SectionChatPanel.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
@@ -562,27 +563,23 @@
   let checkPanelOpen = false;
   // A highlight's compose popup: { paragraphIds, quotedText, top, left } | null
   let selectionPopup = null;
-  // Once "Send to AI" is chosen from that popup, hands off to the review flow:
-  // { paragraphIds, quotedText, top, left, autoRun: { userNotes, file } } | null
-  let selectionAiHandoff = null;
+  // A quick AI edit awaiting Accept/Edit Again. Written straight into the
+  // draft (marked with a pending CSS class so it renders in a different
+  // color) rather than shown in a side panel/diff view:
+  // { paragraphIds, quotedText, top, left, originalHtml, loading, error } | null
+  let pendingAiEdit = null;
 
   $: activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; closeSelectionPopup(); closeSelectionAiHandoff(); commentsPanelOpen = false; }
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; closeSelectionPopup(); cancelPendingAiEdit(); commentsPanelOpen = false; }
   $: if (!checkPanelOpen) draftEditor?.clearHighlight();
 
   function handleTextSelected(e) {
     selectionPopup = e.detail;
-    selectionAiHandoff = null;
   }
 
   function closeSelectionPopup() {
     selectionPopup = null;
-    draftEditor?.clearSelectionHighlight();
-  }
-
-  function closeSelectionAiHandoff() {
-    selectionAiHandoff = null;
     draftEditor?.clearSelectionHighlight();
   }
 
@@ -592,19 +589,84 @@
     loadDraftComments();
   }
 
-  function handleSendToAi(e) {
+  async function handleSendToAi(e) {
     if (!selectionPopup) return;
-    // The highlight stays lit through the review step — only cleared once the
-    // AI handoff panel itself closes (see closeSelectionAiHandoff).
-    selectionAiHandoff = { ...selectionPopup, autoRun: e.detail };
+    const { paragraphIds, quotedText, top, left } = selectionPopup;
+    const { notes, file, documentText, documentTitle, docType } = e.detail;
+    const originalHtml = $draftEditorHtml;
     selectionPopup = null;
+    pendingAiEdit = { paragraphIds, quotedText, top, left, originalHtml, loading: true, error: null };
+
+    try {
+      const allParagraphs = splitAllParagraphs(originalHtml);
+      const targeted = allParagraphs.filter(p => paragraphIds.includes(p.id));
+      const apiTypeId = activeType?.tool === 'appeal'
+        ? parseInt($activeDraftTypeId.replace('appeal_', ''), 10)
+        : $activeDraftTypeId;
+      // Without pointing at the exact highlighted text, the model only sees
+      // "the paragraph" + a disconnected instruction and has no anchor for
+      // what to actually change — it tends to just restate the paragraph.
+      const notesForApi = [
+        quotedText?.trim() ? `The user highlighted this exact text: "${quotedText.trim()}"` : null,
+        notes?.trim() ? `Their instruction: ${notes.trim()}` : null,
+      ].filter(Boolean).join('\n\n') || null;
+      const result = await quickIncorporateApi(project.id, apiTypeId, {
+        file: file ?? null,
+        documentText: documentText ?? '',
+        documentTitle: documentTitle ?? null,
+        paragraphs: targeted,
+        userNotes: notesForApi,
+        docType: docType ?? null,
+      });
+      const oldHtmlById = Object.fromEntries(allParagraphs.map(p => [p.id, p.html]));
+      const taggedUpdates = (result.updated ?? []).map(p => {
+        const oldHtml = oldHtmlById[p.id];
+        // A brand-new inserted paragraph has no prior version to diff against
+        // — mark the whole thing pending instead of a word-level diff.
+        const html = oldHtml ? markChangedWordsPending(oldHtml, p.html) : markFragmentPending(p.html);
+        return { id: p.id, html };
+      });
+      const mergedHtml = mergeParagraphUpdates(allParagraphs, taggedUpdates);
+      $draftEditorHtml = mergedHtml;
+      draftEditor?.setHTML(mergedHtml);
+      $draftSaved = false;
+      pendingAiEdit = { ...pendingAiEdit, loading: false };
+    } catch (err) {
+      pendingAiEdit = { ...pendingAiEdit, loading: false, error: err.message };
+    }
   }
 
-  $: quickIncorporateApi = activeType?.tool === 'appeal' ? appealIncorporateTargeted : null;
+  function acceptPendingAiEdit() {
+    if (!pendingAiEdit) return;
+    const cleared = clearPendingMarkers($draftEditorHtml);
+    $draftEditorHtml = cleared;
+    draftEditor?.setHTML(cleared);
+    pendingAiEdit = null;
+    draftEditor?.clearSelectionHighlight();
+  }
 
-  const AI_POPOVER_WIDTH = 460;
-  $: aiPopoverLeft = selectionAiHandoff
-    ? Math.min(Math.max(selectionAiHandoff.left - AI_POPOVER_WIDTH / 2, 16), (typeof window !== 'undefined' ? window.innerWidth : 1200) - AI_POPOVER_WIDTH - 16)
+  function editPendingAiEditAgain() {
+    if (!pendingAiEdit) return;
+    const { paragraphIds, quotedText, top, left, originalHtml } = pendingAiEdit;
+    $draftEditorHtml = originalHtml;
+    draftEditor?.setHTML(originalHtml);
+    pendingAiEdit = null;
+    selectionPopup = { paragraphIds, quotedText, top, left };
+  }
+
+  function cancelPendingAiEdit() {
+    if (!pendingAiEdit) return;
+    $draftEditorHtml = pendingAiEdit.originalHtml;
+    draftEditor?.setHTML(pendingAiEdit.originalHtml);
+    pendingAiEdit = null;
+    draftEditor?.clearSelectionHighlight();
+  }
+
+  $: quickIncorporateApi = activeType?.tool === 'appeal' ? appealIncorporateTargeted : paIncorporateTargeted;
+
+  const AI_POPOVER_WIDTH = 320;
+  $: aiPopoverLeft = pendingAiEdit
+    ? Math.min(Math.max(pendingAiEdit.left - AI_POPOVER_WIDTH / 2, 16), (typeof window !== 'undefined' ? window.innerWidth : 1200) - AI_POPOVER_WIDTH - 16)
     : 0;
 
   // ── Draft paragraph comments (sticky notes) ───────────────────────────────
@@ -937,32 +999,22 @@
         />
       {/if}
 
-      {#if selectionAiHandoff}
-        <div class="selection-anchor-popover" style="top:{selectionAiHandoff.top + 8}px; left:{aiPopoverLeft}px; width:{AI_POPOVER_WIDTH}px;">
-          <div class="selection-anchor-header">
-            <span><i class="las la-magic"></i> Send to AI</span>
-            <button class="selection-anchor-close" on:click={closeSelectionAiHandoff}><i class="las la-times"></i></button>
-          </div>
-          <div class="selection-anchor-body">
-            <PlanningDocIncorporatePanel
-              {project}
-              typeId={$activeDraftTypeId}
-              currentDraftHtml={$draftEditorHtml}
-              splitAll={true}
-              manualSelect={true}
-              presetScope={selectionAiHandoff}
-              autoRun={selectionAiHandoff.autoRun}
-              apiIncorporate={quickIncorporateApi}
-              on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
-              on:accepted={(e) => {
-                $draftEditorHtml = e.detail.html;
-                draftEditor?.setHTML(e.detail.html);
-                $draftSaved = false;
-                incorporateReviewMode = false;
-                closeSelectionAiHandoff();
-              }}
-            />
-          </div>
+      {#if pendingAiEdit}
+        <div class="ai-edit-control" style="top:{pendingAiEdit.top + 8}px; left:{aiPopoverLeft}px; width:{AI_POPOVER_WIDTH}px;">
+          {#if pendingAiEdit.loading}
+            <div class="ai-edit-status"><div class="mini-spinner"></div> Writing...</div>
+          {:else if pendingAiEdit.error}
+            <p class="ai-edit-error">{pendingAiEdit.error}</p>
+            <div class="ai-edit-actions">
+              <button class="btn-secondary" on:click={cancelPendingAiEdit}>Dismiss</button>
+            </div>
+          {:else}
+            <span class="ai-edit-label"><i class="las la-magic"></i> AI-written — not yet reviewed</span>
+            <div class="ai-edit-actions">
+              <button class="btn-secondary" on:click={editPendingAiEditAgain}>Edit Again</button>
+              <button class="btn-primary" on:click={acceptPendingAiEdit}>Accept</button>
+            </div>
+          {/if}
         </div>
       {/if}
     {:else}
@@ -3097,34 +3149,49 @@
     font-weight: 700;
   }
 
-  /* ── Selection anchor popover (Send to AI review, follows a highlight) ── */
-  .selection-anchor-popover {
+  /* ── Quick AI edit control (Accept / Edit Again, follows a highlight) ── */
+  .ai-edit-control {
     position: fixed;
     max-width: calc(100vw - 2rem);
-    max-height: calc(100vh - 4rem);
     display: flex;
     flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
     background: white;
     border: 1px solid var(--color-slate-200);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-dropdown);
-    overflow: hidden;
     z-index: 1000;
   }
-  .selection-anchor-header {
+  .ai-edit-status {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0.65rem 0.85rem;
-    border-bottom: 1px solid var(--color-slate-200);
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--color-slate-800);
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--color-slate-600);
   }
-  .selection-anchor-header span { display: flex; align-items: center; gap: 0.4rem; }
-  .selection-anchor-close { background: none; border: none; color: var(--color-slate-400); cursor: pointer; font-size: 1rem; line-height: 1; }
-  .selection-anchor-close:hover { color: var(--color-slate-700); }
-  .selection-anchor-body { overflow-y: auto; }
+  .ai-edit-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-slate-600);
+  }
+  .ai-edit-error {
+    font-size: 0.78rem;
+    color: var(--color-red-500);
+    margin: 0;
+  }
+  .ai-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
+  .ai-edit-actions button {
+    font-size: 0.78rem;
+    padding: 0.35rem 0.7rem;
+  }
 
   .modal-wide { max-width: 900px; }
 

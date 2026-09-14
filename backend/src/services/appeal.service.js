@@ -796,6 +796,7 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
 export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, generationPrompt = null, provider = 'anthropic' }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
+  const contextBlocksSection = contextBlocks ? `${contextBlocks}\n\n---\n\n` : '';
 
   const generationPromptBlock = generationPrompt?.trim()
     ? `This document was originally generated with the following instructions. Keep your edits consistent with the tone, structure and purpose they describe:\n${generationPrompt.trim()}\n\n---\n\n`
@@ -820,7 +821,7 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
 
   const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
 
-${generationPromptBlock}${userNotesBlock}${documentBlock}SELECTED PARAGRAPHS TO REVISE:
+${contextBlocksSection}${generationPromptBlock}${userNotesBlock}${documentBlock}SELECTED PARAGRAPHS TO REVISE:
 ${paraBlock}
 
 ---

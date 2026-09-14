@@ -20,10 +20,22 @@
   );
   $: clampedTop = Math.min(top + 8, (typeof window !== 'undefined' ? window.innerHeight : 900) - 260);
 
+  const DOC_TYPES = [
+    { value: 'project_briefing',  label: 'Project Briefing' },
+    { value: 'specialist_report', label: 'Specialist Report' },
+    { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
+    { value: 'revised_document',  label: 'Revised Document' },
+    { value: 'other',             label: 'Other Document' },
+  ];
+
   let notes = '';
   let attachOpen = false;
+  let docType = DOC_TYPES[0].value;
+  let inputTab = 'upload'; // 'upload' | 'paste'
   let dragOver = false;
   let uploadFile = null;
+  let pasteText = '';
+  let pasteTitle = '';
   let commentSaving = false;
   let error = null;
 
@@ -80,9 +92,17 @@
     }
   }
 
+  $: hasAttachment = inputTab === 'upload' ? !!uploadFile : !!pasteText.trim();
+
   function handleSendToAi() {
-    if (!notes.trim() && !uploadFile) return;
-    dispatch('sendtoai', { notes: notes.trim(), file: uploadFile });
+    if (!notes.trim() && !hasAttachment) return;
+    dispatch('sendtoai', {
+      notes: notes.trim(),
+      file: inputTab === 'upload' ? uploadFile : null,
+      documentText: inputTab === 'paste' ? pasteText.trim() : '',
+      documentTitle: inputTab === 'paste' ? (pasteTitle.trim() || null) : (uploadFile?.name ?? null),
+      docType: attachOpen && hasAttachment ? docType : null,
+    });
   }
 </script>
 
@@ -104,29 +124,51 @@
       <i class="las la-paperclip"></i> Attach a document
     </button>
   {:else}
-    <div
-      class="attach-zone"
-      class:drag-over={dragOver}
-      class:file-selected={!!uploadFile}
-      on:dragover|preventDefault={() => dragOver = true}
-      on:dragleave={() => dragOver = false}
-      on:drop={onDrop}
-      on:click={() => fileInput.click()}
-      role="button"
-      tabindex="0"
-      on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
-    >
-      {#if uploadFile}
-        <i class="las la-file-check" style="color:var(--color-emerald-600)"></i>
-        <span>{uploadFile.name}</span>
-        <span class="attach-zone-sub">Click to replace</span>
+    <div class="attach-section">
+      <select class="attach-doc-type" bind:value={docType}>
+        {#each DOC_TYPES as dt}
+          <option value={dt.value}>{dt.label}</option>
+        {/each}
+      </select>
+
+      <div class="attach-tabs">
+        <button type="button" class="attach-tab" class:active={inputTab === 'upload'} on:click={() => inputTab = 'upload'}>
+          <i class="las la-upload"></i> Upload
+        </button>
+        <button type="button" class="attach-tab" class:active={inputTab === 'paste'} on:click={() => inputTab = 'paste'}>
+          <i class="las la-paste"></i> Paste text
+        </button>
+      </div>
+
+      {#if inputTab === 'upload'}
+        <div
+          class="attach-zone"
+          class:drag-over={dragOver}
+          class:file-selected={!!uploadFile}
+          on:dragover|preventDefault={() => dragOver = true}
+          on:dragleave={() => dragOver = false}
+          on:drop={onDrop}
+          on:click={() => fileInput.click()}
+          role="button"
+          tabindex="0"
+          on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
+        >
+          {#if uploadFile}
+            <i class="las la-file-check" style="color:var(--color-emerald-600)"></i>
+            <span>{uploadFile.name}</span>
+            <span class="attach-zone-sub">Click to replace</span>
+          {:else}
+            <i class="las la-cloud-upload-alt"></i>
+            <span>Drop a document or click to upload</span>
+            <span class="attach-zone-sub">PDF, TXT or MD</span>
+          {/if}
+        </div>
+        <input type="file" accept=".pdf,.txt,.md" bind:this={fileInput} on:change={onFileChange} style="display:none" />
       {:else}
-        <i class="las la-cloud-upload-alt"></i>
-        <span>Drop a document or click to upload</span>
-        <span class="attach-zone-sub">PDF, TXT or MD</span>
+        <input class="attach-paste-title" type="text" placeholder="Document title (optional)" bind:value={pasteTitle} />
+        <textarea class="attach-paste-textarea" placeholder="Paste the document text here..." bind:value={pasteText}></textarea>
       {/if}
     </div>
-    <input type="file" accept=".pdf,.txt,.md" bind:this={fileInput} on:change={onFileChange} style="display:none" />
   {/if}
 
   {#if error}<p class="selection-popup-error">{error}</p>{/if}
@@ -136,7 +178,7 @@
     <button class="btn-secondary" type="button" disabled={!notes.trim() || commentSaving} on:click={handleComment}>
       {commentSaving ? 'Saving...' : 'Comment'}
     </button>
-    <button class="btn-primary" type="button" disabled={!notes.trim() && !uploadFile} on:click={handleSendToAi}>
+    <button class="btn-primary" type="button" disabled={!notes.trim() && !hasAttachment} on:click={handleSendToAi}>
       <i class="las la-magic"></i> Send to AI
     </button>
   </div>
@@ -210,6 +252,67 @@
     padding: 0.15rem 0;
   }
   .attach-toggle-btn:hover { color: var(--color-primary-600); }
+
+  .attach-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .attach-doc-type {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    color: var(--color-slate-700);
+    background: white;
+  }
+
+  .attach-tabs {
+    display: flex;
+    gap: 0.3rem;
+  }
+  .attach-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 5px;
+    background: white;
+    color: var(--color-slate-500);
+    font-size: 0.7rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .attach-tab.active { background: var(--color-primary-50); border-color: var(--color-primary-300); color: var(--color-primary-700); }
+
+  .attach-paste-title {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    color: var(--color-slate-700);
+  }
+  .attach-paste-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 70px;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    color: var(--color-slate-700);
+    resize: vertical;
+    line-height: 1.4;
+  }
 
   .attach-zone {
     display: flex;

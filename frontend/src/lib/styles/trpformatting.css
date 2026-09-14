@@ -163,3 +163,16 @@
 .trp-document-content .llm-generated h4 {
   color: #4b5563;
 }
+
+/* Quick highlight-driven AI edit, awaiting Accept/Edit Again (see
+   markFragmentPending/clearPendingMarkers in draftParagraphs.js) — a
+   deliberately more prominent treatment than .llm-generated above, since
+   this points at one specific just-edited passage rather than a whole
+   freshly-generated section. */
+.trp-document-content .quick-ai-edit-pending {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+  padding: 0.1rem 0.4rem;
+  margin: 0 -0.4rem;
+  border-radius: 4px;
+}
