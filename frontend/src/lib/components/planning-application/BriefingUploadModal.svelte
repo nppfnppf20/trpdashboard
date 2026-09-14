@@ -162,7 +162,7 @@
 
   .modal-run {
     padding: 0.5rem 1.25rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -172,7 +172,7 @@
     font-family: inherit;
     transition: background 0.15s;
   }
-  .modal-run:hover:not(:disabled) { background: var(--color-violet-700); }
+  .modal-run:hover:not(:disabled) { background: var(--color-primary-700); }
   .modal-run:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .prompt-info-btn {
@@ -219,7 +219,7 @@
     background: white;
     transition: border-color 0.15s;
   }
-  .add-section-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
+  .add-section-input:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07); }
   .add-section-input::placeholder { color: var(--color-slate-400); }
 
   .input-tabs {
@@ -248,7 +248,7 @@
     font-family: inherit;
   }
 
-  .input-tab.active { color: var(--color-violet-600); border-bottom-color: var(--color-violet-600); }
+  .input-tab.active { color: var(--color-primary-600); border-bottom-color: var(--color-primary-600); }
   .input-tab:hover:not(.active) { color: var(--color-slate-700); }
 
   .upload-zone {
@@ -266,13 +266,13 @@
     text-align: center;
   }
 
-  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--color-violet-600); background: var(--color-purple-50); }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--color-primary-600); background: var(--color-blue-50); }
   .upload-zone i { font-size: 2.25rem; color: var(--color-slate-400); }
   .upload-zone span { font-size: 0.875rem; color: var(--color-slate-600); font-weight: 500; }
   .upload-sub { font-size: 0.8rem !important; color: var(--color-slate-400) !important; font-weight: 400 !important; }
 
-  .upload-zone.has-file { border-color: var(--color-violet-600); background: var(--color-purple-50); }
-  .upload-zone.has-file i { color: var(--color-violet-600); }
+  .upload-zone.has-file { border-color: var(--color-primary-600); background: var(--color-blue-50); }
+  .upload-zone.has-file i { color: var(--color-primary-600); }
 
   .paste-area {
     flex: 1;
@@ -288,5 +288,5 @@
     background: white;
   }
 
-  .paste-area:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08); }
+  .paste-area:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08); }
 </style>

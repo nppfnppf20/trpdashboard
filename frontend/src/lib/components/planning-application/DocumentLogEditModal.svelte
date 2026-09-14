@@ -182,7 +182,7 @@
 
   .modal-run {
     padding: 0.5rem 1.25rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -192,7 +192,7 @@
     font-family: inherit;
     transition: background 0.15s;
   }
-  .modal-run:hover:not(:disabled) { background: var(--color-violet-700); }
+  .modal-run:hover:not(:disabled) { background: var(--color-primary-700); }
   .modal-run:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .section-field-label {
@@ -212,7 +212,7 @@
     background: white;
     transition: border-color 0.15s;
   }
-  .add-section-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
+  .add-section-input:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07); }
   .add-section-input::placeholder { color: var(--color-slate-400); }
 
   .prompt-editor {
@@ -230,7 +230,7 @@
     background: var(--color-slate-50);
     resize: vertical;
   }
-  .prompt-editor:focus { outline: none; border-color: var(--color-violet-600); background: white; }
+  .prompt-editor:focus { outline: none; border-color: var(--color-primary-600); background: white; }
 
   .section-delete-btn {
     display: flex;
@@ -258,7 +258,7 @@
   }
 
   .result-field-tag.against { background: var(--color-red-100); color: var(--color-red-800); }
-  .result-field-tag.for     { background: var(--color-violet-100); color: var(--color-violet-700); }
+  .result-field-tag.for     { background: var(--color-primary-100); color: var(--color-primary-700); }
 
   .log-point-issue { font-size: 0.8rem; font-weight: 500; color: var(--color-slate-700); }
 
@@ -325,9 +325,9 @@
 
   .notes-field:focus {
     outline: none;
-    border-color: var(--color-violet-600);
+    border-color: var(--color-primary-600);
     background: white;
-    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07);
   }
 
   .notes-field::placeholder { color: var(--color-slate-400); }

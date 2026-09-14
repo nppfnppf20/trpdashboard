@@ -533,7 +533,7 @@
         <div class="proj-preview">
           <div class="proj-preview-header">
             <span class="proj-preview-title">{docTypes?.find(dt => dt.value === selectedDocType)?.label ?? selectedDocType}</span>
-            <button class="btn-secondary" on:click={() => { projDocState = 'idle'; projDocSummaryHtml = ''; projDocError = null; }}>Replace</button>
+            <button class="btn btn-secondary" on:click={() => { projDocState = 'idle'; projDocSummaryHtml = ''; projDocError = null; }}>Replace</button>
           </div>
           <div class="proj-preview-body">
             {@html projDocSummaryHtml}
@@ -735,8 +735,8 @@
       {#if incorporateError}<p class="error-msg error-msg--padded">{incorporateError}</p>{/if}
 
       <div class="scoped-actions">
-        <button class="btn-secondary" on:click={discard}>Cancel</button>
-        <button class="btn-primary" disabled={scopedIds.size === 0} on:click={() => runIncorporate()}>
+        <button class="btn btn-secondary" on:click={discard}>Cancel</button>
+        <button class="btn btn-primary" disabled={scopedIds.size === 0} on:click={() => runIncorporate()}>
           <i class="las la-file-import"></i> Incorporate {scopedIds.size} paragraph{scopedIds.size !== 1 ? 's' : ''}
         </button>
         <button class="prompt-info-btn" title="Edit incorporate prompt" on:click={() => openActionPrompt('incorporate_assessment')}><i class="las la-sliders-h"></i></button>
@@ -876,15 +876,15 @@
   .doc-type-row { display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 0.875rem; background: white; border-bottom: 1px solid var(--color-slate-200); flex-shrink: 0; }
   .doc-type-label { font-size: 0.75rem; font-weight: 600; color: var(--color-slate-600); white-space: nowrap; }
   .doc-type-select { flex: 1; padding: 0.3rem 0.5rem; border: 1px solid var(--color-slate-200); border-radius: 6px; font-size: 0.8rem; font-family: inherit; color: var(--color-slate-700); background: white; cursor: pointer; }
-  .doc-type-select:focus { outline: none; border-color: var(--color-violet-600); }
+  .doc-type-select:focus { outline: none; border-color: var(--color-primary-600); }
 
   .input-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--color-slate-200); background: white; }
   .input-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.625rem; border: none; background: transparent; font-size: 0.8rem; font-weight: 500; color: var(--color-slate-500); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; transition: all 0.15s; }
-  .input-tab.active { color: var(--color-violet-600); border-bottom-color: var(--color-violet-600); }
+  .input-tab.active { color: var(--color-primary-600); border-bottom-color: var(--color-primary-600); }
   .input-tab:hover:not(.active) { color: var(--color-slate-700); }
 
   .upload-zone { flex-shrink: 0; margin: 1rem; border: 2px dashed var(--color-slate-300); border-radius: 8px; padding: 1.25rem 1rem; display: flex; flex-direction: column; align-items: center; gap: 0.3rem; cursor: pointer; transition: all 0.15s; background: white; text-align: center; }
-  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--color-violet-600); background: var(--color-purple-50); }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--color-primary-600); background: var(--color-blue-50); }
   .upload-zone.file-selected { border-color: var(--color-slate-400); background: var(--color-slate-100); }
   .upload-zone i { font-size: 1.5rem; color: var(--color-slate-400); }
   .upload-zone span { font-size: 0.8125rem; color: var(--color-slate-600); font-weight: 500; }
@@ -924,17 +924,17 @@
     transition: color 0.15s, border-color 0.15s;
   }
   .prompt-info-btn:hover { color: var(--color-primary-500); border-color: var(--color-primary-500); }
-  .incorporate-btn { display: flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.875rem; background: var(--color-violet-600); color: white; border: none; border-radius: 5px; font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
-  .incorporate-btn:hover:not(:disabled) { background: var(--color-violet-700); }
+  .incorporate-btn { display: flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.875rem; background: var(--color-primary-600); color: white; border: none; border-radius: 5px; font-size: 0.8rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
+  .incorporate-btn:hover:not(:disabled) { background: var(--color-primary-700); }
   .incorporate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .incorporate-btn--full { width: 100%; justify-content: center; }
 
   .paste-area { display: flex; flex-direction: column; gap: 0.625rem; padding: 1rem; flex: 1; min-height: 0; }
   .paste-title-input { padding: 0.5rem 0.75rem; border: 1px solid var(--color-slate-200); border-radius: 6px; font-size: 0.8125rem; font-family: inherit; color: var(--color-slate-800); background: white; flex-shrink: 0; }
-  .paste-title-input:focus { outline: none; border-color: var(--color-violet-600); }
+  .paste-title-input:focus { outline: none; border-color: var(--color-primary-600); }
   .paste-title-input::placeholder { color: var(--color-slate-400); }
   .paste-textarea { flex: 1; min-height: 200px; padding: 0.625rem 0.75rem; border: 1px solid var(--color-slate-200); border-radius: 6px; font-size: 0.8rem; font-family: inherit; color: var(--color-slate-700); background: white; resize: none; line-height: 1.5; }
-  .paste-textarea:focus { outline: none; border-color: var(--color-violet-600); }
+  .paste-textarea:focus { outline: none; border-color: var(--color-primary-600); }
   .paste-textarea::placeholder { color: var(--color-slate-400); }
 
   .loading-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; color: var(--color-slate-500); font-size: 0.875rem; }
@@ -958,13 +958,9 @@
   .scoped-item-text { font-size: 0.75rem; color: var(--color-slate-700); line-height: 1.4; }
   .scoped-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.625rem 0.25rem; margin-top: 0.375rem; border-bottom: 1px solid var(--color-slate-200); }
   .scoped-heading-text { font-size: 0.75rem; font-weight: 700; color: var(--color-slate-800); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .scoped-section-btn { flex-shrink: 0; padding: 0.15rem 0.5rem; background: white; border: 1px solid var(--color-slate-200); border-radius: 4px; font-size: 0.68rem; font-weight: 500; color: var(--color-violet-600); cursor: pointer; font-family: inherit; white-space: nowrap; transition: all 0.12s; }
-  .scoped-section-btn:hover { background: var(--color-purple-50); border-color: var(--color-violet-300); }
+  .scoped-section-btn { flex-shrink: 0; padding: 0.15rem 0.5rem; background: white; border: 1px solid var(--color-slate-200); border-radius: 4px; font-size: 0.68rem; font-weight: 500; color: var(--color-primary-600); cursor: pointer; font-family: inherit; white-space: nowrap; transition: all 0.12s; }
+  .scoped-section-btn:hover { background: var(--color-blue-50); border-color: var(--color-blue-200); }
   .scoped-actions { flex-shrink: 0; display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--color-slate-200); background: white; }
-
-  .btn-primary { padding: 0.4rem 0.875rem; background: var(--color-violet-600); color: white; border: none; border-radius: 6px; font-size: 0.8125rem; font-weight: 600; cursor: pointer; font-family: inherit; }
-  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-secondary { padding: 0.4rem 0.75rem; background: white; color: var(--color-slate-500); border: 1px solid var(--color-slate-200); border-radius: 6px; font-size: 0.8125rem; cursor: pointer; font-family: inherit; }
 
   .review-layout { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
   .review-bar { flex-shrink: 0; display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 1rem; background: white; border-bottom: 2px solid var(--color-slate-200); flex-wrap: wrap; }
@@ -977,8 +973,8 @@
   .btn-discard:hover { background: var(--color-slate-100); }
   .btn-accept-all { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.625rem; background: var(--color-emerald-600); color: white; border: none; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
   .btn-accept-all:hover { background: var(--color-green-800); }
-  .btn-commit { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.625rem; background: var(--color-violet-600); color: white; border: none; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
-  .btn-commit:hover:not(:disabled) { background: var(--color-violet-700); }
+  .btn-commit { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.625rem; background: var(--color-primary-600); color: white; border: none; border-radius: 5px; font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
+  .btn-commit:hover:not(:disabled) { background: var(--color-primary-700); }
   .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .existing-summary-notice { display: flex; align-items: flex-start; gap: 0.4rem; padding: 0.5rem 0.875rem; font-size: 0.75rem; line-height: 1.4; flex-shrink: 0; }
@@ -1039,7 +1035,7 @@
   .wd-add { background: var(--color-emerald-100); color: var(--color-green-800); text-decoration: none; border-radius: 2px; padding: 0 1px; }
   .wd-del { background: var(--color-red-200); color: var(--color-red-800); text-decoration: line-through; border-radius: 2px; padding: 0 1px; }
 
-  .spinner { width: 1.5rem; height: 1.5rem; border: 2px solid var(--color-slate-200); border-top-color: var(--color-violet-600); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  .spinner { width: 1.5rem; height: 1.5rem; border: 2px solid var(--color-slate-200); border-top-color: var(--color-primary-600); border-radius: 50%; animation: spin 0.8s linear infinite; }
   .mini-spinner { width: 0.875rem; height: 0.875rem; border: 1.5px solid rgba(255, 255, 255, 0.4); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>

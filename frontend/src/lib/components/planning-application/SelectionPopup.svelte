@@ -183,11 +183,11 @@
   {#if error}<p class="selection-popup-error">{error}</p>{/if}
 
   <div class="selection-popup-actions">
-    <button class="btn-secondary" type="button" on:click={() => dispatch('close')}>Cancel</button>
-    <button class="btn-secondary" type="button" disabled={!notes.trim() || commentSaving} on:click={handleComment}>
+    <button class="btn btn-secondary" type="button" on:click={() => dispatch('close')}>Cancel</button>
+    <button class="btn btn-secondary" type="button" disabled={!notes.trim() || commentSaving} on:click={handleComment}>
       {commentSaving ? 'Saving...' : 'Comment'}
     </button>
-    <button class="btn-primary" type="button" disabled={!notes.trim() && !hasAttachment} on:click={handleSendToAi}>
+    <button class="btn btn-primary" type="button" disabled={!notes.trim() && !hasAttachment} on:click={handleSendToAi}>
       <i class="las la-magic"></i> Send to AI
     </button>
   </div>

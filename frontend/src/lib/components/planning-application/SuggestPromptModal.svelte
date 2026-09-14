@@ -96,7 +96,7 @@
 
   .prompt-custom-badge {
     font-size: 0.72rem; font-weight: 600;
-    background: var(--color-violet-100); color: var(--color-purple-700);
+    background: var(--color-primary-100); color: var(--color-blue-700);
     padding: 0.2rem 0.5rem; border-radius: 20px;
   }
 
@@ -144,7 +144,7 @@
     width: 1.5rem;
     height: 1.5rem;
     border: 2px solid var(--color-slate-200);
-    border-top-color: var(--color-violet-600);
+    border-top-color: var(--color-primary-600);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -182,7 +182,7 @@
     resize: vertical;
   }
 
-  .prompt-editor:focus { outline: none; border-color: var(--color-violet-600); background: white; }
+  .prompt-editor:focus { outline: none; border-color: var(--color-primary-600); background: white; }
 
   .modal-footer {
     display: flex;
@@ -245,7 +245,7 @@
 
   .modal-run {
     padding: 0.5rem 1.25rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -256,6 +256,6 @@
     transition: background 0.15s;
   }
 
-  .modal-run:hover:not(:disabled) { background: var(--color-violet-700); }
+  .modal-run:hover:not(:disabled) { background: var(--color-primary-700); }
   .modal-run:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

@@ -722,13 +722,13 @@
           {:else if pendingAiEdit.error}
             <p class="ai-edit-error">{pendingAiEdit.error}</p>
             <div class="ai-edit-actions">
-              <button class="btn-secondary" on:click={cancelPendingAiEdit}>Dismiss</button>
+              <button class="btn btn-secondary" on:click={cancelPendingAiEdit}>Dismiss</button>
             </div>
           {:else}
             <span class="ai-edit-label"><i class="las la-magic"></i> AI-written — not yet reviewed</span>
             <div class="ai-edit-actions">
-              <button class="btn-secondary" on:click={editPendingAiEditAgain}>Edit Again</button>
-              <button class="btn-primary" on:click={acceptPendingAiEdit}>Accept</button>
+              <button class="btn btn-secondary" on:click={editPendingAiEditAgain}>Edit Again</button>
+              <button class="btn btn-primary" on:click={acceptPendingAiEdit}>Accept</button>
             </div>
           {/if}
         </div>
@@ -1243,7 +1243,7 @@
     font-family: inherit;
   }
 
-  .tab.active { color: var(--color-violet-600); border-bottom-color: var(--color-violet-600); }
+  .tab.active { color: var(--color-primary-600); border-bottom-color: var(--color-primary-600); }
   .tab:hover:not(.active) { color: var(--color-slate-700); }
 
   /* Tab body */
@@ -1281,7 +1281,7 @@
 
   .analyse-btn {
     padding: 0.625rem 1rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -1292,7 +1292,7 @@
     transition: background 0.15s;
   }
 
-  .analyse-btn:hover:not(:disabled) { background: var(--color-violet-700); }
+  .analyse-btn:hover:not(:disabled) { background: var(--color-primary-700); }
   .analyse-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .idle-form {
@@ -1330,7 +1330,7 @@
     color: var(--color-slate-800);
   }
 
-  .doc-type-select:focus { outline: none; border-color: var(--color-violet-600); }
+  .doc-type-select:focus { outline: none; border-color: var(--color-primary-600); }
 
   .direction-toggle {
     display: flex;
@@ -1372,7 +1372,7 @@
     line-height: 1.5;
   }
 
-  .user-notes-field:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
+  .user-notes-field:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07); }
   .user-notes-field::placeholder { color: var(--color-slate-400); }
 
   .issue-checks {
@@ -1390,10 +1390,10 @@
     cursor: pointer;
   }
 
-  .issue-check-label input[type="checkbox"] { cursor: pointer; accent-color: var(--color-violet-600); }
+  .issue-check-label input[type="checkbox"] { cursor: pointer; accent-color: var(--color-primary-600); }
 
-  .upload-zone.has-file { border-color: var(--color-violet-600); background: var(--color-purple-50); }
-  .upload-zone.has-file i { color: var(--color-violet-600); }
+  .upload-zone.has-file { border-color: var(--color-primary-600); background: var(--color-blue-50); }
+  .upload-zone.has-file i { color: var(--color-primary-600); }
 
   .analysis-loading {
     flex: 1;
@@ -1534,7 +1534,7 @@
   }
 
   .result-field-tag.against { background: var(--color-red-100); color: var(--color-red-800); }
-  .result-field-tag.for     { background: var(--color-violet-100); color: var(--color-violet-700); }
+  .result-field-tag.for     { background: var(--color-primary-100); color: var(--color-primary-700); }
 
   .result-point {
     margin: 0;
@@ -1678,7 +1678,7 @@
 
   .error-state button {
     padding: 0.5rem 1.25rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -1704,7 +1704,7 @@
     width: 1.5rem;
     height: 1.5rem;
     border: 2px solid var(--color-slate-200);
-    border-top-color: var(--color-violet-600);
+    border-top-color: var(--color-primary-600);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -1771,7 +1771,7 @@
     max-width: 130px;
   }
 
-  .card-dev-type-select:focus { outline: none; border-color: var(--color-violet-600); }
+  .card-dev-type-select:focus { outline: none; border-color: var(--color-primary-600); }
 
   .draft-open-btn {
     padding: 0.4rem 0.875rem;
@@ -1792,7 +1792,7 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.4rem 0.875rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -1802,7 +1802,7 @@
     font-family: inherit;
     transition: background 0.15s;
   }
-  .draft-generate-btn:hover:not(:disabled) { background: var(--color-violet-700); }
+  .draft-generate-btn:hover:not(:disabled) { background: var(--color-primary-700); }
   .draft-generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .card-context-bar {
@@ -1917,7 +1917,7 @@
   .inline-link {
     background: none;
     border: none;
-    color: var(--color-violet-600);
+    color: var(--color-primary-600);
     font-size: inherit;
     cursor: pointer;
     padding: 0;
@@ -1947,7 +1947,7 @@
 
   .assessment-issues-list {
     margin: 0.125rem 0 0.25rem 1rem;
-    border-left: 2px solid var(--color-violet-200);
+    border-left: 2px solid var(--color-primary-200);
     padding-left: 0.75rem;
     display: flex;
     flex-direction: column;
@@ -1960,13 +1960,13 @@
     gap: 0.5rem;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
-    background: var(--color-purple-50);
+    background: var(--color-blue-50);
   }
 
   .assessment-issue-label {
     flex: 1;
     font-size: 0.75rem;
-    color: var(--color-violet-800);
+    color: var(--color-primary-800);
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -1979,16 +1979,16 @@
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    border: 1px solid var(--color-violet-300);
+    border: 1px solid var(--color-blue-200);
     border-radius: 4px;
     background: white;
-    color: var(--color-violet-600);
+    color: var(--color-primary-600);
     cursor: pointer;
     font-size: 0.8125rem;
     flex-shrink: 0;
     transition: all 0.15s;
   }
-  .issue-generate-btn:hover:not(:disabled) { background: var(--color-violet-50); border-color: var(--color-purple-600); }
+  .issue-generate-btn:hover:not(:disabled) { background: var(--color-primary-50); border-color: var(--color-blue-600); }
   .issue-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .draft-configure-btn {
@@ -2061,7 +2061,7 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.4rem 0.875rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -2071,7 +2071,7 @@
     font-family: inherit;
     transition: background 0.15s;
   }
-  .draft-save-btn:hover:not(:disabled) { background: var(--color-violet-700); }
+  .draft-save-btn:hover:not(:disabled) { background: var(--color-primary-700); }
   .draft-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
@@ -2184,8 +2184,8 @@
     cursor: pointer; font-family: inherit;
     transition: all 0.15s;
   }
-  .draft-context-btn:hover { background: var(--color-violet-100); }
-  .draft-context-btn.active { background: var(--color-violet-600); color: white; border-color: var(--color-violet-600); }
+  .draft-context-btn:hover { background: var(--color-primary-100); }
+  .draft-context-btn.active { background: var(--color-primary-600); color: white; border-color: var(--color-primary-600); }
 
   .comments-badge {
     display: inline-flex;
@@ -2286,12 +2286,12 @@
     border: 1px solid var(--color-slate-200);
     border-radius: 5px;
     background: white;
-    color: var(--color-violet-600);
+    color: var(--color-primary-600);
     cursor: pointer;
     font-size: 0.875rem;
     transition: all 0.15s;
   }
-  .section-generate-btn:hover:not(:disabled) { background: var(--color-purple-50); border-color: var(--color-violet-300); }
+  .section-generate-btn:hover:not(:disabled) { background: var(--color-blue-50); border-color: var(--color-blue-200); }
   .section-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* ── Draft from briefing ── */
@@ -2390,17 +2390,17 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.3rem 0.625rem;
-    background: var(--color-violet-100);
-    border: 1px solid var(--color-violet-300);
+    background: var(--color-primary-100);
+    border: 1px solid var(--color-blue-200);
     border-radius: 5px;
     font-size: 0.8rem;
     font-weight: 500;
-    color: var(--color-violet-700);
+    color: var(--color-primary-700);
     cursor: pointer;
     font-family: inherit;
     transition: all 0.15s;
   }
-  .log-btn:hover { background: var(--color-violet-200); }
+  .log-btn:hover { background: var(--color-primary-200); }
 
   /* ── Chat / suggestion UI ── */
   .chat-header {
@@ -2439,7 +2439,7 @@
 
   .chat-msg.user {
     align-self: flex-end;
-    background: var(--color-violet-100);
+    background: var(--color-primary-100);
     border-radius: 8px;
     padding: 0.625rem 0.875rem;
     max-width: 85%;
@@ -2489,9 +2489,9 @@
     align-items: center;
     gap: 0.35rem;
     padding: 0.3rem 0.75rem;
-    border: 1px solid var(--color-violet-600);
+    border: 1px solid var(--color-primary-600);
     background: white;
-    color: var(--color-violet-600);
+    color: var(--color-primary-600);
     border-radius: 6px;
     font-size: 0.8rem;
     font-weight: 500;
@@ -2501,7 +2501,7 @@
     align-self: flex-start;
   }
 
-  .accept-btn:hover:not(.accepted) { background: var(--color-violet-100); }
+  .accept-btn:hover:not(.accepted) { background: var(--color-primary-100); }
 
   .accept-btn.accepted {
     background: var(--color-slate-100);
@@ -2536,11 +2536,11 @@
     color: var(--color-slate-700);
   }
 
-  .chat-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
+  .chat-input:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07); }
 
   .chat-send-btn {
     padding: 0.5rem 0.75rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -2551,7 +2551,7 @@
     flex-shrink: 0;
   }
 
-  .chat-send-btn:hover:not(:disabled) { background: var(--color-violet-700); }
+  .chat-send-btn:hover:not(:disabled) { background: var(--color-primary-700); }
   .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .doc-title-input {
@@ -2566,7 +2566,7 @@
     background: var(--color-slate-50);
   }
 
-  .doc-title-input:focus { outline: none; border-color: var(--color-violet-600); background: white; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
+  .doc-title-input:focus { outline: none; border-color: var(--color-primary-600); background: white; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07); }
 
   /* ── Document log tab ── */
   .log-list {

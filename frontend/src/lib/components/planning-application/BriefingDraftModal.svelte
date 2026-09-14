@@ -95,7 +95,7 @@
           {/each}
         </div>
         <div class="briefing-draft-footer">
-          <button class="btn-primary" on:click={closeBriefingDraft}>Done</button>
+          <button class="btn btn-primary" on:click={closeBriefingDraft}>Done</button>
         </div>
       {/if}
     </div>
@@ -220,7 +220,7 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.25rem 0.625rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     border: none;
     border-radius: 5px;
     color: white;
@@ -228,7 +228,7 @@
     font-weight: 500;
     cursor: pointer;
   }
-  .bd-btn-accept:hover { background: var(--color-violet-700); }
+  .bd-btn-accept:hover { background: var(--color-primary-700); }
 
   .bd-btn-skip {
     padding: 0.25rem 0.625rem;
@@ -334,7 +334,7 @@
     resize: none;
     line-height: 1.5;
   }
-  .bd-chat-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08); }
+  .bd-chat-input:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08); }
 
   .bd-evolve-actions {
     display: flex;

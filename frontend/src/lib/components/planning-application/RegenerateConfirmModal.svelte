@@ -95,7 +95,7 @@
 
   .modal-run {
     padding: 0.5rem 1.25rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -105,7 +105,7 @@
     font-family: inherit;
     transition: background 0.15s;
   }
-  .modal-run:hover:not(:disabled) { background: var(--color-violet-700); }
+  .modal-run:hover:not(:disabled) { background: var(--color-primary-700); }
   .modal-run:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .modal-run--danger { background: var(--color-red-600) !important; }

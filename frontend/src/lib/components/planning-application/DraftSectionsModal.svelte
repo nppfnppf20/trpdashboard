@@ -371,11 +371,11 @@
     background: var(--color-slate-50);
     resize: vertical;
   }
-  .prompt-editor:focus { outline: none; border-color: var(--color-violet-600); background: white; }
+  .prompt-editor:focus { outline: none; border-color: var(--color-primary-600); background: white; }
 
   .prompt-custom-badge {
     font-size: 0.72rem; font-weight: 600;
-    background: var(--color-violet-100); color: var(--color-purple-700);
+    background: var(--color-primary-100); color: var(--color-blue-700);
     padding: 0.2rem 0.5rem; border-radius: 20px;
   }
   .prompt-default-badge {
@@ -389,7 +389,7 @@
     border-radius: 5px; font-size: 0.78rem;
     font-family: inherit; color: var(--color-slate-500); cursor: pointer;
   }
-  .btn-reset-prompt:hover:not(:disabled) { background: var(--color-slate-50); border-color: var(--color-purple-600); color: var(--color-purple-700); }
+  .btn-reset-prompt:hover:not(:disabled) { background: var(--color-slate-50); border-color: var(--color-blue-600); color: var(--color-blue-700); }
   .btn-reset-prompt:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .assessment-vars-hint {
@@ -442,7 +442,7 @@
     width: 1.5rem;
     height: 1.5rem;
     border: 2px solid var(--color-slate-200);
-    border-top-color: var(--color-violet-600);
+    border-top-color: var(--color-primary-600);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -458,12 +458,12 @@
     border: 1px solid var(--color-slate-200);
     border-radius: 5px;
     background: white;
-    color: var(--color-violet-600);
+    color: var(--color-primary-600);
     cursor: pointer;
     font-size: 0.875rem;
     transition: all 0.15s;
   }
-  .section-generate-btn:hover:not(:disabled) { background: var(--color-purple-50); border-color: var(--color-violet-300); }
+  .section-generate-btn:hover:not(:disabled) { background: var(--color-blue-50); border-color: var(--color-blue-200); }
   .section-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .section-delete-btn {
@@ -499,7 +499,7 @@
     background: white;
     transition: border-color 0.15s;
   }
-  .add-section-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
+  .add-section-input:focus { outline: none; border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.07); }
   .add-section-input::placeholder { color: var(--color-slate-400); }
 
   /* ── Sections manager modal ── */
@@ -530,7 +530,7 @@
 
   .section-row:last-child { border-bottom: none; }
 
-  .section-row.expanded { background: var(--color-purple-50); }
+  .section-row.expanded { background: var(--color-blue-50); }
 
   .section-row-header {
     display: flex;
@@ -770,7 +770,7 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0.5rem 0.875rem;
-    background: var(--color-violet-600);
+    background: var(--color-primary-600);
     color: white;
     border: none;
     border-radius: 6px;
@@ -781,6 +781,6 @@
     white-space: nowrap;
     transition: background 0.15s;
   }
-  .add-section-btn:hover:not(:disabled) { background: var(--color-violet-700); }
+  .add-section-btn:hover:not(:disabled) { background: var(--color-primary-700); }
   .add-section-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
