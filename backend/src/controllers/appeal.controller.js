@@ -1260,7 +1260,9 @@ export async function incorporateTargeted(req, res) {
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
-  if (!document_id && !document_text && !req.file) return res.status(400).json({ error: 'document_id, document_text, or file required' });
+  if (!document_id && !document_text && !req.file && !user_notes?.trim()) {
+    return res.status(400).json({ error: 'document_id, document_text, file, or user_notes required' });
+  }
 
   try {
     const provider = await resolveProvider('appeal_argument_building', requestedProvider);
@@ -1268,10 +1270,10 @@ export async function incorporateTargeted(req, res) {
       `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
     );
     const { rows: typeRows } = await pool.query(
-      `SELECT name, slug FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+      `SELECT name, slug, generation_prompt FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
 
-    let documentText, filename;
+    let documentText = '', filename = null;
     if (document_id) {
       const { rows } = await pool.query(
         `SELECT filename, file_text FROM public.appeal_documents WHERE id = $1 AND project_id = $2`,
@@ -1284,7 +1286,7 @@ export async function incorporateTargeted(req, res) {
       const parsed = await parseFile(req.file.buffer, req.file.originalname);
       documentText = parsed.text;
       filename = document_title || req.file.originalname;
-    } else {
+    } else if (document_text) {
       documentText = document_text;
       filename = document_title || 'Pasted document';
     }
@@ -1352,6 +1354,7 @@ export async function incorporateTargeted(req, res) {
       guidingBrief,
       projectBrief,
       exampleDoc,
+      generationPrompt: typeRows[0]?.generation_prompt ?? null,
       customPrompt: await loadGlobalPrompt('incorporate_appeal'),
       provider,
     });

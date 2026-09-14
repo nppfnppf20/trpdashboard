@@ -13,6 +13,9 @@
   let isItalic = false;
   let isUnderline = false;
 
+  // ── Selection toolbar (Comment / Send to AI) ──────────────────────────────
+  let selectionToolbar = null; // { top, left, paragraphIds, quotedText }
+
   onMount(() => {
     if (editorElement && content) {
       editorElement.innerHTML = content;
@@ -20,11 +23,74 @@
 
     // Listen for selection changes to update toolbar state
     document.addEventListener('selectionchange', updateToolbarState);
+    document.addEventListener('mouseup', handleSelectionMouseUp);
+    document.addEventListener('mousedown', handleOutsideMouseDown);
 
     return () => {
       document.removeEventListener('selectionchange', updateToolbarState);
+      document.removeEventListener('mouseup', handleSelectionMouseUp);
+      document.removeEventListener('mousedown', handleOutsideMouseDown);
     };
   });
+
+  let toolbarElement;
+
+  function handleOutsideMouseDown(e) {
+    if (toolbarElement && !toolbarElement.contains(e.target) && !editorElement?.contains(e.target)) {
+      selectionToolbar = null;
+    }
+  }
+
+  // Maps a selection endpoint to the index of the top-level editor child it
+  // falls within — matches the p{idx} scheme PlanningDocIncorporatePanel's
+  // splitAllParagraphs() uses, so a highlight can be resolved to whole
+  // paragraph ids without ever slicing the DOM mid-element.
+  function topLevelChildIndex(node) {
+    let el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    while (el && el.parentElement !== editorElement) el = el.parentElement;
+    if (!el) return -1;
+    return Array.prototype.indexOf.call(editorElement.children, el);
+  }
+
+  function handleSelectionMouseUp(e) {
+    if (toolbarElement?.contains(e.target)) return;
+    setTimeout(() => {
+      const sel = document.getSelection();
+      if (!sel || sel.isCollapsed || !editorElement || !editorElement.contains(sel.anchorNode)) {
+        selectionToolbar = null;
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      const startIdx = topLevelChildIndex(range.startContainer);
+      const endIdx = topLevelChildIndex(range.endContainer);
+      if (startIdx === -1 || endIdx === -1) {
+        selectionToolbar = null;
+        return;
+      }
+      const lo = Math.min(startIdx, endIdx);
+      const hi = Math.max(startIdx, endIdx);
+      const paragraphIds = [];
+      for (let i = lo; i <= hi; i++) paragraphIds.push(`p${i}`);
+
+      const rect = range.getBoundingClientRect();
+      selectionToolbar = {
+        top: rect.top - 44,
+        left: rect.left + rect.width / 2,
+        paragraphIds,
+        quotedText: sel.toString(),
+      };
+    }, 0);
+  }
+
+  function triggerSelectionAction(action) {
+    if (!selectionToolbar) return;
+    dispatch('selectionaction', {
+      action,
+      paragraphIds: selectionToolbar.paragraphIds,
+      quotedText: selectionToolbar.quotedText,
+    });
+    selectionToolbar = null;
+  }
 
   function updateToolbarState() {
     if (!editorElement || !editorElement.contains(document.getSelection().anchorNode)) {
@@ -287,6 +353,21 @@
   ></div>
 </div>
 
+{#if selectionToolbar}
+  <div
+    class="selection-toolbar"
+    bind:this={toolbarElement}
+    style="top:{selectionToolbar.top}px; left:{selectionToolbar.left}px;"
+  >
+    <button type="button" on:mousedown|preventDefault on:click={() => triggerSelectionAction('comment')}>
+      <i class="las la-comment-alt"></i> Comment
+    </button>
+    <button type="button" class="ai-btn" on:mousedown|preventDefault on:click={() => triggerSelectionAction('send-to-ai')}>
+      <i class="las la-magic"></i> Send to AI
+    </button>
+  </div>
+{/if}
+
 <style>
   .rich-text-editor {
     border: 1px solid var(--color-slate-300);
@@ -398,6 +479,41 @@
   }
   :global(.llm-generated *) {
     color: var(--color-slate-500) !important;
+  }
+
+  .selection-toolbar {
+    position: fixed;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    background: var(--color-slate-900);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-dropdown);
+    z-index: 1000;
+  }
+
+  .selection-toolbar button {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.65rem;
+    border: none;
+    background: transparent;
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .selection-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .selection-toolbar button.ai-btn i {
+    color: var(--color-primary-500);
   }
 </style>
 

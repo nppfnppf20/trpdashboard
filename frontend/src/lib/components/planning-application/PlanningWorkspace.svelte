@@ -554,9 +554,48 @@
   let incorporateReviewMode = false;
   let sectionChatOpen = false;
   let checkPanelOpen = false;
+  let selectionAiScope = null;    // { paragraphIds, quotedText } | null — "Send to AI" from a highlight
+  let selectionCommentScope = null; // { paragraphIds, quotedText } | null — "Comment" from a highlight
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; }
+  $: activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
+
+  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; selectionAiScope = null; selectionCommentScope = null; }
   $: if (!checkPanelOpen) draftEditor?.clearHighlight();
+
+  function handleSelectionAction(e) {
+    const { action, paragraphIds, quotedText } = e.detail;
+    if (action === 'send-to-ai') {
+      selectionAiScope = { paragraphIds, quotedText };
+    } else if (action === 'comment') {
+      selectionCommentScope = { paragraphIds, quotedText };
+    }
+  }
+
+  $: selectionAiDocTypes = activeType?.tool === 'appeal'
+    ? [
+        { value: 'project_briefing',  label: 'Project Briefing' },
+        { value: 'specialist_report', label: 'Specialist Report' },
+        { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
+        { value: 'revised_document',  label: 'Revised Document' },
+        { value: 'other',             label: 'Other Document' },
+      ]
+    : [
+        ...(activeType?.slug === 'planning_statement' ? [
+          { value: 'pre_app',              label: 'Pre-app Response',      projectDoc: true },
+          { value: 'eia_response',         label: 'EIA / ES Response',     projectDoc: true },
+          { value: 'sci',                  label: 'Statement of Community Involvement', projectDoc: true },
+          { value: 'site_surroundings',    label: 'Site & Surroundings',   projectDoc: true },
+          { value: 'about_applicant',      label: 'About the Applicant',   projectDoc: true },
+          { value: 'proposed_development', label: 'Proposed Development',  projectDoc: true },
+        ] : []),
+        { value: 'project_briefing',  label: 'Project Briefing' },
+        { value: 'specialist_report', label: 'Specialist Report' },
+        { value: 'expert_evidence',   label: 'Expert Evidence / Proof' },
+        { value: 'revised_document',  label: 'Revised Document' },
+        { value: 'other',             label: 'Other Document' },
+      ];
+  $: selectionAiApiScope = activeType?.tool === 'appeal' ? appealScopeIncorporation : null;
+  $: selectionAiApiIncorporate = activeType?.tool === 'appeal' ? appealIncorporateTargeted : null;
 
   function toggleCheckPanel() {
     if (checkPanelOpen) { checkPanelOpen = false; return; }
@@ -731,7 +770,7 @@
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
         <div class="draft-left-panel" class:panel-hidden={incorporateReviewMode}>
-          <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={onDraftChange} />
+          <RichTextEditor bind:this={draftEditor} content={$draftEditorHtml} on:change={onDraftChange} on:selectionaction={handleSelectionAction} />
         </div>
         <div class="draft-right-panel" class:draft-right-panel--full={incorporateReviewMode}>
           {#if checkPanelOpen}
@@ -820,6 +859,61 @@
           {/if}
         </div>
       </div>
+
+      {#if selectionAiScope}
+        <div class="selection-modal-backdrop" on:click={() => selectionAiScope = null}>
+          <div class="selection-modal" on:click|stopPropagation>
+            <div class="selection-modal-header">
+              <span><i class="las la-magic"></i> Send to AI</span>
+              <button class="selection-modal-close" on:click={() => selectionAiScope = null}><i class="las la-times"></i></button>
+            </div>
+            <div class="selection-modal-body">
+              <PlanningDocIncorporatePanel
+                {project}
+                typeId={$activeDraftTypeId}
+                currentDraftHtml={$draftEditorHtml}
+                splitAll={true}
+                manualSelect={true}
+                presetScope={selectionAiScope}
+                apiScope={selectionAiApiScope}
+                apiIncorporate={selectionAiApiIncorporate}
+                docTypes={selectionAiDocTypes}
+                enableIssueLink={activeType?.tool === 'appeal' && activeType?.slug === 'planning_statement_v3'}
+                on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
+                on:accepted={(e) => {
+                  $draftEditorHtml = e.detail.html;
+                  draftEditor?.setHTML(e.detail.html);
+                  $draftSaved = false;
+                  incorporateReviewMode = false;
+                  selectionAiScope = null;
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      {#if selectionCommentScope}
+        <div class="selection-modal-backdrop" on:click={() => selectionCommentScope = null}>
+          <div class="selection-modal selection-modal--comment" on:click|stopPropagation>
+            <div class="selection-modal-header">
+              <span><i class="las la-comment-alt"></i> Comment</span>
+              <button class="selection-modal-close" on:click={() => selectionCommentScope = null}><i class="las la-times"></i></button>
+            </div>
+            <div class="selection-modal-body">
+              <DraftCommentComposer
+                {project}
+                draftKind={activeType?.tool === 'appeal' ? 'appeal' : 'planning_application'}
+                draftTypeId={$activeDraftTypeId}
+                paragraphIds={selectionCommentScope.paragraphIds}
+                quotedText={selectionCommentScope.quotedText}
+                on:saved={() => { selectionCommentScope = null; loadDraftComments(); }}
+                on:cancel={() => selectionCommentScope = null}
+              />
+            </div>
+          </div>
+        </div>
+      {/if}
     {:else}
       <!-- Document type list -->
       <div class="tab-body">

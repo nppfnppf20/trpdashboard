@@ -555,7 +555,7 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   {"id": "INSERT_AFTER_p3", "html": "<p>New compliance paragraph constructed from report...</p>"}
 ]`;
 
-export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null, customPrompt = null, provider = null }) {
+export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null, generationPrompt = null, customPrompt = null, provider = null }) {
   // Build rich per-issue context (policies + argument notes) for each issue
   const issueContextParts = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
@@ -580,19 +580,25 @@ export async function incorporatePlanningAssessment({ paragraphs, documentText, 
     ? `## User Guidance — HIGH PRIORITY\nFollow these instructions precisely:\n${userNotes.trim()}\n\n`
     : '';
 
+  const generationPromptBlock = generationPrompt?.trim()
+    ? `\n\n## Original Drafting Instructions\nThis document was originally generated with the following instructions. Keep your edits consistent with the tone, structure and purpose they describe:\n${generationPrompt.trim()}`
+    : '';
+
+  const hasDocument = !!documentText?.trim();
+  const documentBlock = hasDocument
+    ? `\n\n## Document Being Incorporated${filename ? `: "${filename}"` : ' (no title provided — derive an appropriate formal title from the document content, e.g. "the Heritage Statement", "the Transport Assessment")'}\n${documentText}`
+    : '';
+
   const paraBlock = paragraphs.map(p => `${p.id}:\n${p.html}`).join('\n\n');
 
   const instructionBlock = customPrompt ?? DEFAULT_INCORPORATE_ASSESSMENT_PROMPT;
 
-  const prompt = `Project: ${projectName}${guidingBlock}${projectBriefBlock}${exampleBlock}
+  const prompt = `Project: ${projectName}${guidingBlock}${projectBriefBlock}${exampleBlock}${generationPromptBlock}
 
 ${instructionBlock}
 
 ## Key Issues and Policy Context
-${issueContextParts}
-
-## Document Being Incorporated${filename ? `: "${filename}"` : ' (no title provided — derive an appropriate formal title from the document content, e.g. "the Heritage Statement", "the Transport Assessment")'}
-${documentText}
+${issueContextParts}${documentBlock}
 
 ## In-Scope Paragraphs
 ${userNotesBlock}${paraBlock}`;

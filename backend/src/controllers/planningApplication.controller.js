@@ -2548,8 +2548,11 @@ export async function paIncorporateTargeted(req, res) {
   const user_notes = req.body.user_notes ?? null;
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
+  if (!req.file && !req.body.document_text && !user_notes?.trim()) {
+    return res.status(400).json({ error: 'document_text, file, or user_notes required' });
+  }
 
-  let documentText, filename;
+  let documentText = '', filename = null;
   if (req.file) {
     try {
       const parsed = await parseFile(req.file.buffer, req.file.originalname);
@@ -2558,8 +2561,7 @@ export async function paIncorporateTargeted(req, res) {
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
-  } else {
-    if (!req.body.document_text) return res.status(400).json({ error: 'document_text or file required' });
+  } else if (req.body.document_text) {
     documentText = req.body.document_text;
     filename = req.body.document_title?.trim() || null;
   }
@@ -2589,7 +2591,7 @@ export async function paIncorporateTargeted(req, res) {
       ),
       getGuidingBrief(typeRows.rows[0]?.slug ?? 'planning_statement', projectRows.rows[0]?.development_type),
       pool.query(
-        `SELECT example_text FROM planning_applications.draft_sections
+        `SELECT example_text, generation_prompt FROM planning_applications.draft_sections
          WHERE draft_type_id = $1 AND slug = 'planning_assessment'`,
         [typeId]
       )
@@ -2611,6 +2613,7 @@ export async function paIncorporateTargeted(req, res) {
       guidingBrief,
       projectBrief: briefRows.rows[0]?.summary_html ?? null,
       exampleText: sectionRows.rows[0]?.example_text ?? null,
+      generationPrompt: sectionRows.rows[0]?.generation_prompt ?? null,
       customPrompt: promptRows[0]?.prompt_text ?? null,
       provider: req.body.provider ?? null,
     });

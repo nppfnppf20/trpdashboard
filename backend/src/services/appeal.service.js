@@ -793,35 +793,41 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
   {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, provider = 'anthropic' }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, generationPrompt = null, provider = 'anthropic' }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
 
+  const generationPromptBlock = generationPrompt?.trim()
+    ? `This document was originally generated with the following instructions. Keep your edits consistent with the tone, structure and purpose they describe:\n${generationPrompt.trim()}\n\n---\n\n`
+    : '';
+
   const userNotesBlock = userNotes?.trim()
     ? `## User Guidance — HIGH PRIORITY\nFollow these instructions precisely. They override your own judgement:\n${userNotes.trim()}\n\n`
+    : '';
+
+  const hasDocument = !!documentText?.trim();
+  const documentBlock = hasDocument
+    ? `An uploaded document is provided below. Read it carefully. It may be a project briefing note with strategic direction and revised arguments, a specialist technical report, expert evidence, or other supporting material.\n\nUPLOADED DOCUMENT: ${filename}\n${documentText}\n\n---\n\n`
     : '';
 
   const paraBlock = paragraphs
     .map(p => `${p.id}:\n${p.html}`)
     .join('\n\n');
 
+  const taskInstruction = hasDocument
+    ? `Your task: revise the paragraphs above to incorporate the uploaded document. For each paragraph, consider what the uploaded document adds, changes or requires and update it accordingly. Do not leave paragraphs unchanged just because changes are difficult. Where the uploaded document is a briefing note with strategic direction, follow those instructions even if they require significant rewrites. Where it is a technical report, incorporate the relevant conclusions and findings.`
+    : `Your task: revise the paragraphs above following the user guidance given above.`;
+
   const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
 
-An uploaded document is provided below. Read it carefully. It may be a project briefing note with strategic direction and revised arguments, a specialist technical report, expert evidence, or other supporting material.${userNotesBlock}
-
-UPLOADED DOCUMENT: ${filename}
-${documentText}
-
----
-
-SELECTED PARAGRAPHS TO REVISE:
+${generationPromptBlock}${userNotesBlock}${documentBlock}SELECTED PARAGRAPHS TO REVISE:
 ${paraBlock}
 
 ---
 
-Your task: revise the paragraphs above to incorporate the uploaded document. For each paragraph, consider what the uploaded document adds, changes or requires and update it accordingly. Do not leave paragraphs unchanged just because changes are difficult. Where the uploaded document is a briefing note with strategic direction, follow those instructions even if they require significant rewrites. Where it is a technical report, incorporate the relevant conclusions and findings.
+${taskInstruction}
 
-You may insert new paragraphs using id "INSERT_AFTER_[id]" where the uploaded document introduces content with no home in the existing paragraphs.
+You may insert new paragraphs using id "INSERT_AFTER_[id]" where ${hasDocument ? 'the uploaded document introduces' : 'your revision introduces'} content with no home in the existing paragraphs.
 
 Write in formal planning language — no em dashes, no paragraph numbers.
 

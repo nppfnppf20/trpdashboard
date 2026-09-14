@@ -335,7 +335,6 @@
     </div>
   {/if}
 </div>
-</div>
 
 <div class="construction-overlay">
   <div class="construction-card">
@@ -343,6 +342,7 @@
     <h2>Under Construction</h2>
     <p>This page isn't live yet, check back soon.</p>
   </div>
+</div>
 </div>
 
 <style>

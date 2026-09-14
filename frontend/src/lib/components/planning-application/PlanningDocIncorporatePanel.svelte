@@ -6,6 +6,7 @@
   import { getDraftingIssues } from '$lib/api/draftingIssues.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
+  import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
 
   export let project;
   export let typeId;
@@ -17,6 +18,10 @@
   export let manualSelect = false;      // when true, skip LLM scoping — user ticks paragraphs manually
   export let incorporateLabel = null;   // button label override
   export let enableIssueLink = false;   // when true, a "specialist_report" doc type asks which drafting issue this report belongs to
+  // When set, this panel skips scoping/manual-tick entirely and targets exactly
+  // these paragraph ids (from a text highlight in the draft editor) — an
+  // attached document becomes optional, since userNotes alone is a valid edit.
+  export let presetScope = null;        // { paragraphIds: string[], quotedText: string } | null
 
   let selectedDocType = docTypes?.[0]?.value ?? null;
 
@@ -65,6 +70,14 @@
   }
 
   onMount(loadExistingSummaries);
+
+  onMount(() => {
+    if (!presetScope) return;
+    allParagraphs = splitAllParagraphs(currentDraftHtml);
+    if (presetScope.quotedText?.trim()) {
+      userNotes = `Focus specifically on: "${presetScope.quotedText.trim()}"\n\n`;
+    }
+  });
 
   $: existingSummary = isProjectDoc ? (summariesByType[selectedDocType] ?? null) : null;
 
@@ -211,14 +224,24 @@
   }
 
   // â"€â"€ Scoping â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  $: canSubmitWithoutAttachment = !!presetScope && userNotes.trim().length > 0;
+
   async function startIncorporate() {
-    if (inputTab === 'upload' && !uploadFile) return;
-    if (inputTab === 'paste' && !pasteText.trim()) return;
+    if (inputTab === 'upload' && !uploadFile && !canSubmitWithoutAttachment) return;
+    if (inputTab === 'paste' && !pasteText.trim() && !canSubmitWithoutAttachment) return;
 
     scopeError = null;
     incorporateError = null;
     suggestedHtml = '';
     changeGroups = [];
+
+    if (presetScope) {
+      // A highlight already tells us exactly which paragraphs to target —
+      // skip LLM scoping and the manual-tick screen entirely.
+      const targeted = allParagraphs.filter(p => presetScope.paragraphIds.includes(p.id));
+      await runIncorporate(targeted);
+      return;
+    }
 
     await runScope();
   }
@@ -499,6 +522,12 @@
 <div class="panel">
 
   {#if panelState === 'idle'}
+    {#if presetScope}
+      <div class="preset-scope-banner">
+        <i class="las la-highlighter"></i>
+        <span>Editing highlighted text: <em>"{presetScope.quotedText.length > 140 ? presetScope.quotedText.slice(0, 140) + '...' : presetScope.quotedText}"</em></span>
+      </div>
+    {/if}
     {#if docTypes}
       <div class="doc-type-row">
         <label class="doc-type-label">Document type</label>
@@ -629,6 +658,7 @@
         <label class="notes-label">
           <i class="las la-pen"></i> Your notes
           <span class="notes-hint">Tell Claude what to focus on, high priority in the prompt</span>
+          <VoiceDictationButton class="notes-mic-btn" on:transcript={(e) => userNotes = userNotes ? `${userNotes} ${e.detail}` : e.detail} />
         </label>
         <textarea class="notes-textarea" placeholder="e.g. Focus on the transport conclusions in section 4..." bind:value={userNotes}></textarea>
       </div>
@@ -639,7 +669,7 @@
             <i class="las la-magic"></i> Generate Summary
           </button>
         {:else}
-          <button class="incorporate-btn" disabled={!uploadFile || (enableIssueLink && isSpecialistReport && !selectedIssueId)} on:click={startIncorporate}>
+          <button class="incorporate-btn" disabled={(!uploadFile && !canSubmitWithoutAttachment) || (enableIssueLink && isSpecialistReport && !selectedIssueId)} on:click={startIncorporate}>
             <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
           </button>
           {#if enableIssueLink && isSpecialistReport}
@@ -661,6 +691,7 @@
           <label class="notes-label">
             <i class="las la-pen"></i> Your notes
             <span class="notes-hint">Tell Claude what to focus on â€" high priority</span>
+            <VoiceDictationButton class="notes-mic-btn" on:transcript={(e) => userNotes = userNotes ? `${userNotes} ${e.detail}` : e.detail} />
           </label>
           <textarea class="notes-textarea" placeholder="e.g. Focus only on transport conclusions..." bind:value={userNotes}></textarea>
         </div>
@@ -670,7 +701,7 @@
               <i class="las la-magic"></i> Generate Summary
             </button>
           {:else}
-            <button class="incorporate-btn incorporate-btn--full" disabled={!pasteText.trim() || (enableIssueLink && isSpecialistReport && !selectedIssueId)} on:click={startIncorporate}>
+            <button class="incorporate-btn incorporate-btn--full" disabled={(!pasteText.trim() && !canSubmitWithoutAttachment) || (enableIssueLink && isSpecialistReport && !selectedIssueId)} on:click={startIncorporate}>
               <i class="las la-file-import"></i> {incorporateLabel ?? 'Incorporate into assessment'}
             </button>
             {#if enableIssueLink && isSpecialistReport}
@@ -911,6 +942,22 @@
   .notes-area--inline { padding: 0; }
   .notes-label { display: flex; align-items: baseline; gap: 0.375rem; font-size: 0.75rem; font-weight: 600; color: var(--color-slate-700); }
   .notes-hint { font-size: 0.7rem; font-weight: 400; color: var(--color-slate-400); }
+  .notes-label :global(.notes-mic-btn) { margin-left: auto; }
+
+  .preset-scope-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0 1rem 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-badge-warning-bg);
+    color: var(--color-badge-warning-fg);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .preset-scope-banner i { margin-top: 0.15rem; }
+  .preset-scope-banner em { font-style: italic; }
   .notes-textarea { width: 100%; box-sizing: border-box; padding: 0.5rem 0.625rem; border: 1px solid var(--color-slate-200); border-radius: 6px; font-size: 0.8rem; font-family: inherit; color: var(--color-slate-700); background: var(--color-red-50); resize: none; line-height: 1.5; min-height: 64px; transition: border-color 0.15s; }
   .notes-textarea:focus { outline: none; border-color: var(--color-amber-500); background: white; }
   .notes-textarea::placeholder { color: var(--color-slate-400); }
