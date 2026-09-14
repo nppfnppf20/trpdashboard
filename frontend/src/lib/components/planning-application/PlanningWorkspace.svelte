@@ -595,6 +595,11 @@
     const { notes, file, documentText, documentTitle, docType } = e.detail;
     const originalHtml = $draftEditorHtml;
     selectionPopup = null;
+    // The highlight box was only ever meant to mark the live selection while
+    // the compose popup was open — once we're writing the AI's result back
+    // into the document (in a different color of its own), it needs to go,
+    // or the two visibly overlap and the stale box doesn't track scrolling.
+    draftEditor?.clearSelectionHighlight();
     pendingAiEdit = { paragraphIds, quotedText, top, left, originalHtml, loading: true, error: null };
 
     try {
@@ -651,6 +656,7 @@
     $draftEditorHtml = originalHtml;
     draftEditor?.setHTML(originalHtml);
     pendingAiEdit = null;
+    draftEditor?.clearSelectionHighlight();
     selectionPopup = { paragraphIds, quotedText, top, left };
   }
 
@@ -993,6 +999,7 @@
           quotedText={selectionPopup.quotedText}
           top={selectionPopup.top}
           left={selectionPopup.left}
+          defaultDocType={activeType?.slug === 'planning_statement_v3' ? 'specialist_report' : null}
           on:commented={handleSelectionCommented}
           on:sendtoai={handleSendToAi}
           on:close={closeSelectionPopup}

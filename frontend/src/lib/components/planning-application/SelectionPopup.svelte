@@ -10,6 +10,7 @@
   export let quotedText = '';
   export let top = 0;
   export let left = 0;
+  export let defaultDocType = null;
 
   const dispatch = createEventDispatcher();
 
@@ -30,7 +31,7 @@
 
   let notes = '';
   let attachOpen = false;
-  let docType = DOC_TYPES[0].value;
+  let docType = defaultDocType ?? DOC_TYPES[0].value;
   let inputTab = 'upload'; // 'upload' | 'paste'
   let dragOver = false;
   let uploadFile = null;

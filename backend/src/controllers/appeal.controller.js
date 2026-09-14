@@ -1355,6 +1355,7 @@ export async function incorporateTargeted(req, res) {
       projectBrief,
       exampleDoc,
       generationPrompt: typeRows[0]?.generation_prompt ?? null,
+      docType: doc_type ?? null,
       customPrompt: await loadGlobalPrompt('incorporate_appeal'),
       provider,
     });

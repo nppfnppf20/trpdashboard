@@ -793,7 +793,7 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
   {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, generationPrompt = null, provider = 'anthropic' }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, generationPrompt = null, docType = null, provider = 'anthropic' }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
   const contextBlocksSection = contextBlocks ? `${contextBlocks}\n\n---\n\n` : '';
@@ -807,17 +807,30 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
     : '';
 
   const hasDocument = !!documentText?.trim();
+  const isSpecialistReport = hasDocument && docType === 'specialist_report';
+
+  // Specialist reports get their own framing rather than the generic
+  // "incorporate this document" treatment: this is evidence for the specific
+  // highlighted passage, not general instructions to rewrite from — fidelity
+  // to what the report actually says matters far more than for a briefing
+  // note. No policy-linking here (that's the issue-bound variant elsewhere,
+  // incorporateSpecialistReportIntoIssue) — whatever policy context matters
+  // is whatever's already in the highlighted text itself.
   const documentBlock = hasDocument
-    ? `An uploaded document is provided below. Read it carefully. It may be a project briefing note with strategic direction and revised arguments, a specialist technical report, expert evidence, or other supporting material.\n\nUPLOADED DOCUMENT: ${filename}\n${documentText}\n\n---\n\n`
+    ? (isSpecialistReport
+        ? `You have been given a specialist technical report as supporting evidence for the highlighted passage below. Use it to substantiate, evidence, or otherwise inform the requested change — not to introduce unrelated content.\n\nLook first to the report's conclusions or executive summary for the relevant findings. This is a starting point, not a restriction — draw on the body of the report where the conclusion doesn't cover something relevant, or where the report has no distinct conclusions section.\n\nOnly use findings, figures and conclusions actually contained in the report. Do not invent, strengthen, or soften a finding — preserve any qualification or uncertainty the report expresses. Where the report conflicts with something already stated in the paragraph, insert [INCONSISTENCY TO BE RESOLVED: identify the conflict briefly] rather than silently changing it.\n\nThis general guidance is secondary to the user's own instructions below — where they conflict, follow the user's instructions.\n\nSPECIALIST REPORT: ${filename}\n${documentText}\n\n---\n\n`
+        : `An uploaded document is provided below. Read it carefully. It may be a project briefing note with strategic direction and revised arguments, a specialist technical report, expert evidence, or other supporting material.\n\nUPLOADED DOCUMENT: ${filename}\n${documentText}\n\n---\n\n`)
     : '';
 
   const paraBlock = paragraphs
     .map(p => `${p.id}:\n${p.html}`)
     .join('\n\n');
 
-  const taskInstruction = hasDocument
-    ? `Your task: revise the paragraphs above to incorporate the uploaded document. For each paragraph, consider what the uploaded document adds, changes or requires and update it accordingly. Do not leave paragraphs unchanged just because changes are difficult. Where the uploaded document is a briefing note with strategic direction, follow those instructions even if they require significant rewrites. Where it is a technical report, incorporate the relevant conclusions and findings.`
-    : `Your task: revise the paragraphs above following the user guidance given above.`;
+  const taskInstruction = isSpecialistReport
+    ? `Your task: revise the highlighted passage using the specialist report as evidence, following the guidance above. Keep the edit to a short passage integrated into the existing text — not a new subsection or extra paragraphs — unless the user's own instructions ask for more.`
+    : hasDocument
+      ? `Your task: revise the paragraphs above to incorporate the uploaded document. For each paragraph, consider what the uploaded document adds, changes or requires and update it accordingly. Do not leave paragraphs unchanged just because changes are difficult. Where the uploaded document is a briefing note with strategic direction, follow those instructions even if they require significant rewrites. Where it is a technical report, incorporate the relevant conclusions and findings.`
+      : `Your task: revise the paragraphs above following the user guidance given above.`;
 
   const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
 
