@@ -1,19 +1,16 @@
 <script>
   import { onMount } from 'svelte';
-  import { getKeyIssues, updateKeyIssueSummary, getIssueNotes, upsertIssueNote, getDocumentLog, getPolicyTrackRelevance, getArgumentPoints, getPaDraftContext, saveDraft, paIncorporateTargeted } from '$lib/api/planningApplication.js';
-  import { getPolicies } from '$lib/api/lpaAnalysis.js';
-  import { initNotes, briefingDraftOpen, briefingDraftLoading, briefingDraftSuggestions, briefingDraftSkipped, briefingEvolveState, runDraftFromBriefing, runDraftFromIssueSummaries, startEvolveArgument, sendEvolveRefinement, applyEvolvedArgument, skipBriefingDraftSuggestion, closeBriefingDraft, briefingNotes, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, briefingUploadTab, briefingUploadFile, briefingUploadText, briefingUploadTitle, briefingUploadLoading, loadBriefingNotes, selectBriefingNote, openBriefingUpload, submitBriefingUpload, keyIssueDraftOpen, keyIssueDraftLoading, keyIssueDraftSuggestions, keyIssueDraftAccepted, keyIssueDraftSkipped, keyIssueDropdownOpen, keyIssueSelectedNoteId, runKeyIssueDraftFromBriefing, acceptKeyIssueSummary, skipKeyIssueSummary, closeKeyIssueDraft } from '$lib/stores/planning-notes.js';
-  import { documentLog, logModalOpen, logTitle, logCode, logItemType, logPreparedBy, logSummary, logPoints, logSaving, initLog, removeLogPoint, saveLogEntry, editModalOpen, editTitle, editCode, editItemType, editPreparedBy, editSummary, editPoints, editSaving, openEditModal, removeEditPoint, saveEditEntry, deleteEntry } from '$lib/stores/planning-log.js';
-  import { argumentPointsByTrack, initArgumentPoints } from '$lib/stores/planning-analysis.js';
-  import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, suggestPromptText, suggestPromptLoading, suggestPromptSaving, suggestPromptSaved, suggestPromptIsCustom, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal, saveSuggestPrompt, resetSuggestPromptToDefault, runSuggestionWithPrompt } from '$lib/stores/planning-suggestion.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionsTypeName, sectionsTypeId, sections, sectionsLoading, newSectionName, addingSectionLoading, sectionGenerating, sectionExpandedId, sectionPromptText, sectionPromptIsCustom, sectionPromptSaving, sectionPromptSaved, sectionPromptResetting, sectionTemplateText, sectionTemplateSaving, sectionTemplateSaved, sectionExampleModalOpen, sectionExampleId, sectionExampleSaving, sectionExampleSaved, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, setSectionExampleEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleAddSection, handleDeleteSection, moveSectionUp, moveSectionDown, toggleSectionExpand, handleSaveSectionPrompt, handleSaveSectionTemplate, openSectionExampleModal, handleSaveSectionExample, handleGenerateSection, handleResetSectionPrompt, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
+  import { getIssueNotes, getDocumentLog, getPaDraftContext, saveDraft, paIncorporateTargeted } from '$lib/api/planningApplication.js';
+  import { initNotes, briefingDraftOpen, runDraftFromBriefing, runDraftFromIssueSummaries, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, loadBriefingNotes, selectBriefingNote, keyIssueDraftOpen } from '$lib/stores/planning-notes.js';
+  import { documentLog, logModalOpen, initLog, editModalOpen, openEditModal, deleteEntry } from '$lib/stores/planning-log.js';
+  import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal } from '$lib/stores/planning-suggestion.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML, getProjectDeliverables } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { appealIncorporateTargeted } from '$lib/api/appeal.js';
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
-  import PolicyTierNotes from '$lib/components/planning-application/PolicyTierNotes.svelte';
   import DraftingIssuesModal from '$lib/components/planning-application/DraftingIssuesModal.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import { getDraftingIssues } from '$lib/api/draftingIssues.js';
@@ -29,6 +26,15 @@
   import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
   import { getStartingDocs, getDraftContext } from '$lib/api/appeal.js';
   import { md } from '$lib/utils/markdown.js';
+  import BriefingDraftModal from '$lib/components/planning-application/BriefingDraftModal.svelte';
+  import BriefingUploadModal from '$lib/components/planning-application/BriefingUploadModal.svelte';
+  import KeyIssueDraftModal from '$lib/components/planning-application/KeyIssueDraftModal.svelte';
+  import DocumentLogEntryModal from '$lib/components/planning-application/DocumentLogEntryModal.svelte';
+  import DocumentLogEditModal from '$lib/components/planning-application/DocumentLogEditModal.svelte';
+  import DraftSectionsModal from '$lib/components/planning-application/DraftSectionsModal.svelte';
+  import SectionExampleModal from '$lib/components/planning-application/SectionExampleModal.svelte';
+  import SuggestPromptModal from '$lib/components/planning-application/SuggestPromptModal.svelte';
+  import RegenerateConfirmModal from '$lib/components/planning-application/RegenerateConfirmModal.svelte';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
   const draftKeyState  = actionPromptState('draft_key_summaries');
@@ -70,85 +76,12 @@
     };
   }
 
-  // programmatic: true = substituted AFTER generation (never seen by LLM — hallucination-safe)
-  // programmatic: false = substituted into prompt before sending (LLM synthesises from this content)
-  const VARIABLE_SOURCES = {
-    PROJECT_NAME:            { label: 'Project name',               source: 'projects.project_name',                                programmatic: true },
-    APPLICANT_NAME:          { label: 'Applicant name',             source: 'projects.client',                                      programmatic: true },
-    LPA_NAME:                { label: 'LPA name',                   source: 'projects.local_planning_authority',                    programmatic: true },
-    SITE_ADDRESS:            { label: 'Site address',               source: 'projects.address',                                     programmatic: true },
-    DEVELOPMENT_DESCRIPTION: { label: 'Description of development', source: 'projects.development_description',                    programmatic: true },
-    ABOUT_APPLICANT:         { label: 'About the applicant',        source: 'document_summaries, doc_type: about_applicant',       programmatic: true },
-    PROPOSED_DEVELOPMENT:    { label: 'Proposed development',       source: 'document_summaries, doc_type: proposed_development',  programmatic: false },
-    DOCUMENT_LIST:           { label: 'Document list',              source: 'document_log (all entries)',                          programmatic: false },
-    SITE_SURROUNDINGS:       { label: 'Site & surroundings',        source: 'document_summaries, doc_type: site_surroundings',     programmatic: false },
-    PLANNING_HISTORY:              { label: 'Planning history',                    source: 'planning_history table',                                       programmatic: false },
-    PROJECT_PLANNING_HISTORY:      { label: 'Project planning history (2 tables)', source: 'project_planning_history, on-site + nearby, as HTML tables',   programmatic: true },
-    PRE_APP_SUMMARY:         { label: 'Pre-app summary',            source: 'document_summaries, doc_type: pre_app',               programmatic: true },
-    EIA_SUMMARY:             { label: 'EIA summary',                source: 'document_summaries, doc_type: eia_response',          programmatic: true },
-    SCI_SUMMARY:             { label: 'SCI summary',                source: 'document_summaries, doc_type: sci',                   programmatic: true },
-    LOCAL_POLICIES:             { label: 'Local policies (HTML)',       source: 'project_policies, local, verbatim listing',           programmatic: true },
-    NATIONAL_POLICIES:          { label: 'National policies (HTML)',   source: 'project_policies, national, verbatim listing',        programmatic: true },
-    OTHER_POLICIES:             { label: 'Other policies (HTML)',      source: 'project_policies, other types, verbatim listing',     programmatic: true },
-    LOCAL_POLICY_NAMES:         { label: 'Local policy names',         source: 'project_policies, local, ref + name list only',       programmatic: true },
-    SUPPLEMENTARY_POLICY_NAMES: { label: 'Supplementary policy names', source: 'project_policies, supplementary, ref + name list',   programmatic: true },
-    SITE_SURROUNDINGS_HTML:     { label: 'Site & surroundings (HTML)', source: 'document_summaries, doc_type: site_surroundings, raw HTML', programmatic: true },
-    PLANNING_HISTORY_TABLE:     { label: 'Planning history table',     source: 'planning_history table, rendered as HTML table',       programmatic: true },
-    PROPOSED_DEVELOPMENT_HTML:  { label: 'Proposed development (HTML)', source: 'document_summaries, doc_type: proposed_development, raw HTML', programmatic: true },
-    DOCUMENT_LIST_DOCS:         { label: 'Document list',              source: 'document_log, item_type: document, as bullet list',   programmatic: true },
-    DOCUMENT_LIST_DRAWINGS:     { label: 'Drawings list',              source: 'document_log, item_type: drawing, as bullet list',    programmatic: true },
-    LOCAL_POLICIES_CONTEXT:  { label: 'Local policies (context)',   source: 'project_policies, local, refs + notes for LLM',       programmatic: false },
-    NATIONAL_POLICIES_CONTEXT: { label: 'National policies (context)', source: 'project_policies, national, refs + notes for LLM', programmatic: false },
-    OTHER_POLICIES_CONTEXT:  { label: 'Other policies (context)',   source: 'project_policies, other, refs + notes for LLM',       programmatic: false },
-    FULL_STATEMENT:          { label: 'Full statement',             source: 'Assembled HTML of all sections (runs_last only)',       programmatic: false },
-
-    // v2/v3 appeal-tool prompts (appeal.service.js / appeal.controller.js) —
-    // a separate substitution system from the planning statement one above.
-    // Everything here is substituted before the LLM call (no output-slot /
-    // post-generation swap pattern exists in this system), so "prog." vs
-    // "llm" instead tracks whether the value's own content was itself
-    // produced or interpreted by an LLM anywhere upstream (an AI-written
-    // document summary) vs a plain deterministic DB field or admin-authored
-    // text with no LLM involvement in its provenance.
-    NEIGHBOURHOOD_POLICIES: { label: 'Neighbourhood policies (HTML)', source: 'project_policies, neighbourhood, verbatim listing', programmatic: true },
-    SUPPLEMENTARY_POLICIES: { label: 'Supplementary policies (HTML)', source: 'project_policies, supplementary, verbatim listing', programmatic: true },
-    GUIDING_BRIEF:           { label: 'Guiding brief',                source: 'admin_console.guiding_briefs.guidance_content, matched by document_type + development_type', programmatic: true },
-    STYLE_GUIDE:              { label: 'Style example',                 source: 'admin_console.guiding_briefs.style_example', programmatic: true },
-    DOCUMENT_TYPE:            { label: 'Draft type name',               source: 'appeals.appeal_draft_types.name', programmatic: true },
-    PROJECT_BRIEF:            { label: 'Project brief',                 source: 'planning_applications.document_summaries, latest briefing_transcript (AI-generated summary)', programmatic: false },
-    BRIEFING_NOTES:           { label: 'Briefing notes (ticked selection)', source: 'planning_applications.document_summaries, briefing_transcript rows selected via Starting Docs (AI-generated summaries)', programmatic: false },
-    ISSUE_LABEL:              { label: 'Issue label',                   source: 'drafting_issues.label / project_issue_tracks.label', programmatic: true },
-    ISSUE_DISCIPLINE:         { label: 'Issue discipline',              source: 'drafting_issues.discipline / project_issue_tracks.discipline', programmatic: true },
-    ISSUE_LIST:               { label: 'Issue list (all issues)',       source: 'drafting_issues / project_issue_tracks, label + discipline, one per line', programmatic: true },
-    ISSUE_CONTEXT:            { label: 'Issue context (single issue)',  source: 'linked policies, snippet templates, and working notes (tier notes, argument notes, specialist report) for one issue', programmatic: true },
-    ISSUES_CONTEXT:           { label: 'Issues context (all issues)',   source: 'same as Issue context, for every issue in the section, clearly delimited', programmatic: true },
-    DECISION_NOTICE:          { label: 'Decision Notice',               source: 'appeals.pa_draft_starting_docs, slot: decision_notice', programmatic: true },
-    OFFICERS_REPORT:          { label: "Officer's Report",              source: 'appeals.pa_draft_starting_docs, slot: officers_report', programmatic: true },
-    PLANNING_STATEMENT:       { label: 'Planning Statement (uploaded)', source: 'appeals.pa_draft_starting_docs, slot: planning_statement', programmatic: true },
-    COMMITTEE_REPORT:         { label: 'Committee Report',              source: 'appeals.pa_draft_starting_docs, slot: committee_report', programmatic: true },
-    COMMITTEE_MINUTES:        { label: 'Committee Minutes',             source: 'appeals.pa_draft_starting_docs, slot: committee_minutes', programmatic: true },
-    STAGE1_REVIEW:            { label: 'Stage 1 Review',                source: 'appeals.pa_draft_starting_docs, slot: stage1_review', programmatic: true },
-    OTHER_DOCS:               { label: 'Other Documents',               source: 'appeals.pa_draft_starting_docs, slot: other', programmatic: true },
-    HLPV_DATA:                { label: 'HLPV Tool Data',                source: 'appeals.pa_draft_starting_docs, slot: hlpv_data', programmatic: true },
-    ADDITIONAL_DESIGNATIONS:  { label: 'Additional Designations & Site Notes', source: 'appeals.pa_draft_starting_docs, slot: additional_designations', programmatic: true },
-    SOCIO_DATA:               { label: 'Socio-economic Data',           source: 'appeals.pa_draft_starting_docs, slot: socio_data', programmatic: true },
-  };
-
-  $: detectedVars = [...new Set(($sectionPromptText || '').match(/\{\{([A-Z_]+)\}\}/g) || [])]
-    .map(match => {
-      const key = match.slice(2, -2);
-      const info = VARIABLE_SOURCES[key];
-      return { key, label: info?.label ?? key, source: info?.source ?? 'unknown source', programmatic: info?.programmatic ?? false };
-    });
-
   let suggestFileInput;
-  let briefingFileInput;
   let chatEndEl;
 
   $: if ($conversation.length && chatEndEl) setTimeout(() => chatEndEl?.scrollIntoView({ behavior: 'smooth' }), 50);
 
   let draftEditor;
-  let sectionExampleEditor;
 
   // Planning Statement v3 and Stage 1 Review v3 are the ones we actually use
   // day to day — their older versions stay out of the main card list by
@@ -212,7 +145,6 @@
     });
 
   $: setDraftEditor(draftEditor);
-  $: setSectionExampleEditor(sectionExampleEditor);
 
   export let project;
 
@@ -265,10 +197,7 @@
 
   let activeTab = 'draft';
 
-  let keyIssues = [];
   let issueNotes = {};
-  let projectPolicies = [];
-  let policyTrackRelevance = {};
   let loading = true;
   let loadError = null;
 
@@ -278,19 +207,11 @@
     loading = true;
     loadError = null;
     try {
-      const [issues, notes, log, policies, relevance, argPoints] = await Promise.all([
-        getKeyIssues(project.id),
+      const [notes, log] = await Promise.all([
         getIssueNotes(project.id),
         getDocumentLog(project.id),
-        getPolicies(project.id),
-        getPolicyTrackRelevance(project.id),
-        getArgumentPoints(project.id)
       ]);
-      keyIssues = issues;
       issueNotes = notes;
-      projectPolicies = policies;
-      policyTrackRelevance = relevance;
-      initArgumentPoints(argPoints);
       initSuggestion(project.id);
       initDrafts(project.id);
       initNotes(project.id, notes);
@@ -312,29 +233,6 @@
     document.addEventListener('click', onClick, true);
     return { destroy() { document.removeEventListener('click', onClick, true); } };
   }
-
-  function autoresize(node, _value) {
-    function resize() {
-      node.style.height = 'auto';
-      node.style.height = node.scrollHeight + 'px';
-    }
-    node.addEventListener('input', resize);
-    resize();
-    return {
-      update() { resize(); },
-      destroy() { node.removeEventListener('input', resize); }
-    };
-  }
-
-  const riskColours = {
-    showstopper:         { bg: '#fee2e2', colour: '#991b1b' },
-    extremely_high_risk: { bg: '#fee2e2', colour: '#dc2626' },
-    high_risk:           { bg: '#ffedd5', colour: '#c2410c' },
-    medium_high_risk:    { bg: '#fef9c3', colour: '#a16207' },
-    medium_risk:         { bg: '#fef9c3', colour: '#ca8a04' },
-    medium_low_risk:     { bg: '#dcfce7', colour: '#15803d' },
-    low_risk:            { bg: '#dcfce7', colour: '#16a34a' }
-  };
 
   let exportingWord = false;
 
@@ -728,108 +626,6 @@
       <button on:click={load}>Retry</button>
     </div>
 
-  {:else if activeTab === 'key-issues'}
-    <!-- ── Tab 1: Key Issues ── -->
-    <div class="tab-body">
-      {#if keyIssues.length > 0}
-        <div class="key-issues-toolbar">
-          <div class="briefing-btn-group" use:clickOutside={() => $keyIssueDropdownOpen = false}>
-            <button class="btn-draft-from-briefing" on:click={() => runKeyIssueDraftFromBriefing(project.id, $keyIssueSelectedNoteId)}>
-              <i class="las la-lightbulb"></i> Draft issue notes from briefing
-              {#if $keyIssueSelectedNoteId}
-                {@const note = $briefingNotes.find(n => n.id === $keyIssueSelectedNoteId)}
-                {#if note}<span class="briefing-note-pill">{note.title || note.file_name}</span>{/if}
-              {/if}
-            </button>
-            <button class="prompt-info-btn" title="Edit prompt" on:click={() => openActionPrompt('draft_key_summaries')}><i class="las la-sliders-h"></i></button>
-            <button class="btn-briefing-chevron" on:click={() => $keyIssueDropdownOpen = !$keyIssueDropdownOpen} title="Select briefing note">
-              <i class="las la-angle-down"></i>
-            </button>
-            {#if $keyIssueDropdownOpen}
-              <div class="briefing-dropdown">
-                <button class="briefing-dropdown-item" class:active={$keyIssueSelectedNoteId === null} on:click={() => { $keyIssueSelectedNoteId = null; $keyIssueDropdownOpen = false; }}>
-                  <span>Latest briefing note</span>
-                </button>
-                {#each $briefingNotes as note}
-                  <button class="briefing-dropdown-item" class:active={$keyIssueSelectedNoteId === note.id} on:click={() => { $keyIssueSelectedNoteId = note.id; $keyIssueDropdownOpen = false; }}>
-                    <span class="briefing-dropdown-title">{note.title || note.file_name}</span>
-                    <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  </button>
-                {/each}
-                <button class="briefing-dropdown-item briefing-dropdown-upload" on:click={openBriefingUpload}>
-                  <i class="las la-plus"></i> Upload new briefing note
-                </button>
-              </div>
-            {/if}
-          </div>
-        </div>
-      {/if}
-      {#if keyIssues.length === 0}
-        <div class="empty-state">
-          <i class="las la-list-alt"></i>
-          <p>No planning issues have been added to this project yet. Add them via the project information page.</p>
-        </div>
-      {:else}
-        <div class="issues-list">
-          {#each keyIssues as issue (issue.id)}
-            {@const risk = riskColours[issue.last_known_risk_level]}
-            <div class="card issue-card">
-              <div class="issue-top">
-                <div class="issue-label">
-                  {#if issue.discipline}
-                    <span class="discipline-tag">{issue.discipline.replace(/_/g, ' ')}</span>
-                  {/if}
-                  <span class="issue-name">{issue.label}</span>
-                </div>
-                {#if issue.last_known_risk_level}
-                  <span class="risk-chip" style="background:{risk?.bg ?? '#f1f5f9'}; color:{risk?.colour ?? '#64748b'}">
-                    {issue.last_known_risk_level.replace(/_/g, ' ')}
-                  </span>
-                {/if}
-              </div>
-              <div class="policy-section">
-                <PolicyTierNotes
-                  {issue}
-                  projectId={project.id}
-                  policies={projectPolicies}
-                  relevantPolicyIds={policyTrackRelevance[issue.id] ?? []}
-                  on:relevancechange={(e) => {
-                    const { policyId, linked } = e.detail;
-                    policyTrackRelevance = {
-                      ...policyTrackRelevance,
-                      [issue.id]: linked
-                        ? [...(policyTrackRelevance[issue.id] ?? []), policyId]
-                        : (policyTrackRelevance[issue.id] ?? []).filter(id => id !== policyId)
-                    };
-                  }}
-                />
-              </div>
-              <label class="argument-notes-label">Issue notes</label>
-              <textarea
-                class="summary-field"
-                placeholder="Add notes on this issue: position, key evidence, approach..."
-                value={issue.summary ?? ''}
-                use:autoresize={issue.summary}
-                on:blur={(e) => updateKeyIssueSummary(issue.id, e.target.value)}
-              ></textarea>
-              <label class="argument-notes-label">Argument notes</label>
-              <textarea
-                class="summary-field argument-notes-field"
-                placeholder="Outline the argument structure for this issue: how the proposals comply with policy, key evidence to cite..."
-                value={issueNotes[issue.id]?.argument_for ?? ''}
-                use:autoresize={issueNotes[issue.id]?.argument_for}
-                on:blur={async (e) => {
-                  const val = e.target.value;
-                  issueNotes = { ...issueNotes, [issue.id]: { ...issueNotes[issue.id], argument_for: val } };
-                  await upsertIssueNote(project.id, issue.id, { argument_for: val });
-                }}
-              ></textarea>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-
   {:else if activeTab === 'draft'}
     <!-- ── Tab 3: Draft Document ── -->
     {#if $activeDraftTypeId !== null}
@@ -1214,590 +1010,42 @@
 
 <!-- Draft arguments from briefing modal -->
 {#if $briefingDraftOpen}
-  <div class="modal-overlay" on:click|self={closeBriefingDraft} role="dialog" aria-modal="true">
-    <div class="modal modal-briefing-draft">
-      <div class="modal-header">
-        <span class="modal-title">Draft arguments from briefing</span>
-        <button class="modal-close" on:click={closeBriefingDraft}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        {#if $briefingDraftLoading}
-          <div class="briefing-draft-loading">
-            <div class="mini-spinner"></div>
-            <span>Analysing briefing transcript and drafting arguments…</span>
-          </div>
-        {:else if $briefingDraftSuggestions.length === 0}
-          <p class="briefing-draft-empty">No suggestions returned.</p>
-        {:else}
-          <p class="briefing-draft-intro">Review the suggested changes below. Click "Evolve argument" to see how the AI proposes to rework the existing argument, then refine or apply it.</p>
-          <div class="briefing-draft-list">
-            {#each $briefingDraftSuggestions as s (s.track_id)}
-              {@const skipped = $briefingDraftSkipped.has(s.track_id)}
-              {@const evolve = $briefingEvolveState[s.track_id]}
-              <div class="briefing-draft-card" class:bd-skipped={skipped} class:bd-applied={evolve?.applied}>
-                <div class="bd-card-header">
-                  <span class="bd-issue-label">{s.label}</span>
-                  {#if evolve?.applied}
-                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Applied</span>
-                  {:else if skipped}
-                    <span class="bd-status bd-status-skipped">Skipped</span>
-                  {:else if !evolve}
-                    <div class="bd-actions">
-                      <button class="bd-btn-accept" on:click={() => startEvolveArgument(project.id, s.track_id, s.argument_for)}>
-                        <i class="las la-magic"></i> Evolve argument
-                      </button>
-                      <button class="bd-btn-skip" on:click={() => skipBriefingDraftSuggestion(s.track_id)}>Skip</button>
-                    </div>
-                  {/if}
-                </div>
-
-                <!-- New information from briefing -->
-                <div class="bd-new-info">
-                  <span class="bd-new-info-label">From briefing</span>
-                  <p class="bd-argument-text">{s.argument_for}</p>
-                </div>
-
-                <!-- Evolve panel -->
-                {#if evolve && !evolve.applied}
-                  <div class="bd-evolve-panel">
-                    {#if evolve.loading}
-                      <div class="bd-evolve-loading">
-                        <div class="mini-spinner"></div>
-                        <span>Reworking argument…</span>
-                      </div>
-                    {:else if evolve.evolved}
-                      <div class="bd-evolve-result">
-                        <span class="bd-evolved-label">Proposed argument</span>
-                        <p class="bd-evolved-text">{evolve.evolved}</p>
-                      </div>
-                      <div class="bd-evolve-chat">
-                        <textarea
-                          class="bd-chat-input"
-                          placeholder="Ask for changes, e.g. 'keep the reference to the original scheme but lead with the new position'…"
-                          rows="2"
-                          value={evolve.input}
-                          on:input={(e) => briefingEvolveState.update(st => ({ ...st, [s.track_id]: { ...st[s.track_id], input: e.target.value } }))}
-                          on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendEvolveRefinement(project.id, s.track_id, s.argument_for); } }}
-                        ></textarea>
-                        <div class="bd-evolve-actions">
-                          <button class="bd-chat-send" disabled={!evolve.input?.trim() || evolve.loading} on:click={() => sendEvolveRefinement(project.id, s.track_id, s.argument_for)}>
-                            <i class="las la-paper-plane"></i>
-                          </button>
-                          <button class="bd-btn-apply" on:click={() => applyEvolvedArgument(s.track_id)}>
-                            <i class="las la-check"></i> Apply
-                          </button>
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-          <div class="briefing-draft-footer">
-            <button class="btn-primary" on:click={closeBriefingDraft}>Done</button>
-          </div>
-        {/if}
-      </div>
-    </div>
-  </div>
+  <BriefingDraftModal {project} />
 {/if}
 
 <!-- Upload new briefing note modal -->
 {#if $briefingUploadOpen}
-  <div class="modal-overlay" on:click|self={() => $briefingUploadOpen = false} role="dialog" aria-modal="true">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title">Upload briefing note</span>
-        <button class="modal-close" on:click={() => $briefingUploadOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        <div class="log-form-field" style="margin-bottom:1rem">
-          <label class="section-field-label">Title <span class="form-label-hint">(optional)</span></label>
-          <input class="add-section-input" type="text" bind:value={$briefingUploadTitle} placeholder="e.g. Briefing note v2, April review" />
-        </div>
-        <div class="input-tabs">
-          <button class="input-tab" class:active={$briefingUploadTab === 'upload'} on:click={() => $briefingUploadTab = 'upload'}>
-            <i class="las la-file-upload"></i> Upload
-          </button>
-          <button class="input-tab" class:active={$briefingUploadTab === 'paste'} on:click={() => $briefingUploadTab = 'paste'}>
-            <i class="las la-paste"></i> Paste Text
-          </button>
-        </div>
-        {#if $briefingUploadTab === 'upload'}
-          <div
-            class="upload-zone"
-            class:has-file={$briefingUploadFile}
-            on:dragover|preventDefault={() => {}}
-            on:drop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) $briefingUploadFile = f; }}
-            on:click={() => briefingFileInput.click()}
-            role="button"
-            tabindex="0"
-            on:keydown={(e) => e.key === 'Enter' && briefingFileInput.click()}
-          >
-            {#if $briefingUploadFile}
-              <i class="las la-file-alt"></i>
-              <span>{$briefingUploadFile.name}</span>
-              <span class="upload-sub">Click to change</span>
-            {:else}
-              <i class="las la-cloud-upload-alt"></i>
-              <span>Drop a PDF or click to upload</span>
-              <span class="upload-sub">PDF, TXT or MD · max 20MB</span>
-            {/if}
-          </div>
-          <input type="file" accept=".pdf,.txt,.md" bind:this={briefingFileInput} on:change={(e) => $briefingUploadFile = e.target.files[0] || null} style="display:none" />
-        {:else}
-          <textarea class="paste-area" bind:value={$briefingUploadText} placeholder="Paste briefing note text here..."></textarea>
-        {/if}
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left"></div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => $briefingUploadOpen = false}>Cancel</button>
-          <button class="prompt-info-btn" title="Edit draft arguments prompt" on:click={() => openActionPrompt('draft_arguments_from_briefing')}><i class="las la-sliders-h"></i></button>
-          <button
-            class="modal-run"
-            disabled={$briefingUploadLoading || ($briefingUploadTab === 'upload' ? !$briefingUploadFile : !$briefingUploadText.trim())}
-            on:click={() => submitBriefingUpload(project.id)}
-          >
-            {$briefingUploadLoading ? 'Uploading...' : 'Upload & draft arguments'}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <BriefingUploadModal {project} />
 {/if}
 
 <!-- Draft key issue notes from briefing modal -->
 {#if $keyIssueDraftOpen}
-  <div class="modal-overlay" on:click|self={closeKeyIssueDraft} role="dialog" aria-modal="true">
-    <div class="modal modal-briefing-draft">
-      <div class="modal-header">
-        <span class="modal-title">Draft issue notes from briefing</span>
-        <button class="modal-close" on:click={closeKeyIssueDraft}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        {#if $keyIssueDraftLoading}
-          <div class="briefing-draft-loading">
-            <div class="mini-spinner"></div>
-            <span>Analysing briefing and drafting position notes…</span>
-          </div>
-        {:else if $keyIssueDraftSuggestions.length === 0}
-          <p class="briefing-draft-empty">No suggestions returned.</p>
-        {:else}
-          <p class="briefing-draft-intro">Review the suggested position notes below. Accept to set the issue note, or skip to ignore.</p>
-          <div class="briefing-draft-list">
-            {#each $keyIssueDraftSuggestions as s (s.track_id)}
-              {@const accepted = $keyIssueDraftAccepted.has(s.track_id)}
-              {@const skipped = $keyIssueDraftSkipped.has(s.track_id)}
-              <div class="briefing-draft-card" class:bd-accepted={accepted} class:bd-skipped={skipped}>
-                <div class="bd-card-header">
-                  <span class="bd-issue-label">{s.label}</span>
-                  {#if accepted}
-                    <span class="bd-status bd-status-accepted"><i class="las la-check"></i> Applied</span>
-                  {:else if skipped}
-                    <span class="bd-status bd-status-skipped">Skipped</span>
-                  {:else}
-                    <div class="bd-actions">
-                      <button class="bd-btn-accept" on:click={() => acceptKeyIssueSummary(s.track_id, s.summary)}>
-                        <i class="las la-check"></i> Accept
-                      </button>
-                      <button class="bd-btn-skip" on:click={() => skipKeyIssueSummary(s.track_id)}>Skip</button>
-                    </div>
-                  {/if}
-                </div>
-                <p class="bd-argument-text">{s.summary}</p>
-              </div>
-            {/each}
-          </div>
-          <div class="briefing-draft-footer">
-            <button class="btn-primary" on:click={closeKeyIssueDraft}>Done</button>
-          </div>
-        {/if}
-      </div>
-    </div>
-  </div>
+  <KeyIssueDraftModal />
 {/if}
 
 <!-- Save to log modal -->
 {#if $logModalOpen}
-  <div class="modal-overlay" on:click|self={() => $logModalOpen = false} role="dialog" aria-modal="true">
-    <div class="modal modal-log">
-      <div class="modal-header">
-        <span class="modal-title">Save to Document Log</span>
-        <button class="modal-close" on:click={() => $logModalOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body log-modal-body">
-        <div class="log-form">
-          <div class="log-form-row">
-            <div class="log-form-field">
-              <label class="section-field-label">Document title <span style="color:var(--color-red-500)">*</span></label>
-              <input class="add-section-input" type="text" bind:value={$logTitle} placeholder="e.g. Officer Report, Land at Station Road" />
-            </div>
-            <div class="log-form-field log-form-field-sm">
-              <label class="section-field-label">Reference / code</label>
-              <input class="add-section-input" type="text" bind:value={$logCode} placeholder="e.g. CD/1.2" />
-            </div>
-          </div>
-          <div class="log-form-row">
-            <div class="log-form-field log-form-field-sm">
-              <label class="section-field-label">Type</label>
-              <select class="template-select" bind:value={$logItemType}>
-                <option value="document">Document</option>
-                <option value="drawing">Drawing</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div class="log-form-field">
-              <label class="section-field-label">Prepared by</label>
-              <input class="add-section-input" type="text" bind:value={$logPreparedBy} placeholder="e.g. Third Revolution Projects Ltd" />
-            </div>
-          </div>
-
-          {#if $logSummary}
-            <div class="log-form-field">
-              <label class="section-field-label">Document summary</label>
-              <textarea class="prompt-editor" style="min-height:80px;resize:vertical" bind:value={$logSummary}></textarea>
-            </div>
-          {/if}
-
-          <div class="log-form-field">
-            <label class="section-field-label">Arguments used ({$logPoints.length})</label>
-            {#if $logPoints.length === 0}
-              <p class="sections-empty" style="padding:0.5rem 0;text-align:left">No arguments were ticked during analysis. You can add them manually after saving.</p>
-            {:else}
-              <div class="log-points-editor">
-                {#each $logPoints as lp, i (lp.id)}
-                  <div class="log-point-edit">
-                    <div class="log-point-edit-header">
-                      <span class="result-field-tag" class:against={lp.field === 'argument_against'} class:for={lp.field === 'argument_for'}>
-                        {lp.field === 'argument_against' ? 'Against' : 'For'}
-                      </span>
-                      <span class="log-point-issue">{lp.issue_label}</span>
-                      <button class="section-delete-btn" style="margin-left:auto" on:click={() => removeLogPoint(lp.id)} title="Remove"><i class="las la-times"></i></button>
-                    </div>
-                    <textarea class="notes-field" style="min-height:60px" bind:value={$logPoints[i].text} use:autoresize={$logPoints[i].text}></textarea>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left"></div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => $logModalOpen = false}>Cancel</button>
-          <button class="modal-run" disabled={!$logTitle.trim() || $logSaving} on:click={() => saveLogEntry(project.id)}>
-            {$logSaving ? 'Saving...' : 'Save to log'}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <DocumentLogEntryModal {project} />
 {/if}
 
 <!-- Edit log entry modal -->
 {#if $editModalOpen}
-  <div class="modal-overlay" on:click|self={() => $editModalOpen = false} role="dialog" aria-modal="true">
-    <div class="modal modal-log">
-      <div class="modal-header">
-        <span class="modal-title">Edit Log Entry</span>
-        <button class="modal-close" on:click={() => $editModalOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body log-modal-body">
-        <div class="log-form">
-          <div class="log-form-row">
-            <div class="log-form-field">
-              <label class="section-field-label">Document title <span style="color:var(--color-red-500)">*</span></label>
-              <input class="add-section-input" type="text" bind:value={$editTitle} placeholder="e.g. Officer Report, Land at Station Road" />
-            </div>
-            <div class="log-form-field log-form-field-sm">
-              <label class="section-field-label">Reference / code</label>
-              <input class="add-section-input" type="text" bind:value={$editCode} placeholder="e.g. CD/1.2" />
-            </div>
-          </div>
-          <div class="log-form-row">
-            <div class="log-form-field log-form-field-sm">
-              <label class="section-field-label">Type</label>
-              <select class="template-select" bind:value={$editItemType}>
-                <option value="document">Document</option>
-                <option value="drawing">Drawing</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div class="log-form-field">
-              <label class="section-field-label">Prepared by</label>
-              <input class="add-section-input" type="text" bind:value={$editPreparedBy} placeholder="e.g. Third Revolution Projects Ltd" />
-            </div>
-          </div>
-
-          <div class="log-form-field">
-            <label class="section-field-label">Document summary</label>
-            <textarea class="prompt-editor" style="min-height:80px;resize:vertical" bind:value={$editSummary}></textarea>
-          </div>
-
-          {#if $editPoints.length > 0}
-            <div class="log-form-field">
-              <label class="section-field-label">Arguments ({$editPoints.length})</label>
-              <div class="log-points-editor">
-                {#each $editPoints as ep, i (ep.id)}
-                  <div class="log-point-edit">
-                    <div class="log-point-edit-header">
-                      <span class="result-field-tag" class:against={ep.field === 'argument_against'} class:for={ep.field === 'argument_for'}>
-                        {ep.field === 'argument_against' ? 'Against' : 'For'}
-                      </span>
-                      <span class="log-point-issue">{ep.issue_label}</span>
-                      <button class="section-delete-btn" style="margin-left:auto" on:click={() => removeEditPoint(ep.id)} title="Remove"><i class="las la-times"></i></button>
-                    </div>
-                    <textarea class="notes-field" style="min-height:60px" bind:value={$editPoints[i].point} use:autoresize={$editPoints[i].point}></textarea>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left"></div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => $editModalOpen = false}>Cancel</button>
-          <button class="modal-run" disabled={!$editTitle.trim() || $editSaving} on:click={saveEditEntry}>
-            {$editSaving ? 'Saving...' : 'Save changes'}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <DocumentLogEditModal />
 {/if}
 
 <!-- Sections manager modal -->
 {#if $sectionsModalOpen}
-  <div class="modal-overlay" on:click|self={() => $sectionsModalOpen = false} role="dialog" aria-modal="true">
-    <div class="modal modal-sections">
-      <div class="modal-header">
-        <span class="modal-title">Sections: {$sectionsTypeName}</span>
-        <button class="modal-close" on:click={() => $sectionsModalOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body sections-body">
-        {#if $sectionsLoading}
-          <div class="prompt-loading"><div class="spinner"></div><span>Loading...</span></div>
-        {:else}
-          {#if $sections.length === 0}
-            <p class="sections-empty">No sections yet. Add one below to define the structure of this document.</p>
-          {:else}
-            <div class="sections-list">
-              {#each $sections as section, idx (section.id)}
-                <div class="section-row" class:expanded={$sectionExpandedId === section.id}>
-                  <div class="section-row-header">
-                    <div class="section-order-btns">
-                      <button class="section-order-btn" disabled={idx === 0} on:click={() => moveSectionUp(idx)} title="Move up"><i class="las la-angle-up"></i></button>
-                      <button class="section-order-btn" disabled={idx === $sections.length - 1} on:click={() => moveSectionDown(idx)} title="Move down"><i class="las la-angle-down"></i></button>
-                    </div>
-                    <span class="section-name">{section.name}</span>
-                    <div class="section-row-actions">
-                      <button class="section-generate-btn" disabled={$sectionGenerating === section.id} on:click={() => handleGenerateSection(section.id, null, draftProviderByType[$sectionsTypeId] || '')} title="Generate this section">
-                        {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
-                      </button>
-                      <button class="section-edit-btn" on:click={() => toggleSectionExpand(section.id)}>
-                        {$sectionExpandedId === section.id ? 'Close' : 'Edit'}
-                      </button>
-                      <button class="section-delete-btn" on:click={() => handleDeleteSection(section.id)} title="Delete section">
-                        <i class="las la-trash"></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  {#if $sectionExpandedId === section.id}
-                    <div class="section-expand">
-
-                      <!-- Template block -->
-                      <div class="section-block">
-                        <div class="section-block-header">
-                          <label class="section-field-label">Template
-                            <span class="form-label-hint">fixed structure with <code>{'{{VARIABLE}}'}</code>, <code>{'{{LLM:slug}}'}</code>…<code>{'{{/LLM}}'}</code> and <code>[Placeholder]</code> markers</span>
-                          </label>
-                          {#if $sectionTemplateText}
-                            <span class="section-mode-badge section-mode-badge--template">Template active</span>
-                          {/if}
-                        </div>
-                        <textarea class="prompt-editor section-prompt section-template" bind:value={$sectionTemplateText} use:autoresize={$sectionTemplateText} placeholder="Paste template HTML here..."></textarea>
-                        <div class="section-expand-actions">
-                          <button class="modal-save" disabled={$sectionTemplateSaving} on:click={() => handleSaveSectionTemplate(section.id)}>
-                            {#if $sectionTemplateSaving}Saving...{:else if $sectionTemplateSaved}<i class="las la-check"></i> Saved{:else}Save template{/if}
-                          </button>
-                        </div>
-                      </div>
-
-                      <!-- Prompt block (used when no template) -->
-                      <div class="section-block" class:section-block--dimmed={!!$sectionTemplateText}>
-                        <label class="section-field-label">Generation prompt
-                          <span class="form-label-hint">
-                            {#if section.slug === 'planning_assessment'}
-                              : replaces the default assessment prompt when set
-                            {:else if $sectionTemplateText}
-                              : ignored when template is set
-                            {:else}
-                              : used when no template
-                            {/if}
-                          </span>
-                        </label>
-
-                        {#if section.slug === 'planning_assessment'}
-                          <div class="assessment-vars-hint">
-                            <span class="assessment-vars-title">Available variables (substituted per issue)</span>
-                            <div class="assessment-vars-list">
-                              <code>{'{{ISSUE_LABEL}}'}</code>
-                              <code>{'{{ISSUE_DISCIPLINE}}'}</code>
-                              <code>{'{{POLICY_STRUCTURE}}'}</code>
-                              <code>{'{{ISSUE_CONTEXT}}'}</code>
-                              <code>{'{{PROJECT_NAME}}'}</code>
-                              <code>{'{{SECTION_NAME}}'}</code>
-                              <code>{'{{EXAMPLE_BLOCK}}'}</code>
-                            </div>
-                            <p class="assessment-vars-note">If left blank, the default structured prompt is used.</p>
-                          </div>
-                        {/if}
-
-                        <textarea class="prompt-editor section-prompt" bind:value={$sectionPromptText} use:autoresize={$sectionPromptText}></textarea>
-
-                        {#if detectedVars.length > 0}
-                          <div class="section-vars-panel">
-                            <span class="section-vars-title">Variables in this prompt</span>
-                            <div class="section-vars-list">
-                              {#each detectedVars as v}
-                                <div class="section-var-row">
-                                  <div class="section-var-key-cell">
-                                    <code class="section-var-key">{'{{'}{v.key}{'}}'}</code>
-                                    <span class="section-var-badge" class:section-var-badge--safe={v.programmatic}>
-                                      {v.programmatic ? 'prog.' : 'llm'}
-                                    </span>
-                                  </div>
-                                  <span class="section-var-label">{v.label}</span>
-                                  <span class="section-var-source">{v.source}</span>
-                                </div>
-                              {/each}
-                            </div>
-                          </div>
-                        {/if}
-
-                        <div class="section-expand-actions">
-                          {#if section.slug === 'planning_assessment'}
-                            {#if $sectionPromptIsCustom}
-                              <span class="prompt-custom-badge">Custom prompt</span>
-                              <button class="btn-reset-prompt" disabled={$sectionPromptResetting} on:click={() => handleResetSectionPrompt(section.id)}>
-                                {$sectionPromptResetting ? 'Resetting…' : 'Reset to default'}
-                              </button>
-                            {:else}
-                              <span class="prompt-default-badge">Default prompt</span>
-                            {/if}
-                          {/if}
-                          <button class="section-example-btn" on:click={() => openSectionExampleModal(section.id)}>
-                            <i class="las la-file-alt"></i> Edit style example
-                          </button>
-                          <button class="modal-save" disabled={$sectionPromptSaving} on:click={() => handleSaveSectionPrompt(section.id)}>
-                            {#if $sectionPromptSaving}Saving...{:else if $sectionPromptSaved}<i class="las la-check"></i> Saved{:else}Save prompt{/if}
-                          </button>
-                        </div>
-                      </div>
-
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          <div class="add-section-row">
-            <input
-              class="add-section-input"
-              type="text"
-              placeholder="New section name..."
-              bind:value={$newSectionName}
-              on:keydown={(e) => e.key === 'Enter' && handleAddSection()}
-            />
-            <button class="add-section-btn" disabled={!$newSectionName.trim() || $addingSectionLoading} on:click={handleAddSection}>
-              {#if $addingSectionLoading}<div class="mini-spinner"></div>{:else}<i class="las la-plus"></i>{/if}
-              Add
-            </button>
-          </div>
-        {/if}
-      </div>
-    </div>
-  </div>
+  <DraftSectionsModal {draftProviderByType} />
 {/if}
 
 <!-- Section example sub-modal -->
 {#if $sectionExampleModalOpen}
-  {@const exSection = $sections.find(s => s.id === $sectionExampleId)}
-  <div class="modal-overlay" on:click|self={() => $sectionExampleModalOpen = false} role="dialog" aria-modal="true">
-    <div class="modal modal-wide">
-      <div class="modal-header">
-        <span class="modal-title">Style Example: {exSection?.name}</span>
-        <button class="modal-close" on:click={() => $sectionExampleModalOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        <p class="prompt-hint">Paste an example of how this section should read. The AI will match its tone and format.</p>
-        <div class="example-editor-wrap">
-          <RichTextEditor bind:this={sectionExampleEditor} placeholder="Paste an example here..." />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left"></div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => $sectionExampleModalOpen = false}>Cancel</button>
-          <button class="modal-save" disabled={$sectionExampleSaving} on:click={handleSaveSectionExample}>
-            {#if $sectionExampleSaving}Saving...{:else if $sectionExampleSaved}<i class="las la-check"></i> Saved{:else}Save example{/if}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <SectionExampleModal />
 {/if}
 
 <!-- Suggestion prompt modal -->
 {#if $suggestPromptOpen}
-  <div class="modal-overlay" on:click|self={() => $suggestPromptOpen = false} role="dialog" aria-modal="true">
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-header-left">
-          <span class="modal-title">Suggestion Prompt</span>
-          {#if $suggestPromptIsCustom}
-            <span class="prompt-custom-badge">Custom saved</span>
-          {:else}
-            <span class="prompt-default-badge">Default</span>
-          {/if}
-        </div>
-        <button class="modal-close" on:click={() => $suggestPromptOpen = false}><i class="las la-times"></i></button>
-      </div>
-      <div class="modal-body">
-        {#if $suggestPromptLoading}
-          <div class="prompt-loading"><div class="spinner"></div><span>Loading prompt...</span></div>
-        {:else}
-          <p class="prompt-hint"><code>&#123;&#123;DOCUMENT&#125;&#125;</code> is replaced with your document text when running.</p>
-          <textarea class="prompt-editor" bind:value={$suggestPromptText}></textarea>
-        {/if}
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left">
-          {#if $suggestPromptIsCustom}
-            <button class="modal-reset" on:click={resetSuggestPromptToDefault} disabled={$suggestPromptLoading}>
-              Reset to default
-            </button>
-          {/if}
-        </div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => $suggestPromptOpen = false}>Cancel</button>
-          <button class="modal-save" disabled={$suggestPromptLoading || $suggestPromptSaving || !$suggestPromptText} on:click={saveSuggestPrompt}>
-            {#if $suggestPromptSaving}Saving...{:else if $suggestPromptSaved}<i class="las la-check"></i> Saved{:else}Save as default{/if}
-          </button>
-          <button class="modal-run" disabled={$suggestPromptLoading || !$suggestPromptText} on:click={runSuggestionWithPrompt}>
-            Run suggestion
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <SuggestPromptModal />
 {/if}
 
 <!-- Action prompt edit modals -->
@@ -1915,24 +1163,7 @@
 
 <!-- Regenerate confirmation modal -->
 {#if regenPending}
-  <div class="modal-overlay" on:click|self={() => regenPending = null} role="dialog" aria-modal="true">
-    <div class="modal modal-regen-confirm">
-      <div class="modal-header">
-        <span class="modal-title"><i class="las la-exclamation-triangle" style="color:var(--color-amber-600)"></i> Regenerate document?</span>
-      </div>
-      <div class="modal-body">
-        <p class="regen-confirm-text">This will replace the entire document with a freshly generated version. Any unsaved changes will be lost.</p>
-        <p class="regen-confirm-text">Save the document first if you want to keep the current version.</p>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-footer-left"></div>
-        <div class="modal-footer-right">
-          <button class="modal-cancel" on:click={() => regenPending = null}>Cancel</button>
-          <button class="modal-run modal-run--danger" on:click={confirmRegen}>Regenerate</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <RegenerateConfirmModal on:close={() => regenPending = null} on:confirm={confirmRegen} />
 {/if}
 
 <PromptEditModal
@@ -2022,41 +1253,6 @@
     padding: 1.5rem;
   }
 
-  /* ── Key Issues ── */
-  .issues-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    max-width: 800px;
-  }
-
-  .issue-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-    padding: 0.875rem 1.125rem;
-  }
-
-  .issue-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .issue-label {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    min-width: 0;
-  }
-
-  .issue-name {
-    font-size: 0.9375rem;
-    font-weight: 500;
-    color: var(--color-slate-800);
-  }
-
   /* ── Argument Structure two-panel ── */
   .argument-body {
     display: grid;
@@ -2082,71 +1278,6 @@
     position: sticky;
     top: 1.5rem;
   }
-
-  .input-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--color-slate-200);
-    background: var(--color-slate-50);
-    flex-shrink: 0;
-  }
-
-  .input-tab {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.375rem;
-    padding: 0.75rem 0.5rem;
-    border: none;
-    background: transparent;
-    color: var(--color-slate-500);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all 0.15s;
-    font-family: inherit;
-  }
-
-  .input-tab.active { color: var(--color-violet-600); border-bottom-color: var(--color-violet-600); }
-  .input-tab:hover:not(.active) { color: var(--color-slate-700); }
-
-  .upload-zone {
-    margin: 1.25rem;
-    border: 2px dashed var(--color-slate-300);
-    border-radius: 10px;
-    padding: 2.5rem 1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-    transition: all 0.15s;
-    background: white;
-    text-align: center;
-  }
-
-  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--color-violet-600); background: var(--color-purple-50); }
-  .upload-zone i { font-size: 2.25rem; color: var(--color-slate-400); }
-  .upload-zone span { font-size: 0.875rem; color: var(--color-slate-600); font-weight: 500; }
-  .upload-sub { font-size: 0.8rem !important; color: var(--color-slate-400) !important; font-weight: 400 !important; }
-
-  .paste-area {
-    flex: 1;
-    margin: 1.25rem;
-    padding: 0.875rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 8px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    resize: none;
-    min-height: 200px;
-    transition: border-color 0.15s;
-    background: white;
-  }
-
-  .paste-area:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08); }
 
   .analyse-btn {
     padding: 0.625rem 1rem;
@@ -2504,57 +1635,6 @@
   .note-status.saving { color: var(--color-slate-400); }
   .note-status.saved  { color: var(--color-emerald-600); }
 
-  /* Shared chips */
-  .discipline-tag {
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: var(--color-slate-100);
-    color: var(--color-slate-500);
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
-    white-space: nowrap;
-    text-transform: capitalize;
-    flex-shrink: 0;
-  }
-
-  .risk-chip {
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.2rem 0.625rem;
-    border-radius: 999px;
-    white-space: nowrap;
-    text-transform: capitalize;
-    flex-shrink: 0;
-  }
-
-  /* Shared textarea styles */
-  .summary-field,
-  .notes-field {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 0.625rem 0.75rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    color: var(--color-slate-700);
-    background: var(--color-slate-50);
-    resize: none;
-    overflow: hidden;
-    line-height: 1.5;
-    transition: border-color 0.15s, background 0.15s;
-  }
-
-  .summary-field { min-height: 72px; }
-  .argument-notes-label { display: block; font-size: 0.7rem; font-weight: 600; color: var(--color-slate-500); text-transform: uppercase; letter-spacing: 0.04em; margin: 0.5rem 0 0.25rem; }
-  .argument-notes-field { min-height: 100px; background: var(--color-red-50); border-color: var(--color-amber-200); }
-  .argument-notes-field:focus { border-color: var(--color-amber-500); background: white; }
-
-  .policy-section {
-    margin-top: 0.25rem;
-  }
-  .notes-field   { min-height: 100px; }
-
   .note-fields {
     display: flex;
     flex-direction: column;
@@ -2572,17 +1652,6 @@
     font-weight: 600;
     color: var(--color-slate-500);
   }
-
-  .summary-field:focus,
-  .notes-field:focus {
-    outline: none;
-    border-color: var(--color-violet-600);
-    background: white;
-    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07);
-  }
-
-  .summary-field::placeholder,
-  .notes-field::placeholder { color: var(--color-slate-400); }
 
   /* Loading / error / empty */
   .loading-state {
@@ -3176,16 +2245,6 @@
     padding: 0.35rem 0.7rem;
   }
 
-  .modal-wide { max-width: 900px; }
-
-  .example-editor-wrap {
-    flex: 1;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    overflow: hidden;
-    min-height: 400px;
-  }
-
   /* Analyse row */
   .analyse-row {
     display: flex;
@@ -3218,283 +2277,6 @@
   .prompt-btn:hover:not(:disabled) { background: var(--color-slate-100); border-color: var(--color-slate-300); color: var(--color-slate-700); }
   .prompt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Modal */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: var(--overlay-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 1.5rem;
-  }
-
-  .modal {
-    background: white;
-    border-radius: 10px;
-    width: 100%;
-    max-width: 760px;
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  }
-
-  .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--color-slate-200);
-    flex-shrink: 0;
-  }
-
-  .modal-title { font-size: 0.9375rem; font-weight: 700; color: var(--color-slate-800); }
-
-  .modal-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border: none;
-    background: transparent;
-    color: var(--color-slate-400);
-    font-size: 1.125rem;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-
-  .modal-close:hover { background: var(--color-slate-100); color: var(--color-slate-700); }
-
-  .modal-body {
-    flex: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    padding: 1rem 1.25rem;
-  }
-
-  .prompt-loading {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    color: var(--color-slate-500);
-    font-size: 0.875rem;
-  }
-
-  .prompt-editor {
-    flex: 1;
-    width: 100%;
-    min-height: 400px;
-    box-sizing: border-box;
-    padding: 0.75rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    font-family: 'Menlo', 'Consolas', monospace;
-    line-height: 1.6;
-    color: var(--color-slate-800);
-    background: var(--color-slate-50);
-    resize: vertical;
-  }
-
-  .prompt-editor:focus { outline: none; border-color: var(--color-violet-600); background: white; }
-
-  .modal-header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-  }
-
-  .prompt-custom-badge {
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
-    background: var(--color-violet-100);
-    color: var(--color-violet-700);
-  }
-
-  .prompt-default-badge {
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
-    background: var(--color-slate-100);
-    color: var(--color-slate-500);
-  }
-
-  .prompt-hint {
-    margin: 0 0 0.625rem;
-    font-size: 0.8rem;
-    color: var(--color-slate-500);
-    flex-shrink: 0;
-  }
-
-  .prompt-hint code {
-    background: var(--color-slate-100);
-    padding: 0.1rem 0.35rem;
-    border-radius: 3px;
-    font-size: 0.8rem;
-    color: var(--color-violet-600);
-  }
-
-  .modal-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.625rem;
-    padding: 0.875rem 1.25rem;
-    border-top: 1px solid var(--color-slate-200);
-    flex-shrink: 0;
-  }
-
-  .modal-footer-left { display: flex; gap: 0.5rem; }
-  .modal-footer-right { display: flex; gap: 0.5rem; }
-
-  .modal-reset {
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    color: var(--color-slate-400);
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .modal-reset:hover:not(:disabled) { background: var(--color-slate-100); color: var(--color-slate-500); }
-  .modal-reset:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .modal-cancel {
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    color: var(--color-slate-500);
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .modal-cancel:hover { background: var(--color-slate-100); }
-
-  .modal-save {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-slate-700);
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-
-  .modal-save:hover:not(:disabled) { background: var(--color-slate-100); border-color: var(--color-slate-300); }
-  .modal-save:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .modal-run {
-    padding: 0.5rem 1.25rem;
-    background: var(--color-violet-600);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s;
-  }
-
-  .modal-run:hover:not(:disabled) { background: var(--color-violet-700); }
-  .modal-run:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  /* ── Sections manager modal ── */
-  .modal-sections { max-width: 680px; }
-
-  .sections-body {
-    padding: 0;
-    overflow-y: auto;
-  }
-
-  .sections-empty {
-    margin: 0;
-    padding: 2rem 1.25rem 1rem;
-    font-size: 0.875rem;
-    color: var(--color-slate-400);
-    text-align: center;
-  }
-
-  .sections-list {
-    display: flex;
-    flex-direction: column;
-    border-bottom: 1px solid var(--color-slate-100);
-  }
-
-  .section-row {
-    border-bottom: 1px solid var(--color-slate-100);
-  }
-
-  .section-row:last-child { border-bottom: none; }
-
-  .section-row.expanded { background: var(--color-purple-50); }
-
-  .section-row-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1.25rem;
-  }
-
-  .section-order-btns {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    flex-shrink: 0;
-  }
-
-  .section-order-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.375rem;
-    height: 1.125rem;
-    border: none;
-    background: transparent;
-    color: var(--color-slate-400);
-    cursor: pointer;
-    font-size: 0.75rem;
-    padding: 0;
-    transition: color 0.1s;
-  }
-
-  .section-order-btn:hover:not(:disabled) { color: var(--color-slate-700); }
-  .section-order-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-
-  .section-name {
-    flex: 1;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-slate-800);
-    min-width: 0;
-  }
-
-  .section-row-actions {
-    display: flex;
-    gap: 0.375rem;
-    flex-shrink: 0;
-    align-items: center;
-  }
-
   .section-generate-btn {
     display: flex;
     align-items: center;
@@ -3512,122 +2294,7 @@
   .section-generate-btn:hover:not(:disabled) { background: var(--color-purple-50); border-color: var(--color-violet-300); }
   .section-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .section-edit-btn {
-    padding: 0.3rem 0.625rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 5px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--color-slate-700);
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .section-edit-btn:hover { background: var(--color-slate-100); }
-
-  .section-delete-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 5px;
-    background: white;
-    color: var(--color-slate-400);
-    cursor: pointer;
-    font-size: 0.875rem;
-    transition: all 0.15s;
-  }
-  .section-delete-btn:hover { background: var(--color-red-100); border-color: var(--color-red-200); color: var(--color-red-800); }
-
-  .section-expand {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0 1.25rem 1rem 1.25rem;
-  }
-
-  .section-field-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--color-slate-500);
-  }
-
-  .section-prompt {
-    min-height: 80px;
-    max-height: 70vh;
-    resize: none;
-    overflow-y: auto;
-  }
-
-  .prompt-custom-badge {
-    font-size: 0.72rem; font-weight: 600;
-    background: var(--color-violet-100); color: var(--color-purple-700);
-    padding: 0.2rem 0.5rem; border-radius: 20px;
-  }
-  .prompt-default-badge {
-    font-size: 0.72rem; font-weight: 600;
-    background: var(--color-slate-100); color: var(--color-slate-500);
-    padding: 0.2rem 0.5rem; border-radius: 20px;
-  }
-  .btn-reset-prompt {
-    padding: 0.3rem 0.75rem;
-    border: 1px solid var(--color-slate-300); background: white;
-    border-radius: 5px; font-size: 0.78rem;
-    font-family: inherit; color: var(--color-slate-500); cursor: pointer;
-  }
-  .btn-reset-prompt:hover:not(:disabled) { background: var(--color-slate-50); border-color: var(--color-purple-600); color: var(--color-purple-700); }
-  .btn-reset-prompt:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .assessment-vars-hint {
-    margin-bottom: 0.75rem;
-    padding: 0.75rem;
-    background: var(--color-slate-100);
-    border: 1px solid var(--color-emerald-100);
-    border-radius: 0.375rem;
-  }
-  .assessment-vars-title {
-    display: block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-emerald-600);
-    margin-bottom: 0.5rem;
-  }
-  .assessment-vars-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-bottom: 0.5rem;
-  }
-  .assessment-vars-list code {
-    font-size: 0.72rem;
-    background: white;
-    border: 1px solid var(--color-emerald-100);
-    border-radius: 4px;
-    padding: 0.15rem 0.4rem;
-    color: var(--color-green-800);
-    font-family: monospace;
-  }
-  .assessment-vars-note {
-    margin: 0;
-    font-size: 0.72rem;
-    color: var(--color-slate-500);
-  }
-
   /* ── Draft from briefing ── */
-  .argument-panel-toolbar,
-  .key-issues-toolbar {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-  }
-
   .btn-from-issue-notes {
     display: flex;
     align-items: center;
@@ -3644,123 +2311,6 @@
     font-family: inherit;
   }
   .btn-from-issue-notes:hover { background: var(--color-emerald-100); border-color: var(--color-slate-400); }
-
-  .briefing-btn-group {
-    position: relative;
-    display: flex;
-    align-items: stretch;
-  }
-
-  .btn-draft-from-briefing {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.4rem 0.875rem;
-    background: var(--color-purple-50);
-    border: 1px solid var(--color-violet-300);
-    border-right: none;
-    border-radius: 6px 0 0 6px;
-    color: var(--color-violet-600);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-draft-from-briefing:hover { background: var(--color-violet-100); border-color: var(--color-purple-600); }
-
-  .prompt-info-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    padding: 0;
-    background: transparent;
-    border: 1px solid currentColor;
-    border-radius: 0.25rem;
-    color: var(--color-slate-400);
-    cursor: pointer;
-    font-size: 0.75rem;
-    opacity: 0.7;
-    transition: opacity 0.15s, color 0.15s;
-    vertical-align: middle;
-    margin-left: 0.35rem;
-  }
-  .prompt-info-btn:hover { opacity: 1; color: var(--color-primary-500); border-color: var(--color-primary-500); }
-
-  .briefing-note-pill {
-    background: var(--color-violet-100);
-    color: var(--color-violet-700);
-    font-size: 0.75rem;
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .btn-briefing-chevron {
-    display: flex;
-    align-items: center;
-    padding: 0.4rem 0.5rem;
-    background: var(--color-purple-50);
-    border: 1px solid var(--color-violet-300);
-    border-radius: 0 6px 6px 0;
-    color: var(--color-violet-600);
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-briefing-chevron:hover { background: var(--color-violet-100); border-color: var(--color-purple-600); }
-
-  .briefing-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-    min-width: 240px;
-    z-index: 100;
-    overflow: hidden;
-  }
-
-  .briefing-dropdown-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.6rem 0.875rem;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--color-slate-100);
-    text-align: left;
-    font-size: 0.8125rem;
-    color: var(--color-slate-700);
-    cursor: pointer;
-    transition: background 0.1s;
-    font-family: inherit;
-  }
-  .briefing-dropdown-item:last-child { border-bottom: none; }
-  .briefing-dropdown-item:hover { background: var(--color-slate-50); }
-  .briefing-dropdown-item.active { background: var(--color-purple-50); color: var(--color-violet-600); }
-
-  .briefing-dropdown-title {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .briefing-dropdown-date {
-    font-size: 0.75rem;
-    color: var(--color-slate-400);
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
 
   .draft-config-btn {
     display: flex;
@@ -3827,413 +2377,6 @@
     transition: all 0.15s;
   }
   .draft-config-item:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
-
-  .briefing-dropdown-upload {
-    color: var(--color-violet-600);
-    font-weight: 500;
-    gap: 0.375rem;
-    justify-content: flex-start;
-  }
-
-  .modal-briefing-draft { max-width: 680px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; }
-  .modal-briefing-draft .modal-body { overflow-y: auto; flex: 1; }
-
-  .briefing-draft-loading {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 2rem;
-    color: var(--color-slate-500);
-    font-size: 0.875rem;
-  }
-
-  .briefing-draft-intro {
-    font-size: 0.8125rem;
-    color: var(--color-slate-500);
-    margin: 0 0 1rem;
-  }
-
-  .briefing-draft-list { display: flex; flex-direction: column; gap: 0.75rem; }
-
-  .briefing-draft-card {
-    border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-    padding: 0.875rem;
-    transition: border-color 0.15s;
-  }
-  .briefing-draft-card.bd-accepted { border-color: var(--color-slate-400); background: var(--color-slate-100); }
-  .briefing-draft-card.bd-skipped { opacity: 0.45; }
-
-  .bd-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .bd-issue-label {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-slate-900);
-  }
-
-  .bd-actions { display: flex; gap: 0.375rem; }
-
-  .bd-btn-accept {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem 0.625rem;
-    background: var(--color-violet-600);
-    border: none;
-    border-radius: 5px;
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-  }
-  .bd-btn-accept:hover { background: var(--color-violet-700); }
-
-  .bd-btn-skip {
-    padding: 0.25rem 0.625rem;
-    background: white;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 5px;
-    color: var(--color-slate-500);
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-  .bd-btn-skip:hover { background: var(--color-slate-50); }
-
-  .bd-status {
-    font-size: 0.75rem;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .bd-status-accepted { color: var(--color-emerald-600); }
-  .bd-status-skipped { color: var(--color-slate-400); }
-
-  .bd-argument-text {
-    font-size: 0.8125rem;
-    color: var(--color-slate-700);
-    line-height: 1.6;
-    margin: 0;
-    white-space: pre-wrap;
-  }
-
-  .bd-new-info {
-    background: var(--color-slate-50);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    padding: 0.625rem 0.75rem;
-    margin-top: 0.5rem;
-  }
-
-  .bd-new-info-label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-slate-400);
-    display: block;
-    margin-bottom: 0.25rem;
-  }
-
-  .bd-evolve-panel {
-    margin-top: 0.75rem;
-    border-top: 1px solid var(--color-slate-200);
-    padding-top: 0.75rem;
-  }
-
-  .bd-evolve-loading {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--color-slate-500);
-    padding: 0.5rem 0;
-  }
-
-  .bd-evolve-result {
-    background: var(--color-slate-100);
-    border: 1px solid var(--color-emerald-100);
-    border-radius: 6px;
-    padding: 0.625rem 0.75rem;
-    margin-bottom: 0.625rem;
-  }
-
-  .bd-evolved-label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-emerald-600);
-    display: block;
-    margin-bottom: 0.25rem;
-  }
-
-  .bd-evolved-text {
-    font-size: 0.8125rem;
-    color: var(--color-slate-700);
-    line-height: 1.6;
-    margin: 0;
-    white-space: pre-wrap;
-  }
-
-  .bd-evolve-chat {
-    display: flex;
-    gap: 0.5rem;
-    align-items: flex-end;
-  }
-
-  .bd-chat-input {
-    flex: 1;
-    padding: 0.5rem 0.625rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    font-family: inherit;
-    resize: none;
-    line-height: 1.5;
-  }
-  .bd-chat-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08); }
-
-  .bd-evolve-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-    flex-shrink: 0;
-  }
-
-  .bd-chat-send {
-    padding: 0.4rem 0.5rem;
-    background: var(--color-slate-100);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    color: var(--color-slate-500);
-    cursor: pointer;
-    font-size: 0.875rem;
-    transition: all 0.15s;
-  }
-  .bd-chat-send:hover:not(:disabled) { background: var(--color-slate-200); }
-  .bd-chat-send:disabled { opacity: 0.4; cursor: default; }
-
-  .bd-btn-apply {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.4rem 0.625rem;
-    background: var(--color-emerald-600);
-    border: none;
-    border-radius: 6px;
-    color: white;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s;
-    font-family: inherit;
-    white-space: nowrap;
-  }
-  .bd-btn-apply:hover { background: var(--color-green-800); }
-
-  .bd-applied { opacity: 0.7; }
-
-  .briefing-draft-footer {
-    margin-top: 1.25rem;
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .briefing-draft-empty { color: var(--color-slate-500); font-size: 0.875rem; }
-
-  .section-vars-panel {
-    margin: 0.75rem 0 0;
-    padding: 0.75rem;
-    background: var(--color-slate-50);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-  }
-
-  .section-vars-title {
-    display: block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-slate-500);
-    margin-bottom: 0.5rem;
-  }
-
-  .section-vars-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .section-var-row {
-    display: grid;
-    grid-template-columns: minmax(0, 16rem) minmax(0, 10rem) minmax(0, 1fr);
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.75rem;
-  }
-
-  .section-var-key-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    min-width: 0;
-  }
-
-  .section-var-key {
-    font-family: monospace;
-    font-size: 0.7rem;
-    color: var(--color-violet-600);
-    background: var(--color-violet-100);
-    padding: 0.1rem 0.4rem;
-    border-radius: 0.25rem;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .section-var-label {
-    color: var(--color-slate-800);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .section-var-source {
-    color: var(--color-slate-500);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .section-var-badge {
-    font-size: 0.65rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.1rem 0.4rem;
-    border-radius: 0.25rem;
-    white-space: nowrap;
-    background: var(--color-amber-100);
-    color: var(--color-amber-800);
-  }
-
-  .section-var-badge--safe {
-    background: var(--color-emerald-100);
-    color: var(--color-green-800);
-  }
-
-  .section-block {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 0.375rem;
-    margin-bottom: 0.75rem;
-  }
-
-  .section-block--dimmed {
-    opacity: 0.5;
-  }
-
-  .section-block-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .section-mode-badge {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.15rem 0.5rem;
-    border-radius: 0.25rem;
-    white-space: nowrap;
-  }
-
-  .section-mode-badge--template {
-    background: var(--color-emerald-100);
-    color: var(--color-green-800);
-  }
-
-  .section-template {
-    font-family: monospace;
-    font-size: 0.72rem;
-    min-height: 6rem;
-  }
-
-  .section-expand-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .section-example-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.75rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    color: var(--color-slate-500);
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .section-example-btn:hover { background: var(--color-slate-100); color: var(--color-slate-700); }
-
-  .add-section-row {
-    display: flex;
-    gap: 0.5rem;
-    padding: 1rem 1.25rem;
-  }
-
-  .add-section-input {
-    flex: 1;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: white;
-    transition: border-color 0.15s;
-  }
-  .add-section-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
-  .add-section-input::placeholder { color: var(--color-slate-400); }
-
-  .add-section-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.5rem 0.875rem;
-    background: var(--color-violet-600);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-    transition: background 0.15s;
-  }
-  .add-section-btn:hover:not(:disabled) { background: var(--color-violet-700); }
-  .add-section-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* ── Results header actions ── */
   .results-header-actions {
@@ -4425,12 +2568,6 @@
 
   .doc-title-input:focus { outline: none; border-color: var(--color-violet-600); background: white; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.07); }
 
-  .modal-header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-  }
-
   /* ── Document log tab ── */
   .log-list {
     display: flex;
@@ -4533,58 +2670,11 @@
     gap: 0.5rem;
   }
 
-  .log-point-issue { font-size: 0.8rem; font-weight: 500; color: var(--color-slate-700); }
-
   .log-point-text {
     margin: 0;
     font-size: 0.8125rem;
     color: var(--color-slate-700);
     line-height: 1.5;
-  }
-
-  /* ── Log modal ── */
-  .modal-log { max-width: 680px; }
-
-  .log-modal-body {
-    overflow-y: auto;
-    padding: 1rem 1.25rem;
-  }
-
-  .log-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .log-form-row {
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-start;
-  }
-
-  .log-form-field { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
-  .log-form-field-sm { flex: 0 0 160px; }
-
-  .log-points-editor {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .log-point-edit {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    padding: 0.625rem 0.75rem;
-    background: var(--color-slate-50);
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-  }
-
-  .log-point-edit-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
   }
 
   /* Letter doc modal */
@@ -4622,11 +2712,6 @@
     pointer-events: none;
   }
 
-  .modal-run--danger { background: var(--color-red-600) !important; }
-  .modal-run--danger:hover { background: var(--color-red-800) !important; }
-
-  .regen-confirm-text { margin: 0 0 0.625rem; font-size: 0.875rem; color: var(--color-slate-700); line-height: 1.6; }
-  .regen-confirm-text:last-child { margin-bottom: 0; color: var(--color-slate-500); }
 
   .coming-soon-badge {
     font-size: 0.65rem;
