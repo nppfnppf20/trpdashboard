@@ -30,6 +30,7 @@
   ];
 
   let notes = '';
+  let micRecording = false;
   let attachOpen = false;
   let docType = defaultDocType ?? DOC_TYPES[0].value;
   let inputTab = 'upload'; // 'upload' | 'paste'
@@ -110,14 +111,21 @@
 <div class="selection-popup" bind:this={popupEl} style="top:{clampedTop}px; left:{clampedLeft}px; width:{POPUP_WIDTH}px;">
   <div class="selection-popup-quote"><i class="las la-quote-left"></i> {quotedText}</div>
 
-  <div class="selection-popup-input">
+  <div class="selection-popup-input" class:recording={micRecording}>
     <textarea
       class="selection-popup-textarea"
       placeholder="Leave a note, or tell the AI what to do with this..."
       bind:value={notes}
       autofocus
     ></textarea>
-    <VoiceDictationButton class="selection-popup-mic" on:transcript={(e) => notes = notes ? `${notes} ${e.detail}` : e.detail} />
+    <VoiceDictationButton
+      class="selection-popup-mic"
+      on:transcript={(e) => notes = notes ? `${notes} ${e.detail}` : e.detail}
+      on:statechange={(e) => micRecording = e.detail === 'recording'}
+    />
+    {#if micRecording}
+      <span class="selection-popup-recording-hint">Recording — click the mic to finish</span>
+    {/if}
   </div>
 
   {#if !attachOpen}
@@ -237,6 +245,50 @@
     position: absolute;
     top: 0.3rem;
     right: 0.3rem;
+    width: 1.6rem;
+    height: 1.6rem;
+    transition: top 0.15s, right 0.15s, left 0.15s, transform 0.15s, background-color 0.15s, color 0.15s;
+    z-index: 1;
+  }
+
+  /* While recording: pulse the whole field and move the mic front-and-center
+     (enlarged, solid color) so it's obvious you have to click it again to
+     stop — the button's own subtle corner pulse alone wasn't noticeable
+     enough. Give the field extra room so the bigger button + hint text below
+     it have space, rather than a short field clipping them. */
+  .selection-popup-input.recording {
+    min-height: 6.5rem;
+  }
+  .selection-popup-input.recording .selection-popup-textarea {
+    min-height: 6.5rem;
+    border-color: var(--color-red-200);
+    animation: selection-input-recording-pulse 1.6s ease-in-out infinite;
+  }
+  .selection-popup-input.recording :global(.selection-popup-mic) {
+    top: 40%;
+    right: auto;
+    left: 50%;
+    width: 2.25rem;
+    height: 2.25rem;
+    transform: translate(-50%, -50%);
+    background-color: var(--color-red-500) !important;
+    border-color: var(--color-red-500) !important;
+    color: white !important;
+  }
+  .selection-popup-recording-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 0.6rem;
+    transform: translateX(-50%);
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--color-red-600);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  @keyframes selection-input-recording-pulse {
+    0%, 100% { background-color: white; }
+    50% { background-color: var(--color-red-50); }
   }
 
   .attach-toggle-btn {

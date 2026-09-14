@@ -25,7 +25,6 @@
   import SelectionPopup from '$lib/components/planning-application/SelectionPopup.svelte';
   import { splitAllParagraphs, mergeParagraphUpdates, markFragmentPending, markChangedWordsPending, clearPendingMarkers } from '$lib/utils/draftParagraphs.js';
   import { getDraftComments, updateDraftComment, deleteDraftComment } from '$lib/api/draftComments.js';
-  import SectionChatPanel from '$lib/components/planning-application/SectionChatPanel.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
   import { getStartingDocs, getDraftContext } from '$lib/api/appeal.js';
@@ -515,7 +514,6 @@
     if (!$draftSaved && $activeDraftTypeId && $activeDraftTypeId !== 'blank') {
       await handleSaveDraft();
     }
-    incorporateReviewMode = false;
     closeDraft();
   }
 
@@ -536,8 +534,6 @@
     regenPending = null;
   }
 
-  let incorporateReviewMode = false;
-  let sectionChatOpen = false;
   let checkPanelOpen = false;
   // A highlight's compose popup: { paragraphIds, quotedText, top, left } | null
   let selectionPopup = null;
@@ -549,7 +545,7 @@
 
   $: activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
 
-  $: if (!$activeDraftTypeId) { incorporateReviewMode = false; sectionChatOpen = false; checkPanelOpen = false; closeSelectionPopup(); cancelPendingAiEdit(); commentsPanelOpen = false; lastOpenedDraftId = null; }
+  $: if (!$activeDraftTypeId) { checkPanelOpen = false; closeSelectionPopup(); cancelPendingAiEdit(); commentsPanelOpen = false; lastOpenedDraftId = null; }
   $: if (!checkPanelOpen) draftEditor?.clearHighlight();
 
   // Default the right panel to Check whenever a (different) draft is opened —
@@ -560,7 +556,6 @@
     lastOpenedDraftId = $activeDraftTypeId;
     checkPanelOpen = true;
     commentsPanelOpen = false;
-    sectionChatOpen = false;
   }
 
   function handleTextSelected(e) {
@@ -701,8 +696,6 @@
 
   function toggleCheckPanel() {
     if (checkPanelOpen) { checkPanelOpen = false; return; }
-    incorporateReviewMode = false;
-    sectionChatOpen = false;
     commentsPanelOpen = false;
     checkPanelOpen = true;
   }
@@ -864,7 +857,7 @@
 
       <!-- Two-panel layout -->
       <div class="draft-two-panel">
-        <div class="draft-left-panel" class:panel-hidden={incorporateReviewMode}>
+        <div class="draft-left-panel">
           <RichTextEditor
             bind:this={draftEditor}
             content={$draftEditorHtml}
@@ -876,16 +869,11 @@
         <div class="draft-right-panel">
         <div class="draft-right-card">
           <div class="draft-right-panel-header">
-            {#if activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv' && $activeDraftTypeId !== 'blank'}
-              <button class="draft-context-btn" class:active={sectionChatOpen} on:click={() => { sectionChatOpen = !sectionChatOpen; if (sectionChatOpen) { checkPanelOpen = false; commentsPanelOpen = false; } }} title="Chat with a document to draft a section">
-                <i class="las la-comments"></i> Doc Chat
-              </button>
-            {/if}
             <button class="draft-context-btn" class:active={checkPanelOpen} on:click={toggleCheckPanel} title="Check the draft against the guiding brief, project information, and grammar">
               <i class="las la-clipboard-check"></i> Check
             </button>
             {#if $activeDraftTypeId !== 'blank'}
-              <button class="draft-context-btn" class:active={commentsPanelOpen} on:click={() => { commentsPanelOpen = !commentsPanelOpen; if (commentsPanelOpen) { checkPanelOpen = false; sectionChatOpen = false; } }} title="Comments left on this draft">
+              <button class="draft-context-btn" class:active={commentsPanelOpen} on:click={() => { commentsPanelOpen = !commentsPanelOpen; if (commentsPanelOpen) { checkPanelOpen = false; } }} title="Comments left on this draft">
                 <i class="las la-comment-alt"></i> Comments
                 {#if draftComments.filter(c => !c.resolved).length > 0}<span class="comments-badge">{draftComments.filter(c => !c.resolved).length}</span>{/if}
               </button>
@@ -908,21 +896,6 @@
                 on:delete={(e) => removeDraftComment(e.detail)}
                 on:locate={(e) => draftEditor?.highlightText(e.detail.quotedText)}
                 on:close={() => commentsPanelOpen = false}
-              />
-            {:else if sectionChatOpen}
-              {@const _activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
-              <SectionChatPanel
-                {project}
-                docTypeSlug={_activeType?.slug ?? 'planning_statement'}
-                currentDraftHtml={$draftEditorHtml}
-                on:close={() => { sectionChatOpen = false; incorporateReviewMode = false; }}
-                on:reviewchange={(e) => { incorporateReviewMode = e.detail.active; }}
-                on:accepted={(e) => {
-                  $draftEditorHtml = e.detail.html;
-                  draftEditor?.setHTML(e.detail.html);
-                  $draftSaved = false;
-                  incorporateReviewMode = false;
-                }}
               />
             {/if}
           </div>
@@ -3057,7 +3030,6 @@
     flex-direction: column;
     min-height: 0;
   }
-  .draft-left-panel.panel-hidden { display: none; }
 
   /* Fill the full half of the two-panel layout (not a fixed page-width card)
      and stretch to the panel's full height so the editor card matches the

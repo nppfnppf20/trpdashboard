@@ -19,6 +19,14 @@
   let mediaRecorder = null;
   let audioChunks = [];
 
+  // Reports every state transition (not just the final transcript) so a
+  // caller can show its own "recording in progress" feedback — e.g. pulsing
+  // the whole field the button sits in, not just the button itself.
+  function setMicState(state) {
+    micState = state;
+    dispatch('statechange', state);
+  }
+
   async function toggleMic() {
     if (micState === 'recording') {
       mediaRecorder?.stop();
@@ -33,24 +41,24 @@
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
-        micState = 'transcribing';
+        setMicState('transcribing');
         try {
           const blob = new Blob(audioChunks, { type: 'audio/webm' });
           const text = await transcribeAudio(blob);
           if (text) dispatch('transcript', text);
-          micState = 'idle';
+          setMicState('idle');
         } catch (err) {
           console.error('Voice transcription failed:', err);
-          micState = 'error';
-          setTimeout(() => { micState = 'idle'; }, 2500);
+          setMicState('error');
+          setTimeout(() => { setMicState('idle'); }, 2500);
         }
       };
       mediaRecorder.start();
-      micState = 'recording';
+      setMicState('recording');
     } catch (err) {
       console.error('Microphone access failed:', err);
-      micState = 'error';
-      setTimeout(() => { micState = 'idle'; }, 2500);
+      setMicState('error');
+      setTimeout(() => { setMicState('idle'); }, 2500);
     }
   }
 </script>
