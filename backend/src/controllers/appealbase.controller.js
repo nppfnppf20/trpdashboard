@@ -2,13 +2,13 @@
  * Appealbase Controller
  * Proxies search + retrieve requests to the Appealbase REST API
  * (https://www.appealbase.com/docs/api-reference) so the API key stays
- * server-side. Manual precedent search for now — no project context yet.
+ * server-side. Manual precedent search for now, no project context yet.
  */
 
 const APPEALBASE_BASE = 'https://www.appealbase.com';
 
 // Fields the frontend is allowed to send through to Appealbase's search
-// endpoint — mirrors the documented request body exactly, so an unknown
+// endpoint, mirrors the documented request body exactly, so an unknown
 // field can't be smuggled through.
 const SEARCH_FIELDS = [
   'query', 'appeal_type', 'lpa', 'decision', 'development_type', 'procedure',

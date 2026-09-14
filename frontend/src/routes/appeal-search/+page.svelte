@@ -133,10 +133,11 @@
 </script>
 
 <div class="appeal-search-page">
+<div class="page-content">
   <header class="page-header">
     <h1 class="page-title">Appeal Precedent Search <span class="beta-tag">Beta</span></h1>
     <p class="page-subtitle">
-      Search decided planning appeals via Appealbase — full-text search across decision letters,
+      Search decided planning appeals: full-text search across decision letters,
       plus filters for LPA, outcome, development type and date.
     </p>
   </header>
@@ -233,8 +234,8 @@
     <div class="banner banner-error">
       <i class="las la-exclamation-circle"></i>
       {#if apiKeyMissing}
-        Appealbase isn't connected yet — an API key needs to be added to the backend environment
-        (<code>APPEALBASE_API_KEY</code>) before this page can search.
+        This search isn't connected yet, an API key needs to be added to the backend environment
+        before this page can search.
       {:else}
         {error}
       {/if}
@@ -334,12 +335,69 @@
     </div>
   {/if}
 </div>
+</div>
+
+<div class="construction-overlay">
+  <div class="construction-card">
+    <i class="las la-tools"></i>
+    <h2>Under Construction</h2>
+    <p>This page isn't live yet, check back soon.</p>
+  </div>
+</div>
 
 <style>
   .appeal-search-page {
+    position: relative;
     background: var(--color-slate-50);
-    padding: 1.5rem 2rem 3rem;
     min-height: 100%;
+  }
+
+  .page-content {
+    padding: 1.5rem 2rem 3rem;
+    filter: grayscale(1);
+    opacity: 0.45;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .construction-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .construction-card {
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 2rem 2.5rem;
+    text-align: center;
+    max-width: 360px;
+  }
+
+  .construction-card i {
+    font-size: 2rem;
+    color: var(--color-amber-600);
+    margin-bottom: 0.75rem;
+    display: block;
+  }
+
+  .construction-card h2 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--color-slate-900);
+    margin: 0 0 0.5rem;
+  }
+
+  .construction-card p {
+    font-size: 0.84375rem;
+    color: var(--color-slate-500);
+    margin: 0;
+    line-height: 1.5;
   }
 
   .page-header {
