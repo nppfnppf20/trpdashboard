@@ -8,6 +8,27 @@
   $: open = comments.filter(c => !c.resolved);
   $: resolved = comments.filter(c => c.resolved);
 
+  let selected = new Set();
+  // Drop any selected id that's no longer an open comment (resolved,
+  // deleted, or just sent) so stale ids can't linger in the set.
+  $: { const openIds = new Set(open.map(c => c.id)); selected = new Set([...selected].filter(id => openIds.has(id))); }
+
+  function toggleSelect(id) {
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    selected = new Set(selected);
+  }
+
+  function toggleSelectAll() {
+    selected = selected.size === open.length ? new Set() : new Set(open.map(c => c.id));
+  }
+
+  function sendSelected() {
+    const chosen = open.filter(c => selected.has(c.id));
+    if (!chosen.length) return;
+    dispatch('sendbatch', chosen);
+    selected = new Set();
+  }
+
   function formatDate(iso) {
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
@@ -18,15 +39,29 @@
     <span class="comments-panel-title"><i class="las la-comment-alt"></i> Comments</span>
     <button class="comments-panel-close" aria-label="Close comments panel" on:click={() => dispatch('close')}><i class="las la-times"></i></button>
   </div>
+  {#if open.length > 0}
+    <div class="comments-batch-bar">
+      <label class="comments-select-all">
+        <input type="checkbox" checked={selected.size === open.length} on:change={toggleSelectAll} />
+        Select all
+      </label>
+      <button class="btn btn-primary btn-sm" disabled={!selected.size} on:click={sendSelected}>
+        <i class="las la-magic"></i> Send {selected.size || ''} to AI
+      </button>
+    </div>
+  {/if}
   <div class="comments-panel-body">
     {#if !comments.length}
       <p class="comments-empty">No comments yet. Highlight text in the draft and choose "Comment" to leave one.</p>
     {:else}
       {#each open as comment (comment.id)}
-        <div class="comment-card">
-          <button class="comment-quote" on:click={() => dispatch('locate', comment)} title="Find this passage in the draft">
-            <i class="las la-quote-left"></i> {comment.quoted_text}
-          </button>
+        <div class="comment-card" class:comment-card--selected={selected.has(comment.id)}>
+          <div class="comment-card-top">
+            <input type="checkbox" checked={selected.has(comment.id)} on:change={() => toggleSelect(comment.id)} />
+            <button class="comment-quote" on:click={() => dispatch('locate', comment)} title="Find this passage in the draft">
+              <i class="las la-quote-left"></i> {comment.quoted_text}
+            </button>
+          </div>
           <p class="comment-body">{comment.body}</p>
           <div class="comment-meta">
             <span>{comment.author_name} &middot; {formatDate(comment.created_at)}</span>
@@ -77,6 +112,24 @@
 
   .comments-empty { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 1.5rem 0.5rem; }
 
+  .comments-batch-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-primary-50);
+    border-bottom: 1px solid var(--color-slate-200);
+  }
+  .comments-select-all {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--color-slate-600);
+    cursor: pointer;
+  }
+
   .comment-card {
     display: flex;
     flex-direction: column;
@@ -87,6 +140,11 @@
     background: white;
   }
   .comment-card--resolved { opacity: 0.65; }
+  .comment-card--selected { border-color: var(--color-primary-500); background: var(--color-primary-50); }
+
+  .comment-card-top { display: flex; align-items: flex-start; gap: 0.5rem; }
+  .comment-card-top input[type="checkbox"] { margin-top: 0.4rem; flex-shrink: 0; }
+  .comment-card-top .comment-quote { flex: 1; min-width: 0; }
 
   .comment-quote {
     display: block;

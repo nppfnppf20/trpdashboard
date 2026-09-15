@@ -8,18 +8,31 @@
   export let draftTypeId;
   export let paragraphIds = [];
   export let quotedText = '';
-  export let top = 0;
+  export let top = 0; // bottom edge of the highlighted selection
   export let left = 0;
   export let defaultDocType = null;
 
   const dispatch = createEventDispatcher();
 
   const POPUP_WIDTH = 380;
+  // Guess at the height before it's actually rendered/measured (see
+  // bind:clientHeight below) so the popup doesn't visibly jump position once
+  // the real height comes in on the first frame.
+  let popupHeight = 220;
   $: clampedLeft = Math.min(
     Math.max(left - POPUP_WIDTH / 2, 16),
     (typeof window !== 'undefined' ? window.innerWidth : 1200) - POPUP_WIDTH - 16
   );
-  $: clampedTop = Math.min(top + 8, (typeof window !== 'undefined' ? window.innerHeight : 900) - 260);
+  // Open below the selection as usual, but when there isn't room below
+  // (a highlight near the end of a long draft), just vertically center it in
+  // the viewport instead — pinning it just above the selection tended to push
+  // it up near the top of the screen, far from where the user was looking.
+  $: clampedTop = (() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
+    const margin = 16;
+    if (top + 8 + popupHeight <= vh - margin) return top + 8;
+    return Math.max((vh - popupHeight) / 2, margin);
+  })();
 
   const DOC_TYPES = [
     { value: 'project_briefing',  label: 'Project Briefing' },
@@ -108,7 +121,7 @@
   }
 </script>
 
-<div class="selection-popup" bind:this={popupEl} style="top:{clampedTop}px; left:{clampedLeft}px; width:{POPUP_WIDTH}px;">
+<div class="selection-popup" bind:this={popupEl} bind:clientHeight={popupHeight} style="top:{clampedTop}px; left:{clampedLeft}px; width:{POPUP_WIDTH}px;">
   <div class="selection-popup-quote"><i class="las la-quote-left"></i> {quotedText}</div>
 
   <div class="selection-popup-input" class:recording={micRecording}>

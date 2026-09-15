@@ -553,6 +553,20 @@
   $: aiPopoverLeft = pendingAiEdit
     ? Math.min(Math.max(pendingAiEdit.left - AI_POPOVER_WIDTH / 2, 16), (typeof window !== 'undefined' ? window.innerWidth : 1200) - AI_POPOVER_WIDTH - 16)
     : 0;
+  // Guess at the popover's height before it's measured (see bind:clientHeight
+  // on .ai-edit-control) so it doesn't visibly jump on the first frame.
+  let aiPopoverHeight = 110;
+  // Opens below the selection as usual, but when there isn't room below (a
+  // highlight near the end of a long draft), just vertically center it in the
+  // viewport instead — pinning it just above the selection tended to push it
+  // up near the top of the screen, far from where the user was looking.
+  $: aiPopoverTop = (() => {
+    if (!pendingAiEdit) return 0;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
+    const margin = 16;
+    if (pendingAiEdit.top + 8 + aiPopoverHeight <= vh - margin) return pendingAiEdit.top + 8;
+    return Math.max((vh - aiPopoverHeight) / 2, margin);
+  })();
 
   // ── Draft paragraph comments (sticky notes) ───────────────────────────────
   let draftComments = [];
@@ -590,6 +604,105 @@
     } catch (err) {
       console.error('Failed to delete comment:', err);
     }
+  }
+
+  // ── Batch "send comments to AI" review ────────────────────────────────────
+  // Sends several comments to the AI one after another (not in parallel —
+  // each edit rewrites the whole draft HTML and re-derives paragraph ids, so
+  // the next comment in the queue must resolve against the post-edit
+  // document). Every result is written straight into the draft, pending-
+  // highlighted like a single quick edit, but nothing is finalised until the
+  // user reviews and accepts/rejects each one here — batching only removes
+  // the wait between edits, not the review step.
+  // { items: [{ commentId, paragraphId, quotedText, notes, status, originalHtml, error }], running } | null
+  let batchReview = null;
+
+  async function handleSendCommentsBatch(comments) {
+    if (!comments?.length || batchReview) return;
+    batchReview = {
+      items: comments.map(c => ({
+        commentId: c.id,
+        paragraphId: c.paragraph_id,
+        quotedText: c.quoted_text,
+        notes: c.body,
+        status: 'queued',
+        originalHtml: null,
+        error: null,
+      })),
+      running: true,
+    };
+
+    for (const item of batchReview.items) {
+      item.status = 'processing';
+      batchReview = { ...batchReview, items: [...batchReview.items] };
+      try {
+        const allParagraphs = splitAllParagraphs($draftEditorHtml);
+        const target = allParagraphs.find(p => p.id === item.paragraphId);
+        if (!target) throw new Error("Can't find this passage anymore — it may have moved or been removed.");
+        item.originalHtml = target.html;
+        const notesForApi = [
+          item.quotedText?.trim() ? `The user highlighted this exact text: "${item.quotedText.trim()}"` : null,
+          item.notes?.trim() ? `Their instruction: ${item.notes.trim()}` : null,
+        ].filter(Boolean).join('\n\n') || null;
+        const result = await quickIncorporateApi(project.id, apiDraftTypeId, {
+          file: null,
+          documentText: '',
+          documentTitle: null,
+          paragraphs: [target],
+          userNotes: notesForApi,
+          docType: null,
+        });
+        const updatedP = (result.updated ?? []).find(p => p.id === item.paragraphId) ?? result.updated?.[0];
+        if (!updatedP) throw new Error('No update returned.');
+        const taggedHtml = markChangedWordsPending(target.html, updatedP.html);
+        const mergedHtml = mergeParagraphUpdates(allParagraphs, [{ id: item.paragraphId, html: taggedHtml }]);
+        $draftEditorHtml = mergedHtml;
+        draftEditor?.setHTML(mergedHtml);
+        $draftSaved = false;
+        item.status = 'done';
+      } catch (err) {
+        item.status = 'error';
+        item.error = err.message;
+      }
+      batchReview = { ...batchReview, items: [...batchReview.items] };
+    }
+    batchReview = { ...batchReview, running: false };
+  }
+
+  function removeBatchItem(item) {
+    if (!batchReview) return;
+    const items = batchReview.items.filter(i => i !== item);
+    batchReview = items.length ? { ...batchReview, items } : null;
+  }
+
+  function acceptBatchItem(item) {
+    const allParagraphs = splitAllParagraphs($draftEditorHtml);
+    const target = allParagraphs.find(p => p.id === item.paragraphId);
+    if (target) {
+      const mergedHtml = mergeParagraphUpdates(allParagraphs, [{ id: item.paragraphId, html: clearPendingMarkers(target.html) }]);
+      $draftEditorHtml = mergedHtml;
+      draftEditor?.setHTML(mergedHtml);
+    }
+    updateDraftComment(item.commentId, { resolved: true }).then(loadDraftComments).catch(err => console.error('Failed to resolve comment:', err));
+    removeBatchItem(item);
+  }
+
+  function rejectBatchItem(item) {
+    if (item.originalHtml != null) {
+      const allParagraphs = splitAllParagraphs($draftEditorHtml);
+      const mergedHtml = mergeParagraphUpdates(allParagraphs, [{ id: item.paragraphId, html: item.originalHtml }]);
+      $draftEditorHtml = mergedHtml;
+      draftEditor?.setHTML(mergedHtml);
+    }
+    removeBatchItem(item);
+  }
+
+  function acceptAllBatch() {
+    for (const item of (batchReview?.items ?? []).filter(i => i.status === 'done')) acceptBatchItem(item);
+  }
+
+  function rejectAllBatch() {
+    for (const item of (batchReview?.items ?? []).filter(i => i.status === 'done')) rejectBatchItem(item);
   }
 
   function toggleCheckPanel() {
@@ -676,7 +789,45 @@
             {/if}
           </div>
           <div class="draft-right-panel-body">
-            {#if checkPanelOpen}
+            {#if batchReview}
+              <div class="batch-review-panel">
+                <div class="batch-review-header">
+                  <span class="batch-review-title">
+                    <i class="las la-magic"></i>
+                    {#if batchReview.running}Sending to AI…{:else}Review AI edits{/if}
+                    ({batchReview.items.filter(i => i.status === 'done' || i.status === 'error').length}/{batchReview.items.length})
+                  </span>
+                  {#if !batchReview.running && batchReview.items.some(i => i.status === 'done')}
+                    <div class="batch-review-actions">
+                      <button class="btn btn-secondary btn-sm" on:click={rejectAllBatch}>Reject All</button>
+                      <button class="btn btn-primary btn-sm" on:click={acceptAllBatch}>Accept All</button>
+                    </div>
+                  {/if}
+                </div>
+                <div class="batch-review-list">
+                  {#each batchReview.items as item (item.commentId)}
+                    <div class="batch-review-item">
+                      <button class="comment-quote-btn" on:click={() => draftEditor?.highlightText(item.quotedText)} title="Find this passage in the draft">
+                        <i class="las la-quote-left"></i> {item.quotedText}
+                      </button>
+                      {#if item.status === 'queued' || item.status === 'processing'}
+                        <div class="ai-edit-status"><div class="mini-spinner"></div> {item.status === 'processing' ? 'Writing...' : 'Queued'}</div>
+                      {:else if item.status === 'error'}
+                        <p class="ai-edit-error">{item.error}</p>
+                        <div class="batch-review-item-actions">
+                          <button class="btn btn-secondary btn-sm" on:click={() => removeBatchItem(item)}>Dismiss</button>
+                        </div>
+                      {:else}
+                        <div class="batch-review-item-actions">
+                          <button class="btn btn-secondary btn-sm" on:click={() => rejectBatchItem(item)}>Reject</button>
+                          <button class="btn btn-primary btn-sm" on:click={() => acceptBatchItem(item)}>Accept</button>
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {:else if checkPanelOpen}
               <DraftCheckPanel
                 {project}
                 docTypeSlug={activeType?.slug ?? 'planning_statement'}
@@ -691,6 +842,7 @@
                 on:resolve={(e) => toggleCommentResolved(e.detail)}
                 on:delete={(e) => removeDraftComment(e.detail)}
                 on:locate={(e) => draftEditor?.highlightText(e.detail.quotedText)}
+                on:sendbatch={(e) => handleSendCommentsBatch(e.detail)}
                 on:close={() => commentsPanelOpen = false}
               />
             {/if}
@@ -716,7 +868,7 @@
       {/if}
 
       {#if pendingAiEdit}
-        <div class="ai-edit-control" style="top:{pendingAiEdit.top + 8}px; left:{aiPopoverLeft}px; width:{AI_POPOVER_WIDTH}px;">
+        <div class="ai-edit-control" bind:clientHeight={aiPopoverHeight} style="top:{aiPopoverTop}px; left:{aiPopoverLeft}px; width:{AI_POPOVER_WIDTH}px;">
           {#if pendingAiEdit.loading}
             <div class="ai-edit-status"><div class="mini-spinner"></div> Writing...</div>
           {:else if pendingAiEdit.error}
@@ -2244,6 +2396,57 @@
     font-size: 0.78rem;
     padding: 0.35rem 0.7rem;
   }
+
+  /* ── Batch "send comments to AI" review panel (right panel body) ── */
+  .batch-review-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .batch-review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-slate-200);
+  }
+  .batch-review-title {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-slate-800);
+  }
+  .batch-review-actions { display: flex; gap: 0.4rem; }
+  .batch-review-actions button { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+  .batch-review-list { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; overflow-y: auto; }
+  .batch-review-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 8px;
+    background: white;
+  }
+  .batch-review-item-actions { display: flex; justify-content: flex-end; gap: 0.4rem; }
+  .batch-review-item-actions button { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+  .comment-quote-btn {
+    display: block;
+    text-align: left;
+    width: 100%;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--color-slate-500);
+    background: var(--color-slate-50);
+    border: none;
+    border-left: 3px solid var(--color-slate-300);
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    max-height: 4rem;
+    overflow-y: auto;
+    font-family: inherit;
+  }
+  .comment-quote-btn:hover { background: var(--color-slate-100); }
 
   /* Analyse row */
   .analyse-row {
