@@ -1,6 +1,7 @@
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { processPolicyDocument } from '../services/policy.service.js';
+import { sanitizeRichText } from '../utils/sanitizeHtml.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Combined list — policy_documents + extracted_insights, newest first
@@ -84,7 +85,7 @@ export async function uploadPolicyDocument(req, res) {
          (title, source_name, policy_date, summary_html, key_points, implications, user_notes, raw_text)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [title, sourceName, policy_date || null, summary_html, key_points, implications, user_notes?.trim() || null, rawText]
+      [title, sourceName, policy_date || null, sanitizeRichText(summary_html), sanitizeRichText(key_points), sanitizeRichText(implications), user_notes?.trim() || null, rawText]
     );
 
     res.status(201).json(doc);
@@ -116,9 +117,9 @@ export async function updatePolicyDocument(req, res) {
         id,
         our_take ?? null,
         title?.trim() || null,
-        summary_html ?? null,
-        key_points ?? null,
-        implications ?? null,
+        summary_html != null ? sanitizeRichText(summary_html) : null,
+        key_points != null ? sanitizeRichText(key_points) : null,
+        implications != null ? sanitizeRichText(implications) : null,
         superseded ?? null,
       ]
     );
@@ -160,7 +161,7 @@ export async function updatePolicyInsight(req, res) {
              detail     = COALESCE($4, detail),
              superseded = COALESCE($5, superseded)
        WHERE id = $1 RETURNING *`,
-      [id, our_take ?? null, title?.trim() || null, summary_html ?? null, superseded ?? null]
+      [id, our_take ?? null, title?.trim() || null, summary_html != null ? sanitizeRichText(summary_html) : null, superseded ?? null]
     );
     if (!insight) return res.status(404).json({ error: 'Not found' });
     res.json(insight);

@@ -87,20 +87,6 @@ export async function signInWithEmail(email, password) {
 }
 
 /**
- * Sign up with email and password
- * @param {string} email
- * @param {string} password
- * @returns {Promise<{data: AuthResponse, error: Error|null}>}
- */
-export async function signUpWithEmail(email, password) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password
-  });
-  return { data, error };
-}
-
-/**
  * Sign out current user
  * @returns {Promise<{error: Error|null}>}
  */

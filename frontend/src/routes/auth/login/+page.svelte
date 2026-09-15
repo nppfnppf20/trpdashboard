@@ -81,10 +81,3 @@
     {loading ? 'Signing in...' : 'Sign in'}
   </button>
 </form>
-
-<p style="margin-top: 1.5rem; text-align: center; font-size: 0.875rem; color: var(--color-slate-600);">
-  Don't have an account?
-  <a href="/auth/signup" style="font-weight: 500; color: var(--color-primary-600); text-decoration: none;">
-    Sign up
-  </a>
-</p>

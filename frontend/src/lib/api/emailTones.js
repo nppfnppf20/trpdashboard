@@ -8,11 +8,11 @@ export async function getEmailTones() {
   return res.json();
 }
 
-export async function createEmailTone({ label, sampleText, isDefault }) {
+export async function createEmailTone({ label, sampleText, guidanceNotes, isDefault }) {
   const res = await authFetch(API_BASE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ label, sampleText, isDefault }),
+    body: JSON.stringify({ label, sampleText, guidanceNotes, isDefault }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
@@ -21,11 +21,11 @@ export async function createEmailTone({ label, sampleText, isDefault }) {
   return res.json();
 }
 
-export async function updateEmailTone(id, { label, sampleText, isDefault }) {
+export async function updateEmailTone(id, { label, sampleText, guidanceNotes, isDefault }) {
   const res = await authFetch(`${API_BASE_URL}/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ label, sampleText, isDefault }),
+    body: JSON.stringify({ label, sampleText, guidanceNotes, isDefault }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));

@@ -11,12 +11,17 @@ export async function listTones(req, res) {
 }
 
 export async function createTone(req, res) {
-  const { label, sampleText, isDefault } = req.body;
+  const { label, sampleText, guidanceNotes, isDefault } = req.body;
   if (!label?.trim() || !sampleText?.trim()) {
     return res.status(400).json({ error: 'label and sampleText are required' });
   }
   try {
-    const tone = await emailTonesService.createTone(req.user.id, { label: label.trim(), sampleText: sampleText.trim(), isDefault });
+    const tone = await emailTonesService.createTone(req.user.id, {
+      label: label.trim(),
+      sampleText: sampleText.trim(),
+      guidanceNotes: guidanceNotes?.trim() || null,
+      isDefault,
+    });
     res.status(201).json(tone);
   } catch (err) {
     console.error('emailTones.createTone error:', err);
@@ -26,11 +31,12 @@ export async function createTone(req, res) {
 
 export async function updateTone(req, res) {
   const { id } = req.params;
-  const { label, sampleText, isDefault } = req.body;
+  const { label, sampleText, guidanceNotes, isDefault } = req.body;
   try {
     const tone = await emailTonesService.updateTone(req.user.id, id, {
       label: label?.trim(),
       sampleText: sampleText?.trim(),
+      guidanceNotes: guidanceNotes != null ? guidanceNotes.trim() : undefined,
       isDefault,
     });
     if (!tone) return res.status(404).json({ error: 'Tone not found' });

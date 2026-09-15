@@ -12,6 +12,7 @@
   let editingId = null; // null while adding, tone id while editing
   let formLabel = '';
   let formSampleText = '';
+  let formGuidanceNotes = '';
   let formIsDefault = false;
   let saving = false;
   let formError = null;
@@ -36,6 +37,7 @@
     editingId = null;
     formLabel = '';
     formSampleText = '';
+    formGuidanceNotes = '';
     formIsDefault = tones.length === 0;
     formError = null;
     formOpen = true;
@@ -45,6 +47,7 @@
     editingId = tone.id;
     formLabel = tone.label;
     formSampleText = tone.sample_text;
+    formGuidanceNotes = tone.guidance_notes ?? '';
     formIsDefault = tone.is_default;
     formError = null;
     formOpen = true;
@@ -62,7 +65,12 @@
     saving = true;
     formError = null;
     try {
-      const payload = { label: formLabel.trim(), sampleText: formSampleText.trim(), isDefault: formIsDefault };
+      const payload = {
+        label: formLabel.trim(),
+        sampleText: formSampleText.trim(),
+        guidanceNotes: formGuidanceNotes.trim(),
+        isDefault: formIsDefault,
+      };
       if (editingId == null) {
         const created = await createEmailTone(payload);
         tones = formIsDefault ? [...tones.map(t => ({ ...t, is_default: false })), created] : [...tones, created];
@@ -145,6 +153,7 @@
                 <div class="ets-row-label">
                   {tone.label}
                   {#if tone.is_default}<span class="badge badge-neutral ets-default-badge">Default</span>{/if}
+                  {#if tone.guidance_notes?.trim()}<i class="las la-list-ul ets-guidance-icon" title="Has instructions: {tone.guidance_notes}"></i>{/if}
                 </div>
                 <div class="ets-row-preview">{truncate(tone.sample_text)}</div>
               </div>
@@ -188,6 +197,12 @@
         <label for="ets-sample">Example emails</label>
         <p class="ets-modal-help">Paste one or more emails you've actually sent. The more examples, the better the model can match your voice.</p>
         <textarea id="ets-sample" bind:value={formSampleText} placeholder="Paste example email(s) here…"></textarea>
+      </div>
+
+      <div class="ets-modal-field">
+        <label for="ets-guidance">Instructions (optional)</label>
+        <p class="ets-modal-help">Plain instructions to follow every time this tone is used, e.g. "no em dashes", "always sign off with Kind regards".</p>
+        <textarea id="ets-guidance" class="ets-guidance-textarea" bind:value={formGuidanceNotes} placeholder="e.g. No em dashes. Keep it under 150 words. Sign off with 'Many thanks'."></textarea>
       </div>
 
       <label class="ets-default-check">
@@ -307,6 +322,7 @@
     color: var(--color-slate-800);
   }
   .ets-default-badge { font-size: 0.65rem; padding: 0.05rem 0.4rem; }
+  .ets-guidance-icon { font-size: 0.75rem; color: var(--color-slate-400); }
   .ets-row-preview {
     margin-top: 0.2rem;
     font-size: 0.78rem;
@@ -371,6 +387,7 @@
     font-size: 0.85rem; font-family: inherit; line-height: 1.5;
   }
   .ets-modal-field textarea:focus { outline: none; border-color: var(--color-primary-500); box-shadow: var(--focus-ring-blue); }
+  .ets-guidance-textarea { min-height: 70px; flex: none; }
 
   .ets-default-check {
     display: flex; align-items: center; gap: 0.4rem;
