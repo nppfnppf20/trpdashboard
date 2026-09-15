@@ -78,11 +78,15 @@
     <i class="las la-exclamation-triangle"></i>
   {:else}
     <i class="las la-microphone"></i>
+    {#if micState === 'recording'}
+      <span class="vdb-dot"></span>
+    {/if}
   {/if}
 </button>
 
 <style>
   .vdb-btn {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -101,20 +105,26 @@
   .vdb-btn:disabled {
     cursor: not-allowed;
   }
-  .vdb-btn--recording {
-    background: var(--color-red-50);
-    border-color: var(--color-red-200);
-    color: var(--color-red-600);
-    animation: vdb-pulse 1.2s ease-in-out infinite;
-  }
+  .vdb-btn--recording,
   .vdb-btn--error {
     background: var(--color-red-50);
     border-color: var(--color-red-200);
     color: var(--color-red-600);
   }
-  @keyframes vdb-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 var(--color-red-100); }
-    50% { box-shadow: 0 0 0 4px var(--color-red-100); }
+  .vdb-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-red-600);
+    border: 2px solid var(--color-white);
+    animation: vdb-blink 1s steps(1, end) infinite;
+  }
+  @keyframes vdb-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0.15; }
   }
   .vdb-spinner {
     display: inline-block;

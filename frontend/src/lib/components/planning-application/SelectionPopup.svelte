@@ -114,7 +114,7 @@
   <div class="selection-popup-input" class:recording={micRecording}>
     <textarea
       class="selection-popup-textarea"
-      placeholder="Leave a note, or tell the AI what to do with this..."
+      placeholder={micRecording ? '' : "Leave a note, or tell the AI what to do with this..."}
       bind:value={notes}
       autofocus
     ></textarea>
@@ -124,7 +124,7 @@
       on:statechange={(e) => micRecording = e.detail === 'recording'}
     />
     {#if micRecording}
-      <span class="selection-popup-recording-hint">Recording — click the mic to finish</span>
+      <span class="selection-popup-recording-hint">Recording, click the mic to finish</span>
     {/if}
   </div>
 
