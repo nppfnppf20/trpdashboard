@@ -628,7 +628,7 @@
               </button>
             </div>
           {/if}
-          {#if row.statusLabel}<span class="badge {row.statusClass}">{row.statusLabel}</span>{/if}
+          {#if row.statusLabel}<span class="badge tr-status-badge {row.statusClass}" title={row.statusLabel}>{row.statusLabel}</span>{/if}
         </div>
       {/each}
     {/if}
@@ -732,6 +732,14 @@
   }
   .tr-name .badge { margin-top: 2px; }
   .tr-project-tag { margin-left: 6px; }
+
+  .tr-status-badge {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+  }
 
   .progress-cell {
     flex: 1.6; min-width: 0; height: 40px; box-sizing: border-box;

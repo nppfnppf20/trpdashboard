@@ -48,6 +48,47 @@ export function stripCitations(text) {
     .trim();
 }
 
+// Same markdown subset renderReply() understands (headings/bold/bullets),
+// turned into real HTML with no citation chips — used for the "Copy" button
+// so pasting into Word/Outlook/Gmail etc. renders formatting instead of
+// showing literal "**bold**"/"#" syntax. Expects citation-stripped text.
+function markdownToHtml(text) {
+  return escapeHtml(text)
+    .replace(/^#{1,4}\s+(.+)$/gm, '<strong>$1</strong>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/^(\s*)[-*]\s+/gm, '$1• ')
+    .replace(/\n/g, '<br>');
+}
+
+// Plain-text fallback for the same copy action, for targets that don't
+// accept the "text/html" clipboard flavour — markdown punctuation is
+// removed rather than left in literally.
+function markdownToPlainText(text) {
+  return text
+    .replace(/^#{1,4}\s+(.+)$/gm, '$1')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/^(\s*)[-*]\s+/gm, '$1• ');
+}
+
+// Copies a chat reply to the clipboard with real formatting preserved
+// (bold/headings/bullets), falling back to plain text when the rich
+// Clipboard API isn't available. Citation markers are always excluded.
+export async function copyReplyToClipboard(content) {
+  const clean = stripCitations(content);
+  const html = markdownToHtml(clean);
+  const plain = markdownToPlainText(clean);
+  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      }),
+    ]);
+  } else {
+    await navigator.clipboard.writeText(plain);
+  }
+}
+
 export function renderReply(text, sourceLabels = {}) {
   const escaped = escapeHtml(text);
   return escaped

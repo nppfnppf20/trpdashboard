@@ -3,7 +3,7 @@
   import { getChatSources, sendProjectChat } from '$lib/api/projectChat.js';
   import { getEmailTones } from '$lib/api/emailTones.js';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
-  import { renderReply, buildSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
+  import { renderReply, buildSourceLabels, copyReplyToClipboard } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
 
@@ -248,7 +248,7 @@
 
   async function copyReply(idx, content) {
     try {
-      await navigator.clipboard.writeText(stripCitations(content));
+      await copyReplyToClipboard(content);
       copiedIdx = idx;
       setTimeout(() => { if (copiedIdx === idx) copiedIdx = null; }, 1500);
     } catch (err) {

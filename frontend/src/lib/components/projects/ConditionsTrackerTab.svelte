@@ -49,7 +49,7 @@
   let loading = true;
   let error = null;
 
-  const STATUS_OPTIONS = ['Not Started', 'In Progress', 'Submitted', 'Discharged', 'N/A'];
+  const STATUS_OPTIONS = ['Not Started', 'Client Producing', 'TRP Reviewing', 'Client Reviewing', 'In Progress', 'In Progress (Action with Client)', 'Submitted', 'Discharged', 'N/A'];
   const TYPE_OPTIONS = [
     'Pre-Commencement',
     'Pre-Beneficial Use',
@@ -169,7 +169,11 @@
     const s = (status || 'Not Started').toLowerCase();
     if (s === 'discharged')   return 'ct-status-discharged';
     if (s === 'submitted')    return 'ct-status-submitted';
+    if (s === 'in progress (action with client)') return 'ct-status-inprogress-client';
     if (s === 'in progress')  return 'ct-status-inprogress';
+    if (s === 'client producing') return 'ct-status-clientproducing';
+    if (s === 'trp reviewing')    return 'ct-status-trpreviewing';
+    if (s === 'client reviewing') return 'ct-status-clientreviewing';
     if (s === 'n/a' || s === 'not required') return 'ct-status-notrequired';
     return 'ct-status-notstarted';
   }
@@ -2090,9 +2094,13 @@
   }
   select.ct-status-notstarted  { background: var(--color-slate-100); color: var(--color-slate-500); border-color: var(--color-slate-200); }
   select.ct-status-inprogress  { background: var(--color-amber-100); color: var(--color-amber-600); border-color: var(--color-yellow-300); }
+  select.ct-status-inprogress-client { background: var(--color-amber-200); color: var(--color-amber-800); border-color: var(--color-amber-500); }
   select.ct-status-submitted   { background: var(--color-primary-100); color: var(--color-primary-600); border-color: var(--color-primary-200); }
   select.ct-status-discharged  { background: var(--color-emerald-100); color: var(--color-emerald-600); border-color: var(--color-slate-400); }
   select.ct-status-notrequired { background: var(--color-violet-100); color: var(--color-violet-700); border-color: var(--color-violet-300); }
+  select.ct-status-clientproducing { background: var(--color-orange-100); color: var(--color-orange-700); border-color: var(--color-slate-300); }
+  select.ct-status-trpreviewing    { background: var(--color-indigo-100); color: var(--color-indigo-800); border-color: var(--color-slate-300); }
+  select.ct-status-clientreviewing { background: var(--color-teal-100); color: var(--color-teal-600); border-color: var(--color-slate-300); }
 
   /* ── Type dropdown ───────────────────────────────────────────────────────── */
   .ct-td-type { vertical-align: top; }

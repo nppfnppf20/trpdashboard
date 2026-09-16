@@ -5,6 +5,39 @@
 
 import rateLimit from 'express-rate-limit';
 
+/**
+ * Pulls the user id out of the request's bearer JWT without verifying its
+ * signature, purely so the rate limiter can bucket by user instead of IP.
+ *
+ * This middleware always runs before `authenticate` (it's mounted globally
+ * on `/api`, ahead of the per-route auth middleware that populates
+ * `req.user`), so `req.user.id` is never available here — reading the
+ * token's `sub` claim directly is the only way to key per-user at this
+ * point in the pipeline. This is safe to leave unverified: real
+ * authorization is still enforced later by `authenticate`'s signature
+ * check, so a forged token only ever earns the forger their own bucket.
+ */
+function getRateLimitUserId(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return undefined;
+
+  try {
+    const payload = authHeader.slice(7).split('.')[1];
+    const { sub } = JSON.parse(Buffer.from(payload, 'base64').toString('utf8'));
+    return sub || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Use user ID for authenticated requests, IP for unauthenticated ones.
+// This prevents office workers/VPN users sharing a public IP from
+// exhausting each other's request budget.
+function keyByUserOrIp(req, res) {
+  const userId = getRateLimitUserId(req);
+  return userId ? `user:${userId}` : req.ip;
+}
+
 // General API rate limiter - 200 requests per 15 minutes per USER
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -15,16 +48,7 @@ export const apiLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in headers
   legacyHeaders: false, // Disable X-RateLimit-* headers
-  // Use user ID for authenticated routes, IP for unauthenticated
-  // This prevents office workers sharing an IP from blocking each other
-  keyGenerator: (req, res) => {
-    // If user is authenticated, use their ID
-    if (req.user?.id) {
-      return `user:${req.user.id}`;
-    }
-    // For unauthenticated, don't use custom key (let library handle IPv6)
-    return undefined;
-  },
+  keyGenerator: keyByUserOrIp,
   // Only skip in development, NEVER in production
   skip: (req) => process.env.NODE_ENV !== 'production' && process.env.NODE_ENV === 'development'
 });
@@ -39,12 +63,7 @@ export const analysisLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req, res) => {
-    if (req.user?.id) {
-      return `user:${req.user.id}`;
-    }
-    return undefined;
-  },
+  keyGenerator: keyByUserOrIp,
   skip: (req) => process.env.NODE_ENV !== 'production' && process.env.NODE_ENV === 'development'
 });
 

@@ -9,7 +9,7 @@
   import { tick, onMount } from 'svelte';
   import { getCrossProjectSources, sendCrossProjectChat } from '$lib/api/crossProjectChat.js';
   import { getEmailTones } from '$lib/api/emailTones.js';
-  import { renderReply, buildMultiProjectSourceLabels, stripCitations } from '$lib/utils/chatMarkdown.js';
+  import { renderReply, buildMultiProjectSourceLabels, copyReplyToClipboard } from '$lib/utils/chatMarkdown.js';
 
   export let projects = []; // [{ id, project_name, ... }]
 
@@ -247,7 +247,7 @@
 
   async function copyReply(idx, content) {
     try {
-      await navigator.clipboard.writeText(stripCitations(content));
+      await copyReplyToClipboard(content);
       copiedIdx = idx;
       setTimeout(() => { if (copiedIdx === idx) copiedIdx = null; }, 1500);
     } catch (err) {
