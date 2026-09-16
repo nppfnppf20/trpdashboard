@@ -38,10 +38,10 @@ function keyByUserOrIp(req, res) {
   return userId ? `user:${userId}` : req.ip;
 }
 
-// General API rate limiter - 200 requests per 15 minutes per USER
+// General API rate limiter - 1000 requests per 15 minutes per USER
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each USER to 200 requests per windowMs
+  max: 1000, // Limit each USER to 1000 requests per windowMs
   message: {
     error: 'Too many requests',
     message: 'Too many requests, please try again later.'
