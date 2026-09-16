@@ -111,6 +111,27 @@ function isTokenExpired(token, bufferMs = 60_000) {
   }
 }
 
+// Shared in-flight refresh, so that a page loading many parallel API calls
+// at once (which all notice the same near-expiry token) coalesce into a
+// single refreshSession() call instead of each starting their own. Supabase
+// rotates refresh tokens on use, so concurrent refreshes race and all but
+// the first one fail.
+let refreshInFlight = null;
+
+async function refreshAccessToken() {
+  const { data: { session: refreshedSession }, error } = await supabase.auth.refreshSession();
+  if (error || !refreshedSession) {
+    console.warn('Token refresh failed:', error?.message);
+    return null;
+  }
+
+  // Keep stores in sync
+  session.set(refreshedSession);
+  user.set(refreshedSession.user);
+
+  return refreshedSession.access_token;
+}
+
 /**
  * Get current access token for API calls.
  * If the token is expired or about to expire, forces a refresh
@@ -126,18 +147,14 @@ export async function getAccessToken() {
       return currentSession.access_token;
     }
 
-    // Token missing or expired – force a refresh using the refresh token
-    const { data: { session: refreshedSession }, error } = await supabase.auth.refreshSession();
-    if (error || !refreshedSession) {
-      console.warn('Token refresh failed:', error?.message);
-      return null;
+    // Token missing or expired – force a refresh using the refresh token.
+    // Share one in-flight refresh across concurrent callers (see comment above).
+    if (!refreshInFlight) {
+      refreshInFlight = refreshAccessToken().finally(() => {
+        refreshInFlight = null;
+      });
     }
-
-    // Keep stores in sync
-    session.set(refreshedSession);
-    user.set(refreshedSession.user);
-
-    return refreshedSession.access_token;
+    return await refreshInFlight;
   } catch (error) {
     console.warn('Failed to get access token:', error.message);
     return null;
