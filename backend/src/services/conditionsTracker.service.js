@@ -1,4 +1,4 @@
-import { callClaude, MODEL_FAST, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
+import { callClaude, MODEL_FAST, ANTI_AI_SLOP_BLOCK, noEmDash } from './llm.shared.js';
 
 const SYSTEM_PROMPT = `You are a planning consultant assistant maintaining a planning conditions discharge tracker. The user will provide:
 
@@ -18,6 +18,7 @@ Tone and voice — this matters:
 - This is an internal log entry, not a planning report. No report-speak ("the applicant's agent submitted… following which…"), no long chained clauses, no restating the condition's requirements back.
 - Keep it SHORT: one or two brisk sentences, 35 words maximum. If two things happened, two short sentences beat one long one.
 - End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting officer sign-off", "Expect discharge".
+- Never use an em dash anywhere. Use a comma, a colon, or the word "to" instead.
 
 Content rules:
 - Cover only what is NEW in the source material relative to the previous progress entries. Do not repeat history that is already logged.
@@ -57,6 +58,7 @@ Tone and voice — this matters:
 - This is an internal log entry, not a planning report. No report-speak ("the applicant's agent submitted… following which…"), no long chained clauses, no restating the condition's requirements back.
 - Keep it SHORT: one or two brisk sentences, 35 words maximum. If two things happened, two short sentences beat one long one.
 - End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting officer sign-off", "Expect discharge".
+- Never use an em dash anywhere. Use a comma, a colon, or the word "to" instead.
 
 Content rules:
 - Cover only what is NEW in the source material relative to the previous progress entries. Do not repeat history that is already logged.
@@ -93,7 +95,7 @@ function extractDateSuggestion(block) {
   const date = extractTag(dsBlock, 'DATE');
   const title = extractTag(dsBlock, 'TITLE');
   if (!date || !title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  return { date, title };
+  return { date, title: noEmDash(title) };
 }
 
 function parseConditionAdvancementItems(raw, logLabel, errorMessage) {
@@ -106,7 +108,8 @@ function parseConditionAdvancementItems(raw, logLabel, errorMessage) {
   return blocks
     .map(block => ({
       condition_id: parseInt(extractTag(block, 'CONDITION_ID'), 10),
-      summary: extractTag(block, 'SUMMARY'),
+      // belt and braces: no em dashes, ever, regardless of what the prompt asked for
+      summary: noEmDash(extractTag(block, 'SUMMARY')),
       date_suggestion: extractDateSuggestion(block),
     }))
     .filter(s => Number.isFinite(s.condition_id) && s.summary);
@@ -219,6 +222,7 @@ Tone and voice — this matters:
 - This is an internal log entry, not a planning report. No report-speak, no long chained clauses, no restating the condition's requirements back.
 - Keep it SHORT: one or two brisk sentences, 35 words maximum. If two things happened, two short sentences beat one long one.
 - End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting officer sign-off", "Expect discharge".
+- Never use an em dash anywhere. Use a comma, a colon, or the word "to" instead.
 
 Content rules:
 - Use the condition's title and current status to understand what's outstanding, so the note is specific.
@@ -304,7 +308,8 @@ ${blocks}`;
     console.error('[conditionsTracker.service] No BODY in summary email. Raw (first 400):', raw.slice(0, 400));
     throw new Error('Could not draft the summary email');
   }
-  return { subject: subject || 'Planning conditions progress update', body };
+  // belt and braces: no em dashes, ever, regardless of what the prompt asked for
+  return { subject: noEmDash(subject) || 'Planning conditions progress update', body: noEmDash(body) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

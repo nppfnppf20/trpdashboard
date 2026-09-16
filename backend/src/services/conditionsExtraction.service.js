@@ -1,4 +1,4 @@
-import { callLLM, parseJSON, resolveProvider } from './llm.shared.js';
+import { callLLM, parseJSON, resolveProvider, noEmDash } from './llm.shared.js';
 
 // Extracts planning conditions from an uploaded decision notice (PDF/Word)
 // to prefill the Conditions Tracker's "Add Conditions" bulk form. The user
@@ -12,6 +12,8 @@ VERBATIM RULE — this is the most important instruction, and it applies to ever
 Extract items in the order they appear in the document, numbered conditions first, followed by any informatives.
 
 Do not classify or guess a "type" for each item (e.g. Pre-Commencement, Informative, Compliance) — that judgement is left to the user reviewing the extraction, so there is no "condition_type" field to fill in.
+
+Never use an em dash (—) anywhere in your output, including in "title" — use a comma, a hyphen, or a separate sentence instead.
 
 Field rules:
 - title: a SHORT descriptive label (a few words) summarising the condition's subject, e.g. "Landscaping scheme" or "Contaminated land". Decision notices don't usually give conditions titles, so this field is the one exception to the verbatim rule — write your own short label, do not quote the document here. Null only if you cannot summarise it at all.
@@ -51,7 +53,11 @@ ${(text || '').slice(0, 100000)}`;
   parsed.conditions = parsed.conditions
     .filter(c => c && typeof c.wording === 'string' && c.wording.trim())
     .map(c => ({
-      title: typeof c.title === 'string' && c.title.trim() ? c.title.trim() : null,
+      // noEmDash is applied only to "title" — the one field the model writes
+      // itself. wording/reason/requirement_text are verbatim copies of the
+      // source, so they're left untouched even if the source itself happens
+      // to use a dash; rewriting them would break the verbatim guarantee.
+      title: typeof c.title === 'string' && c.title.trim() ? noEmDash(c.title.trim()) : null,
       wording: c.wording.trim(),
       reason: typeof c.reason === 'string' && c.reason.trim() ? c.reason.trim() : null,
       requirements: Array.isArray(c.requirements)
