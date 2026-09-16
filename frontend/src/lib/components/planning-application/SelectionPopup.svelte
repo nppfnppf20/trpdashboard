@@ -87,6 +87,8 @@
     if (file) selectFile(file);
   }
 
+  $: hasAttachment = inputTab === 'upload' ? !!uploadFile : !!pasteText.trim();
+
   async function handleComment() {
     if (!notes.trim() || commentSaving) return;
     commentSaving = true;
@@ -99,6 +101,13 @@
         paragraphId: paragraphIds[0],
         quotedText,
         body: notes.trim(),
+        // Carry any attached document along with the note — otherwise it's
+        // silently lost the moment you click Comment instead of Send to AI,
+        // and a later batch send has nothing but the note text to work from.
+        file: attachOpen && inputTab === 'upload' ? uploadFile : null,
+        documentText: attachOpen && inputTab === 'paste' ? pasteText.trim() : '',
+        documentTitle: attachOpen && inputTab === 'paste' ? (pasteTitle.trim() || null) : (uploadFile?.name ?? null),
+        docType: attachOpen && hasAttachment ? docType : null,
       });
       dispatch('commented');
     } catch (err) {
@@ -106,8 +115,6 @@
       commentSaving = false;
     }
   }
-
-  $: hasAttachment = inputTab === 'upload' ? !!uploadFile : !!pasteText.trim();
 
   function handleSendToAi() {
     if (!notes.trim() && !hasAttachment) return;

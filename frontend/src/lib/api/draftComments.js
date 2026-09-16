@@ -9,12 +9,22 @@ export async function getDraftComments(projectId, draftKind, draftTypeId) {
   return res.json();
 }
 
-export async function createDraftComment({ projectId, draftKind, draftTypeId, paragraphId, quotedText, body }) {
-  const res = await authFetch(API_BASE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, draftKind, draftTypeId, paragraphId, quotedText, body }),
-  });
+export async function createDraftComment({ projectId, draftKind, draftTypeId, paragraphId, quotedText, body, file = null, documentText = '', documentTitle = null, docType = null }) {
+  const form = new FormData();
+  form.append('projectId', projectId);
+  form.append('draftKind', draftKind);
+  form.append('draftTypeId', draftTypeId);
+  form.append('paragraphId', paragraphId);
+  form.append('quotedText', quotedText);
+  form.append('body', body);
+  if (docType) form.append('doc_type', docType);
+  if (file) {
+    form.append('file', file);
+  } else if (documentText) {
+    form.append('document_text', documentText);
+    if (documentTitle) form.append('document_title', documentTitle);
+  }
+  const res = await authFetch(API_BASE_URL, { method: 'POST', body: form });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
     throw new Error(e.error || 'Failed to create comment');

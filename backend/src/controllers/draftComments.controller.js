@@ -1,4 +1,5 @@
 import * as draftCommentsService from '../services/draftComments.service.js';
+import { parseFile } from '../services/parser.service.js';
 
 export async function listComments(req, res) {
   const { projectId, draftKind, draftTypeId } = req.query;
@@ -15,13 +16,25 @@ export async function listComments(req, res) {
 }
 
 export async function createComment(req, res) {
-  const { projectId, draftKind, draftTypeId, paragraphId, quotedText, body } = req.body ?? {};
+  const { projectId, draftKind, draftTypeId, paragraphId, quotedText, body, document_text, document_title, doc_type } = req.body ?? {};
   if (!projectId || !draftKind || !draftTypeId || !paragraphId || !quotedText?.trim() || !body?.trim()) {
     return res.status(400).json({ error: 'projectId, draftKind, draftTypeId, paragraphId, quotedText, and body are required' });
   }
   try {
+    let documentText = document_text?.trim() || null;
+    let documentTitle = document_title?.trim() || null;
+    // An uploaded file takes precedence over pasted text (the popup only
+    // ever sends one or the other) — extract it the same way a direct
+    // Send to AI would, so a comment composed with "attach a document"
+    // doesn't lose it if the user clicks Comment instead.
+    if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      documentText = parsed.text;
+      documentTitle = documentTitle || req.file.originalname;
+    }
     const comment = await draftCommentsService.createComment(req.user.id, {
       projectId, draftKind, draftTypeId, paragraphId, quotedText: quotedText.trim(), body: body.trim(),
+      documentText, documentTitle, docType: doc_type || null,
     });
     res.status(201).json(comment);
   } catch (err) {

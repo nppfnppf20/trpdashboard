@@ -1,6 +1,7 @@
 <script>
   import { onMount, createEventDispatcher } from 'svelte';
   import '$lib/styles/trpformatting.css';
+  import { highlightPlaceholders } from '$lib/utils/draftParagraphs.js';
 
   export let content = '';
   export let placeholder = 'Start typing...';
@@ -11,6 +12,11 @@
   // selection. The paragraph-id scoping this popup relies on doesn't map onto
   // table content sensibly anyway (the whole table is one "paragraph").
   export let enableSelectionPopup = true;
+  // Planning deliverable drafts use "[...]" as a fill-in/flag-for-review
+  // placeholder convention — off by default since this component is reused
+  // for meeting notes, email templates, etc. where square brackets don't
+  // carry that meaning.
+  export let highlightBracketPlaceholders = false;
 
   const dispatch = createEventDispatcher();
 
@@ -19,9 +25,13 @@
   let isItalic = false;
   let isUnderline = false;
 
+  function applyContent(html) {
+    return highlightBracketPlaceholders ? highlightPlaceholders(html) : html;
+  }
+
   onMount(() => {
     if (editorElement && content) {
-      editorElement.innerHTML = content;
+      editorElement.innerHTML = applyContent(content);
     }
 
     // Firefox's contenteditable implementation has a legacy "object resizing"
@@ -181,7 +191,7 @@
 
   export function setHTML(html) {
     if (editorElement) {
-      editorElement.innerHTML = html;
+      editorElement.innerHTML = applyContent(html);
     }
   }
 

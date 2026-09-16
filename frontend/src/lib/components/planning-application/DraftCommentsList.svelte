@@ -63,6 +63,9 @@
             </button>
           </div>
           <p class="comment-body">{comment.body}</p>
+          {#if comment.document_text}
+            <span class="comment-attachment" title="A document is attached to this comment"><i class="las la-paperclip"></i> {comment.document_title || 'Attached document'}</span>
+          {/if}
           <div class="comment-meta">
             <span>{comment.author_name} &middot; {formatDate(comment.created_at)}</span>
             <div class="comment-meta-actions">
@@ -164,6 +167,18 @@
   .comment-quote:hover { background: var(--color-slate-100); }
 
   .comment-body { font-size: 0.85rem; color: var(--color-slate-800); margin: 0; line-height: 1.45; }
+
+  .comment-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    align-self: flex-start;
+    font-size: 0.7rem;
+    color: var(--color-primary-700);
+    background: var(--color-primary-50);
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+  }
 
   .comment-meta {
     display: flex;

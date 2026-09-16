@@ -103,3 +103,49 @@ export function clearPendingMarkers(html) {
   root.querySelectorAll(`.${PENDING_CLASS}`).forEach(el => el.classList.remove(PENDING_CLASS));
   return root.innerHTML;
 }
+
+// Square-bracket text (e.g. "[insert site address]", "[INCONSISTENCY TO BE
+// RESOLVED: ...]") is this app's convention for a placeholder the consultant
+// still needs to fill in or resolve — wrap each one in a span so it's
+// visually flagged in the editor. The class is picked up by the Word export's
+// inlineRuns() as a highlighter-pen highlight, so it survives into the
+// exported .docx too, not just the on-screen editor.
+export const PLACEHOLDER_CLASS = 'draft-placeholder';
+
+export function highlightPlaceholders(html) {
+  if (!html?.includes('[')) return html;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+  const root = doc.body.firstChild;
+  if (!root) return html;
+
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    // Skip text already inside a placeholder span — setHTML runs this on
+    // every AI-edit accept/cancel, so without this a repeat pass would nest
+    // a fresh span inside the previous one each time.
+    if (node.parentElement?.closest(`.${PLACEHOLDER_CLASS}`)) continue;
+    if (/\[[^\]]+\]/.test(node.textContent)) textNodes.push(node);
+  }
+
+  for (const textNode of textNodes) {
+    const parts = textNode.textContent.split(/(\[[^\]]+\])/g);
+    if (parts.length <= 1) continue;
+    const frag = doc.createDocumentFragment();
+    for (const part of parts) {
+      if (!part) continue;
+      if (/^\[[^\]]+\]$/.test(part)) {
+        const span = doc.createElement('span');
+        span.className = PLACEHOLDER_CLASS;
+        span.textContent = part;
+        frag.appendChild(span);
+      } else {
+        frag.appendChild(doc.createTextNode(part));
+      }
+    }
+    textNode.parentNode.replaceChild(frag, textNode);
+  }
+  return root.innerHTML;
+}

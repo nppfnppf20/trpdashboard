@@ -298,6 +298,10 @@ function inlineRuns(el) {
         xml += `<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
       } else if (tag === 'u') {
         xml += `<w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      } else if (tag === 'span' && node.classList.contains('draft-placeholder')) {
+        // "[...]" placeholder markers (see highlightPlaceholders) — Word's
+        // highlighter-pen run property, so it looks the same as on screen.
+        xml += `<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
       } else {
         xml += `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
       }

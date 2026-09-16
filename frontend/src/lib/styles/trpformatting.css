@@ -176,3 +176,10 @@
   margin: 0 -0.4rem;
   border-radius: 4px;
 }
+
+/* Matches Word's yellow highlighter-pen exactly (the export maps this class
+   to a <w:highlight w:val="yellow"/> run) so on-screen and exported look the
+   same, rather than an approximate token colour. */
+.trp-document-content .draft-placeholder {
+  background-color: #ffff00;
+}

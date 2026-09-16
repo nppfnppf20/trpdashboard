@@ -614,7 +614,7 @@
   // highlighted like a single quick edit, but nothing is finalised until the
   // user reviews and accepts/rejects each one here — batching only removes
   // the wait between edits, not the review step.
-  // { items: [{ commentId, paragraphId, quotedText, notes, status, originalHtml, error }], running } | null
+  // { items: [{ commentId, paragraphId, quotedText, notes, documentText, documentTitle, docType, status, originalHtml, error }], running } | null
   let batchReview = null;
 
   async function handleSendCommentsBatch(comments) {
@@ -625,6 +625,13 @@
         paragraphId: c.paragraph_id,
         quotedText: c.quoted_text,
         notes: c.body,
+        // A document attached while composing the comment (see SelectionPopup's
+        // handleComment) — without this, a comment sent later in a batch would
+        // have nothing but the note text to work from, even if a specialist
+        // report was pasted/uploaded when it was written.
+        documentText: c.document_text ?? '',
+        documentTitle: c.document_title ?? null,
+        docType: c.doc_type ?? null,
         status: 'queued',
         originalHtml: null,
         error: null,
@@ -646,11 +653,11 @@
         ].filter(Boolean).join('\n\n') || null;
         const result = await quickIncorporateApi(project.id, apiDraftTypeId, {
           file: null,
-          documentText: '',
-          documentTitle: null,
+          documentText: item.documentText,
+          documentTitle: item.documentTitle,
           paragraphs: [target],
           userNotes: notesForApi,
-          docType: null,
+          docType: item.docType,
         });
         const updatedP = (result.updated ?? []).find(p => p.id === item.paragraphId) ?? result.updated?.[0];
         if (!updatedP) throw new Error('No update returned.');
@@ -771,6 +778,7 @@
             bind:this={draftEditor}
             content={$draftEditorHtml}
             enableSelectionPopup={activeType?.tool !== 'stage1' && activeType?.tool !== 'hlpv'}
+            highlightBracketPlaceholders
             on:change={onDraftChange}
             on:textselected={handleTextSelected}
           />
