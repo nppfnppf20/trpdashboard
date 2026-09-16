@@ -14,6 +14,23 @@ export async function suggestFeeQuoteWorks(projectId, conditionIds) {
   return res.json(); // { suggestions: [{ condition_id, works: [string] }] }
 }
 
+// provider: 'anthropic' | 'openai' | null — null means "no override", letting
+// the backend fall back to the central AI Providers admin setting.
+export async function extractConditionsFromDocument(projectId, file, provider = null) {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (provider) formData.append('provider', provider);
+  const res = await authFetch(`/api/conditions/projects/${projectId}/extract-from-document`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to extract conditions from document');
+  }
+  return res.json(); // { conditions: [{ ..., _verbatim, requirements: [{ requirement_text, _verbatim }] }], warning }
+}
+
 export async function getConditionsData(projectId) {
   const res = await authFetch(`/api/conditions/projects/${projectId}`);
   if (!res.ok) throw new Error('Failed to fetch conditions data');

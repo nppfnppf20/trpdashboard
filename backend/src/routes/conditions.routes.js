@@ -1,6 +1,8 @@
 import express from 'express';
+import multer from 'multer';
 import {
   feeQuoteWorks,
+  extractConditionsFromDocument,
   getConditionsData,
   createCondition,
   updateCondition,
@@ -26,7 +28,13 @@ import {
 
 const router = express.Router();
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
 router.get('/projects/:projectId', getConditionsData);
+router.post('/projects/:projectId/extract-from-document', upload.single('file'), extractConditionsFromDocument);
 router.post('/projects/:projectId/conditions', createCondition);
 router.post('/projects/:projectId/export', markExported);
 router.post('/projects/:projectId/issue-to-client', markIssuedToClient);

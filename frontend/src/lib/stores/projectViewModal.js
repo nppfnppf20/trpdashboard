@@ -28,6 +28,10 @@ export const mainViewReturnTab = writable(null);
 export const editModalOpen = writable(false);
 export const editModalProjectId = writable(null);
 
+// Create-project modal, opened from the permanent top-right "+" button —
+// shared so any page (e.g. ProjectsTable) can react to it closing.
+export const createProjectModalOpen = writable(false);
+
 // One-shot handoff for a file dropped on the Overview page's Meeting Notes
 // widget — MeetingNotesTab picks this up on mount/navigation and seeds its
 // own upload panel with it, then clears it. Not a general-purpose store.
@@ -125,4 +129,12 @@ export function openEditModal(projectId) {
 export function closeEditModal() {
   editModalOpen.set(false);
   editModalProjectId.set(null);
+}
+
+export function openCreateProjectModal() {
+  createProjectModalOpen.set(true);
+}
+
+export function closeCreateProjectModal() {
+  createProjectModalOpen.set(false);
 }

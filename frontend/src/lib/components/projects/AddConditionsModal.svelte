@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { createCondition } from '$lib/api/conditions.js';
+  import { createCondition, extractConditionsFromDocument } from '$lib/api/conditions.js';
   import { cleanPastedText } from '$lib/utils/pdfText.js';
 
   export let show = false;
@@ -12,6 +12,16 @@
   let bulkRows = [];
   let bulkSaving = false;
   let bulkError = null;
+
+  // ── Extract from decision notice ────────────────────────────────────────
+  let fileInput;
+  let dragOver = false;
+  let extracting = false;
+  let extractError = null;
+  let extractWarning = null;
+  let sourceText = null;       // raw parsed text of the last extracted document, kept for manual comparison
+  let sourceFileName = null;
+  let showSourceText = false;
 
   const TYPE_OPTIONS = [
     'Pre-Commencement',
@@ -28,7 +38,8 @@
       wording: '',
       reason: '',
       requirements: [],
-      initial_actions: ''
+      initial_actions: '',
+      _verbatim: null,
     };
   }
 
@@ -42,7 +53,64 @@
     show = false;
     bulkRows = [];
     bulkError = null;
+    extractError = null;
+    extractWarning = null;
+    sourceText = null;
+    sourceFileName = null;
+    showSourceText = false;
     dispatch('close');
+  }
+
+  // Clears a field's stale verbatim-check flag once the user edits it —
+  // the check reflects the text as extracted, not whatever they've typed since.
+  function clearVerbatim(row, key) {
+    if (row._verbatim) row._verbatim = { ...row._verbatim, [key]: null };
+  }
+  function clearRequirementVerbatim(req) {
+    if (req._verbatim) req._verbatim = null;
+  }
+
+  async function handleExtractFile(file) {
+    if (!file) return;
+    extracting = true;
+    extractError = null;
+    extractWarning = null;
+    try {
+      const { conditions, warning, sourceText: text } = await extractConditionsFromDocument(projectId, file);
+      if (!conditions?.length) {
+        extractError = 'Could not find any conditions in this document.';
+        return;
+      }
+      sourceText = text || null;
+      sourceFileName = file.name;
+      extractWarning = warning || null;
+      // Replaces the (empty, unsaved) starter rows entirely with the
+      // extracted set — reviewed/edited the same way manually-entered rows are.
+      bulkRows = conditions.map(c => ({
+        title: c.title || '',
+        condition_type: c.condition_type || '',
+        wording: c.wording || '',
+        reason: c.reason || '',
+        requirements: (c.requirements || []).map(r => ({ text: r.requirement_text, type: '', _verbatim: r._verbatim || null })),
+        initial_actions: '',
+        _verbatim: c._verbatim || null,
+      }));
+    } catch (err) {
+      extractError = err.message;
+    } finally {
+      extracting = false;
+    }
+  }
+
+  function handleExtractDrop(e) {
+    dragOver = false;
+    handleExtractFile(e.dataTransfer?.files?.[0]);
+  }
+
+  function handleExtractPick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    handleExtractFile(file);
   }
 
   function addBulkRow() {
@@ -111,6 +179,39 @@
         <button class="bulk-close-btn" on:click={closeBulkModal}>&times;</button>
       </div>
 
+      <div class="extract-section">
+        <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
+        <div
+          class="extract-dropzone"
+          class:drag-over={dragOver}
+          class:extracting
+          on:click={() => !extracting && fileInput.click()}
+          on:dragover|preventDefault={() => !extracting && (dragOver = true)}
+          on:dragleave={() => dragOver = false}
+          on:drop|preventDefault={handleExtractDrop}
+        >
+          {#if extracting}
+            <span class="extract-spinner"></span> Reading decision notice…
+          {:else}
+            <i class="las la-file-upload"></i>
+            Drag &amp; drop a decision notice here to prefill the conditions below, or click to browse
+          {/if}
+        </div>
+        <input type="file" accept=".pdf,.docx,.txt" bind:this={fileInput} on:change={handleExtractPick} style="display: none;" />
+        {#if extractError}<div class="extract-note extract-note-error">{extractError}</div>{/if}
+        {#if extractWarning}<div class="extract-note extract-note-warning">{extractWarning}</div>{/if}
+        {#if sourceText}
+          <div class="extract-note extract-note-info">
+            <i class="las la-info-circle"></i>
+            Extracted from {sourceFileName}. Fields flagged <span class="verbatim-badge verbatim-flag"><i class="las la-exclamation-triangle"></i> Check this</span> didn't closely match the source text — compare against the original before trusting them.
+            <button type="button" class="source-text-toggle" on:click={() => showSourceText = !showSourceText}>
+              {showSourceText ? 'Hide' : 'View'} extracted source text
+            </button>
+            {#if showSourceText}<pre class="source-text-body">{sourceText}</pre>{/if}
+          </div>
+        {/if}
+      </div>
+
       <div class="bulk-modal-body">
         {#each bulkRows as row, i (i)}
           <div class="bulk-row-card">
@@ -131,14 +232,28 @@
               </div>
               <div class="bulk-form-row">
                 <div class="field">
-                  <label>Condition Wording</label>
-                  <textarea bind:value={row.wording} rows="3" placeholder="Paste the full wording of the condition here…"></textarea>
+                  <label>
+                    Condition Wording
+                    {#if row._verbatim?.wording}
+                      <span class="verbatim-badge" class:verbatim-ok={row._verbatim.wording.verified} class:verbatim-flag={!row._verbatim.wording.verified} title={row._verbatim.wording.verified ? 'Closely matches the source document' : `Only ~${Math.round(row._verbatim.wording.score * 100)}% match to the source text — check against the original`}>
+                        <i class="las {row._verbatim.wording.verified ? 'la-check-circle' : 'la-exclamation-triangle'}"></i> {row._verbatim.wording.verified ? 'Verbatim' : 'Check this'}
+                      </span>
+                    {/if}
+                  </label>
+                  <textarea bind:value={row.wording} on:input={() => clearVerbatim(row, 'wording')} rows="3" placeholder="Paste the full wording of the condition here…"></textarea>
                 </div>
               </div>
               <div class="bulk-form-row">
                 <div class="field">
-                  <label>Reason</label>
-                  <textarea bind:value={row.reason} rows="2" placeholder="Paste the stated reason for the condition…"></textarea>
+                  <label>
+                    Reason
+                    {#if row._verbatim?.reason}
+                      <span class="verbatim-badge" class:verbatim-ok={row._verbatim.reason.verified} class:verbatim-flag={!row._verbatim.reason.verified} title={row._verbatim.reason.verified ? 'Closely matches the source document' : `Only ~${Math.round(row._verbatim.reason.score * 100)}% match to the source text — check against the original`}>
+                        <i class="las {row._verbatim.reason.verified ? 'la-check-circle' : 'la-exclamation-triangle'}"></i> {row._verbatim.reason.verified ? 'Verbatim' : 'Check this'}
+                      </span>
+                    {/if}
+                  </label>
+                  <textarea bind:value={row.reason} on:input={() => clearVerbatim(row, 'reason')} rows="2" placeholder="Paste the stated reason for the condition…"></textarea>
                 </div>
               </div>
               <div class="bulk-form-row">
@@ -146,7 +261,12 @@
                   <label>Requirements <span class="label-hint">separate parts that each need discharging</span></label>
                   {#each row.requirements as _, ri}
                     <div class="req-row">
-                      <input type="text" bind:value={row.requirements[ri].text} placeholder="e.g. (a) Details of planting species and densities" />
+                      <input type="text" bind:value={row.requirements[ri].text} on:input={() => clearRequirementVerbatim(row.requirements[ri])} placeholder="e.g. (a) Details of planting species and densities" />
+                      {#if row.requirements[ri]._verbatim}
+                        <span class="verbatim-badge" class:verbatim-ok={row.requirements[ri]._verbatim.verified} class:verbatim-flag={!row.requirements[ri]._verbatim.verified} title={row.requirements[ri]._verbatim.verified ? 'Closely matches the source document' : `Only ~${Math.round(row.requirements[ri]._verbatim.score * 100)}% match to the source text — check against the original`}>
+                          <i class="las {row.requirements[ri]._verbatim.verified ? 'la-check-circle' : 'la-exclamation-triangle'}"></i>
+                        </span>
+                      {/if}
                       <select class="req-type-select" bind:value={row.requirements[ri].type}>
                         <option value="">Type…</option>
                         {#each TYPE_OPTIONS as t}<option value={t}>{t}</option>{/each}
@@ -452,4 +572,95 @@
   }
   .btn-save:hover:not(:disabled) { background: var(--color-primary-700); }
   .btn-save:disabled, .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  /* ── Extract from decision notice ────────────────────────────────────── */
+  .extract-section {
+    padding: 1rem 1.5rem 0;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .extract-dropzone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    border: 2px dashed var(--color-slate-300);
+    border-radius: 8px;
+    background: var(--color-slate-50);
+    color: var(--color-slate-500);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .extract-dropzone i { font-size: 1.2rem; }
+  .extract-dropzone:hover { border-color: var(--color-primary-200); background: var(--color-primary-50); color: var(--color-primary-600); }
+  .extract-dropzone.drag-over { border-color: var(--color-primary-500); background: var(--color-primary-100); color: var(--color-primary-700); }
+  .extract-dropzone.extracting { cursor: default; }
+
+  .extract-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--color-slate-200);
+    border-top-color: var(--color-primary-500);
+    border-radius: 50%;
+    animation: extract-spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes extract-spin { to { transform: rotate(360deg); } }
+
+  .extract-note {
+    font-size: 0.8rem;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+  }
+  .extract-note-error   { color: var(--color-badge-danger-fg); background: var(--color-badge-danger-bg); }
+  .extract-note-warning { color: var(--color-badge-warning-fg); background: var(--color-badge-warning-bg); }
+  .extract-note-info    { color: var(--color-slate-600); background: var(--color-slate-50); }
+  .extract-note-info i { margin-right: 0.25rem; }
+
+  .source-text-toggle {
+    display: block;
+    margin-top: 0.4rem;
+    border: none;
+    background: none;
+    color: var(--color-primary-600);
+    font-size: 0.78rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+  .source-text-toggle:hover { text-decoration: underline; }
+  .source-text-body {
+    margin-top: 0.4rem;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-200);
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--color-slate-700);
+    white-space: pre-wrap;
+  }
+
+  .verbatim-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .verbatim-ok   { color: var(--color-badge-success-fg); background: var(--color-badge-success-bg); }
+  .verbatim-flag { color: var(--color-badge-warning-fg); background: var(--color-badge-warning-bg); }
 </style>

@@ -12,14 +12,16 @@
   import LlmStatusBanner from '$lib/components/shared/LlmStatusBanner.svelte';
   import ProjectViewModal from '$lib/components/projects/ProjectViewModal.svelte';
   import EditProjectModal from '$lib/components/projects/EditProjectModal.svelte';
+  import AddProjectModal from '$lib/components/projects/AddProjectModal.svelte';
   import SurveyorWorkspace from '$lib/components/surveyor-management/SurveyorWorkspace.svelte';
   import PlanningWorkspace from '$lib/components/planning-application/PlanningWorkspace.svelte';
   import ProfileWorkspace from '$lib/components/profile/ProfileWorkspace.svelte';
   import { projects, selectedProject, selectedProjectId, loadProjects, selectProject } from '$lib/stores/projectSelection.js';
   import {
     mainView, mainViewProjectId, mainViewInitialTab, mainViewReturnTab, mainViewUserId,
-    editModalOpen, editModalProjectId,
-    closeProjectModal, openProjectModal, openSurveyorManagement, openPlanningDeliverables, openProfile, closeEditModal
+    editModalOpen, editModalProjectId, createProjectModalOpen,
+    closeProjectModal, openProjectModal, openSurveyorManagement, openPlanningDeliverables, openProfile, closeEditModal,
+    openCreateProjectModal, closeCreateProjectModal
   } from '$lib/stores/projectViewModal.js';
 
   let { children } = $props();
@@ -129,6 +131,11 @@
       closeProjectModal();
     }
   }
+
+  async function handleGlobalProjectCreated() {
+    closeCreateProjectModal();
+    await loadProjects();
+  }
 </script>
 
 <svelte:head>
@@ -183,6 +190,24 @@
     onClose={closeEditModal}
     onProjectUpdated={closeEditModal}
   />
+
+  {#if !$mainView}
+    <button
+      type="button"
+      class="global-create-project-btn"
+      title="Create project"
+      aria-label="Create project"
+      onclick={openCreateProjectModal}
+    >
+      <span class="global-create-project-btn-icon">+</span>
+    </button>
+  {/if}
+
+  <AddProjectModal
+    isOpen={$createProjectModalOpen}
+    onClose={closeCreateProjectModal}
+    onProjectCreated={handleGlobalProjectCreated}
+  />
 {:else}
   {@render children?.()}
 {/if}
@@ -230,5 +255,38 @@
     to {
       transform: rotate(360deg);
     }
+  }
+
+  .global-create-project-btn {
+    position: fixed;
+    top: var(--space-4);
+    right: var(--space-4);
+    z-index: 1000;
+    width: 3rem;
+    height: 3rem;
+    padding: 0;
+    border-radius: var(--radius-lg);
+    border: none;
+    background: var(--color-primary-600);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .global-create-project-btn-icon {
+    display: block;
+    font-size: 1.75rem;
+    line-height: 1;
+    font-weight: 500;
+    transform: translateY(-0.05em);
+  }
+
+  .global-create-project-btn:hover {
+    background: var(--color-primary-700);
+    transform: scale(1.05);
   }
 </style>

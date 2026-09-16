@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { authFetch } from '$lib/api/client.js';
   import {
-    editModalOpen,
+    editModalOpen, createProjectModalOpen,
     openEditModal as openSharedEditModal
   } from '$lib/stores/projectViewModal.js';
 
@@ -42,6 +42,16 @@
       fetchProjects();
     }
     wasEditModalOpen = $editModalOpen;
+  }
+
+  // Same pattern for the permanent top-right "+" create-project button,
+  // which lives in the root layout rather than on this page.
+  let wasCreateProjectModalOpen = false;
+  $: {
+    if (wasCreateProjectModalOpen && !$createProjectModalOpen) {
+      fetchProjects();
+    }
+    wasCreateProjectModalOpen = $createProjectModalOpen;
   }
 
   onMount(async () => {

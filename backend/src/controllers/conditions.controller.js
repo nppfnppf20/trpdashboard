@@ -1,5 +1,8 @@
 import { pool } from '../db.js';
 import { suggestAdvancementSummaries, suggestAdvancementCandidates, suggestFeeQuoteWorks, draftAdvancementsSummaryEmail, suggestConditionAdvancementDates } from '../services/conditionsTracker.service.js';
+import { parseFile } from '../services/parser.service.js';
+import { extractConditionsFromText } from '../services/conditionsExtraction.service.js';
+import { annotateConditionsVerbatim } from '../services/verbatimCheck.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fee quote drafting: per condition, list the works the wording requires.
@@ -182,6 +185,38 @@ export async function getConditionsData(req, res) {
   } catch (err) {
     console.error('conditions.getConditionsData error:', err);
     res.status(500).json({ error: 'Failed to fetch conditions data' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Extract conditions from an uploaded decision notice (PDF/Word) to prefill
+// the "Add Conditions" bulk form. Nothing is saved; the user reviews every
+// row, guided by a verbatim-check flag on fields that look paraphrased.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function extractConditionsFromDocument(req, res) {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+
+    const { text, warning } = await parseFile(req.file.buffer, req.file.originalname);
+    if (!text.trim()) {
+      return res.status(422).json({ error: 'Could not read any text from this document. Scanned PDFs are not supported.' });
+    }
+
+    // null (rather than a forced default) lets extractConditionsFromText fall
+    // back to the central admin-console setting when the caller didn't
+    // explicitly choose a provider for this request.
+    const provider = req.body.provider === 'openai' || req.body.provider === 'anthropic' ? req.body.provider : null;
+    const extraction = await extractConditionsFromText(text, req.file.originalname, provider);
+    if (!extraction) {
+      return res.status(422).json({ error: 'Could not extract any conditions from this document.' });
+    }
+
+    const conditions = annotateConditionsVerbatim(extraction.conditions, text);
+    res.json({ conditions, warning, sourceText: text });
+  } catch (error) {
+    console.error('Error extracting conditions from document:', error);
+    res.status(500).json({ error: 'Failed to extract conditions from document', details: error.message });
   }
 }
 

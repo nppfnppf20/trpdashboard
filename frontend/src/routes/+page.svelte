@@ -1,11 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import ProjectsTable from '$lib/components/projects/ProjectsTable.svelte';
-  import AddProjectModal from '$lib/components/projects/AddProjectModal.svelte';
   import { projects, loadProjects } from '$lib/stores/projectSelection.js';
 
   let projectsTable;
-  let showAddProjectModal = false;
 
   onMount(() => {
     loadProjects();
@@ -17,19 +15,6 @@
     instructed: $projects.filter(p => p.status === 'Instructed').length,
     submitted: $projects.filter(p => p.status === 'Submitted').length
   };
-
-  function openAddProjectModal() {
-    showAddProjectModal = true;
-  }
-
-  function closeAddProjectModal() {
-    showAddProjectModal = false;
-  }
-
-  function handleProjectCreated() {
-    projectsTable?.refresh();
-    loadProjects();
-  }
 </script>
 
 <div class="home-page">
@@ -38,10 +23,6 @@
       <h1 class="page-title">Projects</h1>
       <p class="page-sub">{statCounts.total} project{statCounts.total !== 1 ? 's' : ''} across the firm</p>
     </div>
-    <button class="btn btn-primary" on:click={openAddProjectModal}>
-      <i class="las la-plus"></i>
-      New Project
-    </button>
   </div>
 
   <div class="stat-row home-stat-row">
@@ -65,12 +46,6 @@
 
   <ProjectsTable bind:this={projectsTable} />
 </div>
-
-<AddProjectModal
-  isOpen={showAddProjectModal}
-  onClose={closeAddProjectModal}
-  onProjectCreated={handleProjectCreated}
-/>
 
 <style>
   .home-page {
@@ -103,10 +78,6 @@
   .home-stat-row {
     grid-template-columns: repeat(4, 1fr);
     margin-bottom: var(--space-5);
-  }
-
-  .btn i {
-    font-size: 1rem;
   }
 
   @media (max-width: 768px) {

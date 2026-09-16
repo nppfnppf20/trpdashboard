@@ -20,6 +20,12 @@ export const LLM_PROCESS_REGISTRY = [
     status: 'configurable',
   },
   {
+    key: 'conditions_extraction',
+    label: 'Conditions Extraction (decision notice import)',
+    description: 'Reads an uploaded decision notice and prefills the Add Conditions bulk form.',
+    status: 'configurable',
+  },
+  {
     key: 'appeal_draft_pa_notes',
     label: 'Appeal Draft Generation (from PA Notes)',
     description: 'Generates an appeal draft section from planning-application briefing notes.',
