@@ -10,6 +10,7 @@ import {
   updateTemplate,
   generateDeliverableByType,
   createDeliverable,
+  createCustomDeliverable,
   getDeliverablesForProject,
   getDeliverableById,
   updateDeliverable,
@@ -27,6 +28,7 @@ router.put('/templates/:id', updateTemplate);
 
 // Deliverable routes
 router.post('/deliverables/generate-by-type', generateDeliverableByType);
+router.post('/deliverables/custom', createCustomDeliverable);
 router.post('/deliverables', createDeliverable);
 router.get('/deliverables/project/:projectId', getDeliverablesForProject);
 router.get('/deliverables/:id', getDeliverableById);

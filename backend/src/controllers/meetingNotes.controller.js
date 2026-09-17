@@ -1,6 +1,7 @@
+import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processMeetingTranscript, extractInsights } from '../services/meeting.service.js';
+import { processMeetingTranscript, processMultiProjectMeetingTranscript, extractInsights } from '../services/meeting.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Process + save a meeting transcript (upload → LLM → store all 3 tables)
@@ -65,6 +66,129 @@ export async function processMeetingNote(req, res) {
     }
   } catch (err) {
     console.error('meetingNotes.processMeetingNote error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Process a meeting transcript covering multiple projects at once — splits
+// relevant content per ticked project, plus an optional combined note.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function processMultiProjectMeetingNote(req, res) {
+  try {
+    const { user_notes, agenda, summary_type, custom_prompt, provider } = req.body;
+
+    let projectIds;
+    try {
+      projectIds = JSON.parse(req.body.project_ids || '[]').map(Number).filter(Number.isFinite);
+    } catch {
+      return res.status(400).json({ error: 'project_ids must be a JSON array' });
+    }
+    if (!projectIds.length) return res.status(400).json({ error: 'At least one project must be selected' });
+
+    const createIndividual = req.body.create_individual !== 'false';
+    const createCombined = req.body.create_combined !== 'false';
+    if (!createIndividual && !createCombined) {
+      return res.status(400).json({ error: 'At least one of create_individual or create_combined must be true' });
+    }
+
+    let text;
+    let fileName;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+      fileName = req.file.originalname;
+    } else if (req.body.text) {
+      text = req.body.text;
+      fileName = req.body.file_name || null;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    const { rows: projectRows } = await pool.query(
+      `SELECT id, project_name FROM public.projects WHERE id = ANY($1)`,
+      [projectIds]
+    );
+    if (!projectRows.length) return res.status(400).json({ error: 'No matching projects found' });
+
+    const projects = projectRows.map(r => ({ id: r.id, name: r.project_name }));
+
+    const { meeting_title, meeting_date, attendees, combined_summary_html, projectResults } = await processMultiProjectMeetingTranscript(
+      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, projects, provider || null
+    );
+
+    const batchId = randomUUID();
+    const title = meeting_title
+      || (fileName ? fileName.replace(/\.[^.]+$/, '') : null)
+      || 'Meeting Notes';
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const projectNotes = [];
+      if (createIndividual) {
+        for (const result of projectResults) {
+          const project = projects.find(p => p.id === result.project_id);
+
+          const { rows: [transcript] } = await client.query(
+            `INSERT INTO planning_applications.meeting_transcripts
+               (meeting_type, project_id, batch_id, title, meeting_date, attendees_text, file_name, transcript_text, user_notes, agenda)
+             VALUES ('project', $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [result.project_id, batchId, title, meeting_date || null, attendees || null, fileName, text, user_notes?.trim() || null, agenda?.trim() || null]
+          );
+
+          const { rows: [summary] } = await client.query(
+            `INSERT INTO planning_applications.meeting_summaries
+               (transcript_id, project_id, summary_html)
+             VALUES ($1, $2, $3) RETURNING *`,
+            [transcript.id, result.project_id, result.summary_html]
+          );
+
+          projectNotes.push({
+            transcript, summary,
+            suggestedActions: result.actions,
+            relevant: result.relevant,
+            project_id: result.project_id,
+            project_name: project?.name ?? null
+          });
+        }
+      }
+
+      let combinedNote = null;
+      if (createCombined) {
+        const { rows: [transcript] } = await client.query(
+          `INSERT INTO planning_applications.meeting_transcripts
+             (meeting_type, project_id, batch_id, covered_project_ids, title, meeting_date, attendees_text, file_name, transcript_text, user_notes, agenda)
+           VALUES ('multi_project', NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+          [batchId, JSON.stringify(projectIds), title, meeting_date || null, attendees || null, fileName, text, user_notes?.trim() || null, agenda?.trim() || null]
+        );
+
+        const { rows: [summary] } = await client.query(
+          `INSERT INTO planning_applications.meeting_summaries
+             (transcript_id, project_id, summary_html)
+           VALUES ($1, NULL, $2) RETURNING *`,
+          [transcript.id, combined_summary_html]
+        );
+
+        combinedNote = { transcript, summary };
+      }
+
+      await client.query('COMMIT');
+      res.status(201).json({
+        batchId,
+        transcriptMeta: { title, meeting_date, attendees },
+        projectNotes,
+        combinedNote
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('meetingNotes.processMultiProjectMeetingNote error:', err);
     res.status(500).json({ error: err.message });
   }
 }

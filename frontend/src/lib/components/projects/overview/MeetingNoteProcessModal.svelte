@@ -6,16 +6,20 @@
   // (not shared with MeetingNotesTab.svelte) — see project memory on this
   // decision. Mirrors that tab's submitUpload/saveReview/reviewAddToIssuesTracker
   // logic; keep the two in sync by hand if that flow changes.
+  import { onMount } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
-  import { processMeetingNote, updateMeetingSummary } from '$lib/api/meetingNotes.js';
+  import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
+  import { processMeetingNote, processMultiProjectNote, updateMeetingSummary } from '$lib/api/meetingNotes.js';
+  import { getProjects } from '$lib/api/projects.js';
   import { createProgrammeEvent } from '$lib/api/quotes.js';
   import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
 
   export let project;
   export let initialFile = null;
   export let initialText = null;
+  export let multiProject = false; // set by the widget's own checkbox — decides whether the project picker shows at all
   export let onClose = () => {};
   export let onSaved = () => {}; // (note) => void — called once the summary is saved, so the widget can refresh its recent-notes list without waiting for this popup to close
 
@@ -34,6 +38,32 @@
   let error = null;
   let dragOver = false;
   let fileInput;
+
+  // ── Multi-project ────────────────────────────────────────────────────────
+  // Whether this is a multi-project note is decided by the widget's own
+  // checkbox before this modal ever opens (see `multiProject` prop) — this
+  // modal only surfaces the project picker, not the on/off toggle itself.
+  let allProjects = [];
+  let multiOtherLabels = []; // bound to MultiSelectDropdown — "Name (#id)" labels, disambiguated
+  let multiCreateCombined = true;
+  let reviewOtherProjectNames = []; // set when this note came from a multi-project upload
+  let reviewCombinedCreated = false; // set when a combined note was also created
+
+  $: otherProjectOptions = allProjects
+    .filter(p => p.id !== projectId)
+    .map(p => ({ id: p.id, label: `${p.project_name} (#${p.id})` }));
+  $: multiOtherIds = multiOtherLabels
+    .map(label => otherProjectOptions.find(o => o.label === label)?.id)
+    .filter(id => id != null);
+
+  onMount(async () => {
+    if (!multiProject) return;
+    try {
+      allProjects = await getProjects();
+    } catch (err) {
+      console.error('Failed to load projects for multi-project picker:', err);
+    }
+  });
 
   $: summaryTypeLabel = summaryType === 'brief' ? 'Brief' : summaryType === 'detailed' ? 'Detailed' : 'Custom';
   $: providerLabel = provider === 'anthropic' ? 'Claude' : provider === 'openai' ? 'GPT-5.6' : 'Default AI';
@@ -62,28 +92,59 @@
   async function submitUpload() {
     if (inputTab === 'upload' && !uploadFile) { error = 'Please select a file to upload.'; return; }
     if (inputTab === 'paste' && !pasteText.trim()) { error = 'Please paste the transcript text.'; return; }
+    if (multiProject && multiOtherIds.length === 0) { error = 'Tick at least one other project.'; return; }
 
     processing = true;
     error = null;
     try {
-      const result = await processMeetingNote(projectId, {
-        file: inputTab === 'upload' ? uploadFile : null,
-        text: inputTab === 'paste' ? pasteText : null,
-        userNotes: userNotes.trim() || null,
-        agenda: agenda.trim() || null,
-        summaryType,
-        customPrompt: summaryType === 'custom' ? customPrompt.trim() || null : null,
-        provider: provider || null
-      });
+      let transcript, summaryHtml, dateSuggestions, otherProjectNames = [], combinedCreated = false;
+
+      if (multiProject) {
+        const result = await processMultiProjectNote({
+          file: inputTab === 'upload' ? uploadFile : null,
+          text: inputTab === 'paste' ? pasteText : null,
+          projectIds: [projectId, ...multiOtherIds],
+          createIndividual: true,
+          createCombined: multiCreateCombined,
+          userNotes: userNotes.trim() || null,
+          agenda: agenda.trim() || null,
+          summaryType,
+          customPrompt: summaryType === 'custom' ? customPrompt.trim() || null : null,
+          provider: provider || null
+        });
+
+        const mine = result.projectNotes.find(pn => pn.project_id === projectId);
+        transcript = mine.transcript;
+        summaryHtml = mine.summary?.summary_html || '';
+        otherProjectNames = result.projectNotes.filter(pn => pn.project_id !== projectId).map(pn => pn.project_name);
+        combinedCreated = !!result.combinedNote;
+        dateSuggestions = []; // multi-project path doesn't extract date suggestions
+      } else {
+        const result = await processMeetingNote(projectId, {
+          file: inputTab === 'upload' ? uploadFile : null,
+          text: inputTab === 'paste' ? pasteText : null,
+          userNotes: userNotes.trim() || null,
+          agenda: agenda.trim() || null,
+          summaryType,
+          customPrompt: summaryType === 'custom' ? customPrompt.trim() || null : null,
+          provider: provider || null
+        });
+
+        transcript = result.transcript;
+        summaryHtml = result.summary?.summary_html || '';
+        dateSuggestions = result.dateSuggestions || [];
+      }
 
       reviewTranscript = {
-        id: result.transcript.id,
-        title: result.transcript.title,
-        meeting_date: result.transcript.meeting_date,
-        attendees_text: result.transcript.attendees_text,
+        id: transcript.id,
+        title: transcript.title,
+        meeting_date: transcript.meeting_date,
+        attendees_text: transcript.attendees_text,
       };
-      reviewSummaryHtml = result.summary?.summary_html || '';
-      reviewDateSuggestions = (result.dateSuggestions || []).map((d, i) => ({ ...d, _key: i }));
+      reviewSummaryHtml = summaryHtml;
+      reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
+      reviewOtherProjectNames = otherProjectNames;
+      reviewCombinedCreated = combinedCreated;
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
@@ -212,6 +273,21 @@
           <textarea class="form-input mnp-paste" bind:value={pasteText} placeholder="Paste the meeting transcript here…" rows="4"></textarea>
         {/if}
 
+        {#if multiProject}
+          <div class="form-group">
+            <label>Also applies to</label>
+            <MultiSelectDropdown
+              options={otherProjectOptions}
+              bind:selected={multiOtherLabels}
+              placeholder="Select other project(s)…"
+            />
+          </div>
+          <label class="mnp-checkbox-row">
+            <input type="checkbox" bind:checked={multiCreateCombined} />
+            Also create a combined note covering all of them
+          </label>
+        {/if}
+
         <button class="btn btn-ghost btn-sm mnp-extras-toggle" on:click={() => showExtras = !showExtras}>
           <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
           {showExtras ? 'Hide' : 'Show'} options
@@ -280,6 +356,12 @@
     {:else}
       <!-- ── Post-save — Issues Tracker hop ── -->
       <div class="mnp-body mnp-review-body">
+        {#if reviewOtherProjectNames.length || reviewCombinedCreated}
+          <p class="mnp-multi-project-note">
+            {#if reviewOtherProjectNames.length}Also created tailored notes for: {reviewOtherProjectNames.join(', ')}.{/if}
+            {#if reviewCombinedCreated}A combined note covering all {reviewOtherProjectNames.length + 1} projects was also created — find it on the Meeting Notes page.{/if}
+          </p>
+        {/if}
         <div class="mnp-issues-prompt">
           <span class="mnp-issues-prompt-text"><i class="las la-list-alt"></i> Saved. Add "{reviewTranscript.title}" to the Project Tracker?</span>
           <div class="mnp-issues-prompt-actions">
@@ -411,6 +493,10 @@
     font-size: 0.875rem;
   }
   .mnp-error-sm { color: var(--color-red-600); font-size: 0.8rem; margin: 0.25rem 0 0; }
+
+  .mnp-checkbox-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; color: var(--color-slate-700); cursor: pointer; }
+  .mnp-checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--color-primary-500); cursor: pointer; }
+  .mnp-multi-project-note { font-size: 0.8125rem; color: var(--color-slate-600); margin: 0; }
 
   .mnp-issues-prompt {
     display: flex;

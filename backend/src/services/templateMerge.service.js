@@ -250,6 +250,14 @@ export function contentToHTML(content) {
         }
         break;
 
+      // Fallback bucket from htmlToContent when the source HTML didn't match
+      // any of the recognised block patterns (e.g. attributes on tags, or
+      // <div>-wrapped lines from a plain contenteditable) — content already
+      // is markup, so it's written out verbatim rather than re-wrapped.
+      case 'raw':
+        html += section.content || '';
+        break;
+
       default:
         html += `<p>${section.content || ''}</p>`;
     }
@@ -327,6 +335,14 @@ export function htmlToContent(html) {
       sections.push({ id: `section_${sectionId++}`, type: 'list', items: element.items });
     }
   });
+
+  // None of the recognised patterns matched — most often because the source
+  // is plain contenteditable output (Chrome wraps typed lines in <div>, not
+  // <p>) rather than clean generated HTML. Keep the content verbatim instead
+  // of silently dropping it.
+  if (sections.length === 0 && html?.trim()) {
+    return { sections: [{ id: 'section_0', type: 'raw', content: html }] };
+  }
 
   return { sections };
 }

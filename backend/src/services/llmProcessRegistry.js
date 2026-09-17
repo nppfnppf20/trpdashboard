@@ -68,6 +68,12 @@ export const LLM_PROCESS_REGISTRY = [
     status: 'configurable',
   },
   {
+    key: 'draft_create',
+    label: 'Draft Create (custom prompt)',
+    description: 'Generates a document from a free-form custom prompt, optionally in house style.',
+    status: 'configurable',
+  },
+  {
     key: 'meeting_processing',
     label: 'Meeting Notes Processing',
     description: 'Summarises meeting transcripts (Project Meetings tab has its own per-upload override).',

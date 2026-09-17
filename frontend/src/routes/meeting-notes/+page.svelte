@@ -1,10 +1,11 @@
 <script>
   import { onMount } from 'svelte';
-  import ProjectSelector from '$lib/components/shared/ProjectSelector.svelte';
   import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import AddProjectModal from '$lib/components/projects/AddProjectModal.svelte';
+  import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
+  import { getProjects } from '$lib/api/projects.js';
   import {
     processInternalNote,
     getAllMeetingNotes,
@@ -46,22 +47,32 @@
   }
 
   // ── Project selection ───────────────────────────────────────────────────────
-  let selectedProject = null;
+  let allProjects = [];
   let selectedProjectIdBinding = '';
-  let projectSelectorComponent = null;
   let showCreateProjectModal = false;
+  let isMultiProject = false;
+  let multiOtherLabels = []; // bound to MultiSelectDropdown — "Name (#id)" labels, disambiguated
 
-  function handleProjectSelected(event) {
-    selectedProject = event.detail?.project ?? null;
+  $: selectedProject = allProjects.find(p => String(p.id) === String(selectedProjectIdBinding)) ?? null;
+  $: otherProjectOptions = allProjects
+    .filter(p => String(p.id) !== String(selectedProjectIdBinding))
+    .map(p => ({ id: p.id, label: `${p.project_name} (#${p.id})` }));
+  $: multiOtherIds = multiOtherLabels
+    .map(label => otherProjectOptions.find(o => o.label === label)?.id)
+    .filter(id => id != null);
+
+  async function loadAllProjects() {
+    try {
+      allProjects = await getProjects();
+    } catch (err) {
+      console.error('Failed to load projects:', err);
+    }
   }
 
   async function handleProjectCreated(project) {
     showCreateProjectModal = false;
-    await projectSelectorComponent?.refreshProjects();
-    setTimeout(() => {
-      selectedProjectIdBinding = String(project.id);
-      selectedProject = project;
-    }, 100);
+    await loadAllProjects();
+    selectedProjectIdBinding = String(project.id);
   }
 
   function switchType(type) {
@@ -76,8 +87,9 @@
       uploadSummaryType = 'brief';
     }
     if (type !== 'project') {
-      selectedProject = null;
       selectedProjectIdBinding = '';
+      isMultiProject = false;
+      multiOtherLabels = [];
       loadNotes();
     }
   }
@@ -284,6 +296,7 @@
   onMount(() => {
     loadNotes();
     loadStream();
+    loadAllProjects();
   });
 
   // ── Note editor modal ───────────────────────────────────────────────────────
@@ -493,8 +506,8 @@
     return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  const TYPE_LABELS = { internal: 'Internal', cpd: 'CPD', project: 'Project' };
-  const TYPE_COLORS = { internal: 'badge-info', cpd: 'badge-purple', project: 'badge-success' };
+  const TYPE_LABELS = { internal: 'Internal', cpd: 'CPD', project: 'Project', multi_project: 'Multi-Project' };
+  const TYPE_COLORS = { internal: 'badge-info', cpd: 'badge-purple', project: 'badge-success', multi_project: 'badge-indigo' };
 </script>
 
 <svelte:window on:click={handleWindowClick} on:keydown={handleWindowKeydown} />
@@ -513,58 +526,67 @@
     </div>
   </div>
 
-  {#if meetingType && !notesLoading}
-    <div class="card stat-strip">
-      <div class="stat-chip">
-        <span class="stat-chip-n">{notes.length}</span>
-        <span class="stat-chip-l">{TYPE_LABELS[meetingType]} Notes</span>
-      </div>
-      <div class="stat-chip-divider"></div>
-      <div class="stat-chip">
-        <span class="stat-chip-n">{notes.filter(n => Number(n.pending_count) > 0).length}</span>
-        <span class="stat-chip-l">With Open Actions</span>
-      </div>
-      <div class="stat-chip-divider"></div>
-      <div class="stat-chip">
-        <span class="stat-chip-n">{notes.reduce((sum, n) => sum + (Number(n.pending_count) || 0), 0)}</span>
-        <span class="stat-chip-l">Total Open Actions</span>
-      </div>
-    </div>
-  {/if}
-
   <!-- Workspace -->
   <div class="card workspace-container">
     <div class="workspace-tabs">
-      <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
-        <button
-          type="button"
-          class="mn-note-type-select"
-          class:mn-note-type-select--unset={!meetingType}
-          aria-haspopup="listbox"
-          aria-expanded={noteTypeMenuOpen}
-          on:click={() => noteTypeMenuOpen = !noteTypeMenuOpen}
-        >
-          <span>{selectedNoteTypeOption ? selectedNoteTypeOption.label : 'Select a note type…'}</span>
-          <i class="las la-{noteTypeMenuOpen ? 'angle-up' : 'angle-down'}"></i>
-        </button>
-        {#if noteTypeMenuOpen}
-          <div class="mn-note-type-menu" role="listbox">
-            {#each noteTypeOptions as opt (opt.value)}
-              <button
-                type="button"
-                class="mn-note-type-option"
-                class:mn-note-type-option--active={meetingType === opt.value}
-                role="option"
-                aria-selected={meetingType === opt.value}
-                on:click={() => switchType(opt.value)}
-              >
-                <span class="mn-note-type-option-label">{opt.label}</span>
-                <span class="mn-note-type-option-desc">{opt.description}</span>
-              </button>
+      <div class="mn-tabs-row">
+        <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
+          <button
+            type="button"
+            class="mn-note-type-select"
+            class:mn-note-type-select--unset={!meetingType}
+            aria-haspopup="listbox"
+            aria-expanded={noteTypeMenuOpen}
+            on:click={() => noteTypeMenuOpen = !noteTypeMenuOpen}
+          >
+            <span>{selectedNoteTypeOption ? selectedNoteTypeOption.label : 'Select a note type…'}</span>
+            <i class="las la-{noteTypeMenuOpen ? 'angle-up' : 'angle-down'}"></i>
+          </button>
+          {#if noteTypeMenuOpen}
+            <div class="mn-note-type-menu" role="listbox">
+              {#each noteTypeOptions as opt (opt.value)}
+                <button
+                  type="button"
+                  class="mn-note-type-option"
+                  class:mn-note-type-option--active={meetingType === opt.value}
+                  role="option"
+                  aria-selected={meetingType === opt.value}
+                  on:click={() => switchType(opt.value)}
+                >
+                  <span class="mn-note-type-option-label">{opt.label}</span>
+                  <span class="mn-note-type-option-desc">{opt.description}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        {#if meetingType === 'project'}
+          <select class="mn-project-select" bind:value={selectedProjectIdBinding}>
+            <option value="">Select a project…</option>
+            {#each allProjects as p (p.id)}
+              <option value={String(p.id)}>{p.project_name}</option>
             {/each}
-          </div>
+          </select>
+
+          <label class="mn-checkbox-row mn-inline-checkbox">
+            <input type="checkbox" bind:checked={isMultiProject} />
+            Multi-project
+          </label>
         {/if}
       </div>
+
+      {#if meetingType === 'project' && isMultiProject}
+        <div class="mn-project-multi-row">
+          <span class="mn-type-label">Also applies to</span>
+          <MultiSelectDropdown
+            options={otherProjectOptions}
+            bind:selected={multiOtherLabels}
+            placeholder="Select other project(s)…"
+          />
+        </div>
+      {/if}
+
       {#if !meetingType}
         <p class="mn-type-placeholder">Choose a note type above to enable the workspace below.</p>
       {/if}
@@ -573,22 +595,15 @@
     <div class="workspace-body">
 
     {#if meetingType === 'project'}
-      <div class="project-selector-wrap">
-        <ProjectSelector
-          bind:this={projectSelectorComponent}
-          bind:selectedProjectId={selectedProjectIdBinding}
-          label="Select Project"
-          hideOneOffOption={true}
-          hideModeRow={true}
-          showDivider={false}
-          on:projectSelected={handleProjectSelected}
-          on:createNewProject={() => showCreateProjectModal = true}
-        />
-      </div>
       {#if selectedProject}
         {#key selectedProject.id}
-          <MeetingNotesTab project={selectedProject} />
+          <MeetingNotesTab
+            project={selectedProject}
+            multiProjectPreset={{ enabled: isMultiProject, otherProjectIds: multiOtherIds }}
+          />
         {/key}
+      {:else}
+        <p class="mn-type-placeholder">Select a project above to get started.</p>
       {/if}
 
     {:else}
@@ -833,7 +848,7 @@
     </div>
 
     <div class="stream-tabs">
-      {#each [['all', 'All'], ['internal', 'Internal'], ['cpd', 'CPD'], ['project', 'Project']] as [key, label]}
+      {#each [['all', 'All'], ['internal', 'Internal'], ['cpd', 'CPD'], ['project', 'Project'], ['multi_project', 'Multi-Project']] as [key, label]}
         <button
           class="stream-tab"
           class:stream-tab--active={streamTab === key}
@@ -1069,18 +1084,6 @@
 
   .page-description { font-size: 0.8125rem; color: var(--color-slate-500); margin: 0; max-width: 560px; line-height: 1.5; }
 
-  /* ── Summary strip ─────────────────────────────────────────────────────────── */
-  .stat-strip {
-    display: flex;
-    gap: 1.25rem;
-    padding: 0.75rem 1.125rem;
-    margin-bottom: 1.25rem;
-  }
-  .stat-chip { display: flex; flex-direction: column; gap: 0.125rem; }
-  .stat-chip-n { font-size: 1.0625rem; font-weight: 700; color: var(--color-slate-900); }
-  .stat-chip-l { font-size: 0.65625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-slate-400); }
-  .stat-chip-divider { width: 1px; background: var(--color-slate-200); }
-
   /* ── Workspace (tabbed card) ───────────────────────────────────────────────── */
   .workspace-container {
     margin: 0 0 2rem;
@@ -1088,17 +1091,21 @@
   }
 
   .workspace-tabs {
+    position: relative;
+    z-index: 30;
     padding: 1rem 1.5rem;
     background: var(--color-slate-50);
     border-bottom: 2px solid var(--color-slate-200);
     border-radius: 12px 12px 0 0;
   }
 
+  .mn-tabs-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
   /* ── Note-type dropdown — same pattern as the per-project Meeting Notes
      tab's Add Note selector: closed control shows just the name, the
      open list shows a description to help pick. Nothing else in the
      workspace is interactive until this is set. ─────────────────────── */
-  .mn-note-type-dropdown { position: relative; max-width: 360px; z-index: 5; }
+  .mn-note-type-dropdown { position: relative; width: 360px; z-index: 5; flex-shrink: 0; }
   .mn-note-type-select {
     width: 100%;
     padding: 0.6rem 0.75rem;
@@ -1162,12 +1169,34 @@
   .mn-note-type-option-desc { font-size: 0.75rem; color: var(--color-slate-500); line-height: 1.35; }
   .mn-type-placeholder { color: var(--color-slate-400); font-size: 0.78rem; margin: 0.5rem 0 0; }
 
+  /* ── Inline project select + multi-project toggle, next to the note-type
+     dropdown, so picking a project doesn't require a separate card below. */
+  .mn-project-select {
+    padding: 0.6rem 0.75rem;
+    border: 1.5px solid var(--color-slate-300);
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: inherit;
+    color: var(--color-slate-800);
+    background: var(--color-white);
+    cursor: pointer;
+    max-width: 280px;
+  }
+  .mn-project-select:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15); }
+
+  .mn-checkbox-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; color: var(--color-slate-700); cursor: pointer; }
+  .mn-checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--color-violet-600); cursor: pointer; }
+  .mn-inline-checkbox { white-space: nowrap; }
+
+  .mn-project-multi-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.65rem; max-width: 480px; }
+  .mn-project-multi-row .mn-type-label { white-space: nowrap; }
+  .mn-project-multi-row :global(.msd-wrapper) { flex: 1; }
+
   /* Workspace body — greyed out and inert until a note type is chosen */
   .mn-upload-form--disabled { opacity: 0.45; filter: grayscale(0.4); }
 
   .workspace-body { padding: 1.5rem; }
-
-  .project-selector-wrap { max-width: 700px; margin-bottom: 1.5rem; }
 
   .empty-state {
     text-align: center;

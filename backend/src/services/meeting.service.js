@@ -91,6 +91,80 @@ JSON array. Each item: {"title":"short label for what happens on that date, e.g.
 - Do not duplicate a due_date already captured on an action in ACTIONS_JSON — only include dates that aren't already represented there.
 - If no such dates are mentioned: []`;
 
+const PROMPT_PREFIX_MULTI = `You are a planning consultant assistant. Process a meeting transcript that discusses MULTIPLE client projects and split it up per project.
+
+You are given a specific list of projects this meeting covers, each with an id and a name (see PROJECTS COVERED BY THIS MEETING below). For each project, extract ONLY the content from the transcript that is actually relevant to that project's own site, application, or client relationship. Do not repeat content that belongs to a different project just because it was discussed in the same meeting, and never split one continuous discussion point across two projects' blocks if it really belongs to just one of them.
+
+Return your response using EXACTLY these delimiters — nothing before <MEETING_TITLE> and nothing after the final </PROJECT>:
+
+<MEETING_TITLE>short title or leave blank</MEETING_TITLE>
+<MEETING_DATE>YYYY-MM-DD or leave blank</MEETING_DATE>
+<ATTENDEES>comma-separated names or leave blank</ATTENDEES>
+<COMBINED_SUMMARY_HTML>
+HTML summary covering ALL projects together, as one coherent record of the whole meeting
+</COMBINED_SUMMARY_HTML>
+<PROJECT id="123">
+<RELEVANT>true or false — false only if genuinely nothing in the transcript relates to this project</RELEVANT>
+<SUMMARY_HTML>
+HTML summary of ONLY this project's relevant content. Leave empty if RELEVANT is false.
+</SUMMARY_HTML>
+<ACTIONS_JSON>
+[{"action_text":"...","owner":null,"due_date":null,"notes":null}]
+</ACTIONS_JSON>
+</PROJECT>
+
+Repeat the <PROJECT> block once for EVERY project listed under PROJECTS COVERED BY THIS MEETING, in the order given, using its exact id. Do not invent, skip, merge, or reorder project ids.
+
+════════════════════════════════════════
+METADATA
+════════════════════════════════════════
+
+- MEETING_TITLE: short descriptive title for the meeting as a whole. Leave blank if not determinable.
+- MEETING_DATE: date as YYYY-MM-DD. Leave blank if not determinable.
+- ATTENDEES: comma-separated names or roles. Leave blank if not determinable.
+
+════════════════════════════════════════
+PRECEDENCE RULES
+════════════════════════════════════════
+
+1. CONSULTANT NOTES (if provided) take absolute precedence. Every relevant point must appear in the appropriate summary (combined and/or per-project). Actions mentioned in the notes must appear in the correct project's ACTIONS_JSON.
+2. AGENDA (if provided) DRIVES THE STRUCTURE of COMBINED_SUMMARY_HTML and, where applicable, each project's SUMMARY_HTML. Use each agenda item as an <h3> section heading in the order given.
+3. If NO agenda is provided, use the default structure defined below for COMBINED_SUMMARY_HTML and for each project's SUMMARY_HTML.
+4. TRANSCRIPT is the primary source for all other content.
+5. Never use em dashes (—) in any output. Use a comma, colon, or rewrite the sentence instead.`;
+
+async function buildMultiProjectSystemPrompt(projects) {
+  const brief = await getGuidingBrief('meeting_notes', null).catch(() => null);
+
+  const structureSection = brief?.guidance_content?.trim()
+    ? `════════════════════════════════════════
+SUMMARY_HTML STRUCTURE
+════════════════════════════════════════
+
+${brief.guidance_content.trim()}`
+    : PROMPT_STRUCTURE_DEFAULT;
+
+  const styleSection = brief?.style_example?.trim()
+    ? `\n\n════════════════════════════════════════
+STYLE EXAMPLE
+════════════════════════════════════════
+
+The following is an example of the required format and style. Match its structure and tone exactly:
+
+${brief.style_example.trim()}`
+    : '';
+
+  const projectList = projects.map(p => `- id ${p.id}: ${p.name}`).join('\n');
+  const projectsSection = `════════════════════════════════════════
+PROJECTS COVERED BY THIS MEETING
+════════════════════════════════════════
+
+Produce one <PROJECT id="..."> block for EACH of these, using these exact ids:
+${projectList}`;
+
+  return [PROMPT_PREFIX_MULTI, projectsSection, structureSection + styleSection, PROMPT_ACTIONS].join('\n\n') + ANTI_AI_SLOP_BLOCK;
+}
+
 async function buildSystemPrompt() {
   const brief = await getGuidingBrief('meeting_notes', null).catch(() => null);
 
@@ -119,6 +193,45 @@ function extractTag(text, tag) {
   const re = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
   const m = text.match(re);
   return m ? m[1].trim() : null;
+}
+
+function extractProjectBlocks(raw, projects) {
+  const blocks = new Map();
+  const re = /<PROJECT id="(\d+)">([\s\S]*?)<\/PROJECT>/g;
+  let m;
+  while ((m = re.exec(raw))) {
+    const id = Number(m[1]);
+    const inner = m[2];
+
+    const actionsRaw = extractTag(inner, 'ACTIONS_JSON') || '[]';
+    let actions = [];
+    try {
+      const parsed = JSON.parse(actionsRaw);
+      actions = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      console.warn(`[meeting.service] Could not parse ACTIONS_JSON for project ${id}, defaulting to []:`, actionsRaw.slice(0, 200));
+    }
+
+    blocks.set(id, {
+      relevant: (extractTag(inner, 'RELEVANT') || '').toLowerCase() === 'true',
+      summary_html: extractTag(inner, 'SUMMARY_HTML') || '',
+      actions: actions.map(a => ({
+        action_text: a.action_text?.trim() ?? '',
+        owner: a.owner?.trim() || null,
+        due_date: a.due_date || null,
+        notes: a.notes?.trim() || null
+      })).filter(a => a.action_text)
+    });
+  }
+
+  return projects.map(p => {
+    const found = blocks.get(p.id);
+    if (!found) {
+      console.warn(`[meeting.service] Missing <PROJECT id="${p.id}"> block in LLM response, defaulting to not relevant`);
+      return { project_id: p.id, relevant: false, summary_html: '', actions: [] };
+    }
+    return { project_id: p.id, ...found };
+  });
 }
 
 const EXTRACT_PROMPTS = {
@@ -261,5 +374,57 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
     })).filter(a => a.action_text),
     completedActions,
     dateSuggestions
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-project meeting notes — one transcript, several ticked projects.
+// Splits relevant content per project in a single LLM call, plus one
+// combined summary spanning all of them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function processMultiProjectMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, projects = [], provider = null) {
+  if (!projects.length) throw new Error('At least one project is required');
+
+  const systemPrompt = await buildMultiProjectSystemPrompt(projects);
+
+  const parts = [`TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}`];
+
+  let lengthInstruction;
+  if (summaryType === 'custom' && customPrompt?.trim()) {
+    lengthInstruction = `SUMMARY INSTRUCTIONS: ${customPrompt.trim()}`;
+  } else if (summaryType === 'detailed') {
+    lengthInstruction = 'SUMMARY LENGTH: Detailed (3-4 pages per summary). Expand each section with full context and depth.';
+  } else {
+    lengthInstruction = 'SUMMARY LENGTH: Brief (one page per summary). Be concise. Summarise in tight bullet form. Omit padding.';
+  }
+  parts.push(lengthInstruction);
+
+  if (userNotes?.trim()) {
+    parts.push(`CONSULTANT NOTES (take absolute precedence):\n${userNotes.trim()}`);
+  }
+
+  if (agenda?.trim()) {
+    parts.push(`MEETING AGENDA:\n${agenda.trim()}`);
+  }
+
+  parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
+
+  const resolvedProvider = await resolveProvider('meeting_processing', provider);
+  const maxTokens = Math.min(32000, 6000 + 2500 * projects.length);
+  const raw = await callLLM({ provider: resolvedProvider, system: systemPrompt, prompt: parts.join('\n\n'), maxTokens });
+
+  const combined_summary_html = extractTag(raw, 'COMBINED_SUMMARY_HTML');
+  if (!combined_summary_html) {
+    console.error('[meeting.service] Missing COMBINED_SUMMARY_HTML. Raw (first 400):', raw.slice(0, 400));
+    throw new Error('LLM returned unexpected format for multi-project meeting transcript');
+  }
+
+  return {
+    meeting_title: extractTag(raw, 'MEETING_TITLE') || null,
+    meeting_date: extractTag(raw, 'MEETING_DATE') || null,
+    attendees: extractTag(raw, 'ATTENDEES') || null,
+    combined_summary_html,
+    projectResults: extractProjectBlocks(raw, projects)
   };
 }

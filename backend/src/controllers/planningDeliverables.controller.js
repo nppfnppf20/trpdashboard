@@ -235,6 +235,41 @@ export async function createDeliverable(req, res) {
 }
 
 /**
+ * Create a deliverable directly from HTML, with no underlying template —
+ * used to save the blank document / custom-prompt editor into the project's
+ * Planning Deliverables list.
+ */
+export async function createCustomDeliverable(req, res) {
+  const { projectId, deliverableName, html } = req.body;
+
+  if (!projectId || !deliverableName?.trim() || !html?.trim()) {
+    return res.status(400).json({ error: 'projectId, deliverableName, and html are required' });
+  }
+
+  try {
+    const projectResult = await pool.query(`SELECT id FROM projects WHERE id = $1`, [projectId]);
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const content = htmlToContent(html);
+
+    const insertResult = await pool.query(
+      `INSERT INTO planning_deliverables.planning_deliverables
+       (project_id, template_id, deliverable_name, deliverable_type, content, status)
+       VALUES ($1, NULL, $2, 'custom_document', $3, 'draft')
+       RETURNING *`,
+      [projectId, deliverableName.trim(), JSON.stringify(content)]
+    );
+
+    res.json({ success: true, deliverable: insertResult.rows[0] });
+  } catch (error) {
+    console.error('Error creating custom deliverable:', error);
+    res.status(500).json({ error: 'Failed to create deliverable', details: error.message });
+  }
+}
+
+/**
  * Get all deliverables for a specific project
  */
 export async function getDeliverablesForProject(req, res) {
@@ -242,12 +277,12 @@ export async function getDeliverablesForProject(req, res) {
 
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         pd.*,
-        pt.template_name,
+        COALESCE(pt.template_name, 'Custom Document') AS template_name,
         p.project_name
        FROM planning_deliverables.planning_deliverables pd
-       JOIN planning_deliverables.planning_templates pt ON pd.template_id = pt.id
+       LEFT JOIN planning_deliverables.planning_templates pt ON pd.template_id = pt.id
        JOIN projects p ON pd.project_id = p.id
        WHERE pd.project_id = $1
        ORDER BY pd.updated_at DESC`,
@@ -269,14 +304,14 @@ export async function getDeliverableById(req, res) {
 
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         pd.*,
-        pt.template_name,
+        COALESCE(pt.template_name, 'Custom Document') AS template_name,
         pt.template_type,
         p.project_name,
         p.project_id as project_reference
        FROM planning_deliverables.planning_deliverables pd
-       JOIN planning_deliverables.planning_templates pt ON pd.template_id = pt.id
+       LEFT JOIN planning_deliverables.planning_templates pt ON pd.template_id = pt.id
        JOIN projects p ON pd.project_id = p.id
        WHERE pd.id = $1`,
       [id]
@@ -446,6 +481,7 @@ export default {
   getTemplateById,
   updateTemplate,
   createDeliverable,
+  createCustomDeliverable,
   getDeliverablesForProject,
   getDeliverableById,
   updateDeliverable,

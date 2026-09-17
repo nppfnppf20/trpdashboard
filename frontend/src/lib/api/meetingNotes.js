@@ -125,6 +125,35 @@ export async function processInternalNote(meetingType, { file, text, fileName, u
   return res.json();
 }
 
+export async function processMultiProjectNote({ file, text, fileName, projectIds, createIndividual, createCombined, userNotes, agenda, summaryType, customPrompt, provider }) {
+  const formData = new FormData();
+  formData.append('project_ids', JSON.stringify(projectIds));
+  formData.append('create_individual', createIndividual !== false ? 'true' : 'false');
+  formData.append('create_combined', createCombined !== false ? 'true' : 'false');
+  if (userNotes) formData.append('user_notes', userNotes);
+  if (agenda) formData.append('agenda', agenda);
+  if (summaryType) formData.append('summary_type', summaryType);
+  if (customPrompt) formData.append('custom_prompt', customPrompt);
+  if (provider) formData.append('provider', provider);
+
+  if (file) {
+    formData.append('file', file);
+  } else {
+    formData.append('text', text);
+    if (fileName) formData.append('file_name', fileName);
+  }
+
+  const res = await authFetch('/api/meeting-notes/multi-project/process', {
+    method: 'POST',
+    body: formData
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to process multi-project meeting note');
+  }
+  return res.json(); // { batchId, transcriptMeta, projectNotes, combinedNote }
+}
+
 export async function getAllMeetingNotes(type = null) {
   const url = type ? `/api/meeting-notes?type=${type}` : '/api/meeting-notes';
   const res = await authFetch(url);

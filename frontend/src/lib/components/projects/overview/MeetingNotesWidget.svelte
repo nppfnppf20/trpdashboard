@@ -26,6 +26,7 @@
   let fileInput;
   let inputMode = 'upload'; // 'upload' | 'paste'
   let pasteText = '';
+  let multiProject = false; // ticked here, before the file/text is handed off, so MeetingNoteProcessModal opens straight into multi-project mode
 
   let editingNote = null;      // note object open in the editor modal, or null
   let viewingTranscript = null; // note object open in the transcript modal, or null
@@ -89,6 +90,7 @@
   function closeProcessModal() {
     processFile = null;
     processText = null;
+    multiProject = false;
   }
 
   function handleProcessModalSaved() {
@@ -157,6 +159,11 @@
         </button>
       </div>
 
+      <label class="mnw-checkbox-row">
+        <input type="checkbox" bind:checked={multiProject} />
+        Multi-project
+      </label>
+
       {#if inputMode === 'upload'}
         <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
         <div
@@ -219,6 +226,7 @@
     {project}
     initialFile={processFile}
     initialText={processText}
+    multiProject={multiProject}
     onClose={closeProcessModal}
     onSaved={handleProcessModalSaved}
   />
@@ -238,6 +246,9 @@
   }
   .mnw-tab:hover { background: var(--color-slate-50); }
   .mnw-tab.active { border-color: var(--color-primary-200); background: var(--color-primary-50); color: var(--color-primary-700); }
+
+  .mnw-checkbox-row { display: flex; align-items: center; gap: 0.3rem; font-size: 11px; font-weight: 600; color: var(--color-slate-500); cursor: pointer; }
+  .mnw-checkbox-row input[type="checkbox"] { width: 12px; height: 12px; accent-color: var(--color-primary-500); cursor: pointer; }
 
   .mnw-drop-zone {
     border: 2px dashed var(--color-primary-200);

@@ -48,7 +48,8 @@ export const HOUSE_STYLE_BLOCK = `\n\nHOUSE STYLE — apply these rules consiste
 - Acronyms: write in full on first use with the acronym in brackets, e.g. Local Planning Authority (LPA), then use the acronym only thereafter.
 - Use digits not words for numbers: "2 storeys" not "two storeys".
 - Use commas in numbers of 1,000 or more: 1,000 not 1000.
-- Single space after full stops.`;
+- Single space after full stops.
+- Dates: write as "19th March 2026" (ordinal day, full month name, full year, no comma) — not "19 March 2026", "March 19th, 2026", or "19/03/2026".`;
 
 // A real example document (where one is provided) is the authoritative
 // reference for tone — this block is the backstop for the model's own

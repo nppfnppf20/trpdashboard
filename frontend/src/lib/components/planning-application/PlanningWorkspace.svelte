@@ -6,11 +6,12 @@
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal } from '$lib/stores/planning-suggestion.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
-  import { getTemplates, createDeliverable, updateDeliverableFromHTML, getProjectDeliverables } from '$lib/services/planningDeliverablesApi.js';
+  import { getTemplates, createDeliverable, createCustomDeliverable, updateDeliverableFromHTML, getProjectDeliverables } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { appealIncorporateTargeted } from '$lib/api/appeal.js';
   import DraftCheckPanel from '$lib/components/planning-application/DraftCheckPanel.svelte';
+  import DraftCreatePanel from '$lib/components/planning-application/DraftCreatePanel.svelte';
   import DraftingIssuesModal from '$lib/components/planning-application/DraftingIssuesModal.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import { getDraftingIssues } from '$lib/api/draftingIssues.js';
@@ -396,6 +397,36 @@
     }
   }
 
+  // Save blank-document content to the project's Planning Deliverables list
+  let savingToDeliverables = false;
+
+  function guessDeliverableName(html) {
+    const match = html.match(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/i);
+    const heading = match ? match[1].replace(/<[^>]+>/g, '').trim() : '';
+    return heading || `Custom Document - ${new Date().toLocaleDateString('en-GB')}`;
+  }
+
+  async function handleSaveToDeliverables() {
+    const html = draftEditor?.getHTML() ?? $draftEditorHtml;
+    if (!html?.replace(/<[^>]+>/g, '').trim()) {
+      alert('Nothing to save yet, write some content first.');
+      return;
+    }
+    const name = prompt('Name this document:', guessDeliverableName(html));
+    if (!name?.trim()) return;
+
+    savingToDeliverables = true;
+    try {
+      await createCustomDeliverable(project.id, name.trim(), html);
+      alert('Saved to Planning Deliverables.');
+    } catch (err) {
+      console.error('Failed to save to deliverables:', err);
+      alert('Failed to save: ' + err.message);
+    } finally {
+      savingToDeliverables = false;
+    }
+  }
+
   // Auto-save
   let autoSaveTimer = null;
 
@@ -433,6 +464,7 @@
   }
 
   let checkPanelOpen = false;
+  let createPanelOpen = false;
   // A highlight's compose popup: { paragraphIds, quotedText, top, left } | null
   let selectionPopup = null;
   // A quick AI edit awaiting Accept/Edit Again. Written straight into the
@@ -443,7 +475,7 @@
 
   $: activeType = $draftTypes.find(t => t.id === $activeDraftTypeId);
 
-  $: if (!$activeDraftTypeId) { checkPanelOpen = false; closeSelectionPopup(); cancelPendingAiEdit(); commentsPanelOpen = false; lastOpenedDraftId = null; }
+  $: if (!$activeDraftTypeId) { checkPanelOpen = false; createPanelOpen = false; closeSelectionPopup(); cancelPendingAiEdit(); commentsPanelOpen = false; lastOpenedDraftId = null; }
   $: if (!checkPanelOpen) draftEditor?.clearHighlight();
 
   // Default the right panel to Check whenever a (different) draft is opened —
@@ -454,6 +486,7 @@
     lastOpenedDraftId = $activeDraftTypeId;
     checkPanelOpen = true;
     commentsPanelOpen = false;
+    createPanelOpen = false;
   }
 
   function handleTextSelected(e) {
@@ -715,7 +748,22 @@
   function toggleCheckPanel() {
     if (checkPanelOpen) { checkPanelOpen = false; return; }
     commentsPanelOpen = false;
+    createPanelOpen = false;
     checkPanelOpen = true;
+  }
+
+  function toggleCreatePanel() {
+    if (createPanelOpen) { createPanelOpen = false; return; }
+    commentsPanelOpen = false;
+    checkPanelOpen = false;
+    createPanelOpen = true;
+  }
+
+  function handleCustomDraftGenerated(e) {
+    const { html } = e.detail;
+    $draftEditorHtml = html;
+    draftEditor?.setHTML(html);
+    $draftSaved = false;
   }
 </script>
 
@@ -765,6 +813,11 @@
             {#if $draftSaving}Saving...{:else if $draftSaved}<i class="las la-check"></i> Saved{:else}Save{/if}
           </button>
           {/if}
+          {#if $activeDraftTypeId === 'blank'}
+          <button class="draft-save-btn" disabled={savingToDeliverables} on:click={handleSaveToDeliverables}>
+            {#if savingToDeliverables}<div class="mini-spinner"></div> Saving...{:else}<i class="las la-save"></i> Save{/if}
+          </button>
+          {/if}
           <button class="draft-save-btn" disabled={exportingWord} on:click={handleExportToWord}>
             {#if exportingWord}<div class="mini-spinner"></div> Exporting...{:else}<i class="las la-file-word"></i> Export{/if}
           </button>
@@ -786,11 +839,14 @@
         <div class="draft-right-panel">
         <div class="draft-right-card">
           <div class="draft-right-panel-header">
+            <button class="draft-context-btn" class:active={createPanelOpen} on:click={toggleCreatePanel} title="Create a document from a custom prompt">
+              <i class="las la-magic"></i> Create
+            </button>
             <button class="draft-context-btn" class:active={checkPanelOpen} on:click={toggleCheckPanel} title="Check the draft against the guiding brief, project information, and grammar">
               <i class="las la-clipboard-check"></i> Check
             </button>
             {#if $activeDraftTypeId !== 'blank'}
-              <button class="draft-context-btn" class:active={commentsPanelOpen} on:click={() => { commentsPanelOpen = !commentsPanelOpen; if (commentsPanelOpen) { checkPanelOpen = false; } }} title="Comments left on this draft">
+              <button class="draft-context-btn" class:active={commentsPanelOpen} on:click={() => { commentsPanelOpen = !commentsPanelOpen; if (commentsPanelOpen) { checkPanelOpen = false; createPanelOpen = false; } }} title="Comments left on this draft">
                 <i class="las la-comment-alt"></i> Comments
                 {#if draftComments.filter(c => !c.resolved).length > 0}<span class="comments-badge">{draftComments.filter(c => !c.resolved).length}</span>{/if}
               </button>
@@ -835,6 +891,12 @@
                   {/each}
                 </div>
               </div>
+            {:else if createPanelOpen}
+              <DraftCreatePanel
+                getDraftHtml={() => draftEditor?.getHTML() ?? $draftEditorHtml}
+                on:generated={handleCustomDraftGenerated}
+                on:close={() => createPanelOpen = false}
+              />
             {:else if checkPanelOpen}
               <DraftCheckPanel
                 {project}

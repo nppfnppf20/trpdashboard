@@ -106,6 +106,35 @@ export async function createDeliverable(projectId, templateId, deliverableName =
 }
 
 /**
+ * Create a new deliverable directly from HTML, with no underlying template
+ * @param {number} projectId - Project ID
+ * @param {string} deliverableName - Name for the new deliverable
+ * @param {string} html - Document HTML content
+ * @returns {Promise<Object>} Created deliverable
+ */
+export async function createCustomDeliverable(projectId, deliverableName, html) {
+  try {
+    const response = await authFetch('/api/planning/deliverables/custom', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ projectId, deliverableName, html })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to create deliverable');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating custom deliverable:', error);
+    throw error;
+  }
+}
+
+/**
  * Get all deliverables for a specific project
  * @param {number} projectId - Project ID
  * @returns {Promise<Array>} Array of deliverable objects
@@ -258,6 +287,7 @@ export default {
   getTemplate,
   updateTemplate,
   createDeliverable,
+  createCustomDeliverable,
   getProjectDeliverables,
   getDeliverable,
   updateDeliverable,

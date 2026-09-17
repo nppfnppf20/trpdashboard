@@ -8,6 +8,8 @@
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
+  import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
+  import { getProjects } from '$lib/api/projects.js';
   import { createProgrammeEvent } from '$lib/api/quotes.js';
   import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
   import {
@@ -27,10 +29,17 @@
     deleteMeetingNote,
     updateMeetingNote,
     updateMeetingSummary,
-    processMeetingNote
+    processMeetingNote,
+    processMultiProjectNote
   } from '$lib/api/meetingNotes.js';
 
   export let project;
+  // Set by an embedding page (e.g. the standalone /meeting-notes page) that
+  // already owns the multi-project decision in its own UI — { enabled, otherProjectIds }.
+  // When provided, this tab hides its own multi-project checkbox/picker and
+  // just uses these values directly. Leave null for standalone use (opened
+  // from a project's own view modal), where this tab owns that decision itself.
+  export let multiProjectPreset = null;
   $: projectId = project?.id;
 
   // "Add this to the Issues Tracker?" hop — triggered from the post-process
@@ -51,6 +60,8 @@
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
   let reviewError = null;
   let reviewDateSuggestions = []; // dates spotted in the transcript, offered alongside the Issues Tracker prompt
+  let reviewOtherProjectNames = []; // set when this note came from a multi-project upload
+  let reviewCombinedCreated = false; // set when a combined note was also created
 
   // Note type — drives which fields/buttons show in the Add Note card.
   // Starts unselected: the user must explicitly choose one before the
@@ -299,8 +310,35 @@
   let showExtras = false;
   let fileInput;
 
+  // ── Multi-project ────────────────────────────────────────────────────────
+  let allProjects = [];
+  let isMultiProject = false;
+  let multiOtherLabels = []; // bound to MultiSelectDropdown — "Name (#id)" labels, disambiguated
+  let multiCreateCombined = true;
+
+  $: otherProjectOptions = allProjects
+    .filter(p => p.id !== projectId)
+    .map(p => ({ id: p.id, label: `${p.project_name} (#${p.id})` }));
+  $: multiOtherIds = multiOtherLabels
+    .map(label => otherProjectOptions.find(o => o.label === label)?.id)
+    .filter(id => id != null);
+
+  // When an embedding page already decided this (multiProjectPreset), defer
+  // to it entirely instead of this tab's own checkbox/picker state.
+  $: effectiveMultiProject = multiProjectPreset ? multiProjectPreset.enabled : isMultiProject;
+  $: effectiveOtherIds = multiProjectPreset ? (multiProjectPreset.otherProjectIds || []) : multiOtherIds;
+
+  async function loadAllProjects() {
+    try {
+      allProjects = await getProjects();
+    } catch (err) {
+      console.error('Failed to load projects for multi-project picker:', err);
+    }
+  }
+
   onMount(async () => {
     if (projectId) { await Promise.all([loadAll(), loadBriefings()]); }
+    if (!multiProjectPreset) loadAllProjects();
 
     // A file or pasted text handed off from the Overview page's Meeting
     // Notes widget — seed the upload panel with it and let the user pick
@@ -410,6 +448,9 @@
     uploadProvider = '';
     showExtras = false;
     uploadProcessing = false;
+    isMultiProject = false;
+    multiOtherLabels = [];
+    multiCreateCombined = true;
   }
 
   function closeUploadPanel() {
@@ -432,30 +473,64 @@
   async function submitUpload() {
     if (uploadInputTab === 'upload' && !uploadFile) { uploadError = 'Please select a file to upload.'; return; }
     if (uploadInputTab === 'paste' && !uploadPasteText.trim()) { uploadError = 'Please paste the transcript text.'; return; }
+    if (effectiveMultiProject && effectiveOtherIds.length === 0) { uploadError = 'Tick at least one other project, or turn off multi-project.'; return; }
 
     uploadProcessing = true;
     uploadError = null;
     try {
-      const result = await processMeetingNote(projectId, {
-        file: uploadInputTab === 'upload' ? uploadFile : null,
-        text: uploadInputTab === 'paste' ? uploadPasteText : null,
-        userNotes: uploadUserNotes.trim() || null,
-        agenda: uploadAgenda.trim() || null,
-        summaryType: uploadSummaryType,
-        customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null,
-        provider: uploadProvider || null
-      });
+      let newNote, dateSuggestions, otherProjectNames = [], combinedCreated = false;
 
-      const newNote = {
-        id: result.transcript.id,
-        title: result.transcript.title,
-        meeting_date: result.transcript.meeting_date,
-        attendees_text: result.transcript.attendees_text,
-        file_name: result.transcript.file_name,
-        created_at: result.transcript.created_at,
-        summary_id: result.summary?.id,
-        summary_html: result.summary?.summary_html
-      };
+      if (effectiveMultiProject) {
+        const result = await processMultiProjectNote({
+          file: uploadInputTab === 'upload' ? uploadFile : null,
+          text: uploadInputTab === 'paste' ? uploadPasteText : null,
+          projectIds: [projectId, ...effectiveOtherIds],
+          createIndividual: true,
+          createCombined: multiCreateCombined,
+          userNotes: uploadUserNotes.trim() || null,
+          agenda: uploadAgenda.trim() || null,
+          summaryType: uploadSummaryType,
+          customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null,
+          provider: uploadProvider || null
+        });
+
+        const mine = result.projectNotes.find(pn => pn.project_id === projectId);
+        newNote = {
+          id: mine.transcript.id,
+          title: mine.transcript.title,
+          meeting_date: mine.transcript.meeting_date,
+          attendees_text: mine.transcript.attendees_text,
+          file_name: mine.transcript.file_name,
+          created_at: mine.transcript.created_at,
+          summary_id: mine.summary?.id,
+          summary_html: mine.summary?.summary_html
+        };
+        otherProjectNames = result.projectNotes.filter(pn => pn.project_id !== projectId).map(pn => pn.project_name);
+        combinedCreated = !!result.combinedNote;
+        dateSuggestions = []; // multi-project path doesn't extract date suggestions
+      } else {
+        const result = await processMeetingNote(projectId, {
+          file: uploadInputTab === 'upload' ? uploadFile : null,
+          text: uploadInputTab === 'paste' ? uploadPasteText : null,
+          userNotes: uploadUserNotes.trim() || null,
+          agenda: uploadAgenda.trim() || null,
+          summaryType: uploadSummaryType,
+          customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null,
+          provider: uploadProvider || null
+        });
+
+        newNote = {
+          id: result.transcript.id,
+          title: result.transcript.title,
+          meeting_date: result.transcript.meeting_date,
+          attendees_text: result.transcript.attendees_text,
+          file_name: result.transcript.file_name,
+          created_at: result.transcript.created_at,
+          summary_id: result.summary?.id,
+          summary_html: result.summary?.summary_html
+        };
+        dateSuggestions = result.dateSuggestions || [];
+      }
 
       notes = [newNote, ...notes];
       showUploadPanel = false;
@@ -463,11 +538,13 @@
       // Open the review modal — nothing beyond the transcript + raw summary
       // is committed until Save is pressed there.
       reviewTranscript = newNote;
-      reviewSummaryHtml = result.summary?.summary_html || '';
+      reviewSummaryHtml = newNote.summary_html || '';
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
-      reviewDateSuggestions = (result.dateSuggestions || []).map((d, i) => ({ ...d, _key: i }));
+      reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
+      reviewOtherProjectNames = otherProjectNames;
+      reviewCombinedCreated = combinedCreated;
       reviewOpen = true;
     } catch (err) {
       uploadError = err.message;
@@ -502,6 +579,8 @@
     reviewSaved = false;
     reviewError = null;
     reviewDateSuggestions = [];
+    reviewOtherProjectNames = [];
+    reviewCombinedCreated = false;
   }
 
   function reviewAddToIssuesTracker() {
@@ -740,6 +819,27 @@
             <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
           {:else}
             <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+          {/if}
+
+          {#if !multiProjectPreset}
+            <label class="mn-checkbox-row">
+              <input type="checkbox" bind:checked={isMultiProject} />
+              This meeting covers other projects too
+            </label>
+            {#if isMultiProject}
+              <div class="form-group">
+                <label>Also applies to</label>
+                <MultiSelectDropdown
+                  options={otherProjectOptions}
+                  bind:selected={multiOtherLabels}
+                  placeholder="Select other project(s)…"
+                />
+              </div>
+              <label class="mn-checkbox-row">
+                <input type="checkbox" bind:checked={multiCreateCombined} />
+                Also create a combined note covering all of them
+              </label>
+            {/if}
           {/if}
 
           <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
@@ -986,6 +1086,12 @@
       {:else}
         <!-- Post-save — hand off to the Issues Tracker draft flow -->
         <div class="mn-editor-body mn-review-body">
+          {#if reviewOtherProjectNames.length || reviewCombinedCreated}
+            <p class="mn-multi-project-note">
+              {#if reviewOtherProjectNames.length}Also created tailored notes for: {reviewOtherProjectNames.join(', ')}.{/if}
+              {#if reviewCombinedCreated}A combined note covering all {reviewOtherProjectNames.length + 1} projects was also created — find it on the Meeting Notes page.{/if}
+            </p>
+          {/if}
           <div class="mn-issues-prompt">
             <span class="mn-issues-prompt-text"><i class="las la-list-alt"></i> Saved. Add "{reviewTranscript.title}" to the Project Tracker?</span>
             <div class="mn-issues-prompt-actions">
@@ -1329,6 +1435,11 @@
     margin: 0;
   }
   .mn-process-btn { width: 100%; }
+
+  /* ── Multi-project ──────────────────────────────────────────────────────── */
+  .mn-checkbox-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; color: var(--color-slate-700); cursor: pointer; }
+  .mn-checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--color-primary-500); cursor: pointer; }
+  .mn-multi-project-note { font-size: 0.8125rem; color: var(--color-slate-600); margin: 0; }
 
   /* Latest meeting card */
   .mn-latest-card {

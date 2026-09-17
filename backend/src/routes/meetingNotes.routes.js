@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import {
   processMeetingNote,
+  processMultiProjectMeetingNote,
   processInternalMeetingNote,
   getMeetingNotes,
   getAllMeetingNotes,
@@ -24,6 +25,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 // Literal-segment routes first to avoid param shadowing
 router.get('/', getAllMeetingNotes);
 router.post('/internal/process', upload.single('file'), processInternalMeetingNote);
+router.post('/multi-project/process', upload.single('file'), processMultiProjectMeetingNote);
 router.post('/:transcriptId/insights', saveExtractedInsights);
 router.post('/actions', createStandaloneAction);
 router.post('/projects/:projectId/process', upload.single('file'), processMeetingNote);
