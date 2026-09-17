@@ -34,12 +34,6 @@
   } from '$lib/api/meetingNotes.js';
 
   export let project;
-  // Set by an embedding page (e.g. the standalone /meeting-notes page) that
-  // already owns the multi-project decision in its own UI — { enabled, otherProjectIds }.
-  // When provided, this tab hides its own multi-project checkbox/picker and
-  // just uses these values directly. Leave null for standalone use (opened
-  // from a project's own view modal), where this tab owns that decision itself.
-  export let multiProjectPreset = null;
   $: projectId = project?.id;
 
   // "Add this to the Issues Tracker?" hop — triggered from the post-process
@@ -323,11 +317,6 @@
     .map(label => otherProjectOptions.find(o => o.label === label)?.id)
     .filter(id => id != null);
 
-  // When an embedding page already decided this (multiProjectPreset), defer
-  // to it entirely instead of this tab's own checkbox/picker state.
-  $: effectiveMultiProject = multiProjectPreset ? multiProjectPreset.enabled : isMultiProject;
-  $: effectiveOtherIds = multiProjectPreset ? (multiProjectPreset.otherProjectIds || []) : multiOtherIds;
-
   async function loadAllProjects() {
     try {
       allProjects = await getProjects();
@@ -338,7 +327,7 @@
 
   onMount(async () => {
     if (projectId) { await Promise.all([loadAll(), loadBriefings()]); }
-    if (!multiProjectPreset) loadAllProjects();
+    loadAllProjects();
 
     // A file or pasted text handed off from the Overview page's Meeting
     // Notes widget — seed the upload panel with it and let the user pick
@@ -473,18 +462,18 @@
   async function submitUpload() {
     if (uploadInputTab === 'upload' && !uploadFile) { uploadError = 'Please select a file to upload.'; return; }
     if (uploadInputTab === 'paste' && !uploadPasteText.trim()) { uploadError = 'Please paste the transcript text.'; return; }
-    if (effectiveMultiProject && effectiveOtherIds.length === 0) { uploadError = 'Tick at least one other project, or turn off multi-project.'; return; }
+    if (isMultiProject && multiOtherIds.length === 0) { uploadError = 'Tick at least one other project, or turn off multi-project.'; return; }
 
     uploadProcessing = true;
     uploadError = null;
     try {
       let newNote, dateSuggestions, otherProjectNames = [], combinedCreated = false;
 
-      if (effectiveMultiProject) {
+      if (isMultiProject) {
         const result = await processMultiProjectNote({
           file: uploadInputTab === 'upload' ? uploadFile : null,
           text: uploadInputTab === 'paste' ? uploadPasteText : null,
-          projectIds: [projectId, ...effectiveOtherIds],
+          projectIds: [projectId, ...multiOtherIds],
           createIndividual: true,
           createCombined: multiCreateCombined,
           userNotes: uploadUserNotes.trim() || null,
@@ -821,25 +810,23 @@
             <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
           {/if}
 
-          {#if !multiProjectPreset}
+          <label class="mn-checkbox-row">
+            <input type="checkbox" bind:checked={isMultiProject} />
+            This meeting covers other projects too
+          </label>
+          {#if isMultiProject}
+            <div class="form-group">
+              <label>Also applies to</label>
+              <MultiSelectDropdown
+                options={otherProjectOptions}
+                bind:selected={multiOtherLabels}
+                placeholder="Select other project(s)…"
+              />
+            </div>
             <label class="mn-checkbox-row">
-              <input type="checkbox" bind:checked={isMultiProject} />
-              This meeting covers other projects too
+              <input type="checkbox" bind:checked={multiCreateCombined} />
+              Also create a combined note covering all of them
             </label>
-            {#if isMultiProject}
-              <div class="form-group">
-                <label>Also applies to</label>
-                <MultiSelectDropdown
-                  options={otherProjectOptions}
-                  bind:selected={multiOtherLabels}
-                  placeholder="Select other project(s)…"
-                />
-              </div>
-              <label class="mn-checkbox-row">
-                <input type="checkbox" bind:checked={multiCreateCombined} />
-                Also create a combined note covering all of them
-              </label>
-            {/if}
           {/if}
 
           <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>

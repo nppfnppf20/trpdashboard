@@ -6,7 +6,7 @@
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal } from '$lib/stores/planning-suggestion.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
-  import { getTemplates, createDeliverable, createCustomDeliverable, updateDeliverableFromHTML, getProjectDeliverables } from '$lib/services/planningDeliverablesApi.js';
+  import { getTemplates, createDeliverable, createCustomDeliverable, updateDeliverableFromHTML, getProjectDeliverables, getDeliverableAsHTML, deleteDeliverable as deleteDeliverableApi } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { appealIncorporateTargeted } from '$lib/api/appeal.js';
@@ -225,7 +225,7 @@
     // Run independently — failures must not block the rest of the workspace
     await Promise.all([loadDraftTypes(), loadAssessmentIssues(), loadBriefingNotes(project.id)]);
     loadCardContextPcts();
-    loadLetterDocs();
+    loadDeliverables();
   }
 
 
@@ -246,13 +246,18 @@
   let letterModalSaved = false;
   let exportingLetterWord = false;
 
-  async function loadLetterDocs() {
+  // Custom documents saved from the blank document editor's Save button —
+  // shown as cards in the document type list, same as letter docs.
+  let customDeliverables = [];
+
+  async function loadDeliverables() {
     try {
       const all = await getProjectDeliverables(project.id);
       letterDeliverables = {
         certificate_b_notice: all.find(d => d.deliverable_type === 'certificate_b_notice') ?? null,
         cover_letter: all.find(d => d.deliverable_type === 'cover_letter') ?? null,
       };
+      customDeliverables = all.filter(d => d.deliverable_type === 'custom_document');
     } catch { /* non-critical */ }
   }
 
@@ -303,10 +308,39 @@
     }
   }
 
+  // Tracks which saved custom_document deliverable the blank editor currently
+  // holds (null for a fresh, never-saved document) so Save updates that same
+  // row instead of creating a new one every time.
+  let openCustomDeliverableId = null;
+
   function openBlankDoc() {
     $activeDraftTypeId = 'blank';
     $draftEditorHtml = '';
     $draftSaved = false;
+    openCustomDeliverableId = null;
+  }
+
+  async function openCustomDeliverable(cd) {
+    try {
+      const { html } = await getDeliverableAsHTML(cd.id);
+      openCustomDeliverableId = cd.id;
+      $activeDraftTypeId = 'blank';
+      $draftEditorHtml = html;
+      $draftSaved = false;
+    } catch (err) {
+      console.error('Failed to open custom deliverable:', err);
+      alert('Failed to open document: ' + err.message);
+    }
+  }
+
+  async function handleDeleteCustomDeliverable(cd) {
+    if (!confirm(`Delete "${cd.deliverable_name}"? This cannot be undone.`)) return;
+    try {
+      await deleteDeliverableApi(cd.id);
+      customDeliverables = customDeliverables.filter(d => d.id !== cd.id);
+    } catch (err) {
+      alert('Failed to delete: ' + err.message);
+    }
   }
 
   async function handleLetterExport() {
@@ -412,12 +446,18 @@
       alert('Nothing to save yet, write some content first.');
       return;
     }
-    const name = prompt('Name this document:', guessDeliverableName(html));
-    if (!name?.trim()) return;
 
     savingToDeliverables = true;
     try {
-      await createCustomDeliverable(project.id, name.trim(), html);
+      if (openCustomDeliverableId) {
+        await updateDeliverableFromHTML(openCustomDeliverableId, html);
+      } else {
+        const name = prompt('Name this document:', guessDeliverableName(html));
+        if (!name?.trim()) { savingToDeliverables = false; return; }
+        const { deliverable } = await createCustomDeliverable(project.id, name.trim(), html);
+        openCustomDeliverableId = deliverable.id;
+      }
+      await loadDeliverables();
       alert('Saved to Planning Deliverables.');
     } catch (err) {
       console.error('Failed to save to deliverables:', err);
@@ -970,7 +1010,6 @@
               <div class="draft-type-main">
                 <div class="draft-type-info">
                   <span class="draft-type-name">{type.name}<span class="beta-badge">BETA</span></span>
-                  {#if type.description}<span class="draft-type-desc">{type.description}</span>{/if}
                   {#if draft?.generated_at}
                     <span class="draft-type-meta">Last generated {new Date(draft.generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                   {/if}
@@ -1221,6 +1260,25 @@
               </div>
             </div>
           </div>
+
+          <!-- ── Saved custom documents (from the blank editor's Save button) ── -->
+          {#each customDeliverables as cd (cd.id)}
+            <div class="card draft-type-card">
+              <div class="draft-type-main">
+                <div class="draft-type-info">
+                  <span class="draft-type-name">{cd.deliverable_name}</span>
+                  <span class="draft-type-desc">Custom document</span>
+                  <span class="draft-type-meta">Last updated {new Date(cd.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                </div>
+                <div class="draft-type-actions">
+                  <button class="draft-open-btn" on:click={() => openCustomDeliverable(cd)}>Open</button>
+                  <button class="draft-setting-btn" title="Delete this document" on:click={() => handleDeleteCustomDeliverable(cd)}>
+                    <i class="las la-trash"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          {/each}
 
         </div>
       </div>

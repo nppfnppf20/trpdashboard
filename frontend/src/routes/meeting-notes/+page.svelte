@@ -1,14 +1,17 @@
 <script>
   import { onMount } from 'svelte';
-  import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import AddProjectModal from '$lib/components/projects/AddProjectModal.svelte';
+  import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { getProjects } from '$lib/api/projects.js';
   import {
     processInternalNote,
+    processMeetingNote,
+    processMultiProjectNote,
     getAllMeetingNotes,
+    getMeetingNotes,
     getMeetingNoteActions,
     getMeetingTranscript,
     updateMeetingSummary,
@@ -90,15 +93,14 @@
       selectedProjectIdBinding = '';
       isMultiProject = false;
       multiOtherLabels = [];
-      loadNotes();
     }
+    multiProjectNotice = null;
   }
 
-  // ── Internal/CPD notes ──────────────────────────────────────────────────────
+  // ── Notes (Internal/CPD/Project all share this) ─────────────────────────────
   let notes = [];
   let notesLoading = false;
   let notesError = null;
-  let showAllNotes = false;
 
   // Transcript expand state
   let expandedTranscripts = new Set();
@@ -124,15 +126,28 @@
   }
 
   async function loadNotes() {
-    if (!meetingType || meetingType === 'project') return;
+    if (!meetingType) { notes = []; return; }
     notesLoading = true;
     notesError = null;
     try {
-      notes = await getAllMeetingNotes(meetingType);
+      notes = meetingType === 'project'
+        ? (selectedProject ? await getMeetingNotes(selectedProject.id) : [])
+        : await getAllMeetingNotes(meetingType);
     } catch (err) {
       notesError = err.message;
     } finally {
       notesLoading = false;
+    }
+  }
+
+  // Reload whenever the type or (for project) the selected project changes —
+  // covers both the top dropdown and the inline project select.
+  let lastLoadedNotesKey = null;
+  $: {
+    const key = `${meetingType}:${selectedProject?.id ?? ''}`;
+    if (key !== lastLoadedNotesKey) {
+      lastLoadedNotesKey = key;
+      loadNotes();
     }
   }
 
@@ -151,6 +166,16 @@
   let uploadDragOver = false;
   let showExtras = false;
   let fileInput;
+  let multiProjectNotice = null; // { otherNames: [...], combined: bool } — shown briefly after a multi-project upload
+
+  // ── Tracker-draft hop (project notes only) ──────────────────────────────────
+  let trackerDraft = null; // { projectId, transcriptId }
+  let showDraftIssuesModal = false;
+
+  function openTrackerDraft(projectId, transcriptId) {
+    trackerDraft = { projectId, transcriptId };
+    showDraftIssuesModal = true;
+  }
 
   function resetUpload() {
     uploadFile = null;
@@ -175,6 +200,88 @@
     uploadFile = e.target.files[0] || null;
   }
 
+  function noteFromTranscript(transcript, summary, extra = {}) {
+    return {
+      id: transcript.id,
+      title: transcript.title,
+      meeting_date: transcript.meeting_date,
+      attendees_text: transcript.attendees_text,
+      file_name: transcript.file_name,
+      created_at: transcript.created_at,
+      summary_id: summary?.id,
+      summary_html: summary?.summary_html,
+      pending_count: 0,
+      complete_count: 0,
+      ...extra
+    };
+  }
+
+  async function submitProjectUpload() {
+    if (!selectedProject) { uploadError = 'Please select a project above.'; return; }
+    if (isMultiProject && multiOtherIds.length === 0) { uploadError = 'Tick at least one other project, or turn off multi-project.'; return; }
+
+    let newNote;
+    let suggestedActions = [];
+    multiProjectNotice = null;
+
+    if (isMultiProject) {
+      const result = await processMultiProjectNote({
+        file: uploadInputTab === 'upload' ? uploadFile : null,
+        text: uploadInputTab === 'paste' ? uploadPasteText : null,
+        projectIds: [selectedProject.id, ...multiOtherIds],
+        createIndividual: true,
+        createCombined: true,
+        userNotes: uploadUserNotes.trim() || null,
+        agenda: uploadAgenda.trim() || null,
+        summaryType: uploadSummaryType,
+        customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null
+      });
+
+      const mine = result.projectNotes.find(pn => pn.project_id === selectedProject.id);
+      newNote = noteFromTranscript(mine.transcript, mine.summary, {
+        meeting_type: 'project', project_id: mine.project_id, project_name: mine.project_name
+      });
+      suggestedActions = mine.suggestedActions || [];
+
+      const siblingCards = result.projectNotes
+        .filter(pn => pn.project_id !== selectedProject.id)
+        .map(pn => noteFromTranscript(pn.transcript, pn.summary, {
+          meeting_type: 'project', project_id: pn.project_id, project_name: pn.project_name
+        }));
+      const combinedCard = result.combinedNote
+        ? noteFromTranscript(result.combinedNote.transcript, result.combinedNote.summary, { meeting_type: 'multi_project' })
+        : null;
+
+      streamNotes = [...siblingCards, ...(combinedCard ? [combinedCard] : []), ...streamNotes];
+      multiProjectNotice = {
+        otherNames: siblingCards.map(c => c.project_name),
+        combined: !!combinedCard
+      };
+    } else {
+      const result = await processMeetingNote(selectedProject.id, {
+        file: uploadInputTab === 'upload' ? uploadFile : null,
+        text: uploadInputTab === 'paste' ? uploadPasteText : null,
+        userNotes: uploadUserNotes.trim() || null,
+        agenda: uploadAgenda.trim() || null,
+        summaryType: uploadSummaryType,
+        customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null
+      });
+      newNote = noteFromTranscript(result.transcript, result.summary, {
+        meeting_type: 'project', project_id: selectedProject.id, project_name: selectedProject.project_name
+      });
+      suggestedActions = result.suggestedActions || [];
+    }
+
+    notes = [newNote, ...notes];
+    streamNotes = [newNote, ...streamNotes];
+    resetUpload();
+
+    // Project notes never auto-create meeting_actions (only the Issues Tracker
+    // draft flow or this editor's own actions-table does) — open the review
+    // editor immediately with the suggested actions embedded for review.
+    await openNoteEditor(newNote, suggestedActions);
+  }
+
   async function submitUpload() {
     if (uploadInputTab === 'upload' && !uploadFile) { uploadError = 'Please select a file.'; return; }
     if (uploadInputTab === 'paste' && !uploadPasteText.trim()) { uploadError = 'Please paste the transcript text.'; return; }
@@ -182,6 +289,11 @@
     uploadProcessing = true;
     uploadError = null;
     try {
+      if (meetingType === 'project') {
+        await submitProjectUpload();
+        return;
+      }
+
       const result = await processInternalNote(meetingType, {
         file: uploadInputTab === 'upload' ? uploadFile : null,
         text: uploadInputTab === 'paste' ? uploadPasteText : null,
@@ -201,19 +313,10 @@
         }))
       );
 
-      const newNote = {
-        id: result.transcript.id,
-        title: result.transcript.title,
-        meeting_date: result.transcript.meeting_date,
-        attendees_text: result.transcript.attendees_text,
-        file_name: result.transcript.file_name,
-        created_at: result.transcript.created_at,
+      const newNote = noteFromTranscript(result.transcript, result.summary, {
         meeting_type: result.transcript.meeting_type,
-        summary_id: result.summary?.id,
-        summary_html: result.summary?.summary_html,
-        pending_count: saved.length,
-        complete_count: 0
-      };
+        pending_count: saved.length
+      });
 
       notes = [newNote, ...notes];
       resetUpload();
@@ -294,7 +397,6 @@
   }
 
   onMount(() => {
-    loadNotes();
     loadStream();
     loadAllProjects();
   });
@@ -304,6 +406,7 @@
   let editorIsNew = false;
   let editorInitialHtml = '';
   let editorSaving = false;
+  let editorSaved = false; // true once a project note has been saved — swaps footer to the Issues Tracker prompt
   let editorActions = []; // actions for the note currently open in editor
   let richTextEditor;
 
@@ -385,6 +488,7 @@
     editorActions = loadedActions;
     editorInitialHtml = initialHtml;
     editorIsNew = suggestedActions !== null;
+    editorSaved = false;
     editorNote = note; // set last — triggers modal render with content already populated
   }
 
@@ -393,6 +497,12 @@
     editorIsNew = false;
     editorInitialHtml = '';
     editorActions = [];
+    editorSaved = false;
+  }
+
+  function editorAddToTracker() {
+    openTrackerDraft(editorNote.project_id, editorNote.id);
+    closeNoteEditor();
   }
 
   async function saveNoteEditor() {
@@ -434,7 +544,11 @@
         }
       }
 
-      closeNoteEditor();
+      if (isProjectNote) {
+        editorSaved = true;
+      } else {
+        closeNoteEditor();
+      }
     } catch (err) {
       alert(err.message);
     } finally {
@@ -594,250 +708,179 @@
 
     <div class="workspace-body">
 
-    {#if meetingType === 'project'}
-      {#if selectedProject}
-        {#key selectedProject.id}
-          <MeetingNotesTab
-            project={selectedProject}
-            multiProjectPreset={{ enabled: isMultiProject, otherProjectIds: multiOtherIds }}
-          />
-        {/key}
-      {:else}
-        <p class="mn-type-placeholder">Select a project above to get started.</p>
-      {/if}
+    <!-- Unified upload workspace — same card shape for Internal / CPD / Project.
+         Greyed + inert until a type is chosen, and (for Project) until a
+         project is also picked above. -->
+    <div class="mn-upload-form" class:mn-upload-form--disabled={!meetingType || (meetingType === 'project' && !selectedProject)} inert={!meetingType || (meetingType === 'project' && !selectedProject)}>
+    {#if meetingType === 'project' && !selectedProject}
+      <p class="mn-type-placeholder">Select a project above to get started.</p>
+    {/if}
+    <div class="mn-top-row">
 
-    {:else}
-      <!-- Internal / CPD workspace — shown by default (greyed while unset)
-           since it's the simpler of the two non-project types. -->
-      <div class="mn-upload-form" class:mn-upload-form--disabled={!meetingType} inert={!meetingType}>
-      <div class="mn-top-row">
+      <!-- Upload card -->
+      <div class="mn-upload-card">
+        <h3 class="mn-card-title">
+          Add {meetingType === 'cpd' ? 'CPD' : 'Meeting'} Notes
+        </h3>
 
-        <!-- Upload card -->
-        <div class="mn-upload-card">
-          <h3 class="mn-card-title">
-            Add {meetingType === 'cpd' ? 'CPD' : 'Meeting'} Notes
-          </h3>
-
-          <div class="mn-type-row">
-            <span class="mn-type-label">Summary</span>
-            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>
-              Brief <span class="mn-type-sub">· 1 page</span>
-            </button>
-            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>
-              Detailed <span class="mn-type-sub">· 3-4 pages</span>
-            </button>
-            <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>
-              Custom
-            </button>
-          </div>
-
-          <div class="mn-input-tabs">
-            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
-              <i class="las la-upload"></i> Upload File
-            </button>
-            <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
-              <i class="las la-clipboard"></i> Paste Text
-            </button>
-          </div>
-
-          {#if uploadInputTab === 'upload'}
-            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-            <div
-              class="mn-drop-zone"
-              class:drag-over={uploadDragOver}
-              role="button"
-              tabindex="0"
-              on:dragover|preventDefault={() => uploadDragOver = true}
-              on:dragleave={() => uploadDragOver = false}
-              on:drop={handleDrop}
-              on:click={() => fileInput.click()}
-              on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
-            >
-              {#if uploadFile}
-                <i class="las la-file-alt mn-drop-icon"></i>
-                <span class="mn-drop-filename">{uploadFile.name}</span>
-                <span class="mn-drop-hint">Click to change file</span>
-              {:else}
-                <i class="las la-cloud-upload-alt mn-drop-icon"></i>
-                <span>Drop a file here or click to browse</span>
-                <span class="mn-drop-hint">PDF, DOCX or TXT</span>
-              {/if}
-            </div>
-            <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
-          {:else}
-            <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the {meetingType === 'cpd' ? 'CPD notes' : 'meeting transcript'} here…" rows="3"></textarea>
-          {/if}
-
-          <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
-            <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
-            {showExtras ? 'Hide' : 'Show'} optional extras
+        <div class="mn-type-row">
+          <span class="mn-type-label">Summary</span>
+          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>
+            Brief <span class="mn-type-sub">· 1 page</span>
           </button>
-          {#if showExtras}
+          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>
+            Detailed <span class="mn-type-sub">· 3-4 pages</span>
+          </button>
+          <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'custom'} class:btn-secondary={uploadSummaryType !== 'custom'} on:click={() => { uploadSummaryType = 'custom'; showExtras = true; }}>
+            Custom
+          </button>
+        </div>
+
+        <div class="mn-input-tabs">
+          <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
+            <i class="las la-upload"></i> Upload File
+          </button>
+          <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'paste'} class:btn-ghost={uploadInputTab !== 'paste'} on:click={() => uploadInputTab = 'paste'}>
+            <i class="las la-clipboard"></i> Paste Text
+          </button>
+        </div>
+
+        {#if uploadInputTab === 'upload'}
+          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+          <div
+            class="mn-drop-zone"
+            class:drag-over={uploadDragOver}
+            role="button"
+            tabindex="0"
+            on:dragover|preventDefault={() => uploadDragOver = true}
+            on:dragleave={() => uploadDragOver = false}
+            on:drop={handleDrop}
+            on:click={() => fileInput.click()}
+            on:keydown={(e) => e.key === 'Enter' && fileInput.click()}
+          >
+            {#if uploadFile}
+              <i class="las la-file-alt mn-drop-icon"></i>
+              <span class="mn-drop-filename">{uploadFile.name}</span>
+              <span class="mn-drop-hint">Click to change file</span>
+            {:else}
+              <i class="las la-cloud-upload-alt mn-drop-icon"></i>
+              <span>Drop a file here or click to browse</span>
+              <span class="mn-drop-hint">PDF, DOCX or TXT</span>
+            {/if}
+          </div>
+          <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
+        {:else}
+          <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the {meetingType === 'cpd' ? 'CPD notes' : 'meeting transcript'} here…" rows="3"></textarea>
+        {/if}
+
+        <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
+          <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
+          {showExtras ? 'Hide' : 'Show'} optional extras
+        </button>
+        {#if showExtras}
+          <div class="form-row">
+            <div class="form-group">
+              <label>{meetingType === 'cpd' ? 'Agenda / Programme' : 'Agenda'}</label>
+              <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the agenda…"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
+            </div>
+          </div>
+          {#if uploadSummaryType === 'custom'}
+            <div class="form-group">
+              <label>Custom Instructions</label>
+              <textarea class="form-input" bind:value={uploadCustomPrompt} rows="3" placeholder="e.g. Produce a concise bullet-point summary…"></textarea>
+            </div>
+          {/if}
+        {/if}
+
+        {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
+
+        <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
+          {#if uploadProcessing}
+            <span class="mn-spinner"></span> Processing…
+          {:else}
+            <i class="las la-magic"></i> Process {meetingType === 'cpd' ? 'CPD' : 'Meeting'} Notes
+          {/if}
+        </button>
+
+        {#if meetingType === 'project' && multiProjectNotice}
+          <p class="mn-multi-project-note">
+            {#if multiProjectNotice.otherNames.length}Also created tailored notes for: {multiProjectNotice.otherNames.join(', ')}.{/if}
+            {#if multiProjectNotice.combined}A combined note covering all {multiProjectNotice.otherNames.length + 1} projects was also created.{/if}
+          </p>
+        {/if}
+      </div>
+
+      <!-- Latest note card -->
+      <div class="mn-latest-card">
+        {#if notesLoading}
+          <div class="mn-loading"><span class="mn-spinner-blue"></span></div>
+        {:else if notesError}
+          <div class="mn-error">{notesError}</div>
+        {:else if latestNote && editingNoteId === latestNote.id}
+          <div class="mn-note-edit-form">
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" class="form-input" bind:value={noteEditForm.title} />
+            </div>
             <div class="form-row">
               <div class="form-group">
-                <label>{meetingType === 'cpd' ? 'Agenda / Programme' : 'Agenda'}</label>
-                <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the agenda…"></textarea>
+                <label>Date</label>
+                <input type="date" class="form-input" bind:value={noteEditForm.meeting_date} />
               </div>
               <div class="form-group">
-                <label>Notes</label>
-                <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
+                <label>Attendees</label>
+                <input type="text" class="form-input" bind:value={noteEditForm.attendees_text} />
               </div>
             </div>
-            {#if uploadSummaryType === 'custom'}
-              <div class="form-group">
-                <label>Custom Instructions</label>
-                <textarea class="form-input" bind:value={uploadCustomPrompt} rows="3" placeholder="e.g. Produce a concise bullet-point summary…"></textarea>
-              </div>
-            {/if}
-          {/if}
-
-          {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
-
-          <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
-            {#if uploadProcessing}
-              <span class="mn-spinner"></span> Processing…
-            {:else}
-              <i class="las la-magic"></i> Process {meetingType === 'cpd' ? 'CPD' : 'Meeting'} Notes
-            {/if}
-          </button>
-        </div>
-
-        <!-- Latest note card -->
-        <div class="mn-latest-card">
-          {#if notesLoading}
-            <div class="mn-loading"><span class="mn-spinner-blue"></span></div>
-          {:else if latestNote}
-            <div class="mn-latest-card-inner">
-              <div class="mn-latest-card-top">
-                <span class="mn-card-label">Latest {meetingType === 'cpd' ? 'CPD' : 'Meeting'}</span>
-                <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(latestNote)} title="Edit details">
-                  <i class="las la-pen"></i>
-                </button>
-              </div>
-              <div class="mn-latest-title">{latestNote.title}</div>
-              <div class="mn-latest-meta-row">
-                {#if latestNote.meeting_date}<span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>{/if}
-                {#if latestNote.attendees_text}<span class="mn-cell-dim">{latestNote.attendees_text}</span>{/if}
-              </div>
-              <div class="mn-latest-badges">
-                {#if Number(latestNote.pending_count) > 0}
-                  <span class="badge badge-warning">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
-                {/if}
-                {#if Number(latestNote.complete_count) > 0}
-                  <span class="badge badge-success">{latestNote.complete_count} completed</span>
-                {/if}
-              </div>
-              <div class="mn-latest-card-btns">
-                <button class="btn btn-primary btn-sm" on:click={() => openNoteEditor(latestNote)}>
-                  <i class="las la-eye"></i> View Notes
-                </button>
-                <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(latestNote)}>
-                  <i class="las la-download"></i> Download
-                </button>
-              </div>
+            <div class="mn-form-footer">
+              <button class="btn btn-secondary btn-sm" on:click={() => editingNoteId = null}>Cancel</button>
+              <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(latestNote.id)}>Save</button>
             </div>
-          {:else}
-            <div class="mn-latest-empty">
-              <i class="las la-calendar-times"></i>
-              <p>No {meetingType === 'cpd' ? 'CPD records' : 'meetings'} yet.<br>Upload or paste above to get started.</p>
+          </div>
+        {:else if latestNote}
+          <div class="mn-latest-card-inner">
+            <div class="mn-latest-card-top">
+              <span class="mn-card-label">Latest {meetingType === 'cpd' ? 'CPD' : 'Meeting'}</span>
+              <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(latestNote)} title="Edit details">
+                <i class="las la-pen"></i>
+              </button>
             </div>
-          {/if}
-        </div>
-
+            <div class="mn-latest-title">{latestNote.title}</div>
+            <div class="mn-latest-meta-row">
+              {#if latestNote.meeting_date}<span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>{/if}
+              {#if latestNote.attendees_text}<span class="mn-cell-dim">{latestNote.attendees_text}</span>{/if}
+            </div>
+            <div class="mn-latest-badges">
+              {#if Number(latestNote.pending_count) > 0}
+                <span class="badge badge-warning">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
+              {/if}
+              {#if Number(latestNote.complete_count) > 0}
+                <span class="badge badge-success">{latestNote.complete_count} completed</span>
+              {/if}
+            </div>
+            <div class="mn-latest-card-btns">
+              <button class="btn btn-primary btn-sm" on:click={() => openNoteEditor(latestNote)}>
+                <i class="las la-eye"></i> View Notes
+              </button>
+              <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(latestNote)}>
+                <i class="las la-download"></i> Download
+              </button>
+            </div>
+          </div>
+        {:else}
+          <div class="mn-latest-empty">
+            <i class="las la-calendar-times"></i>
+            <p>No {meetingType === 'cpd' ? 'CPD records' : 'meetings'} yet.<br>Upload or paste above to get started.</p>
+          </div>
+        {/if}
       </div>
 
-      <!-- All notes (collapsible) -->
-      {#if !notesError}
-        <div class="mn-section mn-section-muted">
-          <button class="mn-concertina-btn" on:click={() => showAllNotes = !showAllNotes}>
-            <i class="las la-{showAllNotes ? 'angle-up' : 'angle-down'}"></i>
-            All {meetingType === 'cpd' ? 'CPD Records' : 'Meeting Notes'} ({notes.length})
-          </button>
-
-          {#if showAllNotes}
-            {#if notes.length === 0}
-              <p class="mn-empty mn-table-mt">Nothing here yet.</p>
-            {:else}
-              <div class="mn-notes-list mn-table-mt">
-                {#each notes as note (note.id)}
-                  <div class="mn-note-card">
-                    {#if editingNoteId === note.id}
-                      <div class="mn-note-edit-form">
-                        <div class="form-row-3">
-                          <div class="form-group form-group-wide">
-                            <label>Title</label>
-                            <input type="text" class="form-input" bind:value={noteEditForm.title} />
-                          </div>
-                          <div class="form-group">
-                            <label>Date</label>
-                            <input type="date" class="form-input" bind:value={noteEditForm.meeting_date} />
-                          </div>
-                          <div class="form-group">
-                            <label>Attendees</label>
-                            <input type="text" class="form-input" bind:value={noteEditForm.attendees_text} />
-                          </div>
-                        </div>
-                        <div class="mn-form-footer">
-                          <button class="btn btn-secondary btn-sm" on:click={() => editingNoteId = null}>Cancel</button>
-                          <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(note.id)}>Save</button>
-                        </div>
-                      </div>
-                    {:else}
-                      <div class="mn-note-info">
-                        <div class="mn-note-meta">
-                          <span class="mn-note-title">{note.title}</span>
-                          {#if note.meeting_date}<span class="mn-cell-muted">{formatDate(note.meeting_date)}</span>{/if}
-                          {#if note.attendees_text}<span class="mn-cell-dim">{note.attendees_text}</span>{/if}
-                        </div>
-                        <div class="mn-note-badges-row">
-                          {#if Number(note.pending_count) > 0}
-                            <span class="badge badge-warning">{note.pending_count} open</span>
-                          {/if}
-                          {#if Number(note.complete_count) > 0}
-                            <span class="badge badge-success">{note.complete_count} done</span>
-                          {/if}
-                        </div>
-                      </div>
-                      <div class="mn-note-actions">
-                        <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
-                          <i class="las la-eye"></i> View
-                        </button>
-                        <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)}>
-                          <i class="las la-file-alt"></i> {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
-                        </button>
-                        <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
-                          <i class="las la-download"></i> Download
-                        </button>
-                        <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(note)} title="Edit details">
-                          <i class="las la-pen"></i>
-                        </button>
-                        <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete">
-                          <i class="las la-trash"></i>
-                        </button>
-                      </div>
-                    {/if}
-
-                    {#if expandedTranscripts.has(note.id)}
-                      <div class="mn-transcript">
-                        {#if transcriptData[note.id]?.loading}
-                          <span class="mn-spinner-blue"></span> Loading transcript…
-                        {:else if transcriptData[note.id]?.error}
-                          <span class="mn-error-sm">{transcriptData[note.id].error}</span>
-                        {:else if transcriptData[note.id]?.text}
-                          <pre class="mn-transcript-text">{transcriptData[note.id].text}</pre>
-                        {/if}
-                      </div>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          {/if}
-        </div>
-      {/if}
-      </div>
-
-    {/if}
+    </div>
+    </div>
     </div><!-- end workspace-body -->
   </div><!-- end workspace-container -->
 
@@ -1033,32 +1076,59 @@
         </div>
       </div>
 
-      <div class="mn-editor-body">
-        <RichTextEditor
-          bind:this={richTextEditor}
-          content={editorInitialHtml}
-          placeholder="Meeting summary…"
-          fullHeight={true}
-        />
-      </div>
+      {#if editorSaved}
+        <!-- Project notes only — post-save hand-off to the Issues Tracker draft flow -->
+        <div class="mn-editor-body mn-review-body">
+          <div class="mn-issues-prompt">
+            <span class="mn-issues-prompt-text"><i class="las la-list-alt"></i> Saved. Add "{editorNote.title}" to the Project Tracker?</span>
+            <div class="mn-issues-prompt-actions">
+              <button class="btn btn-primary btn-sm" on:click={editorAddToTracker}>
+                <i class="las la-magic"></i> Yes, draft from this note
+              </button>
+              <button class="btn btn-ghost btn-sm" on:click={closeNoteEditor}>No, done</button>
+            </div>
+          </div>
+        </div>
+      {:else}
+        <div class="mn-editor-body">
+          <RichTextEditor
+            bind:this={richTextEditor}
+            content={editorInitialHtml}
+            placeholder="Meeting summary…"
+            fullHeight={true}
+          />
+        </div>
 
-      <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
-          {editorIsNew ? 'Skip actions' : 'Close'}
-        </button>
-        <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving}>
-          {#if editorSaving}
-            <span class="mn-spinner"></span> Saving…
-          {:else if editorIsNew}
-            <i class="las la-check"></i> Save &amp; accept actions
-          {:else}
-            <i class="las la-save"></i> Save changes
-          {/if}
-        </button>
-      </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
+            {editorIsNew ? 'Skip actions' : 'Close'}
+          </button>
+          <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving}>
+            {#if editorSaving}
+              <span class="mn-spinner"></span> Saving…
+            {:else if editorIsNew}
+              <i class="las la-check"></i> Save &amp; accept actions
+            {:else}
+              <i class="las la-save"></i> Save changes
+            {/if}
+          </button>
+        </div>
+      {/if}
 
     </div>
   </div>
+{/if}
+
+<!-- Tracker-draft hop — project notes only -->
+{#if trackerDraft}
+  <AddActionModal
+    bind:show={showDraftIssuesModal}
+    projectId={trackerDraft.projectId}
+    initialMode="meeting-notes"
+    preselectedTranscriptId={trackerDraft.transcriptId}
+    on:done={() => { showDraftIssuesModal = false; trackerDraft = null; }}
+    on:close={() => { showDraftIssuesModal = false; trackerDraft = null; }}
+  />
 {/if}
 
 <style>
@@ -1240,25 +1310,6 @@
   .mn-latest-empty i { font-size: 1.5rem; }
   .mn-latest-empty p { font-size: 0.8rem; margin: 0; line-height: 1.4; }
 
-  /* ── Sections ──────────────────────────────────────────────────────────────── */
-  .mn-section { background: var(--color-slate-50); border: 1px solid var(--color-slate-200); border-radius: 8px; padding: 1rem 1.25rem; }
-  .mn-section-muted { background: var(--color-slate-50); }
-
-  .mn-concertina-btn {
-    background: none; border: none; cursor: pointer;
-    font-size: 0.875rem; font-weight: 600; color: var(--color-slate-600);
-    display: flex; align-items: center; gap: 0.4rem; padding: 0; font-family: inherit;
-  }
-  .mn-concertina-btn:hover { color: var(--color-slate-800); }
-
-  /* ── Note cards ────────────────────────────────────────────────────────────── */
-  .mn-notes-list { display: flex; flex-direction: column; gap: 0.5rem; }
-  .mn-note-card { background: var(--color-white); border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.75rem 1rem; }
-  .mn-note-info { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
-  .mn-note-meta { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; }
-  .mn-note-title { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); }
-  .mn-note-badges-row { display: flex; gap: 0.35rem; align-items: center; flex-shrink: 0; }
-  .mn-note-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-top: 0.6rem; }
   .mn-note-edit-form { display: flex; flex-direction: column; gap: 0.6rem; }
 
   /* ── Stream ────────────────────────────────────────────────────────────────── */
@@ -1345,9 +1396,7 @@
   .form-input:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
 
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-  .form-row-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.75rem; }
   .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
-  .form-group-wide { grid-column: 1 / -1; }
   .form-group label { font-size: 0.8rem; font-weight: 500; color: var(--color-slate-700); }
 
   .mn-form-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
@@ -1372,10 +1421,8 @@
   .mn-paste { min-height: 72px; }
 
   /* ── States ────────────────────────────────────────────────────────────────── */
-  .mn-empty { color: var(--color-slate-400); font-size: 0.875rem; padding: 0.5rem 0; margin: 0; }
   .mn-error { background: var(--color-red-50); border: 1px solid var(--color-red-200); border-radius: var(--radius-md); padding: 0.6rem 0.85rem; color: var(--color-red-800); font-size: 0.875rem; }
   .mn-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--color-slate-500); font-size: 0.875rem; padding: 2rem; justify-content: center; }
-  .mn-table-mt { margin-top: 0.75rem; }
 
   /* ── Transcript ────────────────────────────────────────────────────────────── */
   .mn-transcript {
@@ -1451,6 +1498,17 @@
   .mn-editor-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .mn-editor-body :global(.rich-text-editor) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .mn-editor-body :global(.editor-content) { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+
+  .mn-review-body { padding: 1.25rem 1.5rem; }
+  .mn-issues-prompt {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.75rem; flex-wrap: wrap;
+    background: var(--color-violet-50); border: 1px solid var(--color-violet-200);
+    border-radius: 8px; padding: 0.6rem 0.85rem;
+  }
+  .mn-issues-prompt-text { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 500; color: var(--color-violet-700); }
+  .mn-issues-prompt-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+  .mn-multi-project-note { font-size: 0.8125rem; color: var(--color-slate-600); margin: 0; }
 
   .modal-footer {
     display: flex; justify-content: flex-end; gap: 0.6rem;

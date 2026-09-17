@@ -165,10 +165,16 @@
         <h2>{project.project_name}</h2>
         <p class="project-id">Project ID: {project.project_id}</p>
       </div>
-      <button class="btn btn-primary" on:click={handleCreateNew}>
-        <i class="las la-plus"></i>
-        Create New Deliverable
-      </button>
+      <div class="panel-header-actions">
+        <button class="btn btn-secondary" on:click={loadData} title="Reload deliverables list">
+          <i class="las la-sync"></i>
+          Refresh
+        </button>
+        <button class="btn btn-primary" on:click={handleCreateNew}>
+          <i class="las la-plus"></i>
+          Create New Deliverable
+        </button>
+      </div>
     </div>
 
     <div class="deliverables-section">
@@ -351,6 +357,11 @@
     padding: 1.5rem;
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-slate-200);
+  }
+
+  .panel-header-actions {
+    display: flex;
+    gap: 0.75rem;
   }
 
   .project-info h2 {
