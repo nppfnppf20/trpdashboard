@@ -1,5 +1,4 @@
-import { callLLM, parseJSON, resolveProvider, noEmDash } from './llm.shared.js';
-import { chunkText } from './parser.service.js';
+import { callLLM, parseJSON, resolveProvider, noEmDash, buildSequentialBatches } from './llm.shared.js';
 
 // One-off, AI-assisted bulk extraction of the NPPF's own policies into the
 // canonical library (admin_console.nppf_policies) — see [[project_nppf_policy_bank]].
@@ -38,27 +37,13 @@ Respond with JSON only — no markdown, no explanation:
   ]
 }`;
 
-const RAW_CHUNKS_PER_BATCH = 4; // chunkText's chunks are ~6,000 chars each, so ~24,000 chars/batch
-const BATCH_OVERLAP = 1;        // re-send the previous batch's last chunk so boundary policies aren't split
-const MAX_BATCHES = 15;         // safety cap (~360,000 chars) — comfortably covers a full NPPF-sized document
-
-function buildBatches(rawText) {
-  const chunks = chunkText(rawText || '');
-  const batches = [];
-  for (let i = 0; i < chunks.length && batches.length < MAX_BATCHES; i += RAW_CHUNKS_PER_BATCH) {
-    const start = Math.max(0, i - BATCH_OVERLAP);
-    batches.push(chunks.slice(start, i + RAW_CHUNKS_PER_BATCH).join('\n\n'));
-  }
-  return batches;
-}
-
 /**
  * @param {string} text - parsed NPPF document text
  * @param {string|null} provider - explicit 'anthropic'/'openai' override, or null for the central setting
  * @returns {Promise<{policies: Array<{policy_reference:string, policy_name:string, policy_text:string}>, warning:string|null}|null>}
  */
 export async function extractNppfPoliciesFromText(text, provider = null) {
-  const batches = buildBatches(text);
+  const { batches, warningMessage: truncationWarning } = buildSequentialBatches(text);
   if (!batches.length) return null;
 
   const resolvedProvider = await resolveProvider('nppf_extraction', provider);
@@ -108,12 +93,14 @@ export async function extractNppfPoliciesFromText(text, provider = null) {
   // Always return an object once we've actually tried (not null) so the
   // caller can tell "ran but found nothing" apart from "couldn't run at
   // all" — the two look identical to the user otherwise.
+  const failureWarning = failedBatches > 0
+    ? `${failedBatches} of ${batches.length} document section(s) could not be processed — some policies may be missing. Check the source document directly for that section.`
+    : !policies.length
+      ? `Processed ${batches.length} section(s) of the document but found no decision-making policies in any of them — check the backend server console for a per-section breakdown.`
+      : null;
+
   return {
     policies,
-    warning: failedBatches > 0
-      ? `${failedBatches} of ${batches.length} document section(s) could not be processed — some policies may be missing. Check the source document directly for that section.`
-      : !policies.length
-        ? `Processed ${batches.length} section(s) of the document but found no decision-making policies in any of them — check the backend server console for a per-section breakdown.`
-        : null,
+    warning: [truncationWarning, failureWarning].filter(Boolean).join(' ') || null,
   };
 }

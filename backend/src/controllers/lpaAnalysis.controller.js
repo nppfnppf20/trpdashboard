@@ -106,7 +106,10 @@ export async function createPolicy(req, res) {
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('createPolicy error:', err);
-    res.status(500).json({ error: 'Failed to create policy' });
+    // Postgres constraint-violation messages (unique/foreign-key/check) are
+    // safe to show the user and are the only way they'd know *why* a save
+    // failed — a bare "Failed to create policy" gives no way to fix it.
+    res.status(500).json({ error: err.message ? `Failed to create policy: ${err.message}` : 'Failed to create policy' });
   }
 }
 

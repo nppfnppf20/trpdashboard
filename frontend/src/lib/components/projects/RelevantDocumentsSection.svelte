@@ -1,11 +1,13 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
   import {
     getPolicyDocuments,
     createPolicyDocument,
     updatePolicyDocument,
     deletePolicyDocument
   } from '$lib/api/policyDocuments.js';
+
+  const dispatch = createEventDispatcher();
 
   export let project;
   $: projectId = project?.id;
@@ -84,12 +86,13 @@
     try {
       const richSection = formSection === 'supplementary' || formSection === 'other';
       const isPlanSection = formSection === 'adopted' || formSection === 'emerging';
+      const datedSection = formSection === 'adopted' || richSection;
       const payload = {
         section: formSection,
         plan_name: form.plan_name.trim(),
         plan_type: isPlanSection ? form.plan_type : null,
-        year_adopted: formSection === 'adopted' && form.year_adopted ? parseInt(form.year_adopted) : null,
-        month_adopted: formSection === 'adopted' && form.month_adopted ? parseInt(form.month_adopted) : null,
+        year_adopted: datedSection && form.year_adopted ? parseInt(form.year_adopted) : null,
+        month_adopted: datedSection && form.month_adopted ? parseInt(form.month_adopted) : null,
         summary: richSection ? (form.summary.trim() || null) : null,
         relevance: richSection ? (form.relevance.trim() || null) : null
       };
@@ -101,6 +104,10 @@
         docs = [...docs, created];
       }
       cancel();
+      // Policies in the sibling Policy tab show this plan's name/id (Parent
+      // Plan chip, Extract Policy Wording's plan picker) — tell it to
+      // refresh rather than leaving it stale until the page reloads.
+      dispatch('changed');
     } catch (err) {
       formError = err.message;
     } finally {
@@ -113,6 +120,7 @@
     try {
       await deletePolicyDocument(doc.id);
       docs = docs.filter(d => d.id !== doc.id);
+      dispatch('changed');
     } catch (err) {
       alert(err.message);
     }
@@ -149,6 +157,9 @@
     {#each SECTIONS as sec}
       {#if showForm && formSection === sec.key}
         {@const rich = sec.key === 'supplementary' || sec.key === 'other'}
+        {@const dated = sec.key === 'adopted' || rich}
+        <div class="rd-modal-backdrop" on:click|self={cancel} role="presentation">
+        <div class="rd-modal">
         <div class="rd-form-card">
           <div class="form-title">
             {editingId ? 'Edit Entry' : 'Add Entry'}
@@ -173,10 +184,10 @@
             </div>
           {/if}
 
-          {#if sec.key === 'adopted'}
+          {#if dated}
             <div class="form-row two-col">
               <div class="field">
-                <label>Year Adopted</label>
+                <label>Year Adopted <span class="optional">(optional)</span></label>
                 <input type="number" bind:value={form.year_adopted} placeholder="e.g. 2021" min="1900" max="2100" />
               </div>
               <div class="field">
@@ -212,6 +223,8 @@
             </button>
           </div>
         </div>
+        </div>
+        </div>
       {/if}
       <div class="card rd-card">
         <div class="rd-card-header">
@@ -226,12 +239,13 @@
         {:else}
           {@const rich = sec.key === 'supplementary' || sec.key === 'other'}
           {@const isPlanSection = sec.key === 'adopted' || sec.key === 'emerging'}
+          {@const dated = sec.key === 'adopted' || rich}
           <table class="rd-table">
             <thead>
               <tr>
                 <th>{rich ? 'Name' : 'Plan Name'}</th>
                 {#if isPlanSection}<th>Plan Type</th>{/if}
-                {#if sec.key === 'adopted'}<th>Adopted</th>{/if}
+                {#if dated}<th>Adopted</th>{/if}
                 {#if rich}<th>Summary</th><th>Relevance to Project</th>{/if}
                 <th></th>
               </tr>
@@ -243,7 +257,7 @@
                   {#if isPlanSection}
                     <td class="cell-year">{doc.plan_type === 'neighbourhood' ? 'Neighbourhood Plan' : 'Local Plan'}</td>
                   {/if}
-                  {#if sec.key === 'adopted'}
+                  {#if dated}
                     <td class="cell-year">{doc.year_adopted ? (doc.month_adopted ? `${MONTH_NAMES[doc.month_adopted - 1]} ${doc.year_adopted}` : doc.year_adopted) : '—'}</td>
                   {/if}
                   {#if rich}
@@ -305,7 +319,25 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Form */
+  /* Form modal — Add/Edit opens centered above everything rather than
+     inline, so it's visible regardless of scroll position. */
+  .rd-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 1rem;
+  }
+  .rd-modal {
+    width: 95%;
+    max-width: 640px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
   .rd-form-card {
     background: var(--color-purple-50);
     border: 1px solid var(--color-violet-200);
@@ -314,6 +346,10 @@
     display: flex;
     flex-direction: column;
     gap: 0.65rem;
+    overflow-y: auto;
+    min-height: 0;
+    width: 100%;
+    box-shadow: 0 20px 60px var(--overlay-bg);
   }
   .form-title {
     font-size: 0.85rem;

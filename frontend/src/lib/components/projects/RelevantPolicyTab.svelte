@@ -95,6 +95,14 @@
     planDocs = await getPolicyDocuments(projectId);
   }
 
+  // Called by the parent when the sibling Development Plans tab (which owns
+  // its own separate copy of this data) adds/edits/deletes a plan directly —
+  // a fuller reload than refreshPlanDocs since existing policies' plan_name
+  // chips (from the listPolicies JOIN) also need to pick up the change.
+  export async function refresh() {
+    await load();
+  }
+
   // Called by the parent to hand off extracted policies (with plan_id already
   // matched against the plan documents it just created) into the existing
   // bulk-review table, so the user reviews/edits everything before saving.
@@ -281,7 +289,7 @@
 
   function openWordingModal() {
     showWordingModal = true;
-    wordingStep = 'plan';
+    wordingStep = plansWithPolicies.length > 0 ? 'plan' : 'no-plans';
     wordingPlanId = '';
     wordingMode = 'file';
     wordingFile = null;
@@ -426,29 +434,47 @@
     bulkRows = bulkRows.map(r => ({ ...r, policy_type: type }));
   }
 
+  // Settles each row independently rather than failing the whole batch on
+  // one bad row (Promise.all would reject on the first failure while the
+  // others had already been inserted — leaving the user with a generic
+  // error and no way to tell which rows actually saved). Successful rows
+  // are removed from the table; failed ones stay with their own error so
+  // they can be fixed and retried without re-entering everything else.
   async function saveAll() {
     const toSave = bulkRows.filter(r => r.policy_name.trim());
     if (toSave.length === 0) { bulkError = 'At least one policy name is required'; return; }
     bulkSaving = true;
     bulkError = null;
-    try {
-      await Promise.all(toSave.map(r => createPolicy(projectId, {
-        policy_reference: r.policy_reference.trim() || null,
-        policy_name: r.policy_name.trim(),
-        policy_type: r.policy_type,
-        policy_text: r.policy_text.trim() || null,
-        relevant_supporting_text: r.relevant_supporting_text.trim() || null,
-        notes: r.notes.trim() || null,
-        is_key_policy: r.is_key_policy,
-        plan_id: r.plan_id || null
-      })));
-      await load();
-      closeBulkModal();
-    } catch (err) {
-      bulkError = err.message;
-    } finally {
-      bulkSaving = false;
+    const results = await Promise.allSettled(toSave.map(r => createPolicy(projectId, {
+      policy_reference: r.policy_reference.trim() || null,
+      policy_name: r.policy_name.trim(),
+      policy_type: r.policy_type,
+      policy_text: r.policy_text.trim() || null,
+      relevant_supporting_text: r.relevant_supporting_text.trim() || null,
+      notes: r.notes.trim() || null,
+      is_key_policy: r.is_key_policy,
+      plan_id: r.plan_id || null
+    })));
+
+    const failed = [];
+    toSave.forEach((r, i) => {
+      const result = results[i];
+      if (result.status === 'rejected') {
+        failed.push({ ...r, saveError: result.reason?.message || 'Failed to save' });
+      }
+    });
+
+    const succeededCount = toSave.length - failed.length;
+    if (failed.length) {
+      bulkRows = [...failed, ...bulkRows.filter(r => !r.policy_name.trim())];
+      bulkError = `${succeededCount} of ${toSave.length} saved. ${failed.length} failed — see the error under each row below.`;
+    } else {
+      bulkError = null;
     }
+
+    if (succeededCount > 0) await load();
+    bulkSaving = false;
+    if (!failed.length) closeBulkModal();
   }
 </script>
 
@@ -475,11 +501,9 @@
         <i class="las {showPrecedents ? 'la-angle-up' : 'la-angle-down'}"></i>
       </button>
       <div class="tab-header-actions">
-        {#if plansWithPolicies.length > 0}
-          <button class="btn-add-multiple" on:click={openWordingModal}>
-            <i class="las la-file-alt"></i> Extract Policy Wording
-          </button>
-        {/if}
+        <button class="btn-add-multiple" on:click={openWordingModal}>
+          <i class="las la-file-alt"></i> Extract Policy Wording
+        </button>
         <button class="btn-add-multiple" class:btn-select-active={selectMode} on:click={toggleSelectMode}>
           <i class="las la-check-square"></i> {selectMode ? 'Cancel Select' : 'Select'}
         </button>
@@ -568,6 +592,8 @@
     {/if}
 
     {#if showForm}
+      <div class="bulk-backdrop" on:click|self={cancel} role="presentation">
+        <div class="bulk-modal policy-form-modal">
       <div class="policy-form-card">
         <div class="form-title">{editingId ? 'Edit Policy' : 'Add Policy'}</div>
 
@@ -660,6 +686,8 @@
           </button>
         </div>
       </div>
+        </div>
+      </div>
     {/if}
 
     {#if policies.length > 0}
@@ -734,6 +762,9 @@
           <div class="bulk-row-card">
             <div class="bulk-row-number">#{i + 1}</div>
             <div class="bulk-row-fields">
+              {#if row.saveError}
+                <div class="bulk-row-error"><i class="las la-exclamation-triangle"></i> {row.saveError}</div>
+              {/if}
               <div class="bulk-form-row two-col">
                 <div class="field">
                   <label>Policy Reference</label>
@@ -828,7 +859,18 @@
       </div>
 
       <div class="bulk-modal-body">
-        {#if wordingStep === 'plan'}
+        {#if wordingStep === 'no-plans'}
+          <p class="wording-hint">
+            This works one development plan at a time: pick a plan, re-upload its document, and the AI fills in
+            verbatim wording for that plan's saved policies. Right now none of your saved policies have a
+            <strong>Parent Plan</strong> set, so there's nothing to run it against yet.
+          </p>
+          <p class="wording-hint">
+            To use this, open a policy (or add a new one) and set its <strong>Parent Plan</strong> field — for
+            national/NPPF policies, use the <strong>Import from NPPF Library</strong> dropdown instead, which fills
+            in the wording directly without needing a document at all.
+          </p>
+        {:else if wordingStep === 'plan'}
           <p class="wording-hint">
             Choose the development plan whose policies you want to fill in, then re-upload that plan's document.
             The AI will find each saved policy's operative wording in it, verbatim, excluding any reasoned
@@ -927,14 +969,16 @@
           <span></span>
         {/if}
         <div class="bulk-footer-actions">
-          <button class="btn-cancel" on:click={closeWordingModal} disabled={wordingExtracting || wordingSaving}>Cancel</button>
+          <button class="btn-cancel" on:click={closeWordingModal} disabled={wordingExtracting || wordingSaving}>
+            {wordingStep === 'no-plans' ? 'Close' : 'Cancel'}
+          </button>
           {#if wordingStep === 'plan'}
             <button class="btn-save" on:click={chooseWordingPlan} disabled={!wordingPlanId}>Next</button>
           {:else if wordingStep === 'upload'}
             <button class="btn-save" on:click={runWordingExtract} disabled={wordingExtracting || (wordingMode === 'file' ? !wordingFile : !wordingText.trim())}>
               {wordingExtracting ? 'Extracting…' : 'Extract'}
             </button>
-          {:else}
+          {:else if wordingStep === 'review'}
             <button class="btn-save" on:click={saveWording} disabled={wordingSaving}>
               {wordingSaving ? 'Saving…' : 'Save Selected'}
             </button>
@@ -1185,6 +1229,10 @@
   .btn-add:hover { background: var(--color-purple-700); }
 
   /* Form */
+  .policy-form-modal {
+    width: 95%;
+    max-width: 640px;
+  }
   .policy-form-card {
     background: var(--color-purple-50);
     border: 1px solid var(--color-violet-200);
@@ -1193,6 +1241,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    overflow-y: auto;
+    min-height: 0;
   }
   .form-title {
     font-size: 0.9rem;
@@ -1478,6 +1528,18 @@
     border-radius: 10px;
     padding: 1rem;
     position: relative;
+  }
+
+  .bulk-row-error {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--color-red-600);
+    background: var(--color-red-50);
+    border: 1px solid var(--color-red-200);
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
   }
 
   .bulk-row-number {

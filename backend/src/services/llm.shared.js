@@ -381,6 +381,46 @@ export function buildFullDocumentBlock(text) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sequential batching — for extractions that need the WHOLE document covered
+// (not just the first ANALYSE_CHUNKS chunks), where a single call also risks
+// exceeding the model's output token cap because many items' full text is
+// being requested at once (e.g. verbatim wording for every policy in a long
+// plan document). Splits into overlapping ~24,000-char sections; the caller
+// runs one LLM call per section, sequentially, and merges results itself —
+// keeps each call's input and output small regardless of source document
+// length. See [[project_nppf_policy_bank]].
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const BATCH_RAW_CHUNKS_PER_BATCH = 4; // chunkText's chunks are ~6,000 chars each, so ~24,000 chars/batch
+export const BATCH_OVERLAP = 1;              // re-send the previous batch's last chunk so boundary items aren't split
+export const BATCH_MAX_BATCHES = 25;         // safety cap (~600,000 chars) — covers dense 150-200 page planning documents
+
+/**
+ * @returns {{ batches: string[], warningMessage: string|null }} warningMessage is
+ * set when the document exceeds BATCH_MAX_BATCHES and had to be cut off — the
+ * caller should surface it to the user rather than silently dropping the rest.
+ */
+export function buildSequentialBatches(rawText) {
+  const chunks = chunkText(rawText || '');
+  const batches = [];
+  for (let i = 0; i < chunks.length && batches.length < BATCH_MAX_BATCHES; i += BATCH_RAW_CHUNKS_PER_BATCH) {
+    const start = Math.max(0, i - BATCH_OVERLAP);
+    batches.push(chunks.slice(start, i + BATCH_RAW_CHUNKS_PER_BATCH).join('\n\n'));
+  }
+
+  const coveredChunks = Math.min(chunks.length, batches.length * BATCH_RAW_CHUNKS_PER_BATCH);
+  const truncated = chunks.length > coveredChunks;
+  const wordsOf = n => Math.round(n * 6000 / 5).toLocaleString();
+
+  return {
+    batches,
+    warningMessage: truncated
+      ? `This document is very long (approx. ${wordsOf(chunks.length)} words) — only the first ~${wordsOf(coveredChunks)} words were processed. For full coverage, split the document and run the remainder as a separate upload.`
+      : null,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Extract points — shared by appeal tool and planning app (two modes)
 // ─────────────────────────────────────────────────────────────────────────────
 

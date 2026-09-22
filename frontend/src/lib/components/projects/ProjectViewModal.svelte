@@ -767,12 +767,13 @@
     extractError = null;
     try {
       const toCreate = stagedPlans.filter(p => p.include && p.plan_name.trim());
+      const datedSection = p => p.section === 'adopted' || p.section === 'supplementary' || p.section === 'other';
       await Promise.all(toCreate.map(p => createPolicyDocument(projectId, {
         section: p.section,
         plan_name: p.plan_name.trim(),
         plan_type: (p.section === 'adopted' || p.section === 'emerging') ? p.plan_type : null,
-        year_adopted: p.section === 'adopted' ? (p.year_adopted || null) : null,
-        month_adopted: p.section === 'adopted' ? (p.month_adopted || null) : null
+        year_adopted: datedSection(p) ? (p.year_adopted || null) : null,
+        month_adopted: datedSection(p) ? (p.month_adopted || null) : null
       })));
 
       await Promise.all([relevantDocsRef?.refresh(), relevantPolicyRef?.refreshPlanDocs()]);
@@ -1382,7 +1383,7 @@
                 <div class="split-card-body split-card-body--scroll">
                   {#if !policyFormOpen}
                     <div class="left-panel-section-divider">Relevant Documents</div>
-                    <RelevantDocumentsSection project={projectData} bind:this={relevantDocsRef} />
+                    <RelevantDocumentsSection project={projectData} bind:this={relevantDocsRef} on:changed={() => relevantPolicyRef?.refresh()} />
                     <div class="left-panel-section-divider">Relevant Planning Policy</div>
                   {/if}
                   <RelevantPolicyTab project={projectData} bind:this={relevantPolicyRef} on:formopen={() => policyFormOpen = true} on:formclose={() => policyFormOpen = false} />
@@ -1448,7 +1449,7 @@
   <div class="extract-backdrop" on:click|self={closeExtractModal} role="presentation">
     <div class="extract-modal">
       <div class="extract-modal-header">
-        <h3>{extractStep === 'input' ? 'Extract Policies from Document' : 'Development Plans Found'}</h3>
+        <h3>{extractStep === 'input' ? 'Extract Policies from Document' : 'Plans & Guidance Documents Found'}</h3>
         <button class="extract-close-btn" on:click={closeExtractModal}>&times;</button>
       </div>
 
@@ -1473,8 +1474,9 @@
           {/if}
         {:else}
           <p class="extract-hint">
-            Found {stagedPlans.length} development plan document{stagedPlans.length === 1 ? '' : 's'} referenced in this document.
-            Untick any you don't want added to the project's Development Plan list, or edit their details, then continue to review the policies.
+            Found {stagedPlans.length} document{stagedPlans.length === 1 ? '' : 's'} referenced (adopted/emerging plans, supplementary guidance, or other material considerations).
+            Check each one's <strong>type</strong> — the AI's guess isn't always right, e.g. supplementary guidance or other national documents can get mislabelled as an adopted plan.
+            Untick any you don't want added to the project's Development Plans list, correct their name/type/date as needed, then continue to review the policies.
           </p>
 
           <div class="staged-plans-list">
@@ -1494,8 +1496,9 @@
                     <option value="neighbourhood">Neighbourhood Plan</option>
                   </select>
                 {/if}
-                {#if plan.section === 'adopted'}
-                  <input type="number" class="staged-plan-year" bind:value={plan.year_adopted} placeholder="Year" disabled={!plan.include} />
+                {#if plan.section === 'adopted' || plan.section === 'supplementary' || plan.section === 'other'}
+                  <input type="number" class="staged-plan-year" bind:value={plan.year_adopted} placeholder="Year" min="1900" max="2100" disabled={!plan.include} />
+                  <input type="number" class="staged-plan-month" bind:value={plan.month_adopted} placeholder="Month" min="1" max="12" disabled={!plan.include} />
                 {/if}
               </div>
             {/each}
@@ -2398,6 +2401,8 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     background: var(--color-purple-50);
     border: 1px solid var(--color-violet-200);
     border-radius: 8px;
@@ -2407,8 +2412,12 @@
   .staged-plan-row input[type="checkbox"] {
     width: 16px; height: 16px; accent-color: var(--color-purple-600); cursor: pointer; flex-shrink: 0;
   }
-  .staged-plan-name { flex: 1; min-width: 0; }
+  /* min-width keeps the name readable — if the row's other fields don't
+     leave room, .staged-plan-row scrolls horizontally rather than squeezing
+     the name down to nothing. */
+  .staged-plan-name { flex: 1 1 auto; min-width: 14rem; }
   .staged-plan-year { width: 5.5rem; flex-shrink: 0; }
+  .staged-plan-month { width: 5.5rem; flex-shrink: 0; }
   .staged-plan-row select { flex-shrink: 0; }
 
   .extract-modal input[type="text"],

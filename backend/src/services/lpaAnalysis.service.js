@@ -6,8 +6,8 @@
 
 import { chunkText } from './parser.service.js';
 import {
-  callClaude, parseJSON, MAX_CHUNKS, MODEL_SONNET, buildFullDocumentBlock, checkDocumentSize,
-  PLANNING_TIER_LABELS, PLANNING_TIER_ORDER
+  callClaude, parseJSON, MAX_CHUNKS, MODEL_SONNET,
+  PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, buildSequentialBatches
 } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,15 +121,17 @@ const PLAN_TYPES = new Set(['local', 'neighbourhood']);
 
 const POLICY_EXTRACTION_SYSTEM = `You are a specialist planning consultant extracting planning policies and development plan documents from a planning document \
 (e.g. a planning statement, appeal statement, stage one review, or committee report) so they can be logged in a project's policy tracker. \
-Accuracy is critical: where the document quotes a policy's wording, you must transcribe it EXACTLY as it appears, character for character, \
-including punctuation and capitalisation. Never paraphrase, summarise, correct, or invent policy wording. \
+This is an identification pass only: you are finding WHICH policies and plans are cited, not their wording. A document like a pre-application \
+letter or stage one review typically discusses, summarises, or briefly quotes a fragment of a policy while making a point about it — none of \
+that counts as the policy's full operative wording, and none of it should be recorded as such. The actual verbatim wording is captured later, \
+in a separate pass that reads the source plan document (or, for NPPF policies, pulled from a canonical library) — never by this one. \
 Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
 
-const POLICY_EXTRACTION_PROMPT = `Read the following document and extract two things so they can be added to a project's policy tracker:
+const POLICY_EXTRACTION_PROMPT = `The following is one section of a larger document (other sections are sent separately as their own requests) — extract two things found in THIS section, so they can be added to a project's policy tracker:
 1. Every distinct planning policy it cites, quotes, or discusses.
 2. Every development plan document, supplementary planning document, or other material consideration document it references (e.g. an adopted or emerging Local Plan, a Neighbourhood Plan, an SPD/SPG, or another material consideration such as the NPPF as a whole document).
 
-Document (shown as numbered chunks — note the chunk index each item is found in):
+Document section:
 <document>
 {{DOCUMENT}}
 </document>
@@ -138,81 +140,116 @@ For each distinct DOCUMENT/PLAN referenced, extract:
 - plan_name: the document's title as given, e.g. "Anytown District Local Plan", "Anytown Neighbourhood Plan", "Residential Design SPD"
 - section: one of "adopted" (an adopted/made Local or Neighbourhood Plan), "emerging" (a Local or Neighbourhood Plan not yet adopted/made, e.g. "emerging", "draft", "Regulation 19"), "supplementary" (SPD/SPG/design guide), "other" (anything else material, e.g. national guidance documents, technical standards)
 - plan_type: "local" or "neighbourhood" if section is "adopted" or "emerging" (otherwise null)
-- year_adopted: the adoption year as a number if given and section is "adopted" (otherwise null)
-- month_adopted: the adoption month as a number 1-12 if given (otherwise null)
-- source_chunk_index: the chunk index where this document is referenced
+- year_adopted: the year this document was adopted/made/published/issued, as a number, if given — applies to "adopted" plans, and equally to "supplementary" guidance (e.g. an SPD's adoption year) and "other" material considerations (e.g. a national guidance document's publication year). Null if not given, or if section is "emerging" (not yet adopted).
+- month_adopted: the month (1-12) this document was adopted/made/published/issued, as a number, if given — same scope as year_adopted. Null if not given.
 
 For each distinct POLICY you find, extract:
 - policy_reference: the policy's reference/number as given, e.g. "Policy H1", "NPPF Para 11", "Policy DM10" (null if the document doesn't give one)
 - policy_name: the policy's title/name as given in the document, or a short descriptive name if only a reference is given
 - policy_type: one of "national" (NPPF/NPPG/national guidance), "local" (adopted Local Plan), "neighbourhood" (Neighbourhood Plan), "supplementary" (SPD/SPG/design guide), "other"
-- policy_text: the policy wording VERBATIM, copied character-for-character from the document, complete and untruncated. If the document only references the policy by number/name without quoting its actual wording, leave this null — do NOT reconstruct or invent wording from general knowledge.
 - plan_name: the name of the parent plan/document this policy belongs to, exactly matching a "plan_name" from the plans list above where applicable (null if the policy is national/NPPF or has no identifiable parent document)
-- source_chunk_index: the chunk index where this policy appears
+
+Do NOT include a "policy_text" field, and do not attempt to record a policy's wording at all — not even if this section appears to quote a short fragment of one. This pass only identifies which policies exist; capturing their wording is a separate, later step that reads the actual source plan document.
 
 Rules:
-- Only extract policies and plans actually present in this document — never add ones you recognise from general knowledge that aren't cited here.
-- If the same policy or plan is referenced more than once, merge into a single entry using the fullest information available.
+- Only extract policies and plans actually present in THIS section — never add ones you recognise from general knowledge that aren't cited here.
+- If the same policy or plan is referenced more than once within this section, merge into a single entry using the fullest information available.
 - Skip vague references with no identifiable name (e.g. "relevant planning policies", "the development plan" with no document named).
 - Do not list the NPPF itself as a plan/document unless the document is being logged as a whole (e.g. "other") — individual NPPF paragraphs should just be policies with policy_type "national" and plan_name null.
 
 Respond ONLY with valid JSON, no markdown fences:
 {
   "plans": [
-    { "plan_name": "Anytown District Local Plan", "section": "adopted", "plan_type": "local", "year_adopted": 2021, "month_adopted": null, "source_chunk_index": 1 }
+    { "plan_name": "Anytown District Local Plan", "section": "adopted", "plan_type": "local", "year_adopted": 2021, "month_adopted": null },
+    { "plan_name": "Residential Design SPD", "section": "supplementary", "plan_type": null, "year_adopted": 2019, "month_adopted": 6 }
   ],
   "policies": [
-    { "policy_reference": "Policy H1", "policy_name": "Housing Delivery", "policy_type": "local", "policy_text": "exact verbatim wording, or null", "plan_name": "Anytown District Local Plan", "source_chunk_index": 2 }
+    { "policy_reference": "Policy H1", "policy_name": "Housing Delivery", "policy_type": "local", "plan_name": "Anytown District Local Plan" }
   ]
 }
 
-If none are found, return empty arrays.`;
+If none are found in this section, return empty arrays.`;
+
+// A plan/policy can turn up in more than one batch (partial mention in one
+// section, full detail in another, or simply repeated) — these merges keep
+// whichever version carries more information rather than just the first seen.
+function mergePlans(existing, incoming) {
+  const score = p => (p.year_adopted != null ? 1 : 0) + (p.month_adopted != null ? 1 : 0) + (p.plan_type != null ? 1 : 0);
+  return score(incoming) > score(existing) ? incoming : existing;
+}
+function mergePolicies(existing, incoming) {
+  if (!existing.policy_text && incoming.policy_text) return incoming;
+  return existing;
+}
 
 export async function extractPoliciesFromDocument(rawText) {
-  const sizeCheck = checkDocumentSize(rawText);
-  if (sizeCheck.status === 'rejected') {
-    const err = new Error(sizeCheck.warningMessage);
-    err.status = 400;
-    throw err;
+  const { batches, warningMessage: truncationWarning } = buildSequentialBatches(rawText);
+  if (!batches.length) return { policies: [], plans: [], sizeWarning: null };
+
+  const plansByKey = new Map();
+  const policiesByKey = new Map();
+  let failedBatches = 0;
+
+  // Sequential, not parallel: keeps each call's input and output small
+  // enough to stay well under the token caps, regardless of how long the
+  // source document is, and avoids firing many large calls at once.
+  for (let i = 0; i < batches.length; i++) {
+    const userPrompt = POLICY_EXTRACTION_PROMPT.replace('{{DOCUMENT}}', batches[i]);
+    let raw, parsed;
+    try {
+      raw = await callClaude(POLICY_EXTRACTION_SYSTEM, userPrompt, MODEL_SONNET, 12000);
+      parsed = parseJSON(raw);
+    } catch (err) {
+      console.error(`[extractPoliciesFromDocument] batch ${i + 1}/${batches.length} failed:`, err.message);
+      failedBatches++;
+      continue;
+    }
+
+    for (const p of (Array.isArray(parsed.plans) ? parsed.plans : [])) {
+      if (!p.plan_name?.trim()) continue;
+      const cleaned = {
+        plan_name: p.plan_name.trim(),
+        section: PLAN_SECTIONS.has(p.section) ? p.section : 'other',
+        plan_type: PLAN_TYPES.has(p.plan_type) ? p.plan_type : null,
+        year_adopted: Number.isInteger(p.year_adopted) ? p.year_adopted : null,
+        month_adopted: Number.isInteger(p.month_adopted) && p.month_adopted >= 1 && p.month_adopted <= 12 ? p.month_adopted : null
+      };
+      const key = cleaned.plan_name.toLowerCase();
+      const existing = plansByKey.get(key);
+      plansByKey.set(key, existing ? mergePlans(existing, cleaned) : cleaned);
+    }
+
+    for (const p of (Array.isArray(parsed.policies) ? parsed.policies : [])) {
+      if (!p.policy_name?.trim()) continue;
+      const cleaned = {
+        policy_reference: p.policy_reference?.trim() || '',
+        policy_name: p.policy_name.trim(),
+        policy_type: POLICY_TYPES.has(p.policy_type) ? p.policy_type : 'other',
+        // Always empty here regardless of what the model returns — this pass
+        // identifies policies, it never records wording (see prompt above).
+        // National ones get filled from the NPPF library afterward; others
+        // get filled later by the dedicated wording-extraction pass.
+        policy_text: '',
+        relevant_supporting_text: '',
+        notes: '',
+        is_key_policy: false,
+        plan_name: p.plan_name?.trim() || null
+      };
+      const key = `${cleaned.policy_reference.toLowerCase()}|${cleaned.policy_name.toLowerCase()}`;
+      const existing = policiesByKey.get(key);
+      policiesByKey.set(key, existing ? mergePolicies(existing, cleaned) : cleaned);
+    }
   }
 
-  const docBlock = buildFullDocumentBlock(rawText);
-  const userPrompt = POLICY_EXTRACTION_PROMPT.replace('{{DOCUMENT}}', docBlock);
+  const failureWarning = failedBatches > 0
+    ? `${failedBatches} of ${batches.length} document section(s) could not be processed — some policies or plans may be missing. Check the source document directly for that section.`
+    : null;
 
-  const raw = await callClaude(POLICY_EXTRACTION_SYSTEM, userPrompt, MODEL_SONNET, 8000);
-
-  let parsed;
-  try {
-    parsed = parseJSON(raw);
-  } catch (err) {
-    console.error('[extractPoliciesFromDocument] JSON parse failed. Raw (first 400):', raw.slice(0, 400));
-    throw new Error('LLM returned an unparseable response while extracting policies');
-  }
-
-  const plans = (Array.isArray(parsed.plans) ? parsed.plans : [])
-    .filter(p => p.plan_name?.trim())
-    .map(p => ({
-      plan_name: p.plan_name.trim(),
-      section: PLAN_SECTIONS.has(p.section) ? p.section : 'other',
-      plan_type: PLAN_TYPES.has(p.plan_type) ? p.plan_type : null,
-      year_adopted: Number.isInteger(p.year_adopted) ? p.year_adopted : null,
-      month_adopted: Number.isInteger(p.month_adopted) && p.month_adopted >= 1 && p.month_adopted <= 12 ? p.month_adopted : null
-    }));
-
-  const policies = (Array.isArray(parsed.policies) ? parsed.policies : [])
-    .filter(p => p.policy_name?.trim())
-    .map(p => ({
-      policy_reference: p.policy_reference?.trim() || '',
-      policy_name: p.policy_name.trim(),
-      policy_type: POLICY_TYPES.has(p.policy_type) ? p.policy_type : 'other',
-      policy_text: p.policy_text?.trim() || '',
-      relevant_supporting_text: '',
-      notes: '',
-      is_key_policy: false,
-      plan_name: p.plan_name?.trim() || null
-    }));
-
-  return { policies, plans, sizeWarning: sizeCheck.warningMessage };
+  return {
+    policies: [...policiesByKey.values()],
+    plans: [...plansByKey.values()],
+    sizeWarning: [truncationWarning, failureWarning].filter(Boolean).join(' ') || null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,12 +274,12 @@ If a listed policy cannot be found in this document at all (wrong document, or o
 
 Never use an em dash (—); use a comma, colon, or rewrite the sentence instead.`;
 
-const POLICY_WORDING_PROMPT = `Find and extract the verbatim operative wording of each of the following policies from the document below.
+const POLICY_WORDING_PROMPT = `The following is one section of a larger document (other sections are sent separately as their own requests) — find and extract the verbatim operative wording of any of the listed policies that appear in THIS section. Most policies will not appear in any given section — that's expected, return null for those.
 
 Policies to find:
 {{POLICY_LIST}}
 
-Document:
+Document section:
 <document>
 {{DOCUMENT}}
 </document>
@@ -250,7 +287,7 @@ Document:
 Respond ONLY with valid JSON, no markdown fences:
 {
   "results": [
-    { "index": 1, "wording": "verbatim operative policy wording, or null if this policy is not found in this document" }
+    { "index": 1, "wording": "verbatim operative policy wording, or null if this policy is not found in THIS section" }
   ]
 }
 Return exactly one result per listed policy, in the same order, using its index number.`;
@@ -261,42 +298,53 @@ Return exactly one result per listed policy, in the same order, using its index 
  * @returns {Promise<{results: Array<{policy_id:number, wording:string|null}>, sizeWarning:string|null}>}
  */
 export async function extractPolicyWordingFromDocument(policies, rawText) {
-  const sizeCheck = checkDocumentSize(rawText);
-  if (sizeCheck.status === 'rejected') {
-    const err = new Error(sizeCheck.warningMessage);
-    err.status = 400;
-    throw err;
-  }
+  const { batches, warningMessage: truncationWarning } = buildSequentialBatches(rawText);
+  if (!batches.length) return { results: policies.map(p => ({ policy_id: p.id, wording: null })), sizeWarning: null };
 
   const policyList = policies
     .map((p, i) => `${i + 1}. ${p.policy_reference ? `${p.policy_reference}: ` : ''}${p.policy_name}`)
     .join('\n');
 
-  const docBlock = buildFullDocumentBlock(rawText);
-  const userPrompt = POLICY_WORDING_PROMPT
-    .replace('{{POLICY_LIST}}', policyList)
-    .replace('{{DOCUMENT}}', docBlock);
+  const wordingById = new Map(policies.map(p => [p.id, null]));
+  let failedBatches = 0;
 
-  const raw = await callClaude(POLICY_WORDING_SYSTEM, userPrompt, MODEL_SONNET, 8000);
+  // Sequential, not parallel: keeps each call's input and output small
+  // enough to stay well under the token caps, regardless of how long the
+  // source document is. The full policy list is re-sent to every batch
+  // (cheap — it's just references/names) since any policy could turn up in
+  // any section; the document text is what's actually split.
+  for (let i = 0; i < batches.length; i++) {
+    const userPrompt = POLICY_WORDING_PROMPT
+      .replace('{{POLICY_LIST}}', policyList)
+      .replace('{{DOCUMENT}}', batches[i]);
 
-  let parsed;
-  try {
-    parsed = parseJSON(raw);
-  } catch (err) {
-    console.error('[extractPolicyWordingFromDocument] JSON parse failed. Raw (first 400):', raw.slice(0, 400));
-    throw new Error('LLM returned an unparseable response while extracting policy wording');
+    let raw, parsed;
+    try {
+      raw = await callClaude(POLICY_WORDING_SYSTEM, userPrompt, MODEL_SONNET, 12000);
+      parsed = parseJSON(raw);
+    } catch (err) {
+      console.error(`[extractPolicyWordingFromDocument] batch ${i + 1}/${batches.length} failed:`, err.message);
+      failedBatches++;
+      continue;
+    }
+
+    const results = Array.isArray(parsed.results) ? parsed.results : [];
+    const byIndex = new Map(results.map(r => [r.index, r]));
+    policies.forEach((p, idx) => {
+      if (wordingById.get(p.id)) return; // already found in an earlier batch
+      const r = byIndex.get(idx + 1);
+      const wording = typeof r?.wording === 'string' && r.wording.trim() ? r.wording.trim() : null;
+      if (wording) wordingById.set(p.id, wording);
+    });
   }
 
-  const results = Array.isArray(parsed.results) ? parsed.results : [];
-  const byIndex = new Map(results.map(r => [r.index, r]));
+  const failureWarning = failedBatches > 0
+    ? `${failedBatches} of ${batches.length} document section(s) could not be processed — some policy wording may be missing. Check the source document directly for that section.`
+    : null;
 
   return {
-    results: policies.map((p, i) => {
-      const r = byIndex.get(i + 1);
-      const wording = typeof r?.wording === 'string' && r.wording.trim() ? r.wording.trim() : null;
-      return { policy_id: p.id, wording };
-    }),
-    sizeWarning: sizeCheck.warningMessage,
+    results: policies.map(p => ({ policy_id: p.id, wording: wordingById.get(p.id) })),
+    sizeWarning: [truncationWarning, failureWarning].filter(Boolean).join(' ') || null,
   };
 }
 
