@@ -1386,7 +1386,7 @@
                     <RelevantDocumentsSection project={projectData} bind:this={relevantDocsRef} on:changed={() => relevantPolicyRef?.refresh()} />
                     <div class="left-panel-section-divider">Relevant Planning Policy</div>
                   {/if}
-                  <RelevantPolicyTab project={projectData} bind:this={relevantPolicyRef} on:formopen={() => policyFormOpen = true} on:formclose={() => policyFormOpen = false} />
+                  <RelevantPolicyTab project={projectData} bind:this={relevantPolicyRef} on:formopen={() => policyFormOpen = true} on:formclose={() => policyFormOpen = false} on:changed={() => relevantDocsRef?.refresh()} />
                 </div>
               </div>
               <div class="split-card">

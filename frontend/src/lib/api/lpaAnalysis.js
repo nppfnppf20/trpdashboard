@@ -88,6 +88,29 @@ export async function extractPolicyWording(projectId, { file, text, policyIds } 
   return res.json();
 }
 
+// For a plan with no policies logged against it — re-uploads its document
+// (or pastes its text) and generates a short, project-specific relevance
+// note grounded in the project's own site/proposal context.
+export async function generatePlanRelevance(projectId, { file, text, planName } = {}) {
+  let body;
+  const opts = { method: 'POST' };
+  if (file) {
+    body = new FormData();
+    body.append('file', file);
+    body.append('plan_name', planName || '');
+  } else {
+    body = JSON.stringify({ text, plan_name: planName || '' });
+    opts.headers = { 'Content-Type': 'application/json' };
+  }
+  opts.body = body;
+  const res = await authFetch(`${BASE}/projects/${projectId}/policies/plan-relevance`, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to generate relevance summary');
+  }
+  return res.json();
+}
+
 export async function getNationalPolicyPrecedents(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/national-policy-precedents`);
   if (!res.ok) throw new Error('Failed to fetch national policy precedents');

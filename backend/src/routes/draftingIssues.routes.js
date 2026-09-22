@@ -8,6 +8,7 @@ import {
   deleteDraftingIssue,
   reorderDraftingIssues,
   draftIssuesFromBriefing,
+  draftIssuesFromTracker,
   getDraftingIssuePolicyRelevance,
   toggleDraftingIssuePolicy,
   getDraftingIssueSnippetRelevance,
@@ -22,6 +23,7 @@ router.get('/projects/:projectId', listDraftingIssues);
 router.post('/projects/:projectId', createDraftingIssue);
 router.put('/projects/:projectId/reorder', reorderDraftingIssues);
 router.post('/projects/:projectId/draft-from-briefing', draftIssuesFromBriefing);
+router.post('/projects/:projectId/draft-from-tracker', draftIssuesFromTracker);
 router.get('/projects/:projectId/policy-relevance', getDraftingIssuePolicyRelevance);
 router.get('/projects/:projectId/snippet-relevance', getDraftingIssueSnippetRelevance);
 

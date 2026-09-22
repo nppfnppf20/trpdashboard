@@ -1,7 +1,7 @@
 <script>
   import {
     getDraftingIssues, createDraftingIssue, updateDraftingIssue,
-    deleteDraftingIssue, draftIssuesFromBriefing,
+    deleteDraftingIssue, draftIssuesFromBriefing, draftIssuesFromTracker,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
     getDraftingIssueSnippetRelevance, toggleDraftingIssueSnippet,
     summarizeSpecialistReport,
@@ -28,6 +28,7 @@
   let newDiscipline = '';
 
   const draftPromptState = actionPromptState('draft_issues_from_briefing');
+  const trackerPromptState = actionPromptState('draft_issues_from_tracker');
 
   // ── Draft from Briefing Note ────────────────────────────────────────────────
   let showDraftModal = false;
@@ -71,6 +72,43 @@
       console.error('Failed to draft issues from briefing:', err);
     } finally {
       drafting = false;
+    }
+  }
+
+  // ── Draft from Project Tracker ──────────────────────────────────────────────
+  let showTrackerModal = false;
+  let draftingTracker = false;
+  let trackerAllowNewIssues = true;
+  let trackerIssueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool } }
+
+  function openTrackerModal() {
+    trackerAllowNewIssues = true;
+    trackerIssueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true }]));
+    showTrackerModal = true;
+  }
+
+  function closeTrackerModal() {
+    showTrackerModal = false;
+  }
+
+  function toggleTrackerScope(issueId, field) {
+    trackerIssueScope = {
+      ...trackerIssueScope,
+      [issueId]: { ...trackerIssueScope[issueId], [field]: !trackerIssueScope[issueId][field] },
+    };
+  }
+
+  async function handleTrackerDraftContinue() {
+    draftingTracker = true;
+    try {
+      await draftIssuesFromTracker(project.id, { allowNewIssues: trackerAllowNewIssues, issueScope: trackerIssueScope });
+      closeTrackerModal();
+      await load();
+    } catch (err) {
+      console.error('Failed to draft issues from tracker:', err);
+      alert(err.message || 'Failed to draft issues from tracker');
+    } finally {
+      draftingTracker = false;
     }
   }
 
@@ -249,6 +287,12 @@
         <i class="las la-magic"></i> Draft from Briefing Note
       </button>
       <button class="di-icon-btn" title="Edit generation prompt" on:click={() => openActionPrompt('draft_issues_from_briefing')}>
+        <i class="las la-sliders-h"></i>
+      </button>
+      <button class="btn btn-secondary" on:click={openTrackerModal} disabled={!project}>
+        <i class="las la-tasks"></i> Draft from Tracker
+      </button>
+      <button class="di-icon-btn" title="Edit generation prompt" on:click={() => openActionPrompt('draft_issues_from_tracker')}>
         <i class="las la-sliders-h"></i>
       </button>
     </div>
@@ -463,6 +507,53 @@
   </div>
 {/if}
 
+{#if showTrackerModal}
+  <div class="di-modal-overlay" on:click|self={closeTrackerModal}>
+    <div class="di-modal">
+      <div class="di-modal-header">
+        <span class="di-modal-title"><i class="las la-tasks"></i> Draft from Tracker</span>
+        <button class="di-icon-btn" on:click={closeTrackerModal}><i class="las la-times"></i></button>
+      </div>
+      <div class="di-modal-body">
+        <p class="di-scope-title" style="margin-top: 0;">
+          Uses this project's Project Tracker (issues and their dated actions) as the source. Argument notes are drafted per issue; specialist report fields are never touched by this tool.
+        </p>
+
+        <div class="di-scope">
+          <p class="di-scope-title">Which fields can this update?</p>
+          <label class="di-scope-new">
+            <input type="checkbox" bind:checked={trackerAllowNewIssues} />
+            <span>Add newly discovered issues</span>
+          </label>
+          {#if issues.length > 0}
+            <div class="di-scope-list">
+              {#each issues as issue (issue.id)}
+                <div class="di-scope-issue">
+                  <span class="di-scope-label">{issue.label}</span>
+                  <label class="di-scope-field">
+                    <input
+                      type="checkbox"
+                      checked={trackerIssueScope[issue.id]?.argumentNotes}
+                      on:change={() => toggleTrackerScope(issue.id, 'argumentNotes')}
+                    />
+                    Argument notes{issue.argument_for?.trim() ? ' (filled)' : ''}
+                  </label>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
+      <div class="di-modal-footer">
+        <button class="btn btn-secondary" on:click={closeTrackerModal} disabled={draftingTracker}>Cancel</button>
+        <button class="btn btn-primary" on:click={handleTrackerDraftContinue} disabled={draftingTracker}>
+          {#if draftingTracker}<div class="mini-spinner"></div> Drafting...{:else}Continue{/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <PromptEditModal
   open={$draftPromptState.open}
   title="Edit Prompt: Draft Issues from Briefing Note"
@@ -475,6 +566,20 @@
   on:change={(e) => setPromptText('draft_issues_from_briefing', e.detail)}
   on:save={() => saveActionPromptStore('draft_issues_from_briefing')}
   on:reset={() => resetActionPromptStore('draft_issues_from_briefing')}
+/>
+
+<PromptEditModal
+  open={$trackerPromptState.open}
+  title="Edit Prompt: Draft Issues from Tracker"
+  promptText={$trackerPromptState.text}
+  contextTemplate={$trackerPromptState.contextTemplate}
+  loading={$trackerPromptState.loading}
+  saving={$trackerPromptState.saving}
+  saved={$trackerPromptState.saved}
+  on:close={() => closeActionPrompt('draft_issues_from_tracker')}
+  on:change={(e) => setPromptText('draft_issues_from_tracker', e.detail)}
+  on:save={() => saveActionPromptStore('draft_issues_from_tracker')}
+  on:reset={() => resetActionPromptStore('draft_issues_from_tracker')}
 />
 
 <style>

@@ -487,7 +487,7 @@ export async function updateDeliverableFromHTML(req, res) {
  */
 export async function incorporateDeliverableTargeted(req, res) {
   const { id } = req.params;
-  const { document_text, document_title, user_notes = null, provider: requestedProvider, doc_type } = req.body ?? {};
+  const { document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
@@ -497,13 +497,14 @@ export async function incorporateDeliverableTargeted(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `SELECT pd.deliverable_name, p.project_name
+      `SELECT pd.deliverable_name, p.id AS project_id, p.project_name
        FROM planning_deliverables.planning_deliverables pd
        JOIN projects p ON pd.project_id = p.id
        WHERE pd.id = $1`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Deliverable not found' });
+    const projectId = rows[0].project_id;
 
     const provider = await resolveProvider('planning_deliverable_incorporation', requestedProvider);
 
@@ -517,15 +518,37 @@ export async function incorporateDeliverableTargeted(req, res) {
       filename = document_title || 'Pasted document';
     }
 
+    // Background context only (see incorporateTargetedParagraphs) — the
+    // model isn't told to use any of this, it's there so an instruction like
+    // "assess every criterion of this policy" doesn't silently fail just
+    // because the policy's full wording or other criteria live outside the
+    // highlighted paragraph(s).
+    const [{ rows: projectPolicies }, { rows: issues }] = await Promise.all([
+      pool.query(
+        `SELECT pp.policy_reference, pp.policy_name, pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy, pd.plan_name
+         FROM public.project_policies pp
+         LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+         WHERE pp.project_id = $1
+         ORDER BY pp.policy_type, pp.policy_reference`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT label, discipline, argument_for FROM admin_console.drafting_issues WHERE project_id = $1 ORDER BY sort_order, id`,
+        [projectId]
+      ),
+    ]);
+
     const updated = await incorporateTargetedParagraphs({
       paragraphs,
       documentText,
       filename,
-      issues: [],
+      issues,
       userNotes: user_notes,
       projectName: rows[0].project_name,
       draftTypeName: rows[0].deliverable_name,
       docType: doc_type ?? null,
+      fullDocumentHtml: document_html ?? null,
+      projectPolicies,
       provider,
     });
     res.json({ updated });

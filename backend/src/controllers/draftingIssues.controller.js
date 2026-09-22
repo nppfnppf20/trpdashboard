@@ -9,7 +9,7 @@
 
 import { pool } from '../db.js';
 import { resolveBriefingSourceTexts } from '../services/quoteRequests.service.js';
-import { draftIssuesFromBriefingNote } from '../services/planningStatement.service.js';
+import { draftIssuesFromBriefingNote, draftIssuesFromTrackerLog } from '../services/planningStatement.service.js';
 import { summariseSpecialistReportForIssue } from '../services/appeal.service.js';
 import { parseFile } from '../services/parser.service.js';
 
@@ -18,6 +18,121 @@ async function loadCustomActionPrompt(key) {
     `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = $1`, [key]
   );
   return rows[0]?.prompt_text ?? null;
+}
+
+// Shared by "Draft from Briefing Note" and "Draft from Tracker" — both feed
+// the same drafting-issue-matching prompt shape, just from different source
+// text, so they need the same existing-issues/policy-library context.
+async function fetchIssueDraftingContext(projectId) {
+  const [{ rows: issues }, { rows: policyRows }, { rows: allPolicies }] = await Promise.all([
+    pool.query(
+      `SELECT id, label, discipline FROM admin_console.drafting_issues WHERE project_id = $1 ORDER BY sort_order, id`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT dipr.drafting_issue_id, pp.policy_reference, pp.policy_name, pp.policy_text, pp.is_key_policy
+       FROM admin_console.drafting_issue_policy_relevance dipr
+       JOIN public.project_policies pp ON pp.id = dipr.policy_id
+       JOIN admin_console.drafting_issues di ON di.id = dipr.drafting_issue_id
+       WHERE di.project_id = $1`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT id, policy_reference, policy_name, policy_type FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, policy_reference`,
+      [projectId]
+    ),
+  ]);
+
+  const policiesByIssue = {};
+  for (const r of policyRows) {
+    if (!policiesByIssue[r.drafting_issue_id]) policiesByIssue[r.drafting_issue_id] = [];
+    policiesByIssue[r.drafting_issue_id].push(r);
+  }
+
+  return { issues, policiesByIssue, allPolicies };
+}
+
+// Shared apply step for both drafting sources: creates/updates drafting
+// issues from the LLM's results and additively links any matched policies.
+// Never removes an existing policy link, only adds newly discussed ones.
+async function applyDraftedIssueResults(projectId, results, { allowNewIssues = true, issueScope = {} } = {}) {
+  const scopeFor = (id) => issueScope[id] ?? { argumentNotes: true, specialistReport: true };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: maxRow } = await client.query(
+      `SELECT COALESCE(MAX(sort_order), -1) AS max FROM admin_console.drafting_issues WHERE project_id = $1`,
+      [projectId]
+    );
+    let nextOrder = maxRow[0].max + 1;
+
+    let applied = 0;
+    for (const r of results) {
+      let draftingIssueId;
+
+      if (r.new_issue) {
+        if (!allowNewIssues) continue;
+        if (!r.suggested_label?.trim()) continue;
+        const { rows: inserted } = await client.query(
+          `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, specialist_report, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [projectId, r.suggested_label.trim(), r.suggested_discipline?.trim() || null, r.argument_for ?? null, r.specialist_report ?? null, nextOrder++]
+        );
+        draftingIssueId = inserted[0].id;
+      } else {
+        if (!r.drafting_issue_id) continue;
+        const scope = scopeFor(r.drafting_issue_id);
+        if (!scope.argumentNotes && !scope.specialistReport) continue; // issue excluded from this run entirely
+
+        // Only the fields the picker allowed for this issue are included in
+        // the SET clause — an unchecked field is left completely alone.
+        // specialist_report, when allowed, only overwrites if the model
+        // actually returned something for it this pass — not every source
+        // touches on specialist report findings for an issue, and we don't
+        // want to blank out an existing entry just because this pass didn't.
+        const setParts = [];
+        const params = [];
+        if (scope.argumentNotes) {
+          params.push(r.argument_for ?? null);
+          setParts.push(`argument_for = $${params.length}`);
+        }
+        if (scope.specialistReport) {
+          params.push(r.specialist_report ?? null);
+          setParts.push(`specialist_report = CASE WHEN $${params.length}::text IS NOT NULL THEN $${params.length} ELSE specialist_report END`);
+        }
+        params.push(r.drafting_issue_id, projectId);
+        const { rows: updated } = await client.query(
+          `UPDATE admin_console.drafting_issues
+           SET ${setParts.join(', ')}
+           WHERE id = $${params.length - 1} AND project_id = $${params.length} RETURNING id`,
+          params
+        );
+        if (!updated.length) continue;
+        draftingIssueId = updated[0].id;
+      }
+
+      // Additive only — never removes an existing link, only adds newly
+      // discussed ones on top of whatever's already there.
+      for (const policyId of (r.matched_policy_ids ?? [])) {
+        await client.query(
+          `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
+           VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [draftingIssueId, policyId]
+        );
+      }
+      applied++;
+    }
+
+    await client.query('COMMIT');
+    return { applied };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function listDraftingIssues(req, res) {
@@ -280,11 +395,6 @@ export async function draftIssuesFromBriefing(req, res) {
   if (!Array.isArray(sources) || !sources.length) {
     return res.status(400).json({ error: 'sources is required' });
   }
-  // issueScope is a per-issue permission map the "Draft from Briefing Note"
-  // picker sends: { [issueId]: { argumentNotes: bool, specialistReport: bool } }.
-  // An issue absent from the map (e.g. request predates the picker) defaults
-  // to both fields allowed, so existing callers keep the old behaviour.
-  const scopeFor = (id) => issueScope[id] ?? { argumentNotes: true, specialistReport: true };
 
   try {
     const { rows: projectRows } = await pool.query(
@@ -298,32 +408,10 @@ export async function draftIssuesFromBriefing(req, res) {
       return res.status(400).json({ error: 'No content found for the selected sources' });
     }
 
-    const [{ rows: issues }, { rows: policyRows }, { rows: allPolicies }, { rows: allIssueTypes }, customPrompt] = await Promise.all([
-      pool.query(
-        `SELECT id, label, discipline FROM admin_console.drafting_issues WHERE project_id = $1 ORDER BY sort_order, id`,
-        [projectId]
-      ),
-      pool.query(
-        `SELECT dipr.drafting_issue_id, pp.policy_reference, pp.policy_name, pp.policy_text, pp.is_key_policy
-         FROM admin_console.drafting_issue_policy_relevance dipr
-         JOIN public.project_policies pp ON pp.id = dipr.policy_id
-         JOIN admin_console.drafting_issues di ON di.id = dipr.drafting_issue_id
-         WHERE di.project_id = $1`,
-        [projectId]
-      ),
-      pool.query(
-        `SELECT id, policy_reference, policy_name, policy_type FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, policy_reference`,
-        [projectId]
-      ),
-      pool.query(`SELECT id, label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text FROM admin_console.issue_types ORDER BY label`),
+    const [{ issues, policiesByIssue, allPolicies }, customPrompt] = await Promise.all([
+      fetchIssueDraftingContext(projectId),
       loadCustomActionPrompt('draft_issues_from_briefing'),
     ]);
-
-    const policiesByIssue = {};
-    for (const r of policyRows) {
-      if (!policiesByIssue[r.drafting_issue_id]) policiesByIssue[r.drafting_issue_id] = [];
-      policiesByIssue[r.drafting_issue_id].push(r);
-    }
 
     const results = await draftIssuesFromBriefingNote({
       briefingText,
@@ -331,98 +419,87 @@ export async function draftIssuesFromBriefing(req, res) {
       policiesByIssue,
       allPolicies,
       subSectors: project.sub_sectors ?? [],
-      allIssueTypes,
       customPrompt,
       provider: req.body.provider ?? null,
     });
 
-    const client = await pool.connect();
-    let applied = 0;
-    try {
-      await client.query('BEGIN');
-
-      const { rows: maxRow } = await client.query(
-        `SELECT COALESCE(MAX(sort_order), -1) AS max FROM admin_console.drafting_issues WHERE project_id = $1`,
-        [projectId]
-      );
-      let nextOrder = maxRow[0].max + 1;
-
-      for (const r of results) {
-        let draftingIssueId;
-
-        if (r.new_issue) {
-          if (!allowNewIssues) continue;
-          if (!r.suggested_label?.trim()) continue;
-          const { rows: inserted } = await client.query(
-            `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, specialist_report, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-            [projectId, r.suggested_label.trim(), r.suggested_discipline?.trim() || null, r.argument_for ?? null, r.specialist_report ?? null, nextOrder++]
-          );
-          draftingIssueId = inserted[0].id;
-        } else {
-          if (!r.drafting_issue_id) continue;
-          const scope = scopeFor(r.drafting_issue_id);
-          if (!scope.argumentNotes && !scope.specialistReport) continue; // issue excluded from this run entirely
-
-          // Only the fields the picker allowed for this issue are included in
-          // the SET clause — an unchecked field is left completely alone.
-          // specialist_report, when allowed, only overwrites if the model
-          // actually returned something for it this pass — unlike
-          // argument_for, not every briefing touches on specialist report
-          // findings for an issue, and we don't want to blank out an
-          // existing entry just because this pass didn't.
-          const setParts = [];
-          const params = [];
-          if (scope.argumentNotes) {
-            params.push(r.argument_for ?? null);
-            setParts.push(`argument_for = $${params.length}`);
-          }
-          if (scope.specialistReport) {
-            params.push(r.specialist_report ?? null);
-            setParts.push(`specialist_report = CASE WHEN $${params.length}::text IS NOT NULL THEN $${params.length} ELSE specialist_report END`);
-          }
-          params.push(r.drafting_issue_id, projectId);
-          const { rows: updated } = await client.query(
-            `UPDATE admin_console.drafting_issues
-             SET ${setParts.join(', ')}
-             WHERE id = $${params.length - 1} AND project_id = $${params.length} RETURNING id`,
-            params
-          );
-          if (!updated.length) continue;
-          draftingIssueId = updated[0].id;
-        }
-
-        for (const m of (r.matched_snippet_fields ?? [])) {
-          if (!SNIPPET_FIELDS.has(m.field)) continue;
-          await client.query(
-            `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id, field)
-             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-            [draftingIssueId, m.issue_type_id, m.field]
-          );
-        }
-        // Additive only — never removes an existing link, only adds newly
-        // discussed ones on top of whatever's already there.
-        for (const policyId of (r.matched_policy_ids ?? [])) {
-          await client.query(
-            `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
-             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [draftingIssueId, policyId]
-          );
-        }
-        applied++;
-      }
-
-      await client.query('COMMIT');
-      res.json({ applied });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    const { applied } = await applyDraftedIssueResults(projectId, results, { allowNewIssues, issueScope });
+    res.json({ applied });
   } catch (err) {
     console.error('draftingIssues.draftFromBriefing error:', err);
     res.status(500).json({ error: 'Failed to draft issues from briefing' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Draft from Project Tracker (planning_applications.progress_issues) — same
+// job as Draft from Briefing Note, sourced from the tracker's own issues and
+// their dated action log instead of a pasted transcript. No specialist
+// report handling: the tracker isn't the right source for that.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function draftIssuesFromTracker(req, res) {
+  const { projectId } = req.params;
+  const { allowNewIssues = true, issueScope = {} } = req.body ?? {};
+
+  try {
+    const { rows: projectRows } = await pool.query(
+      `SELECT id, sub_sectors FROM public.projects WHERE id = $1`, [projectId]
+    );
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+    const project = projectRows[0];
+
+    const { rows: trackerIssues } = await pool.query(
+      `SELECT id, discipline, title, status FROM planning_applications.progress_issues
+       WHERE project_id = $1 ORDER BY sort_order, id`,
+      [projectId]
+    );
+    if (!trackerIssues.length) {
+      return res.status(400).json({ error: 'The Project Tracker has no issues logged yet' });
+    }
+
+    const { rows: actions } = await pool.query(
+      `SELECT a.issue_id, a.action_date, a.summary, a.full_text, a.source_type
+       FROM planning_applications.progress_actions a
+       JOIN planning_applications.progress_issues i ON i.id = a.issue_id
+       WHERE i.project_id = $1
+       ORDER BY a.action_date ASC, a.id ASC`,
+      [projectId]
+    );
+    const actionsByIssue = {};
+    for (const a of actions) {
+      (actionsByIssue[a.issue_id] ||= []).push(a);
+    }
+
+    const trackerText = trackerIssues.map(i => {
+      const header = `Issue: ${i.title}${i.discipline ? ` (${i.discipline})` : ''} [Status: ${i.status}]`;
+      const issueActions = actionsByIssue[i.id] ?? [];
+      const actionLines = issueActions.length
+        ? issueActions.map(a => `  - ${a.action_date} (${a.source_type}): ${(a.full_text || a.summary || '').trim()}`).join('\n')
+        : '  (no actions logged)';
+      return `${header}\n${actionLines}`;
+    }).join('\n\n');
+
+    const [{ issues, policiesByIssue, allPolicies }, customPrompt] = await Promise.all([
+      fetchIssueDraftingContext(projectId),
+      loadCustomActionPrompt('draft_issues_from_tracker'),
+    ]);
+
+    const results = await draftIssuesFromTrackerLog({
+      trackerText,
+      issues,
+      policiesByIssue,
+      allPolicies,
+      subSectors: project.sub_sectors ?? [],
+      customPrompt,
+      provider: req.body.provider ?? null,
+    });
+
+    const { applied } = await applyDraftedIssueResults(projectId, results, { allowNewIssues, issueScope });
+    res.json({ applied });
+  } catch (err) {
+    console.error('draftingIssues.draftFromTracker error:', err);
+    res.status(500).json({ error: 'Failed to draft issues from tracker' });
   }
 }
 

@@ -139,12 +139,16 @@ export async function appealScopeIncorporation(projectId, typeId, { file, docume
   return res.json();
 }
 
-export async function appealIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, paragraphs, userNotes, docType, issueId }) {
+export async function appealIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, documentHtml, paragraphs, userNotes, docType, issueId }) {
   const form = new FormData();
   form.append('paragraphs', JSON.stringify(paragraphs));
   if (userNotes) form.append('user_notes', userNotes);
   if (docType) form.append('doc_type', docType);
   if (issueId) form.append('issue_id', issueId);
+  // Read-only background context so the model can see the rest of the
+  // document, not just the highlighted paragraph(s) — see
+  // incorporateTargetedParagraphs on the backend.
+  if (documentHtml) form.append('document_html', documentHtml);
   if (file) {
     form.append('file', file);
   } else {

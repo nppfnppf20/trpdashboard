@@ -8,7 +8,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { analyseLpaDocument, synthesiseLpaAnalysis, extractPoliciesFromDocument, extractPolicyWordingFromDocument } from '../services/llm.service.js';
+import { analyseLpaDocument, synthesiseLpaAnalysis, extractPoliciesFromDocument, extractPolicyWordingFromDocument, generatePlanRelevanceSummary } from '../services/llm.service.js';
 import { checkVerbatim } from '../services/verbatimCheck.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +265,43 @@ export async function extractPolicyWording(req, res) {
   } catch (err) {
     console.error('extractPolicyWording error:', err);
     res.status(err.status || 500).json({ error: err.message || 'Failed to extract policy wording' });
+  }
+}
+
+// For a plan document with no policies logged against it (typically
+// Supplementary Guidance or another material consideration), re-reads the
+// re-uploaded document and writes a short note on how it specifically bears
+// on this project's site and proposal, using the same project context the
+// LPA decision analysis tool uses. Nothing is saved; the caller reviews it
+// and saves it into that plan's own `relevance` field via the existing
+// policy-documents update endpoint.
+export async function generatePlanRelevance(req, res) {
+  const { projectId } = req.params;
+  try {
+    const planName = req.body.plan_name?.trim();
+    if (!planName) return res.status(400).json({ error: 'plan_name is required' });
+
+    let rawText, parseWarning = null;
+    if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      rawText = parsed.text;
+      parseWarning = parsed.warning;
+    } else if (req.body.text?.trim()) {
+      rawText = req.body.text;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+    if (!rawText?.trim()) {
+      return res.status(400).json({ error: parseWarning || 'Could not extract any text from that document' });
+    }
+
+    const projectContext = await getProjectContext(pool, projectId);
+    const { summary, warning: genWarning } = await generatePlanRelevanceSummary(planName, projectContext, rawText);
+
+    res.json({ summary, warning: parseWarning || genWarning || null });
+  } catch (err) {
+    console.error('generatePlanRelevance error:', err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to generate relevance summary' });
   }
 }
 

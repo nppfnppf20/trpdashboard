@@ -285,14 +285,18 @@ export async function exportDeliverable(id, format = 'pdf') {
 /**
  * AI-edit a highlighted (or the entire) set of paragraphs in a deliverable.
  * @param {number} id - Deliverable ID
- * @param {{file?: File|null, documentText?: string, documentTitle?: string|null, paragraphs: Array, userNotes?: string|null, docType?: string|null}} opts
+ * @param {{file?: File|null, documentText?: string, documentTitle?: string|null, documentHtml?: string|null, paragraphs: Array, userNotes?: string|null, docType?: string|null}} opts
  * @returns {Promise<{updated: Array}>}
  */
-export async function incorporateDeliverableTargeted(id, { file, documentText, documentTitle, paragraphs, userNotes, docType } = {}) {
+export async function incorporateDeliverableTargeted(id, { file, documentText, documentTitle, documentHtml, paragraphs, userNotes, docType } = {}) {
   const form = new FormData();
   form.append('paragraphs', JSON.stringify(paragraphs));
   if (userNotes) form.append('user_notes', userNotes);
   if (docType) form.append('doc_type', docType);
+  // Read-only background context so the model can see the rest of the
+  // document, not just the highlighted paragraph(s) — see
+  // incorporateTargetedParagraphs on the backend.
+  if (documentHtml) form.append('document_html', documentHtml);
   if (file) {
     form.append('file', file);
   } else {

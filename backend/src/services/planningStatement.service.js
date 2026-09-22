@@ -157,28 +157,13 @@ Write in clear professional prose. Output clean HTML using only <h3>, <p>, <ul>,
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = [], issueType = null) {
+// issueType (admin_console.issue_types snippet templates — nppf_text,
+// nppg_text, other_national_text, other_guidance_text) is deliberately never
+// consulted here — that library is stale, pre-restructure NPPF wording and
+// must never reach a generation prompt. Only the project's own linked
+// policies (project_policies, below) and the issue's own notes are used.
+function buildPlanningAppIssueContext(issue, linkedPolicies, evidence = []) {
   const lines = [];
-
-  if (issueType) {
-    const stripHtml = s => s?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
-    if (issueType.nppf_text?.trim()) {
-      lines.push(`### NPPF: ${issue.label}`);
-      lines.push(stripHtml(issueType.nppf_text));
-    }
-    if (issueType.nppg_text?.trim()) {
-      lines.push(`### NPPG: ${issue.label}`);
-      lines.push(stripHtml(issueType.nppg_text));
-    }
-    if (issueType.other_national_text?.trim()) {
-      lines.push(`### Other National Policy: ${issue.label}`);
-      lines.push(stripHtml(issueType.other_national_text));
-    }
-    if (issueType.other_guidance_text?.trim()) {
-      lines.push(`### Other Guidance: ${issue.label}`);
-      lines.push(stripHtml(issueType.other_guidance_text));
-    }
-  }
 
   for (const tier of PLANNING_TIER_ORDER) {
     const tierPolicies = linkedPolicies.filter(p => p.policy_type === tier);
@@ -254,26 +239,25 @@ async function generateLlmSlot({ instruction, variables, briefingSummary, styleT
 // Assessment generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack = {}, briefingSummary, guidingBrief = null, styleTemplate = null, provider = null }) {
+export async function generatePlanningStatementAssessment({ projectName, section, issues, linkedPoliciesByTrack, evidenceByTrack, briefingSummary, guidingBrief = null, styleTemplate = null, provider = null }) {
   const parts = [`<h2>${section.name}</h2>`];
 
   for (const issue of issues) {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
     const evidence = evidenceByTrack[issue.id] ?? [];
-    const issueType = issueTypesByTrack[issue.id] ?? null;
-    if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length && !issueType) {
+    if (!linkedPolicies.length && !issue.argument_for?.trim() && !issue.policy_national?.trim() && !evidence.length) {
       parts.push(`<h3>${issue.label}</h3>`);
       continue;
     }
     console.log(`[generatePlanningStatementAssessment] generating issue: ${issue.label}`);
-    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType, briefingSummary, guidingBrief, styleTemplate, provider });
+    const html = await generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, briefingSummary, guidingBrief, styleTemplate, provider });
     parts.push(html);
   }
 
   return parts.join('\n\n');
 }
 
-export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, issueType = null, briefingSummary, guidingBrief = null, styleTemplate = null, provider = null }) {
+export async function generateSingleAssessmentIssue({ projectName, section, issue, linkedPolicies, evidence, briefingSummary, guidingBrief = null, styleTemplate = null, provider = null }) {
   const exampleBlock = section.example_text?.trim()
     ? `## Example Document\nThe following is a real example section from this type of document written by this consultancy. Use it to calibrate tone, register, sentence structure, and level of detail. Most content is project-specific and must not be reproduced. The guiding brief takes precedence — do not follow the example more closely than the guiding brief.\n<example>\n${section.example_text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)}\n</example>\n\n`
     : '';
@@ -294,7 +278,7 @@ export async function generateSingleAssessmentIssue({ projectName, section, issu
 
   const systemPrompt = `You are a planning consultant drafting formal Planning Statements. You output clean HTML only. Every paragraph is a <p> tag, headings are <h2> or <h3>, bold is <strong>. Never use **, *, #, or --- — that is an error. Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.${HOUSE_STYLE_BLOCK}${ANTI_AI_SLOP_BLOCK}${TONE_EXAMPLE_BLOCK}${briefingBlock}${guidingBlock}${styleBlock}`;
 
-  const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence, issueType);
+  const issueContext = buildPlanningAppIssueContext(issue, linkedPolicies, evidence);
 
   const hasPolicies = linkedPolicies.length > 0;
   const allPolicyRefs = linkedPolicies
@@ -555,12 +539,11 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   {"id": "INSERT_AFTER_p3", "html": "<p>New compliance paragraph constructed from report...</p>"}
 ]`;
 
-export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, issueTypesByTrack = {}, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null, generationPrompt = null, customPrompt = null, provider = null }) {
+export async function incorporatePlanningAssessment({ paragraphs, documentText, filename, issues, linkedPoliciesByTrack, userNotes = null, projectName = '', guidingBrief = null, projectBrief = null, exampleText = null, generationPrompt = null, customPrompt = null, provider = null }) {
   // Build rich per-issue context (policies + argument notes) for each issue
   const issueContextParts = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
-    const issueType = issueTypesByTrack[issue.id] ?? null;
-    const ctx = buildPlanningAppIssueContext(issue, linkedPolicies, [], issueType);
+    const ctx = buildPlanningAppIssueContext(issue, linkedPolicies, []);
     return `### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n${ctx}`;
   }).join('\n\n---\n\n');
 
@@ -692,21 +675,18 @@ For each issue you are given:
 - The policies already linked to it — exact, verbatim wording. Do not cite any policy not listed here or in the full policy library, and do not invent policy references.
 - The project's development type — from its recorded sub-sector, and/or however it comes up in the briefing itself. Use both to judge development type; where they conflict, prefer what the briefing actually says.
 - The project's full policy library, for identifying newly-discussed policy links (see point 3 above).
-- A library of national policy snippet templates, each with an id, a topic, a development type, and up to four separate fields of boilerplate text: NPPF, NPPG, Other National, and Other Guidance. Not every template has content in every field.
 
 This is for drafting working notes, not a polished argument — do not try to craft the perfect argument or write persuasive prose. Your job is simply to capture, in full, the detail of what was actually said about each issue in the transcript: the policy points raised, the position taken, the evidence or approach mentioned, and any sensitivities or concerns flagged. Be thorough and specific rather than concise — do not compress or summarise away detail. Ground every claim in what the briefing note and the linked policies actually say. Do not invent facts, figures, or policy positions not present in the material provided.
 
-For every issue (existing or new), also identify which specific fields of which snippet templates from the library plausibly apply, based on its topic and the project's development type. Match at the individual field level, not the whole template — a template's NPPF text might apply while its NPPG text does not, for example, and each listing below shows you which fields actually have content. This one works differently from the policy matching above: include every field that could reasonably apply — do not narrow it down to a single "best" one, and it is fine to include none if nothing fits. Only ever reference a field that the listing shows as present for that template.
-
 Respond ONLY with valid JSON — no markdown, no explanation. Omit "specialist_report" entirely for an issue if no specialist report was discussed for it:
 [
-  { "drafting_issue_id": 42, "argument_for": "Our position is...", "specialist_report": "Ecology report prepared by Acme Ecology in March 2025, finding...", "matched_snippet_fields": [{ "issue_type_id": 7, "field": "nppf_text" }, { "issue_type_id": 7, "field": "nppg_text" }, { "issue_type_id": 12, "field": "other_national_text" }], "matched_policy_ids": [3] },
-  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_snippet_fields": [], "matched_policy_ids": [] }
+  { "drafting_issue_id": 42, "argument_for": "Our position is...", "specialist_report": "Ecology report prepared by Acme Ecology in March 2025, finding...", "matched_policy_ids": [3] },
+  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_policy_ids": [] }
 ]
 
 Only include an issue if the briefing note actually discusses it.`;
 
-export async function draftIssuesFromBriefingNote({ briefingText, issues, policiesByIssue = {}, allPolicies = [], subSectors = [], allIssueTypes = [], customPrompt = null, provider = null }) {
+export async function draftIssuesFromBriefingNote({ briefingText, issues, policiesByIssue = {}, allPolicies = [], subSectors = [], customPrompt = null, provider = null }) {
   const issueList = issues.length
     ? issues.map(i => {
         const policies = policiesByIssue[i.id] ?? [];
@@ -729,26 +709,10 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
       }).join('\n')
     : '(none recorded — omit matched_policy_ids for every issue.)';
 
-  const SNIPPET_FIELD_LABELS = {
-    nppf_text: 'nppf_text (NPPF)',
-    nppg_text: 'nppg_text (NPPG)',
-    other_national_text: 'other_national_text (Other National)',
-    other_guidance_text: 'other_guidance_text (Other Guidance)',
-  };
-  const snippetLibrary = allIssueTypes.length
-    ? allIssueTypes.map(t => {
-        const fields = Object.keys(SNIPPET_FIELD_LABELS).filter(f => t[f]?.trim());
-        const fieldText = fields.length
-          ? `available fields: ${fields.map(f => SNIPPET_FIELD_LABELS[f]).join(', ')}`
-          : 'no fields with content';
-        return `- id:${t.id} | ${t.label}${t.development_type ? ` (${t.development_type})` : ' (generic)'} — ${fieldText}`;
-      }).join('\n')
-    : '(none available — omit matched_snippet_fields for every issue.)';
-
   const subSectorText = subSectors?.length ? subSectors.join(', ') : '(not recorded on the project)';
 
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT;
-  const userMessage = `Briefing note(s):\n<briefing>\n${briefingText.trim().slice(0, 60000)}\n</briefing>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}\n\nAvailable snippet template library:\n${snippetLibrary}`;
+  const userMessage = `Briefing note(s):\n<briefing>\n${briefingText.trim().slice(0, 60000)}\n</briefing>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}`;
 
   const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
   const responseText = await callLLM({
@@ -771,6 +735,92 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
     }));
   } catch {
     console.error('[draftIssuesFromBriefingNote] Failed to parse JSON:', cleaned.slice(0, 300));
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Draft from Project Tracker — Drafting Issues tab (Planning Statement v3)
+// Same job as Draft from Briefing Note above (extract/update issue argument
+// notes, identify explicitly-discussed policy links), sourced instead from
+// the Project Tracker's own issues and their dated action log — material
+// that's already issue-segmented, unlike a raw meeting transcript.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const DEFAULT_DRAFT_ISSUES_FROM_TRACKER_PROMPT = `You are a specialist planning consultant drafting the working argument notes for a Planning Statement, based on this project's Project Tracker — a running log of pre-decision issues, each with a dated timeline of notes, emails, and meeting actions recorded against it as the project has progressed.
+
+Your job is to read the tracker log below and do three things:
+
+1. For each issue already listed below, extract and write up what the tracker log says about it — grounded specifically in the policies already linked to that issue.
+2. Identify any tracker issue that is not already in the list below. Only include something here if the tracker log genuinely treats it as a distinct planning issue — not a purely administrative or programme-management entry (e.g. "sent fee quote", "chased consultant") with no planning substance. If in doubt, leave it out. These will become subsections of the Planning Assessment (and potentially other sections) of the Planning Statement.
+3. For each issue (existing or new), identify any policies from the project's full policy library (provided below) that the tracker log explicitly discusses or names in connection with that issue. This must come from what the log actually records — not from you judging that a policy's wording looks thematically relevant to the issue. If the log does not explicitly reference a policy for an issue, do not include it, even if you think it might apply.
+
+For each issue you are given:
+- Its label and discipline.
+- The policies already linked to it — exact, verbatim wording. Do not cite any policy not listed here or in the full policy library, and do not invent policy references.
+- The project's development type — from its recorded sub-sector. Use this to judge development type context.
+- The project's full policy library, for identifying newly-discussed policy links (see point 3 above).
+
+This is for drafting working notes, not a polished argument — do not try to craft the perfect argument or write persuasive prose. Your job is simply to capture, in full, the detail the tracker log records for each issue: the policy points raised, the position taken, the evidence or approach mentioned, and any sensitivities or concerns flagged. Be thorough and specific rather than concise — do not compress or summarise away detail. Ground every claim in what the tracker log and the linked policies actually say. Do not invent facts, figures, or policy positions not present in the material provided.
+
+This tool does not draft specialist report summaries — the tracker log is not the right source for that, so never include a "specialist_report" field.
+
+Respond ONLY with valid JSON — no markdown, no explanation:
+[
+  { "drafting_issue_id": 42, "argument_for": "Our position is...", "matched_policy_ids": [3] },
+  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_policy_ids": [] }
+]
+
+Only include an issue if the tracker log actually discusses it.`;
+
+export async function draftIssuesFromTrackerLog({ trackerText, issues, policiesByIssue = {}, allPolicies = [], subSectors = [], customPrompt = null, provider = null }) {
+  const issueList = issues.length
+    ? issues.map(i => {
+        const policies = policiesByIssue[i.id] ?? [];
+        const policyLines = policies.length
+          ? policies.map(p => {
+              const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+              const keyTag = p.is_key_policy ? ' [KEY POLICY]' : '';
+              const wording = p.policy_text?.trim() ? `\n    Wording: "${p.policy_text.trim()}"` : '';
+              return `  - ${ref}${p.policy_name}${keyTag}${wording}`;
+            }).join('\n')
+          : '  (no policies linked yet)';
+        return `- id:${i.id} | ${i.label}${i.discipline ? ` (${i.discipline})` : ''}\n${policyLines}`;
+      }).join('\n')
+    : '(none tracked yet — go straight to identifying issues the tracker log genuinely treats as distinct planning issues.)';
+
+  const policyLibrary = allPolicies.length
+    ? allPolicies.map(p => {
+        const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+        return `- id:${p.id} | ${ref}${p.policy_name}${p.policy_type ? ` (${p.policy_type})` : ''}`;
+      }).join('\n')
+    : '(none recorded — omit matched_policy_ids for every issue.)';
+
+  const subSectorText = subSectors?.length ? subSectors.join(', ') : '(not recorded on the project)';
+
+  const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ISSUES_FROM_TRACKER_PROMPT;
+  const userMessage = `Project Tracker log:\n<tracker_log>\n${trackerText.trim().slice(0, 60000)}\n</tracker_log>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}`;
+
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  const responseText = await callLLM({
+    provider: resolvedProvider,
+    model: MODEL_SONNET,
+    maxTokens: 8000,
+    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
+    prompt: userMessage,
+  });
+
+  const raw = responseText.trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(r => ({
+      ...r,
+      argument_for: r.argument_for ? noEmDash(r.argument_for) : r.argument_for,
+    }));
+  } catch {
+    console.error('[draftIssuesFromTrackerLog] Failed to parse JSON:', cleaned.slice(0, 300));
     return [];
   }
 }

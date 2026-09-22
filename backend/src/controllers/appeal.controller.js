@@ -1256,7 +1256,7 @@ export async function scopeIncorporation(req, res) {
 
 export async function incorporateTargeted(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title, user_notes = null, provider: requestedProvider, doc_type, issue_id } = req.body ?? {};
+  const { document_id, document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, issue_id } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
@@ -1329,7 +1329,7 @@ export async function incorporateTargeted(req, res) {
       return res.json({ updated });
     }
 
-    const [issueRows, { projectBrief, guidingBrief }, exampleDoc] = await Promise.all([
+    const [issueRows, { projectBrief, guidingBrief }, exampleDoc, { rows: projectPolicies }] = await Promise.all([
       pool.query(
         `SELECT pit.id, pit.label, pit.discipline, ain.argument_against, ain.argument_for
          FROM admin_console.project_issue_tracks pit
@@ -1340,7 +1340,19 @@ export async function incorporateTargeted(req, res) {
         [projectId]
       ),
       fetchPromptContext(projectId, typeRows[0]?.slug, projectRows[0]?.development_type),
-      fetchExampleDoc(projectId, typeId)
+      fetchExampleDoc(projectId, typeId),
+      // Background context only (see incorporateTargetedParagraphs) — not an
+      // instruction to use it, just visibility so an instruction like "assess
+      // every criterion of this policy" doesn't silently fail because the
+      // policy's full wording lives outside the highlighted paragraph(s).
+      pool.query(
+        `SELECT pp.policy_reference, pp.policy_name, pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy, pd.plan_name
+         FROM public.project_policies pp
+         LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+         WHERE pp.project_id = $1
+         ORDER BY pp.policy_type, pp.policy_reference`,
+        [projectId]
+      ),
     ]);
 
     const updated = await incorporateTargetedParagraphs({
@@ -1357,6 +1369,8 @@ export async function incorporateTargeted(req, res) {
       generationPrompt: typeRows[0]?.generation_prompt ?? null,
       docType: doc_type ?? null,
       customPrompt: await loadGlobalPrompt('incorporate_appeal'),
+      fullDocumentHtml: document_html ?? null,
+      projectPolicies,
       provider,
     });
     res.json({ updated });

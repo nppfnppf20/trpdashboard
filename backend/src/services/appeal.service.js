@@ -399,21 +399,6 @@ export async function generatePlanningPolicySection({
 // different statutory weight even though issue_types calls them "national".
 const DEVELOPMENT_PLAN_TIERS = ['local', 'neighbourhood'];
 const GUIDANCE_TIERS = ['supplementary', 'other'];
-const NATIONAL_SNIPPET_FIELDS = ['nppf_text'];
-const GUIDANCE_SNIPPET_FIELDS = ['nppg_text', 'other_national_text', 'other_guidance_text'];
-const SNIPPET_FIELD_LABELS = { nppf_text: 'NPPF', nppg_text: 'NPPG', other_national_text: 'Other National Policy', other_guidance_text: 'Other Guidance' };
-
-function stripHtmlPlain(s) {
-  return s?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
-}
-
-function hasSnippetContent(row) {
-  return !!(row.nppf_text?.trim() || row.nppg_text?.trim() || row.other_national_text?.trim() || row.other_guidance_text?.trim());
-}
-
-function hasFieldContent(row, fields) {
-  return fields.some(f => row[f]?.trim());
-}
 
 // plan_name comes from public.policy_documents via project_policies.plan_id
 // (see fetchLinkedPoliciesForDraftType) — null for policies not yet linked
@@ -433,19 +418,14 @@ function policyBlockLines(p) {
 // New context this adds beyond what generateAppealDraftFromPrompt already injects
 // (guiding brief, project brief, briefing notes, that issue's own argument notes).
 //
-// Snippet templates (admin_console.issue_types): if this issue is explicitly
-// linked to one (issueType set), only that one is offered — a confident,
-// deterministic match. Otherwise the whole library is offered and the model
-// is trusted to judge which templates (if any) fit this issue and this
-// project's actual development type, using the project context and briefing
-// notes it already has. Either way, the model is asked to mark verbatim
-// quotes with a <span data-snippet="id"> tag rather than just typing them,
-// so verifyAndCleanSnippetSpans() can check them against the real text
-// afterward — the model still writes the surrounding prose freely, only the
-// quoted words themselves are verified.
-// policy_national is deliberately excluded — it's folded into Group 1
-// (National Policy) above instead, alongside the linked policies and NPPF
-// snippets it relates to, rather than surfacing as its own late heading here.
+// Snippet templates (admin_console.issue_types — nppf_text, nppg_text,
+// other_national_text, other_guidance_text) are deliberately never consulted
+// here — that library is stale, pre-restructure NPPF wording and must never
+// reach a generation prompt. Only the project's own linked policies
+// (project_policies) and the issue's own notes are used.
+// policy_national is deliberately excluded from TIER_NOTE_FIELDS — it's
+// folded into Group 1 (National Policy) above instead, alongside the linked
+// policies it relates to, rather than surfacing as its own late heading here.
 const TIER_NOTE_FIELDS = [
   { key: 'policy_local',         label: 'Local Policy Notes' },
   { key: 'policy_neighbourhood', label: 'Neighbourhood Policy Notes' },
@@ -453,48 +433,18 @@ const TIER_NOTE_FIELDS = [
   { key: 'policy_other',         label: 'Other Policy Notes' },
 ];
 
-function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allIssueTypes = [], issue = null) {
+function buildIssueSnippetContext(linkedPolicies = [], issue = null) {
   const lines = [];
-  const candidateRowsById = {};
-  let isFallback = false;
-
-  // Explicitly linked (manually, or matched by "Draft from Briefing Note") —
-  // an issue can have several; offered as confident candidates. Otherwise
-  // the whole library is offered and the model judges relevance itself.
-  let snippetRows = linkedSnippets;
-  if (!snippetRows.length && allIssueTypes.length) {
-    snippetRows = allIssueTypes.filter(hasSnippetContent);
-    isFallback = true;
-  }
-  for (const row of snippetRows) candidateRowsById[row.id] = row;
-
-  let preambleShown = false;
-  const snippetBlock = (fields) => {
-    const rows = snippetRows.filter(row => hasFieldContent(row, fields));
-    if (!rows.length) return;
-    if (isFallback && !preambleShown) {
-      lines.push(`Each policy snippet template below may or may not apply to this issue — judge which, if any, fit both this issue's subject matter and this project's actual development type, using the project details and briefing notes already provided. Do not use a template for the wrong development type or an unrelated issue.`);
-      preambleShown = true;
-    }
-    for (const row of rows) {
-      lines.push(`Policy Snippet Template — id:${row.id} (${row.label}${row.development_type ? `, ${row.development_type}` : ', generic'})`);
-      for (const f of fields) {
-        if (row[f]?.trim()) lines.push(`${SNIPPET_FIELD_LABELS[f]}: ${noEmDash(stripHtmlPlain(row[f]))}`);
-      }
-    }
-  };
 
   // --- Group 1: National Policy (NPPF only) ---
   // The working-notes free text (issue.policy_national, "National Policy" box
   // in the Drafting Issues UI) is folded in here rather than surfaced via
   // TIER_NOTE_FIELDS further down, so all of an issue's national-policy
-  // material — linked policies, NPPF snippets, and the manual note — reads
-  // as one block instead of two disconnected headings.
+  // material reads as one block instead of two disconnected headings.
   const nationalPolicies = linkedPolicies.filter(p => p.policy_type === 'national');
   const nationalNotes = issue?.policy_national?.trim();
-  if (nationalPolicies.length || nationalNotes || snippetRows.some(row => hasFieldContent(row, NATIONAL_SNIPPET_FIELDS))) {
+  if (nationalPolicies.length || nationalNotes) {
     lines.push(`### National Policy`);
-    snippetBlock(NATIONAL_SNIPPET_FIELDS);
     for (const p of nationalPolicies) lines.push(...policyBlockLines(p));
     if (nationalNotes) {
       lines.push(`National Policy Notes:`);
@@ -511,18 +461,13 @@ function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allI
     }
   }
 
-  // --- Group 3: Other Policy and Guidance (NPPG, other national guidance, other guidance, supplementary/other-tier policies) ---
+  // --- Group 3: Other Policy and Guidance (supplementary/other-tier linked policies) ---
   const guidancePolicies = linkedPolicies.filter(p => GUIDANCE_TIERS.includes(p.policy_type));
-  if (guidancePolicies.length || snippetRows.some(row => hasFieldContent(row, GUIDANCE_SNIPPET_FIELDS))) {
+  if (guidancePolicies.length) {
     lines.push(`### Other Policy and Guidance`);
-    snippetBlock(GUIDANCE_SNIPPET_FIELDS);
     for (const tier of GUIDANCE_TIERS) {
       for (const p of guidancePolicies.filter(p => p.policy_type === tier)) lines.push(...policyBlockLines(p));
     }
-  }
-
-  if (Object.keys(candidateRowsById).length) {
-    lines.push(`When you use wording from one of the policy snippet templates above, quote it verbatim and wrap exactly the quoted portion — nothing more — like this: <span data-snippet="ID">the exact quoted text</span>, using that template's id. Only wrap text copied directly from a template, never your own analysis or paraphrasing. If none of the templates apply, ignore this instruction entirely.`);
   }
 
   // Free-text notes from the Drafting Issues tab (only populated for issues
@@ -552,37 +497,12 @@ function buildIssueSnippetContext(linkedPolicies = [], linkedSnippets = [], allI
     }
   }
 
-  return { text: lines.join('\n\n'), candidateRowsById };
-}
-
-// Strips the <span data-snippet="id"> markers the model was asked to wrap
-// verbatim quotes in, verifying each against the real template text first.
-// A quote "verifies" if it appears (once normalised) as a substring of one
-// of that template's four text fields — the model is expected to quote a
-// sentence or two from within a longer field, not necessarily reproduce the
-// whole field. Unverified quotes are left as written (correcting them
-// without knowing the model's intent risks worse damage than a rare
-// unverified paraphrase) but logged so they can be spot-checked.
-function verifyAndCleanSnippetSpans(html, candidateRowsById, issueLabel) {
-  return html.replace(/<span data-snippet="(\d+)">([\s\S]*?)<\/span>/g, (match, idStr, inner) => {
-    const row = candidateRowsById[idStr];
-    const innerNorm = stripHtmlPlain(inner).toLowerCase();
-    const fieldTexts = row
-      ? [row.nppf_text, row.nppg_text, row.other_national_text, row.other_guidance_text]
-          .filter(Boolean)
-          .map(f => stripHtmlPlain(f).toLowerCase())
-      : [];
-    const verified = innerNorm.length > 0 && fieldTexts.some(f => f.includes(innerNorm));
-    if (!verified) {
-      console.warn(`[snippet-verify] Unverified quote for issue "${issueLabel}", template id ${idStr}: "${inner.slice(0, 150)}"`);
-    }
-    return inner;
-  });
+  return { text: lines.join('\n\n') };
 }
 
 // sectionPromptTemplate may use {{ISSUE_LIST}} (one line per issue) and
-// {{ISSUES_CONTEXT}} (every issue's linked-policy / issue-type snippet block,
-// each clearly delimited) in addition to the variables
+// {{ISSUES_CONTEXT}} (every issue's linked-policy context block, each
+// clearly delimited) in addition to the variables
 // generateAppealDraftFromPrompt already substitutes.
 //
 // Generated as a single call covering every issue in the section together —
@@ -595,19 +515,16 @@ function verifyAndCleanSnippetSpans(html, candidateRowsById, issueLabel) {
 // blocks are sent once instead of once per issue.
 export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
-  linkedPoliciesByTrack = {}, linkedSnippetsByTrack = {}, allIssueTypes = [],
+  linkedPoliciesByTrack = {},
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
   provider = null,
 }) {
   if (!issues.length) return `<h2>${sectionName}</h2>`;
 
-  const candidateRowsById = {};
   const issuesContext = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
-    const linkedSnippets = linkedSnippetsByTrack[issue.id] ?? [];
-    const { text, candidateRowsById: issueCandidates } = buildIssueSnippetContext(linkedPolicies, linkedSnippets, allIssueTypes, issue);
-    Object.assign(candidateRowsById, issueCandidates);
-    return `### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n\n${text || '(no linked policies, snippets, or notes recorded for this issue)'}`;
+    const { text } = buildIssueSnippetContext(linkedPolicies, issue);
+    return `### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n\n${text || '(no linked policies or notes recorded for this issue)'}`;
   }).join('\n\n---\n\n');
 
   const issueList = issues.map(i => `- ${i.label}${i.discipline ? ` (${i.discipline})` : ''}`).join('\n');
@@ -616,7 +533,7 @@ export async function generateIssueOrderedSection({
     .replace(/\{\{ISSUE_LIST\}\}/g, issueList)
     .replace(/\{\{ISSUES_CONTEXT\}\}/g, issuesContext);
 
-  let html = await generateAppealDraftFromPrompt({
+  const html = await generateAppealDraftFromPrompt({
     projectName,
     draftTypeName: sectionName,
     typePrompt: sectionPrompt,
@@ -627,7 +544,6 @@ export async function generateIssueOrderedSection({
     briefingNotes,
     provider,
   });
-  html = verifyAndCleanSnippetSpans(html, candidateRowsById, sectionName);
 
   return `<h2>${sectionName}</h2>\n\n${html}`;
 }
@@ -793,10 +709,32 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
   {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, generationPrompt = null, docType = null, provider = 'anthropic' }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, generationPrompt = null, docType = null, provider = 'anthropic', fullDocumentHtml = null, projectPolicies = [] }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
   const contextBlocksSection = contextBlocks ? `${contextBlocks}\n\n---\n\n` : '';
+
+  // Purely for situational awareness — the model is told explicitly not to
+  // treat any of this as something it must draw on. Before this, the model
+  // only ever saw the exact paragraph(s) highlighted, with no visibility of
+  // the rest of the document or the project's policy/issue library — so an
+  // instruction like "assess every criterion of this policy" would silently
+  // fail whenever the policy's full wording, or its other criteria, lived
+  // outside the highlighted paragraph(s). This block exists to close that
+  // gap without turning every quick edit into a policy dissertation.
+  const backgroundParts = [];
+  if (fullDocumentHtml?.trim()) {
+    backgroundParts.push(`Full current document (read-only — only the SELECTED PARAGRAPHS below are yours to revise; this is here so you can see what precedes/follows them and keep your edit consistent):\n${fullDocumentHtml.trim()}`);
+  }
+  if (projectPolicies.length) {
+    backgroundParts.push(`This project's saved planning policies:\n${projectPolicies.map(p => policyBlockLines(p).join('\n')).join('\n\n')}`);
+  }
+  if (issueContext) {
+    backgroundParts.push(`This project's existing issue/argument notes:\n${issueContext}`);
+  }
+  const backgroundSection = backgroundParts.length
+    ? `## BACKGROUND CONTEXT — reference only, not an instruction\nProvided purely so you have visibility of the wider document and project. You are not required to use any of it, and should draw on it only where directly relevant to the paragraphs you're revising (e.g. to check or quote a policy's full wording, or stay consistent with a nearby passage or an existing issue note) — do not force a reference to it otherwise.\n\n${backgroundParts.join('\n\n---\n\n')}\n\n---\n\n`
+    : '';
 
   const generationPromptBlock = generationPrompt?.trim()
     ? `This document was originally generated with the following instructions. Keep your edits consistent with the tone, structure and purpose they describe:\n${generationPrompt.trim()}\n\n---\n\n`
@@ -834,7 +772,7 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
 
   const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
 
-${contextBlocksSection}${generationPromptBlock}${userNotesBlock}${documentBlock}SELECTED PARAGRAPHS TO REVISE:
+${contextBlocksSection}${generationPromptBlock}${userNotesBlock}${documentBlock}${backgroundSection}SELECTED PARAGRAPHS TO REVISE:
 ${paraBlock}
 
 ---

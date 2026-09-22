@@ -1,7 +1,7 @@
 <script>
   import { onMount, createEventDispatcher } from 'svelte';
-  import { getPolicies, createPolicy, updatePolicy, deletePolicy, getNationalPolicyPrecedents, extractPolicyWording } from '$lib/api/lpaAnalysis.js';
-  import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
+  import { getPolicies, createPolicy, updatePolicy, deletePolicy, getNationalPolicyPrecedents, extractPolicyWording, generatePlanRelevance } from '$lib/api/lpaAnalysis.js';
+  import { getPolicyDocuments, updatePolicyDocument } from '$lib/api/policyDocuments.js';
   import { listIssueTypes } from '$lib/api/issueTypes.js';
   import { getNppfPolicies } from '$lib/api/nppfPolicies.js';
 
@@ -212,6 +212,29 @@
     }
   }
 
+  // Direct tick-box on the card, so flagging a policy as key doesn't require
+  // opening the edit modal. Updates local state only — no load()/re-fetch —
+  // so the rest of the list doesn't re-render. Reverts on failure.
+  async function toggleKeyPolicy(policy) {
+    const newValue = !policy.is_key_policy;
+    policies = policies.map(p => p.id === policy.id ? { ...p, is_key_policy: newValue } : p);
+    try {
+      await updatePolicy(policy.id, {
+        policy_reference: policy.policy_reference,
+        policy_name: policy.policy_name,
+        policy_type: policy.policy_type,
+        policy_text: policy.policy_text,
+        relevant_supporting_text: policy.relevant_supporting_text,
+        notes: policy.notes,
+        is_key_policy: newValue,
+        plan_id: policy.plan_id
+      });
+    } catch (err) {
+      policies = policies.map(p => p.id === policy.id ? { ...p, is_key_policy: !newValue } : p);
+      alert(err.message);
+    }
+  }
+
   // Bulk select/delete — mainly for clearing out duplicate policies (see
   // [[project_nppf_policy_bank]]). Deleting a policy cascades to remove any
   // Drafting Issue links pointing at it (drafting_issue_policy_relevance.policy_id
@@ -271,8 +294,13 @@
   let wordingSourceFileName = null;
   let showWordingSourceText = false;
   let wordingRows = [];
+  let relevanceSummary = '';
+  let relevanceSaving = false;
 
-  $: plansWithPolicies = planDocs.filter(d => policies.some(p => p.plan_id === d.id));
+  // Every plan is selectable now, not just ones with policies already saved —
+  // a plan with none (typically Supplementary Guidance) gets a generated
+  // relevance summary instead of wording extraction (see runWordingExtract).
+  $: wordingSelectablePlans = planDocs;
 
   // Rough, client-side context-window estimate for the upload step, mirroring
   // the ~200,000-char baseline used by the Planning Application Workspace's
@@ -289,7 +317,7 @@
 
   function openWordingModal() {
     showWordingModal = true;
-    wordingStep = plansWithPolicies.length > 0 ? 'plan' : 'no-plans';
+    wordingStep = wordingSelectablePlans.length > 0 ? 'plan' : 'no-plans';
     wordingPlanId = '';
     wordingMode = 'file';
     wordingFile = null;
@@ -300,6 +328,7 @@
     wordingSourceFileName = null;
     showWordingSourceText = false;
     wordingRows = [];
+    relevanceSummary = '';
   }
 
   function closeWordingModal() {
@@ -323,40 +352,80 @@
   async function runWordingExtract() {
     if (wordingMode === 'file' && !wordingFile) { wordingError = 'Choose a file to upload'; return; }
     if (wordingMode === 'text' && !wordingText.trim()) { wordingError = 'Paste the document text'; return; }
+    const selectedPlan = wordingSelectablePlans.find(d => d.id === Number(wordingPlanId));
     const planPolicies = policies.filter(p => p.plan_id === Number(wordingPlanId));
-    if (!planPolicies.length) { wordingError = 'No policies found for that plan'; return; }
 
     wordingExtracting = true;
     wordingError = null;
     try {
-      const { results, warning, sourceText } = await extractPolicyWording(projectId, {
-        file: wordingMode === 'file' ? wordingFile : null,
-        text: wordingMode === 'text' ? wordingText : undefined,
-        policyIds: planPolicies.map(p => p.id)
-      });
-      wordingWarning = warning || null;
-      wordingSourceText = sourceText || null;
-      wordingSourceFileName = wordingMode === 'file' ? wordingFile.name : 'pasted text';
+      if (planPolicies.length) {
+        const { results, warning, sourceText } = await extractPolicyWording(projectId, {
+          file: wordingMode === 'file' ? wordingFile : null,
+          text: wordingMode === 'text' ? wordingText : undefined,
+          policyIds: planPolicies.map(p => p.id)
+        });
+        wordingWarning = warning || null;
+        wordingSourceText = sourceText || null;
+        wordingSourceFileName = wordingMode === 'file' ? wordingFile.name : 'pasted text';
 
-      const byId = Object.fromEntries(results.map(r => [r.policy_id, r]));
-      wordingRows = planPolicies.map(p => {
-        const r = byId[p.id];
-        return {
-          policy_id: p.id,
-          policy_reference: p.policy_reference,
-          policy_name: p.policy_name,
-          existing_text: p.policy_text || null,
-          wording: r?.wording ?? '',
-          found: !!r?.wording,
-          _verbatim: r?.verbatim ?? null,
-          include: !!r?.wording
-        };
-      });
-      wordingStep = 'review';
+        const byId = Object.fromEntries(results.map(r => [r.policy_id, r]));
+        wordingRows = planPolicies.map(p => {
+          const r = byId[p.id];
+          return {
+            policy_id: p.id,
+            policy_reference: p.policy_reference,
+            policy_name: p.policy_name,
+            existing_text: p.policy_text || null,
+            wording: r?.wording ?? '',
+            found: !!r?.wording,
+            _verbatim: r?.verbatim ?? null,
+            include: !!r?.wording
+          };
+        });
+        wordingStep = 'review';
+      } else {
+        // No policies on this plan (typically Supplementary Guidance) —
+        // generate a project-specific relevance note instead.
+        const { summary, warning } = await generatePlanRelevance(projectId, {
+          file: wordingMode === 'file' ? wordingFile : null,
+          text: wordingMode === 'text' ? wordingText : undefined,
+          planName: selectedPlan?.plan_name || ''
+        });
+        wordingWarning = warning || null;
+        relevanceSummary = summary || '';
+        wordingStep = 'relevance-review';
+      }
     } catch (err) {
       wordingError = err.message;
     } finally {
       wordingExtracting = false;
+    }
+  }
+
+  // Saves the generated (or edited) relevance note into the plan document's
+  // own `relevance` field, preserving its other existing fields (the update
+  // endpoint isn't a partial patch — omitted fields would be nulled out).
+  async function saveRelevance() {
+    const selectedPlan = wordingSelectablePlans.find(d => d.id === Number(wordingPlanId));
+    if (!selectedPlan) { wordingError = 'Plan not found'; return; }
+    if (!relevanceSummary.trim()) { wordingError = 'Nothing to save'; return; }
+    relevanceSaving = true;
+    wordingError = null;
+    try {
+      await updatePolicyDocument(selectedPlan.id, {
+        plan_name: selectedPlan.plan_name,
+        plan_type: selectedPlan.plan_type,
+        year_adopted: selectedPlan.year_adopted,
+        month_adopted: selectedPlan.month_adopted,
+        summary: selectedPlan.summary,
+        relevance: relevanceSummary.trim()
+      });
+      dispatch('changed');
+      closeWordingModal();
+    } catch (err) {
+      wordingError = err.message;
+    } finally {
+      relevanceSaving = false;
     }
   }
 
@@ -699,9 +768,10 @@
                 {#if selectMode}
                   <input type="checkbox" class="policy-select-checkbox" checked={selectedIds.has(policy.id)} on:change={() => toggleSelect(policy.id)} />
                 {/if}
-                {#if policy.is_key_policy}
-                  <span class="key-badge"><i class="las la-star"></i> Key Policy</span>
-                {/if}
+                <label class="key-toggle-chip" class:active={policy.is_key_policy} title="Key Policy: flag this as a primary determining policy for the project">
+                  <input type="checkbox" checked={policy.is_key_policy} on:change={() => toggleKeyPolicy(policy)} />
+                  <i class="las la-star"></i> Key
+                </label>
                 <span class="type-badge" style="background: {TYPE_COLOURS[policy.policy_type]}22; color: {TYPE_COLOURS[policy.policy_type]}">
                   {TYPE_LABELS[policy.policy_type]}
                 </span>
@@ -861,35 +931,43 @@
       <div class="bulk-modal-body">
         {#if wordingStep === 'no-plans'}
           <p class="wording-hint">
-            This works one development plan at a time: pick a plan, re-upload its document, and the AI fills in
-            verbatim wording for that plan's saved policies. Right now none of your saved policies have a
-            <strong>Parent Plan</strong> set, so there's nothing to run it against yet.
+            This works one development plan at a time: pick a plan, re-upload its document, and the AI either fills
+            in verbatim wording for that plan's saved policies, or — if the plan has no policies logged against it,
+            e.g. Supplementary Guidance — writes a short note on how the document specifically applies to this
+            project. Right now this project has no Development Plan documents to pick from.
           </p>
           <p class="wording-hint">
-            To use this, open a policy (or add a new one) and set its <strong>Parent Plan</strong> field — for
-            national/NPPF policies, use the <strong>Import from NPPF Library</strong> dropdown instead, which fills
-            in the wording directly without needing a document at all.
+            Add one first on the <strong>Relevant Documents</strong> panel above (adopted/emerging plans,
+            supplementary guidance, or other material considerations all work), then come back here. For
+            national/NPPF policies specifically, the <strong>Import from NPPF Library</strong> dropdown on the
+            policy form fills in wording directly without needing a document at all.
           </p>
         {:else if wordingStep === 'plan'}
           <p class="wording-hint">
-            Choose the development plan whose policies you want to fill in, then re-upload that plan's document.
-            The AI will find each saved policy's operative wording in it, verbatim, excluding any reasoned
-            justification or supporting text. Do this one plan at a time so the document only has to cover
-            that plan's own policies.
+            Choose a plan and re-upload its document. If it has saved policies, the AI finds each one's verbatim
+            operative wording in it, excluding any reasoned justification or supporting text. If it has none — e.g.
+            Supplementary Guidance, which usually isn't broken into discrete policies — it instead writes a short
+            note on how the document specifically applies to this project's site and proposal.
           </p>
           <div class="field">
             <label>Plan</label>
             <select bind:value={wordingPlanId}>
               <option value="">Select a plan…</option>
-              {#each plansWithPolicies as doc (doc.id)}
-                <option value={doc.id}>{planLabel(doc)} ({policies.filter(p => p.plan_id === doc.id).length} polic{policies.filter(p => p.plan_id === doc.id).length === 1 ? 'y' : 'ies'})</option>
+              {#each wordingSelectablePlans as doc (doc.id)}
+                {@const count = policies.filter(p => p.plan_id === doc.id).length}
+                <option value={doc.id}>{planLabel(doc)} ({count ? `${count} polic${count === 1 ? 'y' : 'ies'}` : 'no policies — relevance summary'})</option>
               {/each}
             </select>
           </div>
         {:else if wordingStep === 'upload'}
+          {@const selectedPlan = wordingSelectablePlans.find(d => d.id === Number(wordingPlanId))}
           <p class="wording-hint">
-            Upload the document for <strong>{plansWithPolicies.find(d => d.id === Number(wordingPlanId))?.plan_name}</strong>, or paste its text.
-            {wordingPlanPolicies.length} saved polic{wordingPlanPolicies.length === 1 ? 'y' : 'ies'} will be searched for.
+            Upload the document for <strong>{selectedPlan?.plan_name}</strong>, or paste its text.
+            {#if wordingPlanPolicies.length}
+              {wordingPlanPolicies.length} saved polic{wordingPlanPolicies.length === 1 ? 'y' : 'ies'} will be searched for.
+            {:else}
+              This plan has no saved policies, so a project-specific relevance summary will be generated instead.
+            {/if}
           </p>
 
           <div class="extract-mode-toggle">
@@ -952,6 +1030,15 @@
               </div>
             </div>
           {/each}
+        {:else if wordingStep === 'relevance-review'}
+          <p class="wording-hint">
+            Generated from <strong>{wordingSelectablePlans.find(d => d.id === Number(wordingPlanId))?.plan_name}</strong>.
+            Edit as needed, then save — this replaces the "Relevance to Project" text on that plan's entry in Relevant Documents.
+          </p>
+          <div class="field">
+            <label>Relevance to Project</label>
+            <textarea bind:value={relevanceSummary} rows="10" placeholder="No relevance found — write it in manually if you know it."></textarea>
+          </div>
         {/if}
       </div>
 
@@ -969,18 +1056,22 @@
           <span></span>
         {/if}
         <div class="bulk-footer-actions">
-          <button class="btn-cancel" on:click={closeWordingModal} disabled={wordingExtracting || wordingSaving}>
+          <button class="btn-cancel" on:click={closeWordingModal} disabled={wordingExtracting || wordingSaving || relevanceSaving}>
             {wordingStep === 'no-plans' ? 'Close' : 'Cancel'}
           </button>
           {#if wordingStep === 'plan'}
             <button class="btn-save" on:click={chooseWordingPlan} disabled={!wordingPlanId}>Next</button>
           {:else if wordingStep === 'upload'}
             <button class="btn-save" on:click={runWordingExtract} disabled={wordingExtracting || (wordingMode === 'file' ? !wordingFile : !wordingText.trim())}>
-              {wordingExtracting ? 'Extracting…' : 'Extract'}
+              {wordingExtracting ? (wordingPlanPolicies.length ? 'Extracting…' : 'Generating…') : (wordingPlanPolicies.length ? 'Extract' : 'Generate Relevance Summary')}
             </button>
           {:else if wordingStep === 'review'}
             <button class="btn-save" on:click={saveWording} disabled={wordingSaving}>
               {wordingSaving ? 'Saving…' : 'Save Selected'}
+            </button>
+          {:else if wordingStep === 'relevance-review'}
+            <button class="btn-save" on:click={saveRelevance} disabled={relevanceSaving || !relevanceSummary.trim()}>
+              {relevanceSaving ? 'Saving…' : 'Save Relevance Note'}
             </button>
           {/if}
         </div>
@@ -1376,18 +1467,30 @@
     gap: 0.4rem;
   }
 
-  .key-badge {
+  .key-toggle-chip {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
     font-size: 0.7rem;
     font-weight: 700;
-    background: var(--color-violet-100);
-    color: var(--color-purple-700);
+    background: var(--color-slate-100);
+    color: var(--color-slate-400);
     padding: 0.2rem 0.5rem;
     border-radius: 20px;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .key-toggle-chip:hover { background: var(--color-violet-100); color: var(--color-purple-700); }
+  .key-toggle-chip.active { background: var(--color-violet-100); color: var(--color-purple-700); }
+  .key-toggle-chip input[type="checkbox"] {
+    position: absolute;
+    width: 1px; height: 1px;
+    opacity: 0;
+    pointer-events: none;
   }
   .type-badge {
     font-size: 0.7rem;

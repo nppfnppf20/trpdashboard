@@ -96,6 +96,19 @@ export async function draftIssuesFromBriefing(projectId, sources, { allowNewIssu
   return res.json();
 }
 
+export async function draftIssuesFromTracker(projectId, { allowNewIssues = true, issueScope = {} } = {}) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-from-tracker`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowNewIssues, issueScope })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to draft issues from tracker');
+  }
+  return res.json();
+}
+
 export async function summarizeSpecialistReport(draftingIssueId, { file, text, fileName } = {}) {
   let res;
   if (file) {

@@ -7,7 +7,8 @@
 import { chunkText } from './parser.service.js';
 import {
   callClaude, parseJSON, MAX_CHUNKS, MODEL_SONNET,
-  PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, buildSequentialBatches
+  PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, buildSequentialBatches,
+  buildFullDocumentBlock, checkDocumentSize
 } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -345,6 +346,61 @@ export async function extractPolicyWordingFromDocument(policies, rawText) {
   return {
     results: policies.map(p => ({ policy_id: p.id, wording: wordingById.get(p.id) })),
     sizeWarning: [truncationWarning, failureWarning].filter(Boolean).join(' ') || null,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plan relevance summary — for a plan document with no policies logged
+// against it (typically Supplementary Guidance or another material
+// consideration, which isn't structured into discrete "policies" the way a
+// Local Plan is), generate a short project-specific note on how the
+// document actually applies to this site and proposal, grounded in the
+// re-uploaded document and the project's own context. Used by the same
+// "Extract Policy Wording" flow as extractPolicyWordingFromDocument above —
+// which of the two runs depends on whether the chosen plan has any saved
+// policies. Nothing is saved here; the caller reviews it first, same as
+// everywhere else, then saves it into that plan's own `relevance` field.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PLAN_RELEVANCE_SYSTEM = `You are a specialist planning consultant writing a short, project-specific relevance note on a planning document (typically supplementary guidance, an SPD, or another material consideration) for a live project's policy tracker. \
+You are not summarising the document in general — you are judging what in it actually bears on this specific site and proposal, and saying so plainly. \
+Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
+
+const PLAN_RELEVANCE_PROMPT = `## Live Project Context
+{{PROJECT_CONTEXT}}
+
+## Document: {{PLAN_NAME}}
+<document>
+{{DOCUMENT}}
+</document>
+
+Write a concise relevance note, 2-4 short paragraphs of plain text (no markdown headings, no bullet lists), explaining how this document applies to THIS project specifically — which parts of its guidance or content are most relevant to the site and the proposed development, and why, given the project context above. Do not produce a generic summary of the whole document; focus only on what matters here. If, having read it, the document turns out to have little or no bearing on this particular site or proposal, say that plainly instead of inventing relevance.`;
+
+/**
+ * @param {string} planName
+ * @param {object} projectContext - shape returned by the controller's getProjectContext
+ * @param {string} rawText - the re-uploaded document's parsed text
+ * @returns {Promise<{summary: string, warning: string|null}>}
+ */
+export async function generatePlanRelevanceSummary(planName, projectContext, rawText) {
+  const sizeCheck = checkDocumentSize(rawText);
+  if (sizeCheck.status === 'rejected') {
+    const err = new Error(sizeCheck.warningMessage);
+    err.status = 400;
+    throw err;
+  }
+
+  const docBlock = buildFullDocumentBlock(rawText);
+  const userPrompt = PLAN_RELEVANCE_PROMPT
+    .replace('{{PROJECT_CONTEXT}}', buildProjectBlock(projectContext))
+    .replace('{{PLAN_NAME}}', planName)
+    .replace('{{DOCUMENT}}', docBlock);
+
+  const raw = await callClaude(PLAN_RELEVANCE_SYSTEM, userPrompt, MODEL_SONNET, 2000);
+
+  return {
+    summary: raw.trim(),
+    warning: sizeCheck.warningMessage,
   };
 }
 

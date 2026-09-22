@@ -580,6 +580,7 @@
         file: file ?? null,
         documentText: documentText ?? '',
         documentTitle: documentTitle ?? null,
+        documentHtml: originalHtml,
         paragraphs: targeted,
         userNotes: notesForApi,
         docType: docType ?? null,
