@@ -8,7 +8,8 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { analyseLpaDocument, synthesiseLpaAnalysis, extractPoliciesFromDocument } from '../services/llm.service.js';
+import { analyseLpaDocument, synthesiseLpaAnalysis, extractPoliciesFromDocument, extractPolicyWordingFromDocument } from '../services/llm.service.js';
+import { checkVerbatim } from '../services/verbatimCheck.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -144,9 +145,46 @@ export async function listNationalPolicyPrecedents(req, res) {
   }
 }
 
+const normaliseLookupKey = s => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+// Overwrites any extracted policy that matches a canonical NPPF library
+// entry (by reference, falling back to name) with the library's exact
+// reference/name/text — see [[project_nppf_policy_bank]]. This is a plain
+// deterministic lookup, not an LLM call: once a policy's in the library,
+// its wording is never re-transcribed from a re-uploaded document again.
+async function overlayNppfWording(policies) {
+  if (!policies.length) return policies;
+  const { rows: bank } = await pool.query(
+    `SELECT policy_reference, policy_name, policy_text FROM admin_console.nppf_policies`
+  );
+  if (!bank.length) return policies;
+
+  const byReference = new Map();
+  const byName = new Map();
+  for (const b of bank) {
+    if (b.policy_reference) byReference.set(normaliseLookupKey(b.policy_reference), b);
+    if (b.policy_name) byName.set(normaliseLookupKey(b.policy_name), b);
+  }
+
+  return policies.map(p => {
+    if (p.policy_type !== 'national') return p;
+    const match = byReference.get(normaliseLookupKey(p.policy_reference)) || byName.get(normaliseLookupKey(p.policy_name));
+    if (!match) return p;
+    return {
+      ...p,
+      policy_reference: match.policy_reference,
+      policy_name: match.policy_name,
+      policy_text: match.policy_text,
+    };
+  });
+}
+
 // Parses an uploaded file OR pasted text and asks the LLM to pull out the
 // policies it cites, verbatim, for review before anything is saved — see
-// [[project_policy_extraction_from_document]].
+// [[project_policy_extraction_from_document]]. Any policy that matches the
+// canonical NPPF library is overwritten with the library's exact wording
+// (see overlayNppfWording above), so the LLM only has to spot the citation,
+// not transcribe it.
 export async function extractPolicies(req, res) {
   try {
     let rawText;
@@ -164,10 +202,66 @@ export async function extractPolicies(req, res) {
     }
 
     const { policies, plans, sizeWarning } = await extractPoliciesFromDocument(rawText);
-    res.json({ policies, plans, warning: sizeWarning || null });
+    const overlaidPolicies = await overlayNppfWording(policies);
+    res.json({ policies: overlaidPolicies, plans, warning: sizeWarning || null });
   } catch (err) {
     console.error('extractPolicies error:', err);
     res.status(err.status || 500).json({ error: err.message || 'Failed to extract policies from document' });
+  }
+}
+
+// Re-reads one plan's document (re-uploaded each time — nothing from the
+// original extraction is persisted) and finds the verbatim operative
+// wording for the policies already saved against that plan, one plan at a
+// time so the search stays scoped to a single document. Nothing is saved;
+// the caller reviews each result (with a verbatim-check flag) before saving.
+export async function extractPolicyWording(req, res) {
+  const { projectId } = req.params;
+  try {
+    let policyIds = req.body.policy_ids;
+    if (typeof policyIds === 'string') {
+      try {
+        policyIds = JSON.parse(policyIds);
+      } catch {
+        return res.status(400).json({ error: 'policy_ids must be a JSON array' });
+      }
+    }
+    if (!Array.isArray(policyIds) || !policyIds.length) {
+      return res.status(400).json({ error: 'At least one policy_id is required' });
+    }
+
+    let rawText, parseWarning = null;
+    if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      rawText = parsed.text;
+      parseWarning = parsed.warning;
+    } else if (req.body.text?.trim()) {
+      rawText = req.body.text;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+    if (!rawText?.trim()) {
+      return res.status(400).json({ error: parseWarning || 'Could not extract any text from that document' });
+    }
+
+    const { rows: policies } = await pool.query(
+      `SELECT id, policy_reference, policy_name
+       FROM project_policies
+       WHERE project_id = $1 AND id = ANY($2::int[])`,
+      [projectId, policyIds]
+    );
+    if (!policies.length) return res.status(404).json({ error: 'No matching policies found' });
+
+    const { results, sizeWarning } = await extractPolicyWordingFromDocument(policies, rawText);
+    const annotated = results.map(r => ({
+      ...r,
+      verbatim: r.wording ? checkVerbatim(r.wording, rawText) : null,
+    }));
+
+    res.json({ results: annotated, warning: parseWarning || sizeWarning || null, sourceText: rawText });
+  } catch (err) {
+    console.error('extractPolicyWording error:', err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to extract policy wording' });
   }
 }
 

@@ -66,6 +66,28 @@ export async function extractPoliciesFromDocument(projectId, { file, text } = {}
   return res.json();
 }
 
+// Re-uploads one plan's document (or pastes its text) and finds the verbatim
+// wording for the given policies (all belonging to that same plan) against it.
+export async function extractPolicyWording(projectId, { file, text, policyIds } = {}) {
+  let body;
+  const opts = { method: 'POST' };
+  if (file) {
+    body = new FormData();
+    body.append('file', file);
+    body.append('policy_ids', JSON.stringify(policyIds || []));
+  } else {
+    body = JSON.stringify({ text, policy_ids: policyIds || [] });
+    opts.headers = { 'Content-Type': 'application/json' };
+  }
+  opts.body = body;
+  const res = await authFetch(`${BASE}/projects/${projectId}/policies/extract-wording`, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to extract policy wording');
+  }
+  return res.json();
+}
+
 export async function getNationalPolicyPrecedents(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/national-policy-precedents`);
   if (!res.ok) throw new Error('Failed to fetch national policy precedents');

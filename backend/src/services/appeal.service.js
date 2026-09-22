@@ -852,7 +852,7 @@ Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you
     provider,
     model: MODEL_SONNET,
     maxTokens: 16000,
-    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.' + ANTI_AI_SLOP_BLOCK,
+    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.' + HOUSE_STYLE_BLOCK + ANTI_AI_SLOP_BLOCK,
     prompt,
     stream: true,
   })).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -940,7 +940,7 @@ export async function incorporateSpecialistReportIntoIssue({
     provider,
     model: MODEL_SONNET,
     maxTokens: 16000,
-    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.' + ANTI_AI_SLOP_BLOCK,
+    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.' + HOUSE_STYLE_BLOCK + ANTI_AI_SLOP_BLOCK,
     prompt,
     stream: true,
   })).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');

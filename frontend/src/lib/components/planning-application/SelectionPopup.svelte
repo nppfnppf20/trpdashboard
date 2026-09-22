@@ -4,13 +4,17 @@
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
 
   export let project;
-  export let draftKind;
-  export let draftTypeId;
+  export let draftKind = null;
+  export let draftTypeId = null;
   export let paragraphIds = [];
   export let quotedText = '';
   export let top = 0; // bottom edge of the highlighted selection
   export let left = 0;
   export let defaultDocType = null;
+  // Off for contexts with no sticky-note/comments system of their own (e.g.
+  // the generic planning deliverables editor) — hides the Comment button so
+  // this popup is just the highlight -> AI-edit flow, nothing else.
+  export let allowComment = true;
 
   const dispatch = createEventDispatcher();
 
@@ -204,9 +208,11 @@
 
   <div class="selection-popup-actions">
     <button class="btn btn-secondary" type="button" on:click={() => dispatch('close')}>Cancel</button>
-    <button class="btn btn-secondary" type="button" disabled={!notes.trim() || commentSaving} on:click={handleComment}>
-      {commentSaving ? 'Saving...' : 'Comment'}
-    </button>
+    {#if allowComment}
+      <button class="btn btn-secondary" type="button" disabled={!notes.trim() || commentSaving} on:click={handleComment}>
+        {commentSaving ? 'Saving...' : 'Comment'}
+      </button>
+    {/if}
     <button class="btn btn-primary" type="button" disabled={!notes.trim() && !hasAttachment} on:click={handleSendToAi}>
       <i class="las la-magic"></i> Send to AI
     </button>

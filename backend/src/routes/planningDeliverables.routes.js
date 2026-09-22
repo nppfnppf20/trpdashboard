@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import multer from 'multer';
 import {
   getAllTemplates,
   getTemplateById,
@@ -16,10 +17,25 @@ import {
   updateDeliverable,
   deleteDeliverable,
   getDeliverableAsHTML,
-  updateDeliverableFromHTML
+  updateDeliverableFromHTML,
+  incorporateDeliverableTargeted
 } from '../controllers/planningDeliverables.controller.js';
 
 const router = express.Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, fieldSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = file.originalname.split('.').pop().toLowerCase();
+    const allowed = ['application/pdf', 'text/plain', 'text/markdown'];
+    if (allowed.includes(file.mimetype) || ['pdf', 'txt', 'md'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, .txt, and .md files are accepted'));
+    }
+  }
+});
 
 // Template routes
 router.get('/templates', getAllTemplates);
@@ -38,6 +54,9 @@ router.delete('/deliverables/:id', deleteDeliverable);
 // HTML conversion routes (for rich text editor)
 router.get('/deliverables/:id/html', getDeliverableAsHTML);
 router.put('/deliverables/:id/html', updateDeliverableFromHTML);
+
+// AI-edit a highlighted (or the whole) set of paragraphs
+router.post('/deliverables/:id/incorporate-targeted', upload.single('file'), incorporateDeliverableTargeted);
 
 export default router;
 

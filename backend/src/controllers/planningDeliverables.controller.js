@@ -5,6 +5,8 @@
 
 import { pool } from '../db.js';
 import { mergeTemplateWithProject, contentToHTML, htmlToContent } from '../services/templateMerge.service.js';
+import { parseFile } from '../services/parser.service.js';
+import { incorporateTargetedParagraphs, resolveProvider } from '../services/llm.service.js';
 
 /**
  * Get all available templates
@@ -476,6 +478,63 @@ export async function updateDeliverableFromHTML(req, res) {
   }
 }
 
+/**
+ * AI-edit a set of paragraphs within a deliverable (highlight-driven quick
+ * edit, or "whole document" when the caller passes every paragraph) — mirrors
+ * appeal.controller.js's incorporateTargeted, minus the appeal-specific
+ * issues/guiding-brief/specialist-report machinery, since generic
+ * deliverables (letters, blank documents, etc.) have none of that context.
+ */
+export async function incorporateDeliverableTargeted(req, res) {
+  const { id } = req.params;
+  const { document_text, document_title, user_notes = null, provider: requestedProvider, doc_type } = req.body ?? {};
+  const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
+
+  if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
+  if (!document_text && !req.file && !user_notes?.trim()) {
+    return res.status(400).json({ error: 'document_text, file, or user_notes required' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT pd.deliverable_name, p.project_name
+       FROM planning_deliverables.planning_deliverables pd
+       JOIN projects p ON pd.project_id = p.id
+       WHERE pd.id = $1`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Deliverable not found' });
+
+    const provider = await resolveProvider('planning_deliverable_incorporation', requestedProvider);
+
+    let documentText = '', filename = null;
+    if (req.file) {
+      const parsed = await parseFile(req.file.buffer, req.file.originalname);
+      documentText = parsed.text;
+      filename = document_title || req.file.originalname;
+    } else if (document_text) {
+      documentText = document_text;
+      filename = document_title || 'Pasted document';
+    }
+
+    const updated = await incorporateTargetedParagraphs({
+      paragraphs,
+      documentText,
+      filename,
+      issues: [],
+      userNotes: user_notes,
+      projectName: rows[0].project_name,
+      draftTypeName: rows[0].deliverable_name,
+      docType: doc_type ?? null,
+      provider,
+    });
+    res.json({ updated });
+  } catch (error) {
+    console.error('Error incorporating into deliverable:', error);
+    res.status(500).json({ error: error.message });
+  }
+}
+
 export default {
   getAllTemplates,
   getTemplateById,
@@ -487,6 +546,7 @@ export default {
   updateDeliverable,
   deleteDeliverable,
   getDeliverableAsHTML,
-  updateDeliverableFromHTML
+  updateDeliverableFromHTML,
+  incorporateDeliverableTargeted
 };
 

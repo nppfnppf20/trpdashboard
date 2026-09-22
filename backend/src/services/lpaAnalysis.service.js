@@ -216,6 +216,91 @@ export async function extractPoliciesFromDocument(rawText) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Policy wording extraction — given policies already saved against one
+// development plan, re-read that plan's document and pull out each named
+// policy's verbatim operative wording, distinct from its supporting/
+// explanatory text. Run one plan at a time (the caller uploads that plan's
+// document each time — nothing is persisted from the original extraction),
+// so the prompt only ever has to search one document for the policies that
+// actually belong to it. See [[project_policy_wording_extraction]].
+// ─────────────────────────────────────────────────────────────────────────────
+
+const POLICY_WORDING_SYSTEM = `You are a specialist planning consultant extracting the exact verbatim wording of specific, named planning policies from a development plan document (e.g. a Local Plan or Neighbourhood Plan), so it can be recorded precisely in a project's policy tracker.
+
+You will be given a list of named policies to find, and the full text of the plan document. For each policy, locate it by its reference and/or name and extract ONLY its operative policy wording, exactly as written, character for character.
+
+CRITICAL DISTINCTION: every policy in a development plan is normally followed or preceded by explanatory material such as "Reasoned Justification", "Supporting Text", "Explanation", or introductory context paragraphs under the same heading. Do NOT include any of this. Extract ONLY the operative wording of the policy itself, i.e. the actual normative text (the numbered/lettered criteria, "the Council will...", "Development will be permitted where...", etc.) that sits directly under the policy's own heading or box, before any "Reasoned Justification"/"Supporting Text"/"Explanation" sub-heading begins.
+
+VERBATIM RULE: copy the operative wording word-for-word, including punctuation, capitalisation, and any lettered/numbered sub-parts inline. Do not paraphrase, summarise, correct grammar, reformat, or merge/split paragraphs.
+
+If a listed policy cannot be found in this document at all (wrong document, or only referenced by name without its wording appearing here), return null for that policy's wording rather than guessing or reconstructing it from general knowledge.
+
+Never use an em dash (—); use a comma, colon, or rewrite the sentence instead.`;
+
+const POLICY_WORDING_PROMPT = `Find and extract the verbatim operative wording of each of the following policies from the document below.
+
+Policies to find:
+{{POLICY_LIST}}
+
+Document:
+<document>
+{{DOCUMENT}}
+</document>
+
+Respond ONLY with valid JSON, no markdown fences:
+{
+  "results": [
+    { "index": 1, "wording": "verbatim operative policy wording, or null if this policy is not found in this document" }
+  ]
+}
+Return exactly one result per listed policy, in the same order, using its index number.`;
+
+/**
+ * @param {Array<{id:number, policy_reference:string|null, policy_name:string}>} policies - policies belonging to one plan
+ * @param {string} rawText - the re-uploaded plan document's parsed text
+ * @returns {Promise<{results: Array<{policy_id:number, wording:string|null}>, sizeWarning:string|null}>}
+ */
+export async function extractPolicyWordingFromDocument(policies, rawText) {
+  const sizeCheck = checkDocumentSize(rawText);
+  if (sizeCheck.status === 'rejected') {
+    const err = new Error(sizeCheck.warningMessage);
+    err.status = 400;
+    throw err;
+  }
+
+  const policyList = policies
+    .map((p, i) => `${i + 1}. ${p.policy_reference ? `${p.policy_reference}: ` : ''}${p.policy_name}`)
+    .join('\n');
+
+  const docBlock = buildFullDocumentBlock(rawText);
+  const userPrompt = POLICY_WORDING_PROMPT
+    .replace('{{POLICY_LIST}}', policyList)
+    .replace('{{DOCUMENT}}', docBlock);
+
+  const raw = await callClaude(POLICY_WORDING_SYSTEM, userPrompt, MODEL_SONNET, 8000);
+
+  let parsed;
+  try {
+    parsed = parseJSON(raw);
+  } catch (err) {
+    console.error('[extractPolicyWordingFromDocument] JSON parse failed. Raw (first 400):', raw.slice(0, 400));
+    throw new Error('LLM returned an unparseable response while extracting policy wording');
+  }
+
+  const results = Array.isArray(parsed.results) ? parsed.results : [];
+  const byIndex = new Map(results.map(r => [r.index, r]));
+
+  return {
+    results: policies.map((p, i) => {
+      const r = byIndex.get(i + 1);
+      const wording = typeof r?.wording === 'string' && r.wording.trim() ? r.wording.trim() : null;
+      return { policy_id: p.id, wording };
+    }),
+    sizeWarning: sizeCheck.warningMessage,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Shared prompt-block builders
 // ─────────────────────────────────────────────────────────────────────────────
 

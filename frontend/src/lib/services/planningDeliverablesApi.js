@@ -282,6 +282,32 @@ export async function exportDeliverable(id, format = 'pdf') {
   throw new Error('Export functionality coming soon');
 }
 
+/**
+ * AI-edit a highlighted (or the entire) set of paragraphs in a deliverable.
+ * @param {number} id - Deliverable ID
+ * @param {{file?: File|null, documentText?: string, documentTitle?: string|null, paragraphs: Array, userNotes?: string|null, docType?: string|null}} opts
+ * @returns {Promise<{updated: Array}>}
+ */
+export async function incorporateDeliverableTargeted(id, { file, documentText, documentTitle, paragraphs, userNotes, docType } = {}) {
+  const form = new FormData();
+  form.append('paragraphs', JSON.stringify(paragraphs));
+  if (userNotes) form.append('user_notes', userNotes);
+  if (docType) form.append('doc_type', docType);
+  if (file) {
+    form.append('file', file);
+  } else {
+    form.append('document_text', documentText ?? '');
+    form.append('document_title', documentTitle ?? '');
+  }
+
+  const response = await authFetch(`/api/planning/deliverables/${id}/incorporate-targeted`, { method: 'POST', body: form });
+  if (!response.ok) {
+    const e = await response.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to incorporate document');
+  }
+  return response.json();
+}
+
 export default {
   getTemplates,
   getTemplate,
@@ -294,6 +320,7 @@ export default {
   deleteDeliverable,
   getDeliverableAsHTML,
   updateDeliverableFromHTML,
-  exportDeliverable
+  exportDeliverable,
+  incorporateDeliverableTargeted
 };
 

@@ -6,7 +6,7 @@
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal } from '$lib/stores/planning-suggestion.js';
   import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
-  import { getTemplates, createDeliverable, createCustomDeliverable, updateDeliverableFromHTML, getProjectDeliverables, getDeliverableAsHTML, deleteDeliverable as deleteDeliverableApi } from '$lib/services/planningDeliverablesApi.js';
+  import { getTemplates, createDeliverable, createCustomDeliverable, updateDeliverableFromHTML, getProjectDeliverables, getDeliverableAsHTML, deleteDeliverable as deleteDeliverableApi, incorporateDeliverableTargeted } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { appealIncorporateTargeted } from '$lib/api/appeal.js';
@@ -530,7 +530,7 @@
   }
 
   function handleTextSelected(e) {
-    selectionPopup = e.detail;
+    selectionPopup = { ...e.detail, isWholeDocument: false };
   }
 
   function closeSelectionPopup() {
@@ -544,18 +544,27 @@
     loadDraftComments();
   }
 
-  async function handleSendToAi(e) {
-    if (!selectionPopup) return;
-    const { paragraphIds, quotedText, top, left } = selectionPopup;
-    const { notes, file, documentText, documentTitle, docType } = e.detail;
-    const originalHtml = $draftEditorHtml;
-    selectionPopup = null;
-    // The highlight box was only ever meant to mark the live selection while
-    // the compose popup was open — once we're writing the AI's result back
-    // into the document (in a different color of its own), it needs to go,
-    // or the two visibly overlap and the stale box doesn't track scrolling.
-    draftEditor?.clearSelectionHighlight();
-    pendingAiEdit = { paragraphIds, quotedText, top, left, originalHtml, loading: true, error: null };
+  // A blank/custom document has no appeal- or PA-draft-type row behind it
+  // (drafts/:typeId/incorporate expects a real numeric draft_type_id), so it
+  // can't go through quickIncorporateApi. It's saved into the same
+  // planning_deliverables.planning_deliverables table the generic Planning
+  // Deliverables page uses instead — autosave it there the first time an AI
+  // edit is requested (same as clicking Save) so it has a real id to target.
+  async function ensureBlankDeliverableId(html) {
+    if (openCustomDeliverableId) return openCustomDeliverableId;
+    const { deliverable } = await createCustomDeliverable(project.id, guessDeliverableName(html), html || '<p></p>');
+    openCustomDeliverableId = deliverable.id;
+    loadDeliverables();
+    return deliverable.id;
+  }
+
+  // Shared by both AI-edit entry points: a highlight's compose popup
+  // (handleSendToAi) and the "apply to whole document" box in the Create
+  // panel (handleReviseAll). Writes the result straight into the draft,
+  // pending-highlighted, for Accept/Edit Again — see pendingAiEdit above.
+  async function sendAiEdit({ paragraphIds, quotedText, top, left, isWholeDocument, notes, file, documentText, documentTitle, docType }) {
+    const originalHtml = draftEditor?.getHTML() ?? $draftEditorHtml;
+    pendingAiEdit = { paragraphIds, quotedText, top, left, isWholeDocument, originalHtml, loading: true, error: null };
 
     try {
       const allParagraphs = splitAllParagraphs(originalHtml);
@@ -564,17 +573,20 @@
       // "the paragraph" + a disconnected instruction and has no anchor for
       // what to actually change — it tends to just restate the paragraph.
       const notesForApi = [
-        quotedText?.trim() ? `The user highlighted this exact text: "${quotedText.trim()}"` : null,
+        !isWholeDocument && quotedText?.trim() ? `The user highlighted this exact text: "${quotedText.trim()}"` : null,
         notes?.trim() ? `Their instruction: ${notes.trim()}` : null,
       ].filter(Boolean).join('\n\n') || null;
-      const result = await quickIncorporateApi(project.id, apiDraftTypeId, {
+      const requestOpts = {
         file: file ?? null,
         documentText: documentText ?? '',
         documentTitle: documentTitle ?? null,
         paragraphs: targeted,
         userNotes: notesForApi,
         docType: docType ?? null,
-      });
+      };
+      const result = $activeDraftTypeId === 'blank'
+        ? await incorporateDeliverableTargeted(await ensureBlankDeliverableId(originalHtml), requestOpts)
+        : await quickIncorporateApi(project.id, apiDraftTypeId, requestOpts);
       const oldHtmlById = Object.fromEntries(allParagraphs.map(p => [p.id, p.html]));
       const taggedUpdates = (result.updated ?? []).map(p => {
         const oldHtml = oldHtmlById[p.id];
@@ -593,6 +605,44 @@
     }
   }
 
+  async function handleSendToAi(e) {
+    if (!selectionPopup) return;
+    const { paragraphIds, quotedText, top, left, isWholeDocument } = selectionPopup;
+    const { notes, file, documentText, documentTitle, docType } = e.detail;
+    selectionPopup = null;
+    // The highlight box was only ever meant to mark the live selection while
+    // the compose popup was open — once we're writing the AI's result back
+    // into the document (in a different color of its own), it needs to go,
+    // or the two visibly overlap and the stale box doesn't track scrolling.
+    draftEditor?.clearSelectionHighlight();
+    await sendAiEdit({ paragraphIds, quotedText, top, left, isWholeDocument, notes, file, documentText, documentTitle, docType });
+  }
+
+  async function handleReviseAll(e) {
+    if (pendingAiEdit) return;
+    const notes = e.detail?.notes?.trim();
+    if (!notes) return;
+    const html = draftEditor?.getHTML() ?? $draftEditorHtml;
+    const allParagraphs = splitAllParagraphs(html);
+    if (!allParagraphs.length) {
+      alert('Nothing to revise yet — write or generate some content first.');
+      return;
+    }
+    createPanelOpen = false;
+    await sendAiEdit({
+      paragraphIds: allParagraphs.map(p => p.id),
+      quotedText: '(Applies to the whole document)',
+      top: 24,
+      left: typeof window !== 'undefined' ? window.innerWidth / 2 : 600,
+      isWholeDocument: true,
+      notes,
+      file: null,
+      documentText: '',
+      documentTitle: null,
+      docType: null,
+    });
+  }
+
   function acceptPendingAiEdit() {
     if (!pendingAiEdit) return;
     const cleared = clearPendingMarkers($draftEditorHtml);
@@ -604,12 +654,12 @@
 
   function editPendingAiEditAgain() {
     if (!pendingAiEdit) return;
-    const { paragraphIds, quotedText, top, left, originalHtml } = pendingAiEdit;
+    const { paragraphIds, quotedText, top, left, originalHtml, isWholeDocument } = pendingAiEdit;
     $draftEditorHtml = originalHtml;
     draftEditor?.setHTML(originalHtml);
     pendingAiEdit = null;
     draftEditor?.clearSelectionHighlight();
-    selectionPopup = { paragraphIds, quotedText, top, left };
+    selectionPopup = { paragraphIds, quotedText, top, left, isWholeDocument };
   }
 
   function cancelPendingAiEdit() {
@@ -935,6 +985,7 @@
               <DraftCreatePanel
                 getDraftHtml={() => draftEditor?.getHTML() ?? $draftEditorHtml}
                 on:generated={handleCustomDraftGenerated}
+                on:reviseall={handleReviseAll}
                 on:close={() => createPanelOpen = false}
               />
             {:else if checkPanelOpen}

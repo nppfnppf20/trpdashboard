@@ -1,8 +1,9 @@
 <script>
   import { onMount, createEventDispatcher } from 'svelte';
-  import { getPolicies, createPolicy, updatePolicy, deletePolicy, getNationalPolicyPrecedents } from '$lib/api/lpaAnalysis.js';
+  import { getPolicies, createPolicy, updatePolicy, deletePolicy, getNationalPolicyPrecedents, extractPolicyWording } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
   import { listIssueTypes } from '$lib/api/issueTypes.js';
+  import { getNppfPolicies } from '$lib/api/nppfPolicies.js';
 
   const dispatch = createEventDispatcher();
 
@@ -14,11 +15,13 @@
   let planDocs = [];
   let issueTypes = [];
   let precedents = [];
+  let nppfLibrary = [];
   let loading = true;
   let error = null;
   let showTemplates = false;
   let showPrecedents = false;
   let importingKey = null;
+  let nppfPickId = '';
 
   // Generic templates (development_type IS NULL) always apply; dev-type ones
   // only apply where they overlap the project's selected development types.
@@ -69,6 +72,20 @@
     catch (err) { console.error('Failed to load policy snippet templates:', err); }
     try { precedents = await getNationalPolicyPrecedents(projectId); }
     catch (err) { console.error('Failed to load national policy precedents:', err); }
+    try { nppfLibrary = await getNppfPolicies(); }
+    catch (err) { console.error('Failed to load NPPF policy library:', err); }
+  }
+
+  // Selecting an entry from the NPPF library fills the form with its exact
+  // reference/name/text — see [[project_nppf_policy_bank]]. Still editable
+  // afterwards; this is a starting point, not a lock.
+  function pickNppfPolicy() {
+    if (!nppfPickId) return;
+    const p = nppfLibrary.find(n => n.id === Number(nppfPickId));
+    if (!p) return;
+    form.policy_reference = p.policy_reference || '';
+    form.policy_name = p.policy_name;
+    form.policy_text = p.policy_text;
   }
 
   // Called by the parent (ProjectViewModal) after it creates plan documents
@@ -117,6 +134,7 @@
     editingId = null;
     form = emptyForm();
     formError = null;
+    nppfPickId = '';
     showForm = true;
     dispatch('formopen');
   }
@@ -134,6 +152,7 @@
       plan_id: policy.plan_id ?? ''
     };
     formError = null;
+    nppfPickId = '';
     showForm = true;
     dispatch('formopen');
   }
@@ -182,6 +201,182 @@
       policies = policies.filter(p => p.id !== policy.id);
     } catch (err) {
       alert(err.message);
+    }
+  }
+
+  // Bulk select/delete — mainly for clearing out duplicate policies (see
+  // [[project_nppf_policy_bank]]). Deleting a policy cascades to remove any
+  // Drafting Issue links pointing at it (drafting_issue_policy_relevance.policy_id
+  // ON DELETE CASCADE) — the confirm dialog below warns about this.
+  let selectMode = false;
+  let selectedIds = new Set();
+  let bulkDeleting = false;
+
+  function toggleSelectMode() {
+    selectMode = !selectMode;
+    if (!selectMode) selectedIds = new Set();
+  }
+
+  function toggleSelect(id) {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    selectedIds = next;
+  }
+
+  function toggleSelectAll() {
+    selectedIds = selectedIds.size === policies.length ? new Set() : new Set(policies.map(p => p.id));
+  }
+
+  async function deleteSelected() {
+    if (!selectedIds.size) return;
+    const n = selectedIds.size;
+    if (!confirm(`Delete ${n} selected polic${n === 1 ? 'y' : 'ies'}? This cannot be undone, and will remove any Drafting Issue links to them.`)) return;
+    bulkDeleting = true;
+    try {
+      await Promise.all([...selectedIds].map(id => deletePolicy(id)));
+      policies = policies.filter(p => !selectedIds.has(p.id));
+      selectedIds = new Set();
+      selectMode = false;
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      bulkDeleting = false;
+    }
+  }
+
+  // Extract Policy Wording: pick a plan whose policies are already saved,
+  // re-upload that plan's document, and let the LLM find each policy's
+  // verbatim operative wording in it (one plan at a time, so the document
+  // handed to the model only ever needs to cover the policies it belongs to).
+  let showWordingModal = false;
+  let wordingStep = 'plan'; // 'plan' | 'upload' | 'review'
+  let wordingPlanId = '';
+  let wordingMode = 'file'; // 'file' | 'text'
+  let wordingFile = null;
+  let wordingText = '';
+  let wordingExtracting = false;
+  let wordingSaving = false;
+  let wordingError = null;
+  let wordingWarning = null;
+  let wordingSourceText = null;
+  let wordingSourceFileName = null;
+  let showWordingSourceText = false;
+  let wordingRows = [];
+
+  $: plansWithPolicies = planDocs.filter(d => policies.some(p => p.plan_id === d.id));
+
+  // Rough, client-side context-window estimate for the upload step, mirroring
+  // the ~200,000-char baseline used by the Planning Application Workspace's
+  // context meters (PlanningWorkspace.svelte / StartingDocsModal.svelte) —
+  // a fixed prompt/instructions allowance, the selected plan's policy list,
+  // plus whatever's pasted/chosen so far. File size is used as a rough proxy
+  // for extracted text length since it isn't parsed until submit.
+  $: wordingPlanPolicies = wordingPlanId ? policies.filter(p => p.plan_id === Number(wordingPlanId)) : [];
+  $: wordingPolicyListChars = wordingPlanPolicies.reduce((acc, p) => acc + (p.policy_reference?.length ?? 0) + (p.policy_name?.length ?? 0) + 5, 0);
+  $: wordingDocChars = wordingMode === 'text' ? wordingText.length : (wordingFile?.size ?? 0);
+  $: wordingContextChars = 1500 + wordingPolicyListChars + wordingDocChars;
+  $: wordingContextPct = Math.min(100, Math.round(wordingContextChars / 200000 * 100));
+  $: wordingContextColour = wordingContextPct >= 75 ? '#dc2626' : wordingContextPct >= 50 ? '#d97706' : '#16a34a';
+
+  function openWordingModal() {
+    showWordingModal = true;
+    wordingStep = 'plan';
+    wordingPlanId = '';
+    wordingMode = 'file';
+    wordingFile = null;
+    wordingText = '';
+    wordingError = null;
+    wordingWarning = null;
+    wordingSourceText = null;
+    wordingSourceFileName = null;
+    showWordingSourceText = false;
+    wordingRows = [];
+  }
+
+  function closeWordingModal() {
+    showWordingModal = false;
+  }
+
+  function chooseWordingPlan() {
+    if (!wordingPlanId) return;
+    wordingError = null;
+    wordingStep = 'upload';
+  }
+
+  function onWordingFileChange(e) {
+    wordingFile = e.target.files?.[0] || null;
+  }
+
+  function clearWordingVerbatim(row) {
+    if (row._verbatim) row._verbatim = null;
+  }
+
+  async function runWordingExtract() {
+    if (wordingMode === 'file' && !wordingFile) { wordingError = 'Choose a file to upload'; return; }
+    if (wordingMode === 'text' && !wordingText.trim()) { wordingError = 'Paste the document text'; return; }
+    const planPolicies = policies.filter(p => p.plan_id === Number(wordingPlanId));
+    if (!planPolicies.length) { wordingError = 'No policies found for that plan'; return; }
+
+    wordingExtracting = true;
+    wordingError = null;
+    try {
+      const { results, warning, sourceText } = await extractPolicyWording(projectId, {
+        file: wordingMode === 'file' ? wordingFile : null,
+        text: wordingMode === 'text' ? wordingText : undefined,
+        policyIds: planPolicies.map(p => p.id)
+      });
+      wordingWarning = warning || null;
+      wordingSourceText = sourceText || null;
+      wordingSourceFileName = wordingMode === 'file' ? wordingFile.name : 'pasted text';
+
+      const byId = Object.fromEntries(results.map(r => [r.policy_id, r]));
+      wordingRows = planPolicies.map(p => {
+        const r = byId[p.id];
+        return {
+          policy_id: p.id,
+          policy_reference: p.policy_reference,
+          policy_name: p.policy_name,
+          existing_text: p.policy_text || null,
+          wording: r?.wording ?? '',
+          found: !!r?.wording,
+          _verbatim: r?.verbatim ?? null,
+          include: !!r?.wording
+        };
+      });
+      wordingStep = 'review';
+    } catch (err) {
+      wordingError = err.message;
+    } finally {
+      wordingExtracting = false;
+    }
+  }
+
+  async function saveWording() {
+    const toSave = wordingRows.filter(r => r.include && r.wording.trim());
+    if (!toSave.length) { wordingError = 'Nothing selected to save'; return; }
+    wordingSaving = true;
+    wordingError = null;
+    try {
+      await Promise.all(toSave.map(r => {
+        const existing = policies.find(p => p.id === r.policy_id);
+        return updatePolicy(r.policy_id, {
+          policy_reference: existing.policy_reference,
+          policy_name: existing.policy_name,
+          policy_type: existing.policy_type,
+          policy_text: r.wording.trim(),
+          relevant_supporting_text: existing.relevant_supporting_text,
+          notes: existing.notes,
+          is_key_policy: existing.is_key_policy,
+          plan_id: existing.plan_id
+        });
+      }));
+      await load();
+      closeWordingModal();
+    } catch (err) {
+      wordingError = err.message;
+    } finally {
+      wordingSaving = false;
     }
   }
 
@@ -280,6 +475,14 @@
         <i class="las {showPrecedents ? 'la-angle-up' : 'la-angle-down'}"></i>
       </button>
       <div class="tab-header-actions">
+        {#if plansWithPolicies.length > 0}
+          <button class="btn-add-multiple" on:click={openWordingModal}>
+            <i class="las la-file-alt"></i> Extract Policy Wording
+          </button>
+        {/if}
+        <button class="btn-add-multiple" class:btn-select-active={selectMode} on:click={toggleSelectMode}>
+          <i class="las la-check-square"></i> {selectMode ? 'Cancel Select' : 'Select'}
+        </button>
         <button class="btn-add-multiple" on:click={openBulkModal}>
           <i class="las la-list-ul"></i> Add Multiple
         </button>
@@ -288,6 +491,19 @@
         </button>
       </div>
     </div>
+
+    {#if selectMode}
+      <div class="select-bar">
+        <label class="select-all-label">
+          <input type="checkbox" checked={policies.length > 0 && selectedIds.size === policies.length} on:change={toggleSelectAll} />
+          Select all ({policies.length})
+        </label>
+        <span class="select-count">{selectedIds.size} selected</span>
+        <button class="btn-delete-selected" disabled={!selectedIds.size || bulkDeleting} on:click={deleteSelected}>
+          <i class="las la-trash"></i> {bulkDeleting ? 'Deleting…' : `Delete Selected`}
+        </button>
+      </div>
+    {/if}
 
     {#if showTemplates}
       <div class="templates-panel">
@@ -372,6 +588,20 @@
           </div>
         </div>
 
+        {#if form.policy_type === 'national' && nppfLibrary.length > 0}
+          <div class="form-row nppf-pick-row">
+            <div class="field">
+              <label><i class="las la-flag"></i> Import from NPPF Library <span class="optional">(optional)</span></label>
+              <select bind:value={nppfPickId} on:change={pickNppfPolicy}>
+                <option value="">Select a policy to fill in its wording…</option>
+                {#each nppfLibrary as p (p.id)}
+                  <option value={p.id}>{p.policy_reference ? `${p.policy_reference}: ` : ''}{p.policy_name}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+        {/if}
+
         <div class="form-row">
           <div class="field">
             <label>Policy Name <span class="required">*</span></label>
@@ -435,9 +665,12 @@
     {#if policies.length > 0}
       <div class="policy-list">
         {#each policies as policy (policy.id)}
-          <div class="card policy-card" class:key={policy.is_key_policy}>
+          <div class="card policy-card" class:key={policy.is_key_policy} class:selected={selectMode && selectedIds.has(policy.id)}>
             <div class="policy-card-header">
               <div class="policy-meta">
+                {#if selectMode}
+                  <input type="checkbox" class="policy-select-checkbox" checked={selectedIds.has(policy.id)} on:change={() => toggleSelect(policy.id)} />
+                {/if}
                 {#if policy.is_key_policy}
                   <span class="key-badge"><i class="las la-star"></i> Key Policy</span>
                 {/if}
@@ -579,6 +812,133 @@
           <button class="btn-save" on:click={saveAll} disabled={bulkSaving}>
             {bulkSaving ? 'Saving…' : 'Save All'}
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Extract Policy Wording Modal -->
+{#if showWordingModal}
+  <div class="bulk-backdrop" on:click|self={closeWordingModal} role="presentation">
+    <div class="bulk-modal">
+      <div class="bulk-modal-header">
+        <h3>Extract Policy Wording</h3>
+        <button class="bulk-close-btn" on:click={closeWordingModal}>&times;</button>
+      </div>
+
+      <div class="bulk-modal-body">
+        {#if wordingStep === 'plan'}
+          <p class="wording-hint">
+            Choose the development plan whose policies you want to fill in, then re-upload that plan's document.
+            The AI will find each saved policy's operative wording in it, verbatim, excluding any reasoned
+            justification or supporting text. Do this one plan at a time so the document only has to cover
+            that plan's own policies.
+          </p>
+          <div class="field">
+            <label>Plan</label>
+            <select bind:value={wordingPlanId}>
+              <option value="">Select a plan…</option>
+              {#each plansWithPolicies as doc (doc.id)}
+                <option value={doc.id}>{planLabel(doc)} ({policies.filter(p => p.plan_id === doc.id).length} polic{policies.filter(p => p.plan_id === doc.id).length === 1 ? 'y' : 'ies'})</option>
+              {/each}
+            </select>
+          </div>
+        {:else if wordingStep === 'upload'}
+          <p class="wording-hint">
+            Upload the document for <strong>{plansWithPolicies.find(d => d.id === Number(wordingPlanId))?.plan_name}</strong>, or paste its text.
+            {wordingPlanPolicies.length} saved polic{wordingPlanPolicies.length === 1 ? 'y' : 'ies'} will be searched for.
+          </p>
+
+          <div class="extract-mode-toggle">
+            <button type="button" class:active={wordingMode === 'file'} on:click={() => wordingMode = 'file'}>Upload file</button>
+            <button type="button" class:active={wordingMode === 'text'} on:click={() => wordingMode = 'text'}>Paste text</button>
+          </div>
+
+          {#if wordingMode === 'file'}
+            <div class="field">
+              <label>Document</label>
+              <input type="file" accept=".pdf,.docx,.txt,.md" on:change={onWordingFileChange} />
+              {#if wordingFile}<p class="extract-filename"><i class="las la-file-alt"></i> {wordingFile.name}</p>{/if}
+            </div>
+          {:else}
+            <div class="field">
+              <label>Document text</label>
+              <textarea bind:value={wordingText} rows="10" placeholder="Paste the document text here…"></textarea>
+            </div>
+          {/if}
+
+          <div class="wording-context-bar" title="~{wordingContextPct}% of context window used (prompt + policy list + document)">
+            <span class="wording-context-label">~{wordingContextPct}% context</span>
+            <div class="wording-context-track">
+              <div class="wording-context-fill" style="width:{wordingContextPct}%; background:{wordingContextColour}"></div>
+            </div>
+          </div>
+        {:else if wordingStep === 'review'}
+          {#if wordingSourceText}
+            <div class="extract-note-info">
+              <i class="las la-info-circle"></i>
+              Extracted from {wordingSourceFileName}. Rows flagged <span class="verbatim-badge verbatim-flag"><i class="las la-exclamation-triangle"></i> Check this</span> didn't closely match the source text — compare against the original before trusting them.
+              <button type="button" class="source-text-toggle" on:click={() => showWordingSourceText = !showWordingSourceText}>
+                {showWordingSourceText ? 'Hide' : 'View'} extracted source text
+              </button>
+              {#if showWordingSourceText}<pre class="source-text-body">{wordingSourceText}</pre>{/if}
+            </div>
+          {/if}
+
+          {#each wordingRows as row (row.policy_id)}
+            <div class="bulk-row-card wording-row-card">
+              <label class="wording-include">
+                <input type="checkbox" bind:checked={row.include} disabled={!row.wording.trim()} />
+              </label>
+              <div class="bulk-row-fields">
+                <div class="wording-row-header">
+                  {#if row.policy_reference}<span class="ref-chip">{row.policy_reference}</span>{/if}
+                  <span class="wording-policy-name">{row.policy_name}</span>
+                  {#if !row.found}
+                    <span class="verbatim-badge verbatim-flag"><i class="las la-question-circle"></i> Not found in this document</span>
+                  {:else if row._verbatim}
+                    <span class="verbatim-badge" class:verbatim-ok={row._verbatim.verified} class:verbatim-flag={!row._verbatim.verified} title={row._verbatim.verified ? 'Closely matches the source document' : `Only ~${Math.round(row._verbatim.score * 100)}% match to the source text — check against the original`}>
+                      <i class="las {row._verbatim.verified ? 'la-check-circle' : 'la-exclamation-triangle'}"></i> {row._verbatim.verified ? 'Verbatim' : 'Check this'}
+                    </span>
+                  {/if}
+                </div>
+                {#if row.existing_text && row.found}
+                  <p class="wording-existing-hint">This will replace the policy text currently saved for this policy.</p>
+                {/if}
+                <textarea bind:value={row.wording} on:input={() => { clearWordingVerbatim(row); row.include = !!row.wording.trim(); }} rows="4" placeholder="Not found in this document — paste the wording manually if you have it"></textarea>
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+
+      {#if wordingError}
+        <div class="bulk-error">{wordingError}</div>
+      {/if}
+      {#if wordingWarning}
+        <div class="bulk-error wording-warning">{wordingWarning}</div>
+      {/if}
+
+      <div class="bulk-modal-footer">
+        {#if wordingStep === 'review'}
+          <span class="bulk-count-hint">{wordingRows.filter(r => r.include && r.wording.trim()).length} of {wordingRows.length} will be saved</span>
+        {:else}
+          <span></span>
+        {/if}
+        <div class="bulk-footer-actions">
+          <button class="btn-cancel" on:click={closeWordingModal} disabled={wordingExtracting || wordingSaving}>Cancel</button>
+          {#if wordingStep === 'plan'}
+            <button class="btn-save" on:click={chooseWordingPlan} disabled={!wordingPlanId}>Next</button>
+          {:else if wordingStep === 'upload'}
+            <button class="btn-save" on:click={runWordingExtract} disabled={wordingExtracting || (wordingMode === 'file' ? !wordingFile : !wordingText.trim())}>
+              {wordingExtracting ? 'Extracting…' : 'Extract'}
+            </button>
+          {:else}
+            <button class="btn-save" on:click={saveWording} disabled={wordingSaving}>
+              {wordingSaving ? 'Saving…' : 'Save Selected'}
+            </button>
+          {/if}
         </div>
       </div>
     </div>
@@ -744,6 +1104,67 @@
     flex-shrink: 0;
   }
   .btn-add-multiple:hover { background: var(--color-purple-50); }
+  .btn-add-multiple.btn-select-active { background: var(--color-purple-600); color: white; }
+
+  .select-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.6rem 1.25rem;
+    margin: 0 0 0.5rem;
+    background: var(--color-purple-50);
+    border: 1px solid var(--color-violet-200);
+    border-radius: 8px;
+  }
+  .select-all-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-slate-700);
+    cursor: pointer;
+  }
+  .select-all-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-purple-600);
+    cursor: pointer;
+  }
+  .select-count {
+    font-size: 0.8rem;
+    color: var(--color-slate-500);
+  }
+  .btn-delete-selected {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    padding: 0.4rem 0.9rem;
+    background: var(--color-red-600);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-delete-selected:hover:not(:disabled) { background: var(--color-red-700); }
+  .btn-delete-selected:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .policy-select-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-purple-600);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .policy-card.selected {
+    border-color: var(--color-purple-600);
+    background: var(--color-purple-50);
+  }
 
   .btn-add {
     display: flex;
@@ -1165,5 +1586,147 @@
     font-weight: 400;
     color: var(--color-purple-600);
     margin-left: 0.25rem;
+  }
+
+  /* Extract Policy Wording modal */
+  .wording-hint {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    color: var(--color-slate-600);
+    line-height: 1.5;
+  }
+
+  .extract-note-info {
+    font-size: 0.8rem;
+    color: var(--color-slate-600);
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .source-text-toggle {
+    background: none;
+    border: none;
+    color: var(--color-purple-600);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: underline;
+    font-family: inherit;
+    padding: 0;
+  }
+  .source-text-body {
+    flex-basis: 100%;
+    max-height: 220px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 4px;
+    padding: 0.5rem;
+    font-size: 0.72rem;
+    white-space: pre-wrap;
+    color: var(--color-slate-700);
+    margin: 0.25rem 0 0;
+  }
+
+  .wording-row-card { align-items: flex-start; }
+  .wording-include {
+    display: flex;
+    align-items: center;
+    padding-top: 0.3rem;
+  }
+  .wording-include input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-purple-600);
+    cursor: pointer;
+  }
+  .wording-row-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .wording-policy-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-slate-800);
+  }
+  .wording-existing-hint {
+    margin: 0.2rem 0 0;
+    font-size: 0.72rem;
+    color: var(--color-slate-500);
+    font-style: italic;
+  }
+  .wording-warning { margin-top: 0.5rem; }
+
+  .verbatim-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .verbatim-ok   { color: var(--color-badge-success-fg); background: var(--color-badge-success-bg); }
+  .verbatim-flag { color: var(--color-badge-warning-fg); background: var(--color-badge-warning-bg); }
+
+  .nppf-pick-row .field {
+    background: var(--color-purple-50);
+    border: 1px dashed var(--color-violet-300);
+    border-radius: 6px;
+    padding: 0.5rem 0.65rem;
+  }
+  .nppf-pick-row label { display: flex; align-items: center; gap: 0.3rem; color: var(--color-purple-700); }
+
+  .extract-mode-toggle { display: flex; gap: 0.5rem; }
+  .extract-mode-toggle button {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--color-slate-300);
+    background: white;
+    color: var(--color-slate-500);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .extract-mode-toggle button.active { background: var(--color-purple-600); color: white; border-color: var(--color-purple-600); }
+
+  .extract-filename {
+    display: flex; align-items: center; gap: 0.4rem;
+    margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--color-slate-600);
+  }
+
+  /* Context meter — mirrors PlanningWorkspace.svelte / StartingDocsModal.svelte */
+  .wording-context-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.25rem 0;
+  }
+  .wording-context-label {
+    font-size: 0.72rem;
+    color: var(--color-slate-400);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .wording-context-track {
+    flex: 1;
+    height: 4px;
+    background: var(--color-slate-200);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .wording-context-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.4s ease, background 0.3s;
   }
 </style>

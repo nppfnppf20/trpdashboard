@@ -12,6 +12,8 @@
   let generating = false;
   let error = null;
 
+  let reviseNotes = '';
+
   function isBlank(html) {
     return !html?.replace(/<[^>]+>/g, '').trim();
   }
@@ -34,6 +36,17 @@
     } finally {
       generating = false;
     }
+  }
+
+  // Hands the note off to the same highlight-driven AI edit flow the parent
+  // already runs (see handleSendToAi in PlanningWorkspace.svelte), just
+  // scoped to every paragraph instead of one highlighted passage — the
+  // "as if I'd selected the whole document" shortcut. The parent owns the
+  // request/diff/Accept flow; this panel only collects the instruction.
+  function handleReviseAll() {
+    if (!reviseNotes.trim()) return;
+    dispatch('reviseall', { notes: reviseNotes.trim() });
+    reviseNotes = '';
   }
 </script>
 
@@ -80,6 +93,23 @@
         </div>
       </div>
     {/if}
+
+    <div class="create-panel-divider"></div>
+
+    <p class="create-panel-hint">Or tell the AI what to change across the whole document — same as highlighting everything and sending a note, with the changes shown for you to review before they're kept.</p>
+
+    <textarea
+      class="create-prompt-input"
+      rows="4"
+      placeholder="e.g. Make the tone more formal throughout, or shorten every section by about a third..."
+      bind:value={reviseNotes}
+    ></textarea>
+
+    <div class="create-controls-row">
+      <button class="create-generate-btn" disabled={!reviseNotes.trim() || isBlank(getDraftHtml())} on:click={handleReviseAll}>
+        <i class="las la-magic"></i> Apply to whole document
+      </button>
+    </div>
   </div>
 </div>
 
@@ -99,6 +129,8 @@
   .check-panel-body { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.625rem; }
 
   .create-panel-hint { margin: 0; font-size: 0.78rem; color: var(--color-slate-500); line-height: 1.5; }
+
+  .create-panel-divider { height: 1px; background: var(--color-slate-200); margin: 0.25rem 0; }
 
   .create-prompt-input {
     width: 100%; resize: vertical; font-family: inherit; font-size: 0.8rem;

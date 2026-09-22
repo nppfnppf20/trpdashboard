@@ -608,7 +608,7 @@ ${userNotesBlock}${paraBlock}`;
     provider: resolvedProvider,
     model: MODEL_SONNET,
     maxTokens: 4000,
-    system: ANTI_AI_SLOP_BLOCK.trim(),
+    system: (HOUSE_STYLE_BLOCK + ANTI_AI_SLOP_BLOCK).trim(),
     prompt,
   });
 

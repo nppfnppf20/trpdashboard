@@ -11,6 +11,7 @@ import {
   updatePolicy,
   deletePolicy,
   extractPolicies,
+  extractPolicyWording,
   listNationalPolicyPrecedents,
   listLpaDocuments,
   uploadLpaDocument,
@@ -42,6 +43,7 @@ router.post('/projects/:projectId/policies', createPolicy);
 router.put('/policies/:policyId', updatePolicy);
 router.delete('/policies/:policyId', deletePolicy);
 router.post('/projects/:projectId/policies/extract', upload.single('file'), extractPolicies);
+router.post('/projects/:projectId/policies/extract-wording', upload.single('file'), extractPolicyWording);
 router.get('/projects/:projectId/national-policy-precedents', listNationalPolicyPrecedents);
 
 // LPA decision documents

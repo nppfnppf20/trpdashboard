@@ -12,15 +12,10 @@
     processMultiProjectNote,
     getAllMeetingNotes,
     getMeetingNotes,
-    getMeetingNoteActions,
     getMeetingTranscript,
     updateMeetingSummary,
     updateMeetingNote,
     deleteMeetingNote,
-    createStandaloneAction,
-    createMeetingAction,
-    updateMeetingAction,
-    deleteMeetingAction,
     saveExtractedInsights,
   } from '$lib/api/meetingNotes.js';
 
@@ -168,6 +163,13 @@
   let fileInput;
   let multiProjectNotice = null; // { otherNames: [...], combined: bool } — shown briefly after a multi-project upload
 
+  // ── Sequential review queue (multi-project uploads) ─────────────────────────
+  // After a multi-project upload, every generated note (siblings + combined)
+  // is reviewed one at a time in the same editor — closing/saving one opens
+  // the next, until the queue is empty.
+  let reviewQueue = []; // notes still waiting after the one currently open
+  let reviewTotal = 0;  // total notes in the current batch, for the "N of M" hint
+
   // ── Tracker-draft hop (project notes only) ──────────────────────────────────
   let trackerDraft = null; // { projectId, transcriptId }
   let showDraftIssuesModal = false;
@@ -200,7 +202,11 @@
     uploadFile = e.target.files[0] || null;
   }
 
-  function noteFromTranscript(transcript, summary, extra = {}) {
+  // Actions aren't saved as structured data for now — just baked into the
+  // summary as a plain bullet list at creation time. Proper action tracking
+  // (editable, saveable, tied to the Issues Tracker) comes later.
+  function noteFromTranscript(transcript, summary, extra = {}, suggestedActions = null) {
+    const summaryHtml = (summary?.summary_html || '') + buildActionsHtml(suggestedActions);
     return {
       id: transcript.id,
       title: transcript.title,
@@ -209,7 +215,7 @@
       file_name: transcript.file_name,
       created_at: transcript.created_at,
       summary_id: summary?.id,
-      summary_html: summary?.summary_html,
+      summary_html: summaryHtml,
       pending_count: 0,
       complete_count: 0,
       ...extra
@@ -221,7 +227,6 @@
     if (isMultiProject && multiOtherIds.length === 0) { uploadError = 'Tick at least one other project, or turn off multi-project.'; return; }
 
     let newNote;
-    let suggestedActions = [];
     multiProjectNotice = null;
 
     if (isMultiProject) {
@@ -240,14 +245,13 @@
       const mine = result.projectNotes.find(pn => pn.project_id === selectedProject.id);
       newNote = noteFromTranscript(mine.transcript, mine.summary, {
         meeting_type: 'project', project_id: mine.project_id, project_name: mine.project_name
-      });
-      suggestedActions = mine.suggestedActions || [];
+      }, mine.suggestedActions);
 
       const siblingCards = result.projectNotes
         .filter(pn => pn.project_id !== selectedProject.id)
         .map(pn => noteFromTranscript(pn.transcript, pn.summary, {
           meeting_type: 'project', project_id: pn.project_id, project_name: pn.project_name
-        }));
+        }, pn.suggestedActions));
       const combinedCard = result.combinedNote
         ? noteFromTranscript(result.combinedNote.transcript, result.combinedNote.summary, { meeting_type: 'multi_project' })
         : null;
@@ -257,7 +261,14 @@
         otherNames: siblingCards.map(c => c.project_name),
         combined: !!combinedCard
       };
+
+      // Queue the rest for sequential review — closing/saving each one opens
+      // the next, so nothing needs a separate "go review it" step.
+      reviewQueue = [...siblingCards, ...(combinedCard ? [combinedCard] : [])];
+      reviewTotal = reviewQueue.length + 1; // +1 for the one opening below
     } else {
+      reviewQueue = [];
+      reviewTotal = 0;
       const result = await processMeetingNote(selectedProject.id, {
         file: uploadInputTab === 'upload' ? uploadFile : null,
         text: uploadInputTab === 'paste' ? uploadPasteText : null,
@@ -268,18 +279,13 @@
       });
       newNote = noteFromTranscript(result.transcript, result.summary, {
         meeting_type: 'project', project_id: selectedProject.id, project_name: selectedProject.project_name
-      });
-      suggestedActions = result.suggestedActions || [];
+      }, result.suggestedActions);
     }
 
     notes = [newNote, ...notes];
     streamNotes = [newNote, ...streamNotes];
     resetUpload();
-
-    // Project notes never auto-create meeting_actions (only the Issues Tracker
-    // draft flow or this editor's own actions-table does) — open the review
-    // editor immediately with the suggested actions embedded for review.
-    await openNoteEditor(newNote, suggestedActions);
+    openNoteEditor(newNote, true);
   }
 
   async function submitUpload() {
@@ -303,20 +309,9 @@
         customPrompt: uploadSummaryType === 'custom' ? uploadCustomPrompt.trim() || null : null
       });
 
-      // Auto-save suggested actions immediately
-      const saved = await Promise.all(
-        (result.suggestedActions || []).map(a => createStandaloneAction(result.transcript.id, {
-          action_text: a.action_text,
-          owner: a.owner || null,
-          due_date: a.due_date || null,
-          notes: a.notes || null
-        }))
-      );
-
       const newNote = noteFromTranscript(result.transcript, result.summary, {
-        meeting_type: result.transcript.meeting_type,
-        pending_count: saved.length
-      });
+        meeting_type: result.transcript.meeting_type
+      }, result.suggestedActions);
 
       notes = [newNote, ...notes];
       resetUpload();
@@ -407,7 +402,6 @@
   let editorInitialHtml = '';
   let editorSaving = false;
   let editorSaved = false; // true once a project note has been saved — swaps footer to the Issues Tracker prompt
-  let editorActions = []; // actions for the note currently open in editor
   let richTextEditor;
 
   function escapeHtml(str) {
@@ -420,84 +414,42 @@
     return d ? `${d}/${m}/${y}` : iso;
   }
 
-  function displayToIso(str) {
-    if (!str) return null;
-    const dm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (dm) return `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-    return null;
-  }
-
+  // Actions aren't structured/saveable data for now — just a plain bullet
+  // list appended to the summary text. Proper action tracking comes later.
   function buildActionsHtml(suggestedActions) {
     if (!suggestedActions?.length) return '';
-    const td = 'style="padding:0.35rem 0.6rem;border:1px solid #e2e8f0;vertical-align:top;"';
-    const th = 'style="text-align:left;padding:0.35rem 0.6rem;background:#f1f5f9;border:1px solid #e2e8f0;font-size:0.72rem;font-weight:600;color:#64748b;text-transform:uppercase;"';
-    const rows = suggestedActions.map(a => {
-      const date = isoToDisplay(a.due_date);
-      return `<tr><td data-col="action" ${td}>${escapeHtml(a.action_text)}</td><td data-col="owner" ${td}>${escapeHtml(a.owner)}</td><td data-col="due_date" ${td}>${escapeHtml(date)}</td><td data-col="notes" ${td}>${escapeHtml(a.notes)}</td></tr>`;
+    const items = suggestedActions.map(a => {
+      const bits = [];
+      if (a.owner) bits.push(`Owner: ${escapeHtml(a.owner)}`);
+      if (a.due_date) bits.push(`Due: ${escapeHtml(isoToDisplay(a.due_date))}`);
+      const meta = bits.length ? ` (${bits.join(', ')})` : '';
+      return `<li>${escapeHtml(a.action_text)}${meta}</li>`;
     }).join('');
-    return `<h3>Actions</h3><table data-mn-actions="1" style="border-collapse:collapse;width:100%;font-size:0.875rem;margin-top:0.25rem;"><thead><tr><th ${th}>Action</th><th ${th}>Owner</th><th ${th}>Due date (DD/MM/YYYY)</th><th ${th}>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<h3>Actions</h3><ul>${items}</ul>`;
   }
 
-  function parseActionsFromHtml(html) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    let table = doc.querySelector('table[data-mn-actions]');
-    if (!table) {
-      for (const t of doc.querySelectorAll('table')) {
-        if (t.querySelector('thead th')?.textContent.trim().toLowerCase().startsWith('action')) {
-          table = t; break;
-        }
-      }
-    }
-    if (!table) return [];
-    return Array.from(table.querySelectorAll('tbody tr')).map(row => {
-      const cell = (col) => (row.querySelector(`td[data-col="${col}"]`) ?? row.querySelectorAll('td')[{ action:0, owner:1, due_date:2, notes:3 }[col]])?.textContent.trim();
-      return {
-        action_text: cell('action') || '',
-        owner: cell('owner') || null,
-        due_date: displayToIso(cell('due_date')),
-        notes: cell('notes') || null,
-      };
-    }).filter(a => a.action_text);
-  }
-
-  function stripActionsTable(html) {
-    return html.replace(/<h3[^>]*>\s*Actions\s*<\/h3>\s*<table[\s\S]*?<\/table>/i, '').trim();
-  }
-
-  async function openNoteEditor(note, suggestedActions = null) {
-    // Resolve all async work BEFORE setting editorNote, so the modal
-    // mounts the RichTextEditor only once the content is ready.
-    let initialHtml = '';
-    let loadedActions = [];
-
-    if (suggestedActions !== null) {
-      const actionsHtml = suggestedActions.length ? buildActionsHtml(suggestedActions) : '';
-      initialHtml = (note.summary_html || '') + actionsHtml;
-    } else {
-      try {
-        loadedActions = await getMeetingNoteActions(note.id);
-      } catch {
-        loadedActions = [];
-      }
-      const baseHtml = stripActionsTable(note.summary_html || '');
-      initialHtml = baseHtml + (loadedActions.length ? buildActionsHtml(loadedActions) : '');
-    }
-
-    editorActions = loadedActions;
-    editorInitialHtml = initialHtml;
-    editorIsNew = suggestedActions !== null;
+  function openNoteEditor(note, isNew = false) {
+    editorInitialHtml = note.summary_html || '';
+    editorIsNew = isNew;
     editorSaved = false;
-    editorNote = note; // set last — triggers modal render with content already populated
+    editorNote = note;
   }
 
   function closeNoteEditor() {
     editorNote = null;
     editorIsNew = false;
     editorInitialHtml = '';
-    editorActions = [];
     editorSaved = false;
+
+    // Sequential review queue — closing/saving one note opens the next,
+    // until the whole batch from a multi-project upload has been seen.
+    if (reviewQueue.length > 0) {
+      const [next, ...rest] = reviewQueue;
+      reviewQueue = rest;
+      openNoteEditor(next, true);
+    } else {
+      reviewTotal = 0;
+    }
   }
 
   function editorAddToTracker() {
@@ -516,35 +468,7 @@
       notes = notes.map(n => n.id === editorNote.id ? { ...n, ...patch } : n);
       streamNotes = streamNotes.map(n => n.id === editorNote.id ? { ...n, ...patch } : n);
 
-      const parsedActions = parseActionsFromHtml(html);
-      const isProjectNote = editorNote.meeting_type === 'project';
-
-      if (editorIsNew) {
-        const saved = await Promise.all(
-          parsedActions.map(a => isProjectNote
-            ? createMeetingAction(editorNote.project_id, { ...a, transcript_id: editorNote.id })
-            : createStandaloneAction(editorNote.id, a)
-          )
-        );
-        const pendingCount = saved.length;
-        notes = notes.map(n => n.id === editorNote.id ? { ...n, pending_count: pendingCount } : n);
-        streamNotes = streamNotes.map(n => n.id === editorNote.id ? { ...n, pending_count: pendingCount } : n);
-      } else if (parsedActions.length > 0) {
-        for (const p of parsedActions) {
-          const match = editorActions.find(a => a.action_text === p.action_text);
-          if (match) {
-            await updateMeetingAction(match.id, { action_text: p.action_text, owner: p.owner, due_date: p.due_date, notes: p.notes });
-          } else {
-            if (isProjectNote) {
-              await createMeetingAction(editorNote.project_id, { ...p, transcript_id: editorNote.id });
-            } else {
-              await createStandaloneAction(editorNote.id, p);
-            }
-          }
-        }
-      }
-
-      if (isProjectNote) {
+      if (editorNote.meeting_type === 'project') {
         editorSaved = true;
       } else {
         closeNoteEditor();
@@ -1059,10 +983,15 @@
         <div class="mn-result-header-text">
           {#if editorIsNew}<div class="mn-result-tick"><i class="las la-check-circle"></i></div>{/if}
           <div>
-            <h2 class="mn-modal-title">{editorNote.title}</h2>
+            <h2 class="mn-modal-title">
+              {editorNote.title}
+              {#if reviewTotal > 0}<span class="mn-review-progress">Note {reviewTotal - reviewQueue.length} of {reviewTotal}</span>{/if}
+            </h2>
             <p class="mn-modal-meta">
               {formatDate(editorNote.meeting_date)}
               {#if editorNote.attendees_text} &bull; {editorNote.attendees_text}{/if}
+              {#if editorNote.meeting_type === 'multi_project'} &bull; Combined
+              {:else if editorNote.project_name} &bull; {editorNote.project_name}{/if}
             </p>
           </div>
         </div>
@@ -1075,6 +1004,13 @@
           </button>
         </div>
       </div>
+
+      {#if editorIsNew && multiProjectNotice && (multiProjectNotice.otherNames.length || multiProjectNotice.combined)}
+        <p class="mn-multi-project-note mn-multi-project-note--editor">
+          {#if multiProjectNotice.otherNames.length}Also created tailored notes for: {multiProjectNotice.otherNames.join(', ')}.{/if}
+          {#if multiProjectNotice.combined}A combined note covering all {multiProjectNotice.otherNames.length + 1} projects was also created.{/if}
+        </p>
+      {/if}
 
       {#if editorSaved}
         <!-- Project notes only — post-save hand-off to the Issues Tracker draft flow -->
@@ -1101,15 +1037,13 @@
 
         <div class="modal-footer">
           <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
-            {editorIsNew ? 'Skip actions' : 'Close'}
+            Close
           </button>
           <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving}>
             {#if editorSaving}
               <span class="mn-spinner"></span> Saving…
-            {:else if editorIsNew}
-              <i class="las la-check"></i> Save &amp; accept actions
             {:else}
-              <i class="las la-save"></i> Save changes
+              <i class="las la-save"></i> Save
             {/if}
           </button>
         </div>
@@ -1492,6 +1426,11 @@
   .mn-editor-header-btns { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 
   .mn-modal-title { font-size: 1.1rem; font-weight: 600; color: var(--color-slate-800); margin: 0 0 0.2rem; }
+  .mn-review-progress {
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--color-violet-600); background: var(--color-violet-50);
+    border-radius: var(--radius-pill); padding: 0.15rem 0.5rem; margin-left: 0.5rem; vertical-align: middle;
+  }
   .mn-modal-meta { font-size: 0.8rem; color: var(--color-slate-500); margin: 0; }
   .close-btn { flex-shrink: 0; }
 
@@ -1509,6 +1448,12 @@
   .mn-issues-prompt-text { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 500; color: var(--color-violet-700); }
   .mn-issues-prompt-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
   .mn-multi-project-note { font-size: 0.8125rem; color: var(--color-slate-600); margin: 0; }
+  .mn-multi-project-note--editor {
+    padding: 0.6rem 1.5rem;
+    background: var(--color-violet-50);
+    border-bottom: 1px solid var(--color-slate-200);
+    flex-shrink: 0;
+  }
 
   .modal-footer {
     display: flex; justify-content: flex-end; gap: 0.6rem;

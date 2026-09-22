@@ -5,6 +5,7 @@
     { path: '/admin-console/surveyors', label: 'Surveyors', icon: 'la-users' },
     { path: '/admin-console/clients', label: 'Clients', icon: 'la-building' },
     { path: '/admin-console/planning-templates', label: 'Policy Templates', icon: 'la-clipboard-list' },
+    { path: '/admin-console/nppf', label: 'NPPF Policy Library', icon: 'la-flag' },
     { path: '/admin-console/issue-templates', label: 'Per Issue Planning Assessment Templates', icon: 'la-tags' },
     { path: '/admin-console/guiding-briefs', label: 'Guiding Briefs', icon: 'la-book-open' },
     { path: '/admin-console/prompt-map', label: 'Prompt Map', icon: 'la-project-diagram' },

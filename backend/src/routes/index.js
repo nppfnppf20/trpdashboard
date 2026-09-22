@@ -59,6 +59,7 @@ import progressTrackerRoutes from './progressTracker.routes.js';
 import publicCommentsRoutes from './public_comments.routes.js';
 import marketingRoutes from './marketing.routes.js';
 import policyUpdatesRoutes from './policyUpdates.routes.js';
+import nppfPoliciesRoutes from './nppfPolicies.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -187,6 +188,11 @@ router.use('/api/marketing', marketingRoutes);
 
 // Policy & Industry Updates
 router.use('/api/policy-updates', policyUpdatesRoutes);
+
+// Canonical NPPF policy library — shared across all projects, same access
+// pattern as /api/issue-types (not gated under /api/admin-console since the
+// project Policy tab's import dropdown needs to read it too)
+router.use('/api/nppf-policies', nppfPoliciesRoutes);
 
 export default router;
 
