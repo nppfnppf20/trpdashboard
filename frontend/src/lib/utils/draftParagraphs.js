@@ -53,6 +53,12 @@ export function mergeParagraphUpdates(allParagraphs, updates) {
 // its own separate lifecycle) — Accept/Edit Again only ever need to touch
 // markers this flow itself created.
 export const PENDING_CLASS = 'quick-ai-edit-pending';
+// Marker class for text the edit removed — kept visible (struck through, see
+// trpformatting.css) rather than silently dropped, so the reviewer can see
+// both sides of the change before Accepting. Accept removes these elements
+// outright (see clearPendingMarkers); Edit Again/Cancel discard the whole
+// pending version and revert to originalHtml, so they never need cleaning up.
+export const PENDING_DELETED_CLASS = 'quick-ai-edit-pending-deleted';
 
 // Tags a single paragraph/insertion fragment's root element as pending. Apply
 // this to each `{id, html}` entry from an incorporate-targeted API response
@@ -78,28 +84,37 @@ function escapeHtml(text) {
 // Same stripHtml+diffWords approach PlanningDocIncorporatePanel.svelte's own
 // review diff already uses (inline formatting like bold/italic within the
 // diffed text is lost — an accepted, pre-existing trade-off there too).
-// Renders only the NEW text, with just the changed/added words wrapped in the
-// pending marker — unlike the full before/after diff view elsewhere, this is
-// a live preview of the one paragraph, so there's no separate "old" to show.
+// Shows both sides of the change inline: added words wrapped in the pending
+// marker, removed words kept but struck through (see PENDING_DELETED_CLASS)
+// rather than silently dropped — unlike the full before/after diff view
+// elsewhere, this is a live preview of the one paragraph, so there's no
+// separate "old" version shown alongside it.
 export function markChangedWordsPending(oldHtml, newHtml) {
   const tagMatch = newHtml?.match(/^<(\w+)[^>]*>/) ?? oldHtml?.match(/^<(\w+)[^>]*>/);
   const tag = tagMatch ? tagMatch[1] : 'p';
   const parts = diffWords(stripHtml(oldHtml), stripHtml(newHtml));
   const inner = parts
-    .filter(part => !part.removed)
-    .map(part => part.added ? `<span class="${PENDING_CLASS}">${escapeHtml(part.value)}</span>` : escapeHtml(part.value))
+    .map(part => {
+      if (part.added) return `<span class="${PENDING_CLASS}">${escapeHtml(part.value)}</span>`;
+      if (part.removed) return `<span class="${PENDING_DELETED_CLASS}">${escapeHtml(part.value)}</span>`;
+      return escapeHtml(part.value);
+    })
     .join('');
   return `<${tag}>${inner}</${tag}>`;
 }
 
 // Strips the pending marker from every element carrying it in `html` (used on
 // Accept — only one quick-edit is pending review at a time, so this always
-// targets exactly the paragraphs that edit touched).
+// targets exactly the paragraphs that edit touched). Struck-through deleted
+// text is removed outright here rather than unwrapped, since accepting means
+// finalising to the new version — the old wording shouldn't survive into the
+// saved document.
 export function clearPendingMarkers(html) {
-  if (!html?.includes(PENDING_CLASS)) return html;
+  if (!html?.includes(PENDING_CLASS) && !html?.includes(PENDING_DELETED_CLASS)) return html;
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
   const root = doc.body.firstChild;
+  root.querySelectorAll(`.${PENDING_DELETED_CLASS}`).forEach(el => el.remove());
   root.querySelectorAll(`.${PENDING_CLASS}`).forEach(el => el.classList.remove(PENDING_CLASS));
   return root.innerHTML;
 }

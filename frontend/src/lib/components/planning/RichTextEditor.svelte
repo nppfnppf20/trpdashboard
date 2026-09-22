@@ -54,14 +54,27 @@
   });
 
   // Maps a selection endpoint to the index of the top-level editor child it
-  // falls within — matches the p{idx} scheme PlanningDocIncorporatePanel's
+  // falls within — matches the p{idx} scheme draftParagraphs.js's
   // splitAllParagraphs() uses, so a highlight can be resolved to whole
   // paragraph ids without ever slicing the DOM mid-element.
+  //
+  // Must count children exactly the way splitAllParagraphs does: only
+  // elements with non-empty text content get an id there (blank spacer
+  // paragraphs — trivially easy to end up with in a contenteditable box, e.g.
+  // pressing Enter twice — are skipped entirely, not assigned one). Counting
+  // every element here regardless of emptiness, as this used to, desyncs the
+  // two schemes the moment a blank paragraph sits anywhere before the
+  // highlighted block: this function would report its true DOM position,
+  // but splitAllParagraphs would call that same block by a lower id (having
+  // skipped the blank one) — so paragraphIds ends up pointing at the wrong
+  // block(s) of the document, and both the content sent to the AI and the
+  // AI's response get applied somewhere the user never highlighted.
   function topLevelChildIndex(node) {
     let el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
     while (el && el.parentElement !== editorElement) el = el.parentElement;
     if (!el) return -1;
-    return Array.prototype.indexOf.call(editorElement.children, el);
+    const nonEmptyChildren = Array.prototype.filter.call(editorElement.children, c => c.textContent.trim());
+    return nonEmptyChildren.indexOf(el);
   }
 
   // Reports a completed text selection up to the caller (paragraph ids touched,

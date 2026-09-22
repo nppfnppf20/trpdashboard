@@ -177,6 +177,19 @@
   border-radius: 4px;
 }
 
+/* Text the pending edit removed — shown struck through rather than silently
+   dropped, so both sides of the change are visible before Accept. Accept
+   deletes these elements outright (see clearPendingMarkers); Edit Again/
+   Cancel discard the whole pending version instead. */
+.trp-document-content .quick-ai-edit-pending-deleted {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  text-decoration: line-through;
+  padding: 0.1rem 0.4rem;
+  margin: 0 -0.4rem;
+  border-radius: 4px;
+}
+
 /* Matches Word's yellow highlighter-pen exactly (the export maps this class
    to a <w:highlight w:val="yellow"/> run) so on-screen and exported look the
    same, rather than an approximate token colour. */
