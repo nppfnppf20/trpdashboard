@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { checkBriefCoverage, checkConsistency, checkGrammar } from '$lib/api/draftCheck.js';
+  import { checkBriefCoverage, checkConsistency, checkGrammar, checkPolicyReview } from '$lib/api/draftCheck.js';
   import { getActionPrompt, saveActionPrompt, resetActionPrompt } from '$lib/api/planningApplication.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
 
@@ -24,14 +24,16 @@
     { key: 'brief',       promptKey: 'draft_check_brief',       label: 'Guiding Brief Coverage', icon: 'la-book',           run: checkBriefCoverage },
     { key: 'consistency', promptKey: 'draft_check_consistency', label: 'Project Information',    icon: 'la-clipboard-list', run: checkConsistency },
     { key: 'grammar',     promptKey: 'draft_check_grammar',     label: 'Grammar & Style',        icon: 'la-spell-check',    run: checkGrammar },
+    { key: 'policy',      promptKey: 'draft_check_policy',      label: 'Policy Review',          icon: 'la-balance-scale',  run: checkPolicyReview },
   ];
 
   let sections = {
     brief:       { status: 'idle', items: [], error: null, meta: {} },
     consistency: { status: 'idle', items: [], error: null, meta: {} },
     grammar:     { status: 'idle', items: [], error: null, meta: {} },
+    policy:      { status: 'idle', items: [], error: null, meta: {} },
   };
-  let expanded = { brief: true, consistency: true, grammar: true, policy: false, policyUpdates: false };
+  let expanded = { brief: true, consistency: true, grammar: true, policy: true, policyUpdates: false };
   let noDraft = false;
 
   async function runSection(def) {
@@ -65,6 +67,7 @@
     if (key === 'brief')       return items.filter(i => i.status !== 'present').length;
     if (key === 'consistency') return items.filter(i => i.status === 'mismatch').length;
     if (key === 'grammar')     return items.length;
+    if (key === 'policy')      return items.length;
     return 0;
   }
 
@@ -73,6 +76,9 @@
   const CONSISTENCY_TONES = { consistent: 'present', mismatch: 'missing', not_mentioned: 'neutral' };
   const GRAMMAR_TONES = { high: 'missing', medium: 'partial', low: 'neutral' };
   const GRAMMAR_ICONS = { high: 'la-times-circle', medium: 'la-exclamation-triangle', low: 'la-info-circle' };
+  const POLICY_TONES = { missing: 'missing', weak: 'partial', misinterpreted: 'missing' };
+  const POLICY_ICONS = { missing: 'la-times-circle', weak: 'la-exclamation-triangle', misinterpreted: 'la-exclamation-circle' };
+  const POLICY_LABELS = { missing: 'Not addressed', weak: 'Could be strengthened', misinterpreted: 'Possible misinterpretation' };
 
   // Prompt modal state
   let promptModalKey = null;
@@ -186,6 +192,8 @@
               <p class="check-section-empty">A guiding brief exists but has no guidance content or review checklist. Add one in Admin Console → Guiding Briefs.</p>
             {:else if s.meta.no_project_info}
               <p class="check-section-empty">No project information recorded to check against.</p>
+            {:else if s.meta.no_policies}
+              <p class="check-section-empty">No policies linked to this project yet. Add them on the Policy tab first.</p>
 
             {:else if s.status === 'done' && s.items.length === 0}
               <p class="check-section-empty">Nothing flagged.</p>
@@ -252,27 +260,38 @@
                   {#if locatable}<i class="las la-search check-item-locate-icon"></i>{/if}
                 </button>
               {/each}
+
+            {:else if def.key === 'policy'}
+              {#if s.meta.truncated}
+                <p class="check-item-notfound">The draft was too long to send in full, so this check only reviewed the first part of the document.</p>
+              {/if}
+              {#each s.items as item, idx}
+                {@const locatable = !!(locateText && item.excerpt)}
+                <button
+                  class="check-item check-item--{POLICY_TONES[item.issue_type] ?? 'neutral'}"
+                  disabled={!locatable}
+                  title={locatable ? 'Show in the draft' : undefined}
+                  on:click={() => locate(def.key, idx, item.excerpt)}
+                >
+                  <span class="check-item-icon"><i class="las {POLICY_ICONS[item.issue_type] ?? 'la-question-circle'}"></i></span>
+                  <div class="check-item-text">
+                    <span class="check-item-topic">{item.policy_reference ? `${item.policy_reference}: ` : ''}{item.policy_name}</span>
+                    <span class="check-item-question">{POLICY_LABELS[item.issue_type] ?? item.issue_type}</span>
+                    {#if item.excerpt}<span class="check-item-excerpt">"{item.excerpt}"</span>{/if}
+                    {#if item.detail}<span class="check-item-detail">{item.detail}</span>{/if}
+                    {#if item.suggestion}<span class="check-item-detail">{item.suggestion}</span>{/if}
+                    {#if notFoundKey === `${def.key}:${idx}`}
+                      <span class="check-item-notfound">Couldn't find this text in the draft, it may have been edited since the check ran.</span>
+                    {/if}
+                  </div>
+                  {#if locatable}<i class="las la-search check-item-locate-icon"></i>{/if}
+                </button>
+              {/each}
             {/if}
           </div>
         {/if}
       </div>
     {/each}
-
-    <!-- Phase 2: Policy Review -->
-    <div class="check-section check-section--placeholder">
-      <div class="check-section-header">
-        <button class="check-section-toggle" on:click={() => expanded.policy = !expanded.policy}>
-          <span class="check-section-label"><i class="las la-balance-scale"></i> Policy Review</span>
-          <span class="check-badge check-badge--soon">Coming soon</span>
-          <i class="las la-angle-{expanded.policy ? 'up' : 'down'} check-chevron"></i>
-        </button>
-      </div>
-      {#if expanded.policy}
-        <div class="check-section-body">
-          <p class="check-section-empty">Will test the draft's policy arguments against the verbatim wording of the project's policies, flagging weak interpretations, unused arguments, and relevant policies not yet cited.</p>
-        </div>
-      {/if}
-    </div>
 
     <!-- Phase 3: Policy Updates -->
     <div class="check-section check-section--placeholder">

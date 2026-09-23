@@ -45,7 +45,7 @@ import {
 import { getGuideContent } from '../services/meetingGuideContent.js';
 import { DEFAULT_STAGE1_REVIEW_PROMPT, DEFAULT_STAGE1_REVIEW_V3_TEMPLATE } from './stage1Review.controller.js';
 import { DEFAULT_HLPV_V3_TEMPLATE } from './hlpvV3.controller.js';
-import { DEFAULT_BRIEF_CHECK_TEMPLATE, DEFAULT_CONSISTENCY_CHECK_TEMPLATE, DEFAULT_GRAMMAR_CHECK_TEMPLATE } from './draftCheck.controller.js';
+import { DEFAULT_BRIEF_CHECK_TEMPLATE, DEFAULT_CONSISTENCY_CHECK_TEMPLATE, DEFAULT_GRAMMAR_CHECK_TEMPLATE, DEFAULT_POLICY_CHECK_TEMPLATE } from './draftCheck.controller.js';
 
 const ACTION_PROMPT_DEFAULTS = {
   draft_key_summaries:           DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT,
@@ -65,6 +65,7 @@ const ACTION_PROMPT_DEFAULTS = {
   draft_check_brief:             DEFAULT_BRIEF_CHECK_TEMPLATE,
   draft_check_consistency:       DEFAULT_CONSISTENCY_CHECK_TEMPLATE,
   draft_check_grammar:           DEFAULT_GRAMMAR_CHECK_TEMPLATE,
+  draft_check_policy:            DEFAULT_POLICY_CHECK_TEMPLATE,
 };
 
 // Read-only templates showing what dynamic context gets injected around the editable prompt

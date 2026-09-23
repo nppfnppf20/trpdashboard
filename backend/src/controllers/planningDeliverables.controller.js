@@ -497,9 +497,10 @@ export async function incorporateDeliverableTargeted(req, res) {
 
   try {
     const { rows } = await pool.query(
-      `SELECT pd.deliverable_name, p.id AS project_id, p.project_name
+      `SELECT pd.deliverable_name, p.id AS project_id, p.project_name, pt.description AS document_purpose
        FROM planning_deliverables.planning_deliverables pd
        JOIN projects p ON pd.project_id = p.id
+       LEFT JOIN planning_deliverables.planning_templates pt ON pt.id = pd.template_id
        WHERE pd.id = $1`,
       [id]
     );
@@ -546,6 +547,7 @@ export async function incorporateDeliverableTargeted(req, res) {
       userNotes: user_notes,
       projectName: rows[0].project_name,
       draftTypeName: rows[0].deliverable_name,
+      documentPurpose: rows[0].document_purpose ?? null,
       docType: doc_type ?? null,
       fullDocumentHtml: document_html ?? null,
       projectPolicies,

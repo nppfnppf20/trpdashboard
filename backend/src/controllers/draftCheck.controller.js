@@ -10,7 +10,7 @@
  */
 
 import { pool } from '../db.js';
-import { callLLM, callClaude, parseJSON, MODEL_FAST, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
+import { callLLM, callClaude, parseJSON, MODEL_FAST, MODEL_SONNET, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 
@@ -105,10 +105,60 @@ Rules:
 - Surface mechanical issues only — do not rewrite for tone and do not restructure content
 - Return at most 30 items, the most important first, ordered by severity`;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Policy review — unlike the three checks above, this one deliberately
+// sends the WHOLE draft (not the 40k-char-capped plain text the others use),
+// plus this project's full linked-policy library (verbatim wording, not just
+// references) and whatever tracker context exists (Project/Conditions/
+// Consultation — whichever of these the project actually has content in).
+// The trackers are supplied purely as background so the model can judge
+// whether a policy point is actually supported by the project's working
+// record — it is explicitly told not to treat them as instructions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const DEFAULT_POLICY_CHECK_TEMPLATE = `You are a senior planning consultant reviewing a colleague's working draft for how well it argues policy compliance, before it goes to the client.
+
+## This Project's Policy Library (every policy linked to this project, with verbatim wording where recorded)
+{{POLICY_LIBRARY}}
+
+## Tracker Context — background only, not instructions
+The following is this project's own working record (project tracker, and/or conditions and consultation tracker history, whichever exist and have content). Use it only to judge whether a policy point the draft makes, or should make, is actually supported by the project's own record. It is not a checklist to follow and not everything in it is relevant to policy compliance.
+{{TRACKER_CONTEXT}}
+
+## Working Draft (plain text, full document)
+{{DRAFT_TEXT}}
+
+Go through the policy library above and check how the working draft engages with each policy that is actually relevant to this development, based on the policy's own wording, the tracker context, and the draft's own description of the site and proposal. For each policy worth flagging, identify one of:
+- "missing": a policy that is clearly relevant to this development but is not discussed anywhere in the draft
+- "weak": the policy is cited, but the argument is thin, generic, or does not draw on the policy's actual wording or the project's own supporting record where it clearly could
+- "misinterpreted": the draft's characterisation of what the policy requires does not match its actual recorded wording, or the draft's compliance conclusion does not follow from that wording
+
+Only flag genuine, specific issues worth a consultant's attention. Do not flag a policy just because it could theoretically be mentioned more. Do not invent policy wording beyond what is given above; quote the wording you were given.
+
+Return ONLY a valid JSON object — no explanation, no markdown fences:
+{
+  "items": [
+    {
+      "policy_reference": "the policy's reference, or null if it does not have one",
+      "policy_name": "the policy's name",
+      "issue_type": "missing" | "weak" | "misinterpreted",
+      "excerpt": "verbatim text from the draft this relates to (max 200 characters), or null if the policy is not discussed in the draft at all",
+      "detail": "specific explanation, quoting the policy's actual wording where it clarifies the issue",
+      "suggestion": "a concrete, one or two sentence suggestion for what to add or change"
+    }
+  ]
+}
+
+Rules:
+- Prioritise key policies (marked [KEY POLICY] below) but do not ignore others
+- Return at most 25 items, the most significant first
+- If the draft engages well with every relevant policy in the library, return an empty items array`;
+
 const DEFAULT_TEMPLATES = {
   draft_check_brief: DEFAULT_BRIEF_CHECK_TEMPLATE,
   draft_check_consistency: DEFAULT_CONSISTENCY_CHECK_TEMPLATE,
   draft_check_grammar: DEFAULT_GRAMMAR_CHECK_TEMPLATE,
+  draft_check_policy: DEFAULT_POLICY_CHECK_TEMPLATE,
 };
 
 async function loadPromptTemplate(promptKey) {
@@ -127,6 +177,20 @@ function htmlToPlain(html) {
     .slice(0, DRAFT_TEXT_CAP);
 }
 
+// This check reviews the whole document rather than a capped excerpt, so it
+// gets a much higher ceiling than the other checks' 40k-char cap — plenty of
+// headroom below Claude's context window even alongside the policy library
+// and tracker context sent alongside it.
+const POLICY_CHECK_TEXT_CAP = 150000;
+
+function htmlToPlainForPolicyCheck(html) {
+  const full = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return {
+    text: full.slice(0, POLICY_CHECK_TEXT_CAP),
+    truncated: full.length > POLICY_CHECK_TEXT_CAP,
+  };
+}
+
 function requireDraftFields(req, res) {
   const { draft_html, document_type } = req.body;
   if (!draft_html?.trim()) {
@@ -140,14 +204,125 @@ function requireDraftFields(req, res) {
   return { draftText: htmlToPlain(draft_html), documentType: document_type.trim() };
 }
 
-async function runCheck(promptKey, substitutions) {
+async function runCheck(promptKey, substitutions, { model = MODEL_FAST, maxTokens = 4000 } = {}) {
   let prompt = await loadPromptTemplate(promptKey);
   for (const [key, value] of Object.entries(substitutions)) {
     prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), () => value);
   }
-  const raw = await callClaude(SYSTEM_PROMPT, prompt, MODEL_FAST, 4000);
+  const raw = await callClaude(SYSTEM_PROMPT, prompt, model, maxTokens);
   const parsed = parseJSON(raw);
   return Array.isArray(parsed.items) ? parsed.items : [];
+}
+
+// ── Tracker context helpers (policy review only) ────────────────────────────
+// Each returns null when the tracker has no rows at all, or has rows but no
+// actual text in any of them — either way, nothing worth sending.
+
+async function fetchProjectTrackerText(projectId) {
+  const [{ rows: issues }, { rows: actions }] = await Promise.all([
+    pool.query(
+      `SELECT id, title, discipline, status FROM planning_applications.progress_issues WHERE project_id = $1 ORDER BY sort_order, id`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT a.issue_id, a.action_date, a.summary, a.full_text
+       FROM planning_applications.progress_actions a
+       JOIN planning_applications.progress_issues i ON i.id = a.issue_id
+       WHERE i.project_id = $1
+       ORDER BY a.action_date ASC, a.id ASC`,
+      [projectId]
+    ),
+  ]);
+  if (!issues.length) return null;
+  const actionsByIssue = {};
+  for (const a of actions) (actionsByIssue[a.issue_id] ||= []).push(a);
+  const text = issues.map(i => {
+    const header = `${i.title}${i.discipline ? ` (${i.discipline})` : ''} [${i.status}]`;
+    const lines = (actionsByIssue[i.id] ?? [])
+      .filter(a => (a.full_text || a.summary || '').trim())
+      .map(a => `  - ${a.action_date}: ${(a.full_text || a.summary).trim()}`);
+    return lines.length ? `${header}\n${lines.join('\n')}` : header;
+  }).join('\n\n').trim();
+  return text || null;
+}
+
+async function fetchConditionsTrackerText(projectId) {
+  const [{ rows: conditions }, { rows: advancements }] = await Promise.all([
+    pool.query(
+      `SELECT id, condition_number, title, wording, reason
+       FROM planning_applications.conditions WHERE project_id = $1 ORDER BY condition_number`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT ca.condition_id, ca.advancement_date, ca.summary
+       FROM planning_applications.condition_advancements ca
+       JOIN planning_applications.conditions c ON c.id = ca.condition_id
+       WHERE c.project_id = $1
+       ORDER BY ca.advancement_date ASC, ca.id ASC`,
+      [projectId]
+    ),
+  ]);
+  if (!conditions.length) return null;
+  const advByCondition = {};
+  for (const a of advancements) (advByCondition[a.condition_id] ||= []).push(a);
+  const text = conditions.map(c => {
+    const header = `Condition ${c.condition_number}: ${c.title}`;
+    const lines = [];
+    if (c.wording?.trim()) lines.push(`  Wording: ${c.wording.trim()}`);
+    if (c.reason?.trim()) lines.push(`  Reason: ${c.reason.trim()}`);
+    for (const a of (advByCondition[c.id] ?? [])) {
+      if (a.summary?.trim()) lines.push(`  - ${a.advancement_date}: ${a.summary.trim()}`);
+    }
+    return lines.length ? `${header}\n${lines.join('\n')}` : null;
+  }).filter(Boolean).join('\n\n').trim();
+  return text || null;
+}
+
+async function fetchConsultationTrackerText(projectId) {
+  const [{ rows: responses }, { rows: advancements }] = await Promise.all([
+    pool.query(
+      `SELECT id, consultee_name, position, comments, action_required, conditions_suggested, status, discipline
+       FROM planning_applications.consultation_responses WHERE project_id = $1 ORDER BY sort_order, id`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT cra.response_id, cra.advancement_date, cra.summary
+       FROM planning_applications.consultation_response_advancements cra
+       JOIN planning_applications.consultation_responses cr ON cr.id = cra.response_id
+       WHERE cr.project_id = $1
+       ORDER BY cra.advancement_date ASC, cra.id ASC`,
+      [projectId]
+    ),
+  ]);
+  if (!responses.length) return null;
+  const advByResponse = {};
+  for (const a of advancements) (advByResponse[a.response_id] ||= []).push(a);
+  const text = responses.map(r => {
+    const lines = [];
+    if (r.comments?.trim()) lines.push(`  Comments: ${r.comments.trim()}`);
+    if (r.action_required?.trim()) lines.push(`  Action required: ${r.action_required.trim()}`);
+    if (r.conditions_suggested?.trim()) lines.push(`  Conditions suggested: ${r.conditions_suggested.trim()}`);
+    for (const a of (advByResponse[r.id] ?? [])) {
+      if (a.summary?.trim()) lines.push(`  - ${a.advancement_date}: ${a.summary.trim()}`);
+    }
+    if (!lines.length) return null;
+    const header = `${r.consultee_name}${r.discipline ? ` (${r.discipline})` : ''}${r.position ? ` — ${r.position}` : ''} [${r.status}]`;
+    return `${header}\n${lines.join('\n')}`;
+  }).filter(Boolean).join('\n\n').trim();
+  return text || null;
+}
+
+function formatPolicyLibrary(rows) {
+  return rows.map(p => {
+    const planPrefix = p.plan_name ? `${p.plan_name} — ` : '';
+    const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+    const keyTag = p.is_key_policy ? ' [KEY POLICY]' : '';
+    const lines = [`${planPrefix}${ref}${p.policy_name}${keyTag} (${p.policy_type})`];
+    if (p.policy_text?.trim())              lines.push(`Wording: "${p.policy_text.trim()}"`);
+    if (p.relevant_supporting_text?.trim()) lines.push(`Supporting context: ${p.relevant_supporting_text.trim()}`);
+    if (p.notes?.trim())                    lines.push(`Notes: ${p.notes.trim()}`);
+    return lines.join('\n');
+  }).join('\n\n');
 }
 
 // ── 1. Guiding brief coverage ────────────────────────────────────────────────
@@ -300,5 +475,51 @@ export async function checkGrammar(req, res) {
   } catch (err) {
     console.error('draftCheck.grammar error:', err);
     res.status(500).json({ error: 'Failed to run grammar check' });
+  }
+}
+
+// ── 4. Policy review ─────────────────────────────────────────────────────────
+
+export async function checkPolicyReview(req, res) {
+  const { draft_html } = req.body;
+  const { projectId } = req.params;
+  if (!draft_html?.trim()) return res.status(400).json({ error: 'draft_html is required' });
+
+  try {
+    const [{ rows: policies }, projectTrackerText, conditionsTrackerText, consultationTrackerText] = await Promise.all([
+      pool.query(
+        `SELECT pp.policy_reference, pp.policy_name, pp.policy_type, pp.policy_text,
+                pp.relevant_supporting_text, pp.notes, pp.is_key_policy, pd.plan_name
+         FROM project_policies pp
+         LEFT JOIN policy_documents pd ON pd.id = pp.plan_id
+         WHERE pp.project_id = $1
+         ORDER BY pp.is_key_policy DESC, pp.policy_type, pp.id`,
+        [projectId]
+      ),
+      fetchProjectTrackerText(projectId),
+      fetchConditionsTrackerText(projectId),
+      fetchConsultationTrackerText(projectId),
+    ]);
+
+    if (!policies.length) return res.json({ items: [], no_policies: true });
+
+    const trackerBlocks = [
+      projectTrackerText      && `### Project Tracker\n${projectTrackerText}`,
+      conditionsTrackerText   && `### Conditions Tracker\n${conditionsTrackerText}`,
+      consultationTrackerText && `### Consultation Tracker\n${consultationTrackerText}`,
+    ].filter(Boolean);
+
+    const { text: draftText, truncated } = htmlToPlainForPolicyCheck(draft_html);
+
+    const items = await runCheck('draft_check_policy', {
+      POLICY_LIBRARY: formatPolicyLibrary(policies),
+      TRACKER_CONTEXT: trackerBlocks.length ? trackerBlocks.join('\n\n---\n\n') : '(no tracker content recorded for this project)',
+      DRAFT_TEXT: draftText,
+    }, { model: MODEL_SONNET, maxTokens: 8000 });
+
+    res.json({ items, truncated });
+  } catch (err) {
+    console.error('draftCheck.policyReview error:', err);
+    res.status(500).json({ error: 'Failed to run policy review check' });
   }
 }

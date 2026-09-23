@@ -709,10 +709,22 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
   {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, generationPrompt = null, docType = null, provider = 'anthropic', fullDocumentHtml = null, projectPolicies = [] }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', documentPurpose = null, guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, docType = null, provider = 'anthropic', fullDocumentHtml = null, projectPolicies = [] }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
   const contextBlocksSection = contextBlocks ? `${contextBlocks}\n\n---\n\n` : '';
+
+  // A short, one/two-sentence "what is this document for" — e.g. "A formal
+  // planning statement setting out the policy case for the proposed
+  // development" — deliberately separate from (and shorter than) the
+  // guiding brief above, which covers structure/content rather than voice.
+  // Without this, a quick edit scoped to one paragraph has no signal for
+  // *how* to write beyond whatever tone happens to already be in that one
+  // paragraph, and tends to drift into narrating about "the Application"
+  // from outside rather than writing as the document making the case.
+  const purposeBlock = documentPurpose?.trim()
+    ? `## Document Purpose\n${documentPurpose.trim()}\n\nWrite in the voice this purpose implies. Where this document is putting forward a case (as most documents this practice drafts are), write directly as that case — state the position and demonstrate compliance in the document's own voice, rather than narrating or describing what "the Application" does from outside it.\n\n---\n\n`
+    : '';
 
   // Purely for situational awareness — the model is told explicitly not to
   // treat any of this as something it must draw on. Before this, the model
@@ -734,10 +746,6 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
   }
   const backgroundSection = backgroundParts.length
     ? `## BACKGROUND CONTEXT — reference only, not an instruction\nProvided purely so you have visibility of the wider document and project. You are not required to use any of it, and should draw on it only where directly relevant to the paragraphs you're revising (e.g. to check or quote a policy's full wording, or stay consistent with a nearby passage or an existing issue note) — do not force a reference to it otherwise.\n\n${backgroundParts.join('\n\n---\n\n')}\n\n---\n\n`
-    : '';
-
-  const generationPromptBlock = generationPrompt?.trim()
-    ? `This document was originally generated with the following instructions. Keep your edits consistent with the tone, structure and purpose they describe:\n${generationPrompt.trim()}\n\n---\n\n`
     : '';
 
   const userNotesBlock = userNotes?.trim()
@@ -772,7 +780,7 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
 
   const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
 
-${contextBlocksSection}${generationPromptBlock}${userNotesBlock}${documentBlock}${backgroundSection}SELECTED PARAGRAPHS TO REVISE:
+${purposeBlock}${contextBlocksSection}${userNotesBlock}${documentBlock}${backgroundSection}SELECTED PARAGRAPHS TO REVISE:
 ${paraBlock}
 
 ---

@@ -24,3 +24,7 @@ export function checkConsistency(projectId, { draft_html, document_type, develop
 export function checkGrammar(projectId, { draft_html, document_type, development_type }) {
   return runCheck('grammar', projectId, { draft_html, document_type, development_type });
 }
+
+export function checkPolicyReview(projectId, { draft_html, document_type, development_type }) {
+  return runCheck('policy', projectId, { draft_html, document_type, development_type });
+}

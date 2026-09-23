@@ -1270,7 +1270,7 @@ export async function incorporateTargeted(req, res) {
       `SELECT project_name, development_type FROM public.projects WHERE id = $1`, [projectId]
     );
     const { rows: typeRows } = await pool.query(
-      `SELECT name, slug, generation_prompt FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
+      `SELECT name, slug, description FROM appeals.appeal_draft_types WHERE id = $1`, [typeId]
     );
 
     let documentText = '', filename = null;
@@ -1363,10 +1363,10 @@ export async function incorporateTargeted(req, res) {
       userNotes: user_notes,
       projectName: projectRows[0]?.project_name,
       draftTypeName: typeRows[0]?.name,
+      documentPurpose: typeRows[0]?.description ?? null,
       guidingBrief,
       projectBrief,
       exampleDoc,
-      generationPrompt: typeRows[0]?.generation_prompt ?? null,
       docType: doc_type ?? null,
       customPrompt: await loadGlobalPrompt('incorporate_appeal'),
       fullDocumentHtml: document_html ?? null,
