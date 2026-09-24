@@ -32,6 +32,7 @@
 
   // ── Draft from Briefing Note ────────────────────────────────────────────────
   let showDraftModal = false;
+  let draftSource = 'notes'; // 'notes' | 'tracker'
   let draftSources = [];   // bind:selectedSources from NoteSourcePicker
   let draftOverBudget = false;
   let drafting = false;
@@ -49,6 +50,9 @@
     draftSources = [];
     allowNewIssues = true;
     issueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true, policyLinks: true }]));
+    trackerAllowNewIssues = true;
+    trackerIssueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true, policyLinks: true }]));
+    draftSource = 'notes';
     showDraftModal = true;
   }
 
@@ -77,20 +81,9 @@
   }
 
   // ── Draft from Project Tracker ──────────────────────────────────────────────
-  let showTrackerModal = false;
   let draftingTracker = false;
   let trackerAllowNewIssues = true;
   let trackerIssueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool, policyLinks: bool } }
-
-  function openTrackerModal() {
-    trackerAllowNewIssues = true;
-    trackerIssueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true, policyLinks: true }]));
-    showTrackerModal = true;
-  }
-
-  function closeTrackerModal() {
-    showTrackerModal = false;
-  }
 
   function toggleTrackerScope(issueId, field) {
     trackerIssueScope = {
@@ -99,11 +92,29 @@
     };
   }
 
+  // "Select all" support for the scope tables — per column, and a master
+  // that covers every column shown. columnState is 'all' | 'some' | 'none'.
+  function columnState(scope, fields) {
+    const vals = Object.values(scope).flatMap(s => fields.map(f => !!s[f]));
+    if (!vals.length) return 'none';
+    if (vals.every(Boolean)) return 'all';
+    return vals.some(Boolean) ? 'some' : 'none';
+  }
+
+  function setColumns(scope, fields, value) {
+    return Object.fromEntries(
+      Object.entries(scope).map(([id, s]) => [id, { ...s, ...Object.fromEntries(fields.map(f => [f, value])) }])
+    );
+  }
+
+  const BRIEFING_FIELDS = ['argumentNotes', 'specialistReport', 'policyLinks'];
+  const TRACKER_FIELDS = ['argumentNotes', 'policyLinks'];
+
   async function handleTrackerDraftContinue() {
     draftingTracker = true;
     try {
       await draftIssuesFromTracker(project.id, { allowNewIssues: trackerAllowNewIssues, issueScope: trackerIssueScope });
-      closeTrackerModal();
+      closeDraftModal();
       await load();
     } catch (err) {
       console.error('Failed to draft issues from tracker:', err);
@@ -301,16 +312,7 @@
     </div>
     <div class="di-header-actions">
       <button class="btn btn-secondary" on:click={openDraftModal} disabled={!project}>
-        <i class="las la-magic"></i> Draft from Briefing Note
-      </button>
-      <button class="di-icon-btn" title="Edit generation prompt" on:click={() => openActionPrompt('draft_issues_from_briefing')}>
-        <i class="las la-sliders-h"></i>
-      </button>
-      <button class="btn btn-secondary" on:click={openTrackerModal} disabled={!project}>
-        <i class="las la-tasks"></i> Draft from Tracker
-      </button>
-      <button class="di-icon-btn" title="Edit generation prompt" on:click={() => openActionPrompt('draft_issues_from_tracker')}>
-        <i class="las la-sliders-h"></i>
+        <i class="las la-magic"></i> Draft from document
       </button>
     </div>
   </div>
@@ -471,10 +473,28 @@
   <div class="di-modal-overlay" on:click|self={closeDraftModal}>
     <div class="di-modal">
       <div class="di-modal-header">
-        <span class="di-modal-title"><i class="las la-magic"></i> Draft from Briefing Note</span>
-        <button class="di-icon-btn" on:click={closeDraftModal}><i class="las la-times"></i></button>
+        <span class="di-modal-title"><i class="las la-magic"></i> Draft from document</span>
+        <div class="di-modal-header-actions">
+          <button
+            class="di-icon-btn"
+            title="Edit generation prompt for this source"
+            on:click={() => openActionPrompt(draftSource === 'notes' ? 'draft_issues_from_briefing' : 'draft_issues_from_tracker')}
+          >
+            <i class="las la-sliders-h"></i>
+          </button>
+          <button class="di-icon-btn" on:click={closeDraftModal}><i class="las la-times"></i></button>
+        </div>
+      </div>
+      <div class="di-source-tabs">
+        <button class="di-source-tab" class:active={draftSource === 'notes'} on:click={() => draftSource = 'notes'}>
+          <i class="las la-file-alt"></i> Briefing / meeting notes
+        </button>
+        <button class="di-source-tab" class:active={draftSource === 'tracker'} on:click={() => draftSource = 'tracker'}>
+          <i class="las la-tasks"></i> Project Tracker
+        </button>
       </div>
       <div class="di-modal-body">
+{#if draftSource === 'notes'}
         <NoteSourcePicker
           bind:this={notePicker}
           projectUniqueId={project?.unique_id}
@@ -491,6 +511,53 @@
           </label>
           {#if issues.length > 0}
             <div class="di-scope-list">
+                <div class="di-scope-issue di-scope-head">
+                  <label class="di-scope-label di-scope-selectall">
+                    <input
+                      type="checkbox"
+                      checked={columnState(issueScope, BRIEFING_FIELDS) === 'all'}
+                      indeterminate={columnState(issueScope, BRIEFING_FIELDS) === 'some'}
+                      on:change={e => issueScope = setColumns(issueScope, BRIEFING_FIELDS, e.target.checked)}
+                    />
+                    Select all
+                  </label>
+                  <div class="di-scope-headcell">
+                    <span class="di-scope-colname">Argument notes</span>
+                    <label class="di-scope-field di-scope-selectall">
+                      <input
+                        type="checkbox"
+                        checked={columnState(issueScope, ['argumentNotes']) === 'all'}
+                        indeterminate={columnState(issueScope, ['argumentNotes']) === 'some'}
+                        on:change={e => issueScope = setColumns(issueScope, ['argumentNotes'], e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  </div>
+                  <div class="di-scope-headcell">
+                    <span class="di-scope-colname">Specialist report</span>
+                    <label class="di-scope-field di-scope-selectall">
+                      <input
+                        type="checkbox"
+                        checked={columnState(issueScope, ['specialistReport']) === 'all'}
+                        indeterminate={columnState(issueScope, ['specialistReport']) === 'some'}
+                        on:change={e => issueScope = setColumns(issueScope, ['specialistReport'], e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  </div>
+                  <div class="di-scope-headcell">
+                    <span class="di-scope-colname">Policy links</span>
+                    <label class="di-scope-field di-scope-selectall">
+                      <input
+                        type="checkbox"
+                        checked={columnState(issueScope, ['policyLinks']) === 'all'}
+                        indeterminate={columnState(issueScope, ['policyLinks']) === 'some'}
+                        on:change={e => issueScope = setColumns(issueScope, ['policyLinks'], e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  </div>
+                </div>
               {#each issues as issue (issue.id)}
                 <div class="di-scope-issue">
                   <span class="di-scope-label">{issue.label}</span>
@@ -523,25 +590,7 @@
             </div>
           {/if}
         </div>
-      </div>
-      <div class="di-modal-footer">
-        <button class="btn btn-secondary" on:click={closeDraftModal} disabled={drafting}>Cancel</button>
-        <button class="btn btn-primary" on:click={handleDraftContinue} disabled={draftSources.length === 0 || drafting}>
-          {#if drafting}<div class="mini-spinner"></div> Drafting...{:else}Continue{/if}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-{#if showTrackerModal}
-  <div class="di-modal-overlay" on:click|self={closeTrackerModal}>
-    <div class="di-modal">
-      <div class="di-modal-header">
-        <span class="di-modal-title"><i class="las la-tasks"></i> Draft from Tracker</span>
-        <button class="di-icon-btn" on:click={closeTrackerModal}><i class="las la-times"></i></button>
-      </div>
-      <div class="di-modal-body">
+{:else}
         <p class="di-scope-title" style="margin-top: 0;">
           Uses this project's Project Tracker (issues and their dated actions) as the source. Argument notes are drafted per issue; specialist report fields are never touched by this tool.
         </p>
@@ -554,6 +603,41 @@
           </label>
           {#if issues.length > 0}
             <div class="di-scope-list">
+                <div class="di-scope-issue di-scope-head">
+                  <label class="di-scope-label di-scope-selectall">
+                    <input
+                      type="checkbox"
+                      checked={columnState(trackerIssueScope, TRACKER_FIELDS) === 'all'}
+                      indeterminate={columnState(trackerIssueScope, TRACKER_FIELDS) === 'some'}
+                      on:change={e => trackerIssueScope = setColumns(trackerIssueScope, TRACKER_FIELDS, e.target.checked)}
+                    />
+                    Select all
+                  </label>
+                  <div class="di-scope-headcell">
+                    <span class="di-scope-colname">Argument notes</span>
+                    <label class="di-scope-field di-scope-selectall">
+                      <input
+                        type="checkbox"
+                        checked={columnState(trackerIssueScope, ['argumentNotes']) === 'all'}
+                        indeterminate={columnState(trackerIssueScope, ['argumentNotes']) === 'some'}
+                        on:change={e => trackerIssueScope = setColumns(trackerIssueScope, ['argumentNotes'], e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  </div>
+                  <div class="di-scope-headcell">
+                    <span class="di-scope-colname">Policy links</span>
+                    <label class="di-scope-field di-scope-selectall">
+                      <input
+                        type="checkbox"
+                        checked={columnState(trackerIssueScope, ['policyLinks']) === 'all'}
+                        indeterminate={columnState(trackerIssueScope, ['policyLinks']) === 'some'}
+                        on:change={e => trackerIssueScope = setColumns(trackerIssueScope, ['policyLinks'], e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  </div>
+                </div>
               {#each issues as issue (issue.id)}
                 <div class="di-scope-issue">
                   <span class="di-scope-label">{issue.label}</span>
@@ -578,13 +662,23 @@
             </div>
           {/if}
         </div>
+{/if}
       </div>
+{#if draftSource === 'notes'}
       <div class="di-modal-footer">
-        <button class="btn btn-secondary" on:click={closeTrackerModal} disabled={draftingTracker}>Cancel</button>
+        <button class="btn btn-secondary" on:click={closeDraftModal} disabled={drafting}>Cancel</button>
+        <button class="btn btn-primary" on:click={handleDraftContinue} disabled={draftSources.length === 0 || drafting}>
+          {#if drafting}<div class="mini-spinner"></div> Drafting...{:else}Continue{/if}
+        </button>
+      </div>
+{:else}
+      <div class="di-modal-footer">
+        <button class="btn btn-secondary" on:click={closeDraftModal} disabled={draftingTracker}>Cancel</button>
         <button class="btn btn-primary" on:click={handleTrackerDraftContinue} disabled={draftingTracker}>
           {#if draftingTracker}<div class="mini-spinner"></div> Drafting...{:else}Continue{/if}
         </button>
       </div>
+{/if}
     </div>
   </div>
 {/if}
@@ -633,6 +727,16 @@
     max-width: 640px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
   }
 
+  .di-modal-header-actions { display: flex; align-items: center; gap: 0.25rem; }
+  .di-source-tabs { display: flex; gap: 0.4rem; padding: 0.75rem 1.25rem 0; }
+  .di-source-tab {
+    display: flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.8rem; border: 1px solid var(--color-slate-200);
+    border-radius: 999px; background: white; font-size: 0.8125rem; font-weight: 500; color: var(--color-slate-500);
+    cursor: pointer; font-family: inherit; transition: all 0.15s;
+  }
+  .di-source-tab:hover { border-color: var(--color-violet-600); color: var(--color-violet-600); }
+  .di-source-tab.active { background: var(--color-violet-600); border-color: var(--color-violet-600); color: white; }
+
   .di-scope { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-slate-200); }
   .di-scope-title { margin: 0 0 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--color-slate-800); }
   .di-scope-new {
@@ -643,11 +747,20 @@
     display: flex; flex-direction: column; gap: 0.5rem; max-height: 12rem; overflow-y: auto;
     border: 1px solid var(--color-slate-200); border-radius: 6px; padding: 0.5rem 0.65rem;
   }
-  .di-scope-issue { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.9rem; padding: 0.2rem 0; }
-  .di-scope-label { flex: 1; min-width: 8rem; font-size: 0.8125rem; font-weight: 500; color: var(--color-slate-800); }
+  .di-scope-issue { display: flex; align-items: center; gap: 0.25rem 0.9rem; padding: 0.2rem 0; }
+  .di-scope-label { flex: 1; min-width: 5rem; font-size: 0.8125rem; font-weight: 500; color: var(--color-slate-800); }
   .di-scope-field {
-    display: flex; align-items: center; gap: 0.35rem; font-size: 0.775rem; color: var(--color-slate-500); cursor: pointer; white-space: nowrap;
+    display: flex; align-items: flex-start; gap: 0.35rem; flex: 0 0 8.5rem; font-size: 0.775rem; color: var(--color-slate-500); cursor: pointer;
   }
+  .di-scope-head {
+    position: sticky; top: -0.5rem; z-index: 1; background: white; margin: -0.5rem -0.65rem 0; padding: 0.5rem 0.65rem 0.4rem;
+    border-bottom: 1px solid var(--color-slate-200);
+  }
+  .di-scope-head .di-scope-label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+  .di-scope-headcell { flex: 0 0 8.5rem; display: flex; flex-direction: column; gap: 0.15rem; }
+  .di-scope-headcell .di-scope-field { flex: none; }
+  .di-scope-colname { font-size: 0.72rem; font-weight: 600; color: var(--color-violet-600); text-transform: uppercase; letter-spacing: 0.04em; }
+  .di-scope-selectall { font-weight: 600; color: var(--color-slate-700); }
 
   .di-modal-header {
     display: flex; align-items: center; justify-content: space-between;

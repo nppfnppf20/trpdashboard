@@ -273,8 +273,11 @@ const STARTING_DOC_VARS = [
   { slug: 'socio_data',              variable: 'SOCIO_DATA',              label: 'Socio-economic Data' },
 ];
 
-export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '', provider = null }) {
-  const issueContext = buildIssueContext(issues, {});
+export async function generateAppealDraftFromPrompt({ projectName, draftTypeName, typePrompt, issues, guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '', provider = null, includeIssueNotes = true }) {
+  // includeIssueNotes is off for issue-ordered sections (Planning Assessment):
+  // each issue's argument notes are already in its own {{ISSUES_CONTEXT}}
+  // block there, so the trailing copy would only repeat them.
+  const issueContext = includeIssueNotes ? buildIssueContext(issues, {}) : '';
 
   const cleanProjectBrief = projectBrief?.trim()
     ? projectBrief.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)
@@ -408,7 +411,7 @@ function policyBlockLines(p) {
   const lines = [];
   const planPrefix = p.plan_name ? `${p.plan_name} — ` : '';
   const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
-  const keyTag = p.is_key_policy ? ' [KEY POLICY — quote verbatim in draft]' : '';
+  const keyTag = p.is_key_policy ? ' [KEY POLICY]' : '';
   lines.push(`${planPrefix}${ref}${p.policy_name}${keyTag}`);
   if (p.policy_text?.trim())              lines.push(`Policy wording: "${p.policy_text.trim()}"`);
   if (p.relevant_supporting_text?.trim()) lines.push(`Supporting context: ${p.relevant_supporting_text.trim().slice(0, 400)}`);
@@ -556,6 +559,7 @@ export async function generateIssueOrderedSection({
     startingDocs,
     briefingNotes,
     provider,
+    includeIssueNotes: false,
   });
 
   return `<h2>${sectionName}</h2>\n\n${html}`;

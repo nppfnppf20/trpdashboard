@@ -1,53 +1,59 @@
 <script>
   import { getBriefingSources } from '$lib/api/quoteRequests.js';
 
-  // Source picker — briefing notes and (project) meeting notes, each with a
-  // per-note "use full transcript" toggle. Selection is exposed via
-  // bind:selectedSources as [{ type: 'briefing_note'|'meeting_note', id, full }].
+  // Source picker — briefing notes and (project) meeting notes in one combined
+  // list (newest first), each with a per-note "use full transcript" toggle.
+  // Selection is exposed via bind:selectedSources as
+  // [{ type: 'briefing_note'|'meeting_note', id, full }].
   export let projectUniqueId = null;
   export let contextBudget = 200000;
   export let hint = 'Tick any briefing notes and meeting notes to use as source material.';
   export let selectedSources = []; // bindable output
   export let overBudget = false;   // bindable output
 
-  let briefingNotes = []; // [{ id, title, file_name, created_at, summary_chars, transcript_chars, checked, full }]
-  let meetingNotes = [];  // [{ id, title, meeting_date, created_at, summary_chars, transcript_chars, checked, full }]
+  // [{ type, id, title, date, summary_chars, transcript_chars, checked, full }]
+  let notes = [];
 
   $: if (projectUniqueId) loadSources(projectUniqueId);
+
+  const byDateDesc = (a, b) => new Date(b.date || 0) - new Date(a.date || 0);
 
   async function loadSources(id) {
     try {
       const res = await getBriefingSources(id);
-      briefingNotes = (res.briefingNotes || []).map(n => ({ ...n, checked: false, full: false }));
-      meetingNotes = (res.meetingNotes || []).map(n => ({ ...n, checked: false, full: false }));
+      notes = [
+        ...(res.briefingNotes || []).map(n => ({
+          ...n, type: 'briefing_note', title: n.title || n.file_name || 'Untitled', date: n.created_at, checked: false, full: false,
+        })),
+        ...(res.meetingNotes || []).map(n => ({
+          ...n, type: 'meeting_note', title: n.title || 'Untitled', date: n.meeting_date || n.created_at, checked: false, full: false,
+        })),
+      ].sort(byDateDesc);
     } catch {
-      briefingNotes = [];
-      meetingNotes = [];
+      notes = [];
     }
   }
 
   // Clears all ticks/toggles without re-fetching — call before reopening a picker.
   export function reset() {
-    briefingNotes = briefingNotes.map(n => ({ ...n, checked: false, full: false }));
-    meetingNotes = meetingNotes.map(n => ({ ...n, checked: false, full: false }));
+    notes = notes.map(n => ({ ...n, checked: false, full: false }));
   }
 
-  // Ticking "Full transcript" implies wanting the note included, so it also
-  // ticks the note itself rather than requiring two separate clicks.
-  function onBriefingFullToggle(note) {
+  // "Full transcript" only means something for an included note, so the two
+  // ticks stay in step: ticking Full also ticks the note, and unticking the
+  // note also clears Full (otherwise it looks selected while contributing
+  // nothing to the context meter).
+  function onFullToggle(note) {
     if (note.full) note.checked = true;
-    briefingNotes = briefingNotes;
+    notes = notes;
   }
-  function onMeetingFullToggle(note) {
-    if (note.full) note.checked = true;
-    meetingNotes = meetingNotes;
+  function onNoteToggle(note) {
+    if (!note.checked) note.full = false;
+    notes = notes;
   }
 
-  $: selectedSources = [
-    ...briefingNotes.filter(n => n.checked).map(n => ({ type: 'briefing_note', id: n.id, full: n.full })),
-    ...meetingNotes.filter(n => n.checked).map(n => ({ type: 'meeting_note', id: n.id, full: n.full })),
-  ];
-  $: totalChars = [...briefingNotes, ...meetingNotes]
+  $: selectedSources = notes.filter(n => n.checked).map(n => ({ type: n.type, id: n.id, full: n.full }));
+  $: totalChars = notes
     .filter(n => n.checked)
     .reduce((sum, n) => sum + (n.full ? (n.transcript_chars ?? n.summary_chars ?? 0) : (n.summary_chars ?? 0)), 0);
   $: contextPct = Math.min(100, Math.round(totalChars / contextBudget * 100));
@@ -61,43 +67,20 @@
   {/if}
 
   <div class="picker-field">
-    <label>Briefing Notes</label>
-    {#if briefingNotes.length === 0}
-      <p class="picker-empty">No briefing notes for this project yet.</p>
+    <label>Briefing &amp; Meeting Notes</label>
+    {#if notes.length === 0}
+      <p class="picker-empty">No briefing or meeting notes for this project yet.</p>
     {:else}
       <div class="source-list">
-        {#each briefingNotes as note (note.id)}
+        {#each notes as note (`${note.type}:${note.id}`)}
           <div class="source-row">
             <label class="source-checkbox">
-              <input type="checkbox" bind:checked={note.checked} />
-              <span class="source-title">{note.title || note.file_name || 'Untitled'}</span>
-              <span class="source-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <input type="checkbox" bind:checked={note.checked} on:change={() => onNoteToggle(note)} />
+              <span class="source-title">{note.title}</span>
+              <span class="source-date">{note.date ? new Date(note.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span>
             </label>
             <label class="source-full-toggle" class:disabled={!note.transcript_chars}>
-              <input type="checkbox" bind:checked={note.full} disabled={!note.transcript_chars} on:change={() => onBriefingFullToggle(note)} />
-              Full transcript
-            </label>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </div>
-
-  <div class="picker-field">
-    <label>Meeting Notes</label>
-    {#if meetingNotes.length === 0}
-      <p class="picker-empty">No meeting notes for this project yet.</p>
-    {:else}
-      <div class="source-list">
-        {#each meetingNotes as note (note.id)}
-          <div class="source-row">
-            <label class="source-checkbox">
-              <input type="checkbox" bind:checked={note.checked} />
-              <span class="source-title">{note.title || 'Untitled'}</span>
-              <span class="source-date">{note.meeting_date ? new Date(note.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span>
-            </label>
-            <label class="source-full-toggle" class:disabled={!note.transcript_chars}>
-              <input type="checkbox" bind:checked={note.full} disabled={!note.transcript_chars} on:change={() => onMeetingFullToggle(note)} />
+              <input type="checkbox" bind:checked={note.full} disabled={!note.transcript_chars} on:change={() => onFullToggle(note)} />
               Full transcript
             </label>
           </div>
