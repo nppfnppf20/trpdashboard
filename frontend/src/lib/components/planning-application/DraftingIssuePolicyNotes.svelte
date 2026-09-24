@@ -9,16 +9,6 @@
   export let relevantPolicyIds = [];
   export let toggleFn; // async (policyId, issueId) => { linked }
   export let onNoteChange; // (tierKey, value) => void
-  export let allSnippets = []; // full admin_console.issue_types library
-  export let relevantSnippetFields = []; // [{issue_type_id, field}]
-  export let snippetToggleFn; // async (issueTypeId, field) => { linked }
-
-  const SNIPPET_FIELDS = [
-    { key: 'nppf_text', label: 'NPPF' },
-    { key: 'nppg_text', label: 'NPPG' },
-    { key: 'other_national_text', label: 'Other National' },
-    { key: 'other_guidance_text', label: 'Other Guidance' },
-  ];
 
   const POLICY_TIERS = [
     { key: 'policy_national',      label: 'National Policy',      dbType: 'national',      placeholder: 'Add further national policy notes...' },
@@ -31,9 +21,6 @@
   let open = {};
   let toggling = {};
   let previewPolicy = null;
-  let previewSnippet = null;
-  let snippetToggling = {};
-  let editingSnippets = false;
   let textareaExpanded = {};
 
   function expandTextarea(tierKey) {
@@ -53,11 +40,6 @@
     return acc;
   }, {});
 
-  $: linkedFieldKeySet = new Set(relevantSnippetFields.map(f => `${f.issue_type_id}:${f.field}`));
-  $: linkedSnippetsList = allSnippets
-    .map(snippet => ({ snippet, fields: SNIPPET_FIELDS.filter(f => linkedFieldKeySet.has(`${snippet.id}:${f.key}`)) }))
-    .filter(x => x.fields.length > 0);
-
   async function handleToggle(policy) {
     if (toggling[policy.id]) return;
     toggling = { ...toggling, [policy.id]: true };
@@ -67,19 +49,6 @@
       console.error('Failed to toggle policy:', e);
     } finally {
       toggling = { ...toggling, [policy.id]: false };
-    }
-  }
-
-  async function handleSnippetToggle(snippet, fieldKey) {
-    const toggleKey = `${snippet.id}:${fieldKey}`;
-    if (snippetToggling[toggleKey]) return;
-    snippetToggling = { ...snippetToggling, [toggleKey]: true };
-    try {
-      await snippetToggleFn(snippet.id, fieldKey);
-    } catch (e) {
-      console.error('Failed to toggle snippet field:', e);
-    } finally {
-      snippetToggling = { ...snippetToggling, [toggleKey]: false };
     }
   }
 
@@ -107,7 +76,7 @@
 
   <div class="tier-buttons">
     {#each POLICY_TIERS as tier}
-      {@const hasContent = !!issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetFields.length > 0)}
+      {@const hasContent = !!issue[tier.key]?.trim()}
       <button
         class="tier-btn"
         class:active={open[tier.key] || hasContent}
@@ -120,80 +89,9 @@
   </div>
 
   {#each POLICY_TIERS as tier}
-    {#if open[tier.key] || issue[tier.key]?.trim() || (tier.key === 'policy_national' && relevantSnippetFields.length > 0)}
+    {#if open[tier.key] || issue[tier.key]?.trim()}
       <div class="tier-field">
         <label class="tier-label">{tier.label}</label>
-
-        {#if tier.key === 'policy_national' && allSnippets.length}
-          <div class="snippet-section">
-            {#if !editingSnippets}
-              {#if linkedSnippetsList.length}
-                <div class="policy-refs">
-                  {#each linkedSnippetsList as { snippet, fields }}
-                    <div class="policy-ref snippet-ref linked">
-                      <div class="policy-ref-header">
-                        <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
-                          {snippet.label}
-                        </button>
-                        <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
-                      </div>
-                      <div class="snippet-field-pills">
-                        {#each fields as f}
-                          <span class="snippet-field-pill">{f.label}</span>
-                        {/each}
-                      </div>
-                    </div>
-                  {/each}
-                </div>
-              {:else}
-                <p class="snippet-empty">No snippet templates linked yet.</p>
-              {/if}
-              <button class="snippet-edit-btn" on:click={() => editingSnippets = true}>
-                <i class="las la-pen"></i> Edit linked templates
-              </button>
-            {:else}
-              <div class="policy-refs">
-                {#each allSnippets as snippet}
-                  {@const availableFields = SNIPPET_FIELDS.filter(f => snippet[f.key]?.trim())}
-                  {#if availableFields.length}
-                    <div class="policy-ref snippet-ref">
-                      <div class="policy-ref-header">
-                        <button class="policy-ref-name-btn" on:click={() => previewSnippet = snippet}>
-                          {snippet.label}
-                        </button>
-                        <span class="snippet-dev-type">{snippet.development_type || 'generic'}</span>
-                      </div>
-                      <div class="snippet-field-toggles">
-                        {#each availableFields as f}
-                          {@const toggleKey = `${snippet.id}:${f.key}`}
-                          {@const linked = linkedFieldKeySet.has(toggleKey)}
-                          <button
-                            class="policy-link-btn snippet-field-btn"
-                            class:linked
-                            disabled={snippetToggling[toggleKey]}
-                            on:click={() => handleSnippetToggle(snippet, f.key)}
-                            title={linked ? `Remove ${f.label} from this issue` : `Mark ${f.label} as relevant to this issue`}
-                          >
-                            {#if snippetToggling[toggleKey]}
-                              <span class="mini-spinner"></span>
-                            {:else if linked}
-                              <i class="las la-check"></i> {f.label}
-                            {:else}
-                              <i class="las la-plus"></i> {f.label}
-                            {/if}
-                          </button>
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
-                {/each}
-              </div>
-              <button class="snippet-edit-btn" on:click={() => editingSnippets = false}>
-                <i class="las la-check"></i> Done
-              </button>
-            {/if}
-          </div>
-        {/if}
 
         {#if policiesByType[tier.dbType]?.length}
           <div class="policy-refs">
@@ -280,49 +178,6 @@
   </div>
 {/if}
 
-{#if previewSnippet}
-  <div class="policy-modal-backdrop" on:click={() => previewSnippet = null}>
-    <div class="policy-modal" on:click|stopPropagation>
-      <div class="policy-modal-header">
-        <div class="policy-modal-title">
-          <span>{previewSnippet.label}</span>
-          <span class="policy-modal-type">{previewSnippet.development_type || 'generic'}</span>
-        </div>
-        <button class="policy-modal-close" on:click={() => previewSnippet = null}>
-          <i class="las la-times"></i>
-        </button>
-      </div>
-      {#if previewSnippet.nppf_text}
-        <div class="policy-modal-section">
-          <p class="policy-modal-label">NPPF</p>
-          <p class="policy-modal-body">{@html previewSnippet.nppf_text}</p>
-        </div>
-      {/if}
-      {#if previewSnippet.nppg_text}
-        <div class="policy-modal-section">
-          <p class="policy-modal-label">NPPG</p>
-          <p class="policy-modal-body">{@html previewSnippet.nppg_text}</p>
-        </div>
-      {/if}
-      {#if previewSnippet.other_national_text}
-        <div class="policy-modal-section">
-          <p class="policy-modal-label">Other National Policy</p>
-          <p class="policy-modal-body">{@html previewSnippet.other_national_text}</p>
-        </div>
-      {/if}
-      {#if previewSnippet.other_guidance_text}
-        <div class="policy-modal-section">
-          <p class="policy-modal-label">Other Guidance</p>
-          <p class="policy-modal-body">{@html previewSnippet.other_guidance_text}</p>
-        </div>
-      {/if}
-      {#if !previewSnippet.nppf_text && !previewSnippet.nppg_text && !previewSnippet.other_national_text && !previewSnippet.other_guidance_text}
-        <p class="policy-modal-empty">No text recorded for this template.</p>
-      {/if}
-    </div>
-  </div>
-{/if}
-
 <style>
   .policy-notes { display: flex; flex-direction: column; gap: 0.625rem; }
 
@@ -394,36 +249,6 @@
   .policy-ref-key {
     font-size: 0.7rem; font-weight: 600; color: var(--color-orange-700); background: var(--color-amber-100); padding: 0.1rem 0.35rem; border-radius: 3px;
   }
-
-  .snippet-dev-type {
-    font-size: 0.7rem; font-weight: 500; color: var(--color-slate-500); background: var(--color-slate-100); padding: 0.1rem 0.35rem; border-radius: 3px;
-  }
-
-  .snippet-ref.linked { border-left-color: var(--color-emerald-600); }
-  .snippet-ref .policy-link-btn.linked { border-color: var(--color-emerald-600); background: var(--color-emerald-600); }
-
-  .snippet-field-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
-
-  .snippet-field-pill {
-    font-size: 0.7rem; font-weight: 600; color: var(--color-green-800); background: var(--color-slate-100); border: 1px solid var(--color-emerald-100);
-    padding: 0.1rem 0.4rem; border-radius: 999px;
-  }
-
-  .snippet-field-toggles { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
-
-  .snippet-field-btn { margin-left: 0; }
-  .snippet-field-btn.linked { border-color: var(--color-emerald-600); background: var(--color-emerald-600); }
-
-  .snippet-section { margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
-
-  .snippet-empty { margin: 0; font-size: 0.8rem; color: var(--color-slate-400); font-style: italic; }
-
-  .snippet-edit-btn {
-    align-self: flex-start; display: flex; align-items: center; gap: 0.3rem;
-    background: none; border: none; padding: 0.15rem 0; font-size: 0.75rem; font-weight: 500;
-    color: var(--color-violet-600); cursor: pointer; font-family: inherit;
-  }
-  .snippet-edit-btn:hover { text-decoration: underline; }
 
   .policy-ref-name-btn {
     background: none; border: none; padding: 0; font-size: 0.8rem; font-weight: 600; color: var(--color-slate-800);

@@ -3,11 +3,9 @@
     getDraftingIssues, createDraftingIssue, updateDraftingIssue,
     deleteDraftingIssue, draftIssuesFromBriefing, draftIssuesFromTracker,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
-    getDraftingIssueSnippetRelevance, toggleDraftingIssueSnippet,
     summarizeSpecialistReport,
   } from '$lib/api/draftingIssues.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
-  import { listIssueTypes } from '$lib/api/issueTypes.js';
   import DraftingIssuePolicyNotes from './DraftingIssuePolicyNotes.svelte';
   import NoteSourcePicker from '$lib/components/shared/NoteSourcePicker.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
@@ -20,9 +18,7 @@
 
   let issues = [];
   let policyRelevance = {};  // { [draftingIssueId]: [policyId, ...] }
-  let snippetRelevance = {}; // { [draftingIssueId]: [{issue_type_id, field}, ...] }
   let projectPolicies = [];
-  let issueTypes = [];
   let loading = true;
   let newLabel = '';
   let newDiscipline = '';
@@ -120,26 +116,21 @@
   async function load() {
     loading = true;
 
-    const [issuesR, policyR, snippetR, policiesR, typesR] = await Promise.allSettled([
+    const [issuesR, policyR, policiesR] = await Promise.allSettled([
       getDraftingIssues(project.id),
       getDraftingIssuePolicyRelevance(project.id),
-      getDraftingIssueSnippetRelevance(project.id),
       getPolicies(project.id),
-      listIssueTypes(),
     ]);
 
     for (const [label, r] of [
-      ['drafting issues', issuesR], ['policy relevance', policyR], ['snippet relevance', snippetR],
-      ['project policies', policiesR], ['issue types', typesR],
+      ['drafting issues', issuesR], ['policy relevance', policyR], ['project policies', policiesR],
     ]) {
       if (r.status === 'rejected') console.error(`Failed to load ${label}:`, r.reason);
     }
 
     if (issuesR.status === 'fulfilled') issues = issuesR.value;
     if (policyR.status === 'fulfilled') policyRelevance = policyR.value;
-    if (snippetR.status === 'fulfilled') snippetRelevance = snippetR.value;
     if (policiesR.status === 'fulfilled') projectPolicies = policiesR.value;
-    if (typesR.status === 'fulfilled') issueTypes = typesR.value;
 
     loading = false;
   }
@@ -263,17 +254,6 @@
     return result;
   }
 
-  async function handleSnippetToggle(issueId, issueTypeId, field) {
-    const result = await toggleDraftingIssueSnippet(issueId, issueTypeId, field);
-    const current = snippetRelevance[issueId] ?? [];
-    snippetRelevance = {
-      ...snippetRelevance,
-      [issueId]: result.linked
-        ? [...current, { issue_type_id: issueTypeId, field }]
-        : current.filter(f => !(f.issue_type_id === issueTypeId && f.field === field)),
-    };
-    return result;
-  }
 </script>
 
 <div class="drafting-issues-tab">
@@ -333,9 +313,6 @@
                 relevantPolicyIds={policyRelevance[issue.id] ?? []}
                 toggleFn={(policyId) => handlePolicyToggle(issue.id, policyId)}
                 onNoteChange={(tierKey, value) => handleFieldBlur(issue, tierKey, value)}
-                allSnippets={issueTypes}
-                relevantSnippetFields={snippetRelevance[issue.id] ?? []}
-                snippetToggleFn={(issueTypeId, field) => handleSnippetToggle(issue.id, issueTypeId, field)}
               />
 
               <label class="di-field-label">Argument notes</label>

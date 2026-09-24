@@ -69,20 +69,6 @@ export async function toggleDraftingIssuePolicy(draftingIssueId, policyId) {
   return res.json();
 }
 
-export async function getDraftingIssueSnippetRelevance(projectId) {
-  const res = await authFetch(`${BASE}/projects/${projectId}/snippet-relevance`);
-  if (!res.ok) throw new Error('Failed to fetch snippet relevance');
-  return res.json();
-}
-
-export async function toggleDraftingIssueSnippet(draftingIssueId, issueTypeId, field) {
-  const res = await authFetch(`${BASE}/${draftingIssueId}/snippets/${issueTypeId}/${field}/toggle`, {
-    method: 'POST'
-  });
-  if (!res.ok) throw new Error('Failed to toggle snippet relevance');
-  return res.json();
-}
-
 export async function draftIssuesFromBriefing(projectId, sources, { allowNewIssues = true, issueScope = {} } = {}) {
   const res = await authFetch(`${BASE}/projects/${projectId}/draft-from-briefing`, {
     method: 'POST',
