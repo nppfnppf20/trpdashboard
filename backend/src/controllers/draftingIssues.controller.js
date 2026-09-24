@@ -328,64 +328,6 @@ export async function toggleDraftingIssuePolicy(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Snippet template relevance (admin_console.issue_types) — many-to-many,
-// replacing the old single-select drafting_issues.issue_type_id for new
-// linking. An issue can have several relevant templates.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SNIPPET_FIELDS = new Set(['nppf_text', 'nppg_text', 'other_national_text', 'other_guidance_text']);
-
-export async function getDraftingIssueSnippetRelevance(req, res) {
-  const { projectId } = req.params;
-  try {
-    const { rows } = await pool.query(
-      `SELECT disr.drafting_issue_id, disr.issue_type_id, disr.field
-       FROM admin_console.drafting_issue_snippet_relevance disr
-       JOIN admin_console.drafting_issues di ON di.id = disr.drafting_issue_id
-       WHERE di.project_id = $1`,
-      [projectId]
-    );
-    // Return as { [drafting_issue_id]: [{issue_type_id, field}, ...] }
-    const map = {};
-    for (const row of rows) {
-      if (!map[row.drafting_issue_id]) map[row.drafting_issue_id] = [];
-      map[row.drafting_issue_id].push({ issue_type_id: row.issue_type_id, field: row.field });
-    }
-    res.json(map);
-  } catch (err) {
-    console.error('draftingIssues.getSnippetRelevance error:', err);
-    res.status(500).json({ error: 'Failed to fetch snippet relevance' });
-  }
-}
-
-export async function toggleDraftingIssueSnippet(req, res) {
-  const { draftingIssueId, issueTypeId, field } = req.params;
-  if (!SNIPPET_FIELDS.has(field)) return res.status(400).json({ error: 'Invalid field' });
-  try {
-    const { rows: existing } = await pool.query(
-      `SELECT 1 FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2 AND field = $3`,
-      [draftingIssueId, issueTypeId, field]
-    );
-    if (existing.length) {
-      await pool.query(
-        `DELETE FROM admin_console.drafting_issue_snippet_relevance WHERE drafting_issue_id = $1 AND issue_type_id = $2 AND field = $3`,
-        [draftingIssueId, issueTypeId, field]
-      );
-      res.json({ linked: false });
-    } else {
-      await pool.query(
-        `INSERT INTO admin_console.drafting_issue_snippet_relevance (drafting_issue_id, issue_type_id, field) VALUES ($1, $2, $3)`,
-        [draftingIssueId, issueTypeId, field]
-      );
-      res.json({ linked: true });
-    }
-  } catch (err) {
-    console.error('draftingIssues.toggleSnippet error:', err);
-    res.status(500).json({ error: 'Failed to toggle snippet relevance' });
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Draft from Briefing Note
 // ─────────────────────────────────────────────────────────────────────────────
 

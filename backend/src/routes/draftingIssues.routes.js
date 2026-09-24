@@ -11,8 +11,6 @@ import {
   draftIssuesFromTracker,
   getDraftingIssuePolicyRelevance,
   toggleDraftingIssuePolicy,
-  getDraftingIssueSnippetRelevance,
-  toggleDraftingIssueSnippet,
   summarizeSpecialistReport,
 } from '../controllers/draftingIssues.controller.js';
 
@@ -25,7 +23,6 @@ router.put('/projects/:projectId/reorder', reorderDraftingIssues);
 router.post('/projects/:projectId/draft-from-briefing', draftIssuesFromBriefing);
 router.post('/projects/:projectId/draft-from-tracker', draftIssuesFromTracker);
 router.get('/projects/:projectId/policy-relevance', getDraftingIssuePolicyRelevance);
-router.get('/projects/:projectId/snippet-relevance', getDraftingIssueSnippetRelevance);
 
 router.put('/:id', updateDraftingIssue);
 router.put('/:id/issue-type', setDraftingIssueType);
@@ -33,6 +30,5 @@ router.delete('/:id', deleteDraftingIssue);
 router.post('/:id/specialist-report/summarize', upload.single('file'), summarizeSpecialistReport);
 
 router.post('/:draftingIssueId/policies/:policyId/toggle', toggleDraftingIssuePolicy);
-router.post('/:draftingIssueId/snippets/:issueTypeId/:field/toggle', toggleDraftingIssueSnippet);
 
 export default router;
