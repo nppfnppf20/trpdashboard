@@ -56,7 +56,7 @@ async function fetchIssueDraftingContext(projectId) {
 // issues from the LLM's results and additively links any matched policies.
 // Never removes an existing policy link, only adds newly discussed ones.
 async function applyDraftedIssueResults(projectId, results, { allowNewIssues = true, issueScope = {} } = {}) {
-  const scopeFor = (id) => issueScope[id] ?? { argumentNotes: true, specialistReport: true };
+  const scopeFor = (id) => issueScope[id] ?? { argumentNotes: true, specialistReport: true, policyLinks: true };
 
   const client = await pool.connect();
   try {
@@ -71,6 +71,7 @@ async function applyDraftedIssueResults(projectId, results, { allowNewIssues = t
     let applied = 0;
     for (const r of results) {
       let draftingIssueId;
+      let linkPolicies = true; // new issues always get their matched policies linked — allowNewIssues already gates whether they're created at all
 
       if (r.new_issue) {
         if (!allowNewIssues) continue;
@@ -84,7 +85,8 @@ async function applyDraftedIssueResults(projectId, results, { allowNewIssues = t
       } else {
         if (!r.drafting_issue_id) continue;
         const scope = scopeFor(r.drafting_issue_id);
-        if (!scope.argumentNotes && !scope.specialistReport) continue; // issue excluded from this run entirely
+        if (!scope.argumentNotes && !scope.specialistReport && !scope.policyLinks) continue; // issue excluded from this run entirely
+        linkPolicies = scope.policyLinks;
 
         // Only the fields the picker allowed for this issue are included in
         // the SET clause — an unchecked field is left completely alone.
@@ -102,25 +104,40 @@ async function applyDraftedIssueResults(projectId, results, { allowNewIssues = t
           params.push(r.specialist_report ?? null);
           setParts.push(`specialist_report = CASE WHEN $${params.length}::text IS NOT NULL THEN $${params.length} ELSE specialist_report END`);
         }
-        params.push(r.drafting_issue_id, projectId);
-        const { rows: updated } = await client.query(
-          `UPDATE admin_console.drafting_issues
-           SET ${setParts.join(', ')}
-           WHERE id = $${params.length - 1} AND project_id = $${params.length} RETURNING id`,
-          params
-        );
-        if (!updated.length) continue;
-        draftingIssueId = updated[0].id;
+
+        if (setParts.length) {
+          params.push(r.drafting_issue_id, projectId);
+          const { rows: updated } = await client.query(
+            `UPDATE admin_console.drafting_issues
+             SET ${setParts.join(', ')}
+             WHERE id = $${params.length - 1} AND project_id = $${params.length} RETURNING id`,
+            params
+          );
+          if (!updated.length) continue;
+          draftingIssueId = updated[0].id;
+        } else {
+          // Only policy links were requested for this issue — nothing to
+          // write to the issue row itself, just confirm it's really in this
+          // project before linking policies to it.
+          const { rows: existing } = await client.query(
+            `SELECT id FROM admin_console.drafting_issues WHERE id = $1 AND project_id = $2`,
+            [r.drafting_issue_id, projectId]
+          );
+          if (!existing.length) continue;
+          draftingIssueId = existing[0].id;
+        }
       }
 
       // Additive only — never removes an existing link, only adds newly
       // discussed ones on top of whatever's already there.
-      for (const policyId of (r.matched_policy_ids ?? [])) {
-        await client.query(
-          `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
-           VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [draftingIssueId, policyId]
-        );
+      if (linkPolicies) {
+        for (const policyId of (r.matched_policy_ids ?? [])) {
+          await client.query(
+            `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
+             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [draftingIssueId, policyId]
+          );
+        }
       }
       applied++;
     }

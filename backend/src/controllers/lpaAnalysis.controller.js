@@ -63,6 +63,7 @@ export async function listPolicies(req, res) {
   try {
     const { rows } = await pool.query(
       `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type, pp.policy_text,
+              pp.policy_text_annotated,
               pp.relevant_supporting_text, pp.notes, pp.is_key_policy, pp.created_at,
               pp.plan_id, pd.plan_name
        FROM project_policies pp
@@ -75,6 +76,28 @@ export async function listPolicies(req, res) {
   } catch (err) {
     console.error('listPolicies error:', err);
     res.status(500).json({ error: 'Failed to fetch policies' });
+  }
+}
+
+// Scoped update for the read-only preview modal's bold/highlight annotation
+// layer — deliberately not routed through the general updatePolicy below,
+// which is a full-payload endpoint (every field must be resent or it gets
+// nulled). This one only ever touches policy_text_annotated, so callers that
+// only have the policy's id and its new annotated HTML (not its full record)
+// can save safely.
+export async function updatePolicyAnnotatedText(req, res) {
+  const { policyId } = req.params;
+  const { policy_text_annotated } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE project_policies SET policy_text_annotated = $1 WHERE id = $2 RETURNING id, policy_text_annotated`,
+      [policy_text_annotated ?? null, policyId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Policy not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('updatePolicyAnnotatedText error:', err);
+    res.status(500).json({ error: 'Failed to save annotated policy text' });
   }
 }
 

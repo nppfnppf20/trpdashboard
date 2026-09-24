@@ -46,6 +46,16 @@ export async function deletePolicy(policyId) {
   return res.json();
 }
 
+export async function updatePolicyAnnotatedText(policyId, policy_text_annotated) {
+  const res = await authFetch(`${BASE}/policies/${policyId}/annotated-text`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policy_text_annotated })
+  });
+  if (!res.ok) throw new Error('Failed to save annotated policy text');
+  return res.json();
+}
+
 export async function extractPoliciesFromDocument(projectId, { file, text } = {}) {
   let body;
   if (file) {

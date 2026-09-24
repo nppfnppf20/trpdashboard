@@ -39,15 +39,16 @@
 
   // Per-issue permission for this run: which fields the LLM is allowed to
   // write to. Lets you, for example, drop in a specialist report for one
-  // issue without disturbing anything else's argument notes.
+  // issue without disturbing anything else's argument notes, or match
+  // policies to an issue without touching its argument text at all.
   let allowNewIssues = true;
-  let issueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool } }
+  let issueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool, policyLinks: bool } }
 
   function openDraftModal() {
     notePicker?.reset();
     draftSources = [];
     allowNewIssues = true;
-    issueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true }]));
+    issueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true, policyLinks: true }]));
     showDraftModal = true;
   }
 
@@ -79,11 +80,11 @@
   let showTrackerModal = false;
   let draftingTracker = false;
   let trackerAllowNewIssues = true;
-  let trackerIssueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool } }
+  let trackerIssueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool, policyLinks: bool } }
 
   function openTrackerModal() {
     trackerAllowNewIssues = true;
-    trackerIssueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true }]));
+    trackerIssueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true, policyLinks: true }]));
     showTrackerModal = true;
   }
 
@@ -273,6 +274,23 @@
     return result;
   }
 
+  // Grows a textarea to fit its content instead of scrolling inside a fixed
+  // box — resizes on every keystroke, and also whenever the bound value
+  // changes from outside (e.g. Draft from Briefing/Tracker filling the field
+  // programmatically), via the action's `update` hook.
+  function autoresize(node, value) {
+    function resize() {
+      node.style.height = 'auto';
+      node.style.height = `${node.scrollHeight}px`;
+    }
+    resize();
+    node.addEventListener('input', resize);
+    return {
+      update() { resize(); },
+      destroy() { node.removeEventListener('input', resize); }
+    };
+  }
+
 </script>
 
 <div class="drafting-issues-tab">
@@ -343,6 +361,7 @@
                 value={issue.argument_for ?? ''}
                 placeholder="Outline the argument structure for this issue: how the proposals comply with policy, key evidence to cite..."
                 on:blur={e => handleFieldBlur(issue, 'argument_for', e.target.value)}
+                use:autoresize={issue.argument_for}
               ></textarea>
 
               <div class="di-field-label-row">
@@ -360,6 +379,7 @@
                 on:dragover|preventDefault={() => setReportPanel(issue.id, { dragOver: true })}
                 on:dragleave={() => setReportPanel(issue.id, { dragOver: false })}
                 on:drop={e => onReportDrop(issue.id, e)}
+                use:autoresize={issue.specialist_report}
               ></textarea>
 
               {#if reportPanel.open}
@@ -490,6 +510,14 @@
                     />
                     Specialist report{issue.specialist_report?.trim() ? ' (filled)' : ''}
                   </label>
+                  <label class="di-scope-field">
+                    <input
+                      type="checkbox"
+                      checked={issueScope[issue.id]?.policyLinks}
+                      on:change={() => toggleScope(issue.id, 'policyLinks')}
+                    />
+                    Policy links
+                  </label>
                 </div>
               {/each}
             </div>
@@ -536,6 +564,14 @@
                       on:change={() => toggleTrackerScope(issue.id, 'argumentNotes')}
                     />
                     Argument notes{issue.argument_for?.trim() ? ' (filled)' : ''}
+                  </label>
+                  <label class="di-scope-field">
+                    <input
+                      type="checkbox"
+                      checked={trackerIssueScope[issue.id]?.policyLinks}
+                      on:change={() => toggleTrackerScope(issue.id, 'policyLinks')}
+                    />
+                    Policy links
                   </label>
                 </div>
               {/each}
@@ -667,7 +703,8 @@
   .di-textarea {
     box-sizing: border-box;
     width: 100%; min-height: 4rem; padding: 0.5rem 0.6rem; border: 1px solid var(--color-slate-200); border-radius: 6px;
-    font-size: 0.825rem; font-family: inherit; color: var(--color-slate-700); resize: vertical;
+    font-size: 0.825rem; font-family: inherit; color: var(--color-slate-700);
+    resize: none; overflow: hidden;
   }
   .di-textarea:focus { outline: none; border-color: var(--color-violet-300); }
   .di-textarea-drag { border-color: var(--color-violet-600); background: var(--color-purple-50); }

@@ -4,6 +4,8 @@
   // .issue_notes / policy_track_relevance), this one is prop-driven so it can sit
   // on top of admin_console.drafting_issues instead, fully independently.
 
+  import { updatePolicyAnnotatedText } from '$lib/api/lpaAnalysis.js';
+
   export let issue;
   export let policies = [];
   export let relevantPolicyIds = [];
@@ -110,6 +112,94 @@
     resize();
     return {
       destroy() { node.removeEventListener('input', resize); }
+    };
+  }
+
+  // ── Policy text preview: read-only rich text, bold only ────────────────────
+  // The verbatim policy_text stays untouched in the DB — this is a purely
+  // additive, persisted annotation layer (policy_text_annotated) on top of
+  // it: paragraph breaks for readability, plus whatever bold gets applied.
+  // The contenteditable region blocks every input vector that would actually
+  // change the text (typing, paste, drag-drop, cut); bold is applied via
+  // execCommand (toolbar button or Ctrl/Cmd+B) and saved immediately.
+
+  function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // One-time seed for a policy that has no saved annotation yet. Splits on
+  // real line breaks where the source has them; otherwise breaks before
+  // lettered/roman/numbered sub-clause markers like "(a)" or "1." — quite a
+  // few policies quote several sub-criteria as one flowing string with no
+  // line breaks at all, which reads as a single unreadable block otherwise.
+  function autoFormatPolicyText(text) {
+    if (!text?.trim()) return '';
+    const escaped = escapeHtml(text.trim());
+    const lines = /\r\n|\n/.test(escaped)
+      ? escaped.split(/\r\n|\n/)
+      : escaped.replace(/\s(\(?[a-z]\)|\([ivxlcdm]+\)|\d+\.)\s/gi, '\n$1 ').split('\n');
+    return lines.map(l => l.trim()).filter(Boolean).map(l => `<p>${l}</p>`).join('');
+  }
+
+  let richTextEl;
+  let annotatedSaving = false;
+  let annotatedError = null;
+  $: if (!previewPolicy) annotatedError = null;
+
+  async function saveAnnotatedText(policy, html) {
+    annotatedSaving = true;
+    annotatedError = null;
+    try {
+      await updatePolicyAnnotatedText(policy.id, html);
+      // Keep in-memory state in sync so reopening the modal (or seeing the
+      // same policy in another tier) reflects the save without a reload.
+      const idx = policies.findIndex(p => p.id === policy.id);
+      if (idx !== -1) policies[idx] = { ...policies[idx], policy_text_annotated: html };
+      if (previewPolicy?.id === policy.id) previewPolicy = { ...previewPolicy, policy_text_annotated: html };
+    } catch (e) {
+      console.error('Failed to save annotated policy text:', e);
+      annotatedError = 'Could not save formatting — it will be lost when this closes.';
+    } finally {
+      annotatedSaving = false;
+    }
+  }
+
+  function applyBold() {
+    // Nothing selected -> execCommand('bold') would just toggle "bold for
+    // whatever gets typed next" on a collapsed caret, changing nothing (and
+    // typing is blocked anyway), so there'd be nothing to save.
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !richTextEl?.contains(sel.anchorNode)) return;
+    document.execCommand('bold');
+    saveAnnotatedText(previewPolicy, richTextEl.innerHTML);
+  }
+
+  // Blocks every keyboard-driven way of changing the text — only navigation/
+  // selection keys, copy/select-all, and Ctrl/Cmd+B (routed through the same
+  // bold action as the toolbar button) pass through. Paste, drop and cut are
+  // blocked separately in the markup below.
+  function blockEdit(e) {
+    const allowedKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Tab', 'Shift', 'Control', 'Meta', 'Alt', 'Escape'];
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === 'b') {
+      e.preventDefault();
+      applyBold();
+      return;
+    }
+    if (allowedKeys.includes(e.key) || (mod && (key === 'c' || key === 'a'))) return;
+    e.preventDefault();
+  }
+
+  // Sets the region's HTML once on mount; re-syncs only if the bound value
+  // actually differs from what's already in the DOM, so our own save (which
+  // reads this same HTML straight back out) never resets the live selection.
+  function richTextContent(node, html) {
+    node.innerHTML = html;
+    return {
+      update(newHtml) {
+        if (node.innerHTML !== newHtml) node.innerHTML = newHtml;
+      }
     };
   }
 </script>
@@ -246,8 +336,33 @@
       </div>
       {#if previewPolicy.policy_text}
         <div class="policy-modal-section">
-          <p class="policy-modal-label">Policy Text</p>
-          <p class="policy-modal-body">{previewPolicy.policy_text}</p>
+          <div class="policy-modal-label-row">
+            <p class="policy-modal-label">Policy Text</p>
+            <div class="rich-toolbar">
+              {#if annotatedSaving}<span class="mini-spinner"></span>{/if}
+              <!-- mousedown is prevented so pressing the button doesn't shift
+                   focus off the text and collapse the selection before the
+                   bold command runs -->
+              <button
+                type="button"
+                class="rich-toolbar-btn"
+                on:mousedown|preventDefault
+                on:click={applyBold}
+                title="Bold (Ctrl+B)"
+              >B</button>
+            </div>
+          </div>
+          <div
+            class="policy-modal-body policy-modal-rich"
+            contenteditable="true"
+            bind:this={richTextEl}
+            use:richTextContent={previewPolicy.policy_text_annotated || autoFormatPolicyText(previewPolicy.policy_text)}
+            on:keydown={blockEdit}
+            on:paste|preventDefault
+            on:drop|preventDefault
+            on:cut|preventDefault
+          ></div>
+          {#if annotatedError}<p class="rich-error">{annotatedError}</p>{/if}
         </div>
       {/if}
       {#if previewPolicy.relevant_supporting_text}
@@ -392,7 +507,25 @@
     font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-slate-400); margin: 0;
   }
 
+  .policy-modal-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+
+  .rich-toolbar { display: flex; align-items: center; gap: 0.3rem; }
+  .rich-toolbar-btn {
+    display: flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+    border: 1px solid var(--color-slate-200); border-radius: 4px; background: white; color: var(--color-slate-500);
+    cursor: pointer; font-size: 0.8rem; font-weight: 800; font-family: inherit; padding: 0;
+  }
+  .rich-toolbar-btn:hover { border-color: var(--color-violet-600); color: var(--color-violet-600); background: var(--color-purple-50); }
+  .rich-error { margin: 0; font-size: 0.72rem; color: var(--color-red-600); }
+
   .policy-modal-body { font-size: 0.875rem; color: var(--color-slate-700); line-height: 1.65; white-space: pre-wrap; margin: 0; }
+  .policy-modal-rich {
+    cursor: text; outline: none; border: 1px solid transparent; border-radius: 5px; padding: 0.3rem 0.4rem; margin: 0 -0.4rem;
+  }
+  .policy-modal-rich:focus { border-color: var(--color-violet-200); background: var(--color-purple-50); }
+  .policy-modal-rich :global(p) { margin: 0 0 0.5rem; }
+  .policy-modal-rich :global(p:last-child) { margin-bottom: 0; }
+  .policy-modal-rich :global(b), .policy-modal-rich :global(strong) { font-weight: 700; }
   .policy-modal-support { color: var(--color-slate-500); font-style: italic; }
   .policy-modal-empty { font-size: 0.875rem; color: var(--color-slate-400); font-style: italic; margin: 0; }
 

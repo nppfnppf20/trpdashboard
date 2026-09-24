@@ -9,6 +9,7 @@ import {
   listPolicies,
   createPolicy,
   updatePolicy,
+  updatePolicyAnnotatedText,
   deletePolicy,
   extractPolicies,
   extractPolicyWording,
@@ -42,6 +43,7 @@ const upload = multer({
 router.get('/projects/:projectId/policies', listPolicies);
 router.post('/projects/:projectId/policies', createPolicy);
 router.put('/policies/:policyId', updatePolicy);
+router.put('/policies/:policyId/annotated-text', updatePolicyAnnotatedText);
 router.delete('/policies/:policyId', deletePolicy);
 router.post('/projects/:projectId/policies/extract', upload.single('file'), extractPolicies);
 router.post('/projects/:projectId/policies/extract-wording', upload.single('file'), extractPolicyWording);
