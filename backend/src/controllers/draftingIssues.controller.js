@@ -328,6 +328,64 @@ export async function toggleDraftingIssuePolicy(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Plan (document) relevance — mirrors drafting_issue_policy_relevance above,
+// but for policy_documents rows that have no discrete policies of their own
+// (typically Supplementary Guidance / Other Material Considerations, where
+// the project-specific relevance is written directly onto the plan's own
+// "relevance" field rather than broken into policies — see
+// generatePlanRelevanceSummary in lpaAnalysis.service.js).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getDraftingIssuePlanRelevance(req, res) {
+  const { projectId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT dipr.drafting_issue_id, dipr.plan_id
+       FROM admin_console.drafting_issue_plan_relevance dipr
+       JOIN admin_console.drafting_issues di ON di.id = dipr.drafting_issue_id
+       WHERE di.project_id = $1`,
+      [projectId]
+    );
+    // Return as { [drafting_issue_id]: [plan_id, ...] }
+    const map = {};
+    for (const row of rows) {
+      if (!map[row.drafting_issue_id]) map[row.drafting_issue_id] = [];
+      map[row.drafting_issue_id].push(row.plan_id);
+    }
+    res.json(map);
+  } catch (err) {
+    console.error('draftingIssues.getPlanRelevance error:', err);
+    res.status(500).json({ error: 'Failed to fetch plan relevance' });
+  }
+}
+
+export async function toggleDraftingIssuePlan(req, res) {
+  const { draftingIssueId, planId } = req.params;
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT 1 FROM admin_console.drafting_issue_plan_relevance WHERE drafting_issue_id = $1 AND plan_id = $2`,
+      [draftingIssueId, planId]
+    );
+    if (existing.length) {
+      await pool.query(
+        `DELETE FROM admin_console.drafting_issue_plan_relevance WHERE drafting_issue_id = $1 AND plan_id = $2`,
+        [draftingIssueId, planId]
+      );
+      res.json({ linked: false });
+    } else {
+      await pool.query(
+        `INSERT INTO admin_console.drafting_issue_plan_relevance (drafting_issue_id, plan_id) VALUES ($1, $2)`,
+        [draftingIssueId, planId]
+      );
+      res.json({ linked: true });
+    }
+  } catch (err) {
+    console.error('draftingIssues.togglePlan error:', err);
+    res.status(500).json({ error: 'Failed to toggle plan relevance' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Draft from Briefing Note
 // ─────────────────────────────────────────────────────────────────────────────
 

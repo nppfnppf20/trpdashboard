@@ -433,7 +433,18 @@ const TIER_NOTE_FIELDS = [
   { key: 'policy_other',         label: 'Other Policy Notes' },
 ];
 
-function buildIssueSnippetContext(linkedPolicies = [], issue = null) {
+// Supplementary Guidance / Other Material Considerations documents often
+// have no discrete policies of their own — their relevance is instead
+// written directly onto the plan document (policy_documents.relevance, see
+// generatePlanRelevanceSummary). plan.section is 'supplementary' or 'other',
+// matching GUIDANCE_TIERS, so these only ever appear in Group 3 below.
+function planBlockLines(plan) {
+  const lines = [`${plan.plan_name} (${plan.section})`];
+  if (plan.relevance?.trim()) lines.push(`Relevance to project: "${plan.relevance.trim()}"`);
+  return lines;
+}
+
+function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans = []) {
   const lines = [];
 
   // --- Group 1: National Policy (NPPF only) ---
@@ -461,12 +472,13 @@ function buildIssueSnippetContext(linkedPolicies = [], issue = null) {
     }
   }
 
-  // --- Group 3: Other Policy and Guidance (supplementary/other-tier linked policies) ---
+  // --- Group 3: Other Policy and Guidance (supplementary/other-tier linked policies + plans) ---
   const guidancePolicies = linkedPolicies.filter(p => GUIDANCE_TIERS.includes(p.policy_type));
-  if (guidancePolicies.length) {
+  if (guidancePolicies.length || linkedPlans.length) {
     lines.push(`### Other Policy and Guidance`);
     for (const tier of GUIDANCE_TIERS) {
       for (const p of guidancePolicies.filter(p => p.policy_type === tier)) lines.push(...policyBlockLines(p));
+      for (const plan of linkedPlans.filter(pl => pl.section === tier)) lines.push(...planBlockLines(plan));
     }
   }
 
@@ -515,7 +527,7 @@ function buildIssueSnippetContext(linkedPolicies = [], issue = null) {
 // blocks are sent once instead of once per issue.
 export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
-  linkedPoliciesByTrack = {},
+  linkedPoliciesByTrack = {}, linkedPlansByTrack = {},
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
   provider = null,
 }) {
@@ -523,7 +535,8 @@ export async function generateIssueOrderedSection({
 
   const issuesContext = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
-    const { text } = buildIssueSnippetContext(linkedPolicies, issue);
+    const linkedPlans = linkedPlansByTrack[issue.id] ?? [];
+    const { text } = buildIssueSnippetContext(linkedPolicies, issue, linkedPlans);
     return `### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n\n${text || '(no linked policies or notes recorded for this issue)'}`;
   }).join('\n\n---\n\n');
 

@@ -8,6 +8,16 @@
   export let policies = [];
   export let relevantPolicyIds = [];
   export let toggleFn; // async (policyId, issueId) => { linked }
+  // Supplementary Guidance / Other Material Considerations documents often
+  // have no discrete policies of their own — their relevance is instead
+  // written directly onto the plan document (policy_documents.relevance).
+  // Normalised into policy-shaped items below (see planAsItem) so they can
+  // render through the same markup as real policies rather than duplicating
+  // it. Only ever populated for the supplementary/other tiers, since those
+  // are the only policy_documents.section values that line up with a tier.
+  export let plans = [];
+  export let relevantPlanIds = [];
+  export let planToggleFn; // async (planId, issueId) => { linked }
   export let onNoteChange; // (tierKey, value) => void
 
   const POLICY_TIERS = [
@@ -18,7 +28,11 @@
     { key: 'policy_other',         label: 'Other',                dbType: 'other',         placeholder: 'Add further policy notes...' },
   ];
 
-  let open = {};
+  // Accordion — only one tier (or "All Linked") open at a time, and nothing
+  // is open by default. A tier with existing content still needs a click to
+  // view it, same as an empty one — no auto-expand, so the button's colour
+  // always matches whether its panel is actually showing.
+  let openKey = null;
   let toggling = {};
   let previewPolicy = null;
   let textareaExpanded = {};
@@ -33,27 +47,58 @@
     }
   }
 
-  $: policiesByType = policies.reduce((acc, p) => {
-    const t = (p.policy_type ?? '').toLowerCase();
+  // Only plans with an actual relevance summary are worth surfacing here —
+  // one with nothing written yet has nothing to link or preview.
+  function planAsItem(plan) {
+    return {
+      id: plan.id,
+      _kind: 'plan',
+      policy_reference: null,
+      policy_name: plan.plan_name,
+      policy_type: plan.section,
+      is_key_policy: false,
+      policy_text: null,
+      relevant_supporting_text: plan.relevance,
+      notes: plan.summary,
+    };
+  }
+
+  $: itemsByType = [
+    ...policies.map(p => ({ ...p, _kind: 'policy' })),
+    ...plans.filter(p => p.relevance?.trim()).map(planAsItem),
+  ].reduce((acc, item) => {
+    const t = (item.policy_type ?? '').toLowerCase();
     if (!acc[t]) acc[t] = [];
-    acc[t].push(p);
+    acc[t].push(item);
     return acc;
   }, {});
 
-  async function handleToggle(policy) {
-    if (toggling[policy.id]) return;
-    toggling = { ...toggling, [policy.id]: true };
+  function isLinked(item) {
+    return item._kind === 'plan' ? relevantPlanIds.includes(item.id) : relevantPolicyIds.includes(item.id);
+  }
+
+  // "All Linked" — a cross-tier view, not one of POLICY_TIERS, so it needs
+  // its own type label per row (mixing national/local/etc. together is the
+  // whole point, unlike the per-tier lists above which are already scoped).
+  const ALL_LINKED_KEY = 'all_linked';
+  $: allLinkedItems = Object.values(itemsByType).flat().filter(isLinked);
+
+  async function handleToggle(item) {
+    const key = `${item._kind}:${item.id}`;
+    if (toggling[key]) return;
+    toggling = { ...toggling, [key]: true };
     try {
-      await toggleFn(policy.id, issue.id);
+      if (item._kind === 'plan') await planToggleFn(item.id, issue.id);
+      else await toggleFn(item.id, issue.id);
     } catch (e) {
-      console.error('Failed to toggle policy:', e);
+      console.error(`Failed to toggle ${item._kind}:`, e);
     } finally {
-      toggling = { ...toggling, [policy.id]: false };
+      toggling = { ...toggling, [key]: false };
     }
   }
 
   function toggle(tierKey) {
-    open = { ...open, [tierKey]: !open[tierKey] };
+    openKey = openKey === tierKey ? null : tierKey;
   }
 
   function autoresize(node) {
@@ -75,11 +120,19 @@
   </div>
 
   <div class="tier-buttons">
+    <button
+      class="tier-btn"
+      class:active={openKey === ALL_LINKED_KEY}
+      on:click={() => toggle(ALL_LINKED_KEY)}
+    >
+      All Linked
+      {#if allLinkedItems.length > 0}<span class="tier-dot"></span>{/if}
+    </button>
     {#each POLICY_TIERS as tier}
       {@const hasContent = !!issue[tier.key]?.trim()}
       <button
         class="tier-btn"
-        class:active={open[tier.key] || hasContent}
+        class:active={openKey === tier.key}
         on:click={() => toggle(tier.key)}
       >
         {tier.label}
@@ -88,30 +141,68 @@
     {/each}
   </div>
 
+  {#if openKey === ALL_LINKED_KEY}
+    <div class="tier-field">
+      <label class="tier-label">All Linked</label>
+
+      {#if allLinkedItems.length}
+        <div class="policy-refs">
+          {#each allLinkedItems as item}
+            <div class="policy-ref linked">
+              <div class="policy-ref-header">
+                {#if item.policy_reference}<span class="policy-ref-code">{item.policy_reference}</span>{/if}
+                <button class="policy-ref-name-btn" on:click={() => previewPolicy = item}>
+                  {item.policy_name}
+                </button>
+                {#if item.is_key_policy}<span class="policy-ref-key">Key</span>{/if}
+                <span class="policy-ref-type">{item.policy_type}</span>
+                <button
+                  class="policy-link-btn linked"
+                  disabled={toggling[`${item._kind}:${item.id}`]}
+                  on:click={() => handleToggle(item)}
+                  title="Remove from this issue"
+                >
+                  {#if toggling[`${item._kind}:${item.id}`]}
+                    <span class="mini-spinner"></span>
+                  {:else}
+                    <i class="las la-check"></i> Linked
+                  {/if}
+                </button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <p class="all-linked-empty">No policies linked to this issue yet.</p>
+      {/if}
+    </div>
+  {/if}
+
   {#each POLICY_TIERS as tier}
-    {#if open[tier.key] || issue[tier.key]?.trim()}
+    {#if openKey === tier.key}
       <div class="tier-field">
         <label class="tier-label">{tier.label}</label>
 
-        {#if policiesByType[tier.dbType]?.length}
+        {#if itemsByType[tier.dbType]?.length}
           <div class="policy-refs">
-            {#each policiesByType[tier.dbType] as policy}
-              {@const linked = relevantPolicyIds.includes(policy.id)}
+            {#each itemsByType[tier.dbType] as item}
+              {@const linked = isLinked(item)}
               <div class="policy-ref" class:linked>
                 <div class="policy-ref-header">
-                  {#if policy.policy_reference}<span class="policy-ref-code">{policy.policy_reference}</span>{/if}
-                  <button class="policy-ref-name-btn" on:click={() => previewPolicy = policy}>
-                    {policy.policy_name}
+                  {#if item.policy_reference}<span class="policy-ref-code">{item.policy_reference}</span>{/if}
+                  <button class="policy-ref-name-btn" on:click={() => previewPolicy = item}>
+                    {item.policy_name}
                   </button>
-                  {#if policy.is_key_policy}<span class="policy-ref-key">Key</span>{/if}
+                  {#if item.is_key_policy}<span class="policy-ref-key">Key</span>{/if}
+                  {#if item._kind === 'plan'}<span class="policy-ref-plan-tag">Plan</span>{/if}
                   <button
                     class="policy-link-btn"
                     class:linked
-                    disabled={toggling[policy.id]}
-                    on:click={() => handleToggle(policy)}
+                    disabled={toggling[`${item._kind}:${item.id}`]}
+                    on:click={() => handleToggle(item)}
                     title={linked ? 'Remove from this issue' : 'Mark as relevant to this issue'}
                   >
-                    {#if toggling[policy.id]}
+                    {#if toggling[`${item._kind}:${item.id}`]}
                       <span class="mini-spinner"></span>
                     {:else if linked}
                       <i class="las la-check"></i> Linked
@@ -161,18 +252,18 @@
       {/if}
       {#if previewPolicy.relevant_supporting_text}
         <div class="policy-modal-section">
-          <p class="policy-modal-label">Supporting Text</p>
+          <p class="policy-modal-label">{previewPolicy._kind === 'plan' ? 'Relevance to Project' : 'Supporting Text'}</p>
           <p class="policy-modal-body policy-modal-support">{previewPolicy.relevant_supporting_text}</p>
         </div>
       {/if}
       {#if previewPolicy.notes}
         <div class="policy-modal-section">
-          <p class="policy-modal-label">Notes</p>
+          <p class="policy-modal-label">{previewPolicy._kind === 'plan' ? 'Summary' : 'Notes'}</p>
           <p class="policy-modal-body policy-modal-support">{previewPolicy.notes}</p>
         </div>
       {/if}
       {#if !previewPolicy.policy_text && !previewPolicy.relevant_supporting_text && !previewPolicy.notes}
-        <p class="policy-modal-empty">No text recorded for this policy.</p>
+        <p class="policy-modal-empty">No text recorded for this {previewPolicy._kind === 'plan' ? 'plan' : 'policy'}.</p>
       {/if}
     </div>
   </div>
@@ -249,6 +340,18 @@
   .policy-ref-key {
     font-size: 0.7rem; font-weight: 600; color: var(--color-orange-700); background: var(--color-amber-100); padding: 0.1rem 0.35rem; border-radius: 3px;
   }
+
+  .policy-ref-type {
+    font-size: 0.7rem; font-weight: 500; color: var(--color-slate-500); background: var(--color-slate-100);
+    padding: 0.1rem 0.35rem; border-radius: 3px; text-transform: capitalize;
+  }
+
+  .policy-ref-plan-tag {
+    font-size: 0.7rem; font-weight: 600; color: var(--color-teal-600); background: var(--color-teal-100);
+    padding: 0.1rem 0.35rem; border-radius: 3px;
+  }
+
+  .all-linked-empty { margin: 0; font-size: 0.8rem; color: var(--color-slate-400); font-style: italic; }
 
   .policy-ref-name-btn {
     background: none; border: none; padding: 0; font-size: 0.8rem; font-weight: 600; color: var(--color-slate-800);

@@ -69,6 +69,20 @@ export async function toggleDraftingIssuePolicy(draftingIssueId, policyId) {
   return res.json();
 }
 
+export async function getDraftingIssuePlanRelevance(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/plan-relevance`);
+  if (!res.ok) throw new Error('Failed to fetch plan relevance');
+  return res.json();
+}
+
+export async function toggleDraftingIssuePlan(draftingIssueId, planId) {
+  const res = await authFetch(`${BASE}/${draftingIssueId}/plans/${planId}/toggle`, {
+    method: 'POST'
+  });
+  if (!res.ok) throw new Error('Failed to toggle plan relevance');
+  return res.json();
+}
+
 export async function draftIssuesFromBriefing(projectId, sources, { allowNewIssues = true, issueScope = {} } = {}) {
   const res = await authFetch(`${BASE}/projects/${projectId}/draft-from-briefing`, {
     method: 'POST',

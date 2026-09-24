@@ -512,6 +512,30 @@ async function fetchLinkedPoliciesForDraftType(draftType, projectId) {
   return fetchLinkedPoliciesByTrack(projectId);
 }
 
+// Plan-level relevance (Supplementary Guidance / Other Material
+// Considerations documents that have no discrete policies of their own —
+// see admin_console.drafting_issue_plan_relevance) — only meaningful for v3,
+// which is the only draft type with that linking UI; other draft types get
+// an empty map, same as the snippet library's non-v3 fallback elsewhere.
+async function fetchLinkedPlansForDraftType(draftType, projectId) {
+  if (draftType.slug !== V3_SLUG) return {};
+  const { rows } = await pool.query(
+    `SELECT pd.id, pd.plan_name, pd.section, pd.relevance,
+            dipr.drafting_issue_id AS track_id
+     FROM public.policy_documents pd
+     JOIN admin_console.drafting_issue_plan_relevance dipr ON dipr.plan_id = pd.id
+     WHERE pd.project_id = $1
+     ORDER BY dipr.drafting_issue_id, pd.section, pd.plan_name`,
+    [projectId]
+  );
+  const map = {};
+  for (const row of rows) {
+    if (!map[row.track_id]) map[row.track_id] = [];
+    map[row.track_id].push(row);
+  }
+  return map;
+}
+
 // Fetches everything generateIssueOrderedSection needs for one spliced
 // section (Planning Policy / Planning Assessment), standalone. Used by the
 // per-section "Generate" button (generateSectionFromPaNotes below) so that
@@ -538,7 +562,7 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
     );
   }
 
-  const [{ rows: briefingRows }, { rows: startingDocRows }, linkedPoliciesByTrack, allTypesRes] = await Promise.all([
+  const [{ rows: briefingRows }, { rows: startingDocRows }, linkedPoliciesByTrack, linkedPlansByTrack, allTypesRes] = await Promise.all([
     briefingNoteQuery,
     pool.query(
       `SELECT slot_slug, content_text FROM appeals.pa_draft_starting_docs
@@ -546,6 +570,7 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
       [projectId, typeId]
     ),
     fetchLinkedPoliciesForDraftType(draftType, projectId),
+    fetchLinkedPlansForDraftType(draftType, projectId),
     pool.query(
       `SELECT id, label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text
        FROM admin_console.issue_types ORDER BY label`
@@ -619,7 +644,7 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
     );
   }
 
-  return { issues, linkedPoliciesByTrack, linkedSnippetsByTrack, allIssueTypes, projectBrief, startingDocs, briefingNotes };
+  return { issues, linkedPoliciesByTrack, linkedPlansByTrack, linkedSnippetsByTrack, allIssueTypes, projectBrief, startingDocs, briefingNotes };
 }
 
 export async function generateDraftFromPaNotes(req, res) {
@@ -717,6 +742,7 @@ export async function generateDraftFromPaNotes(req, res) {
     // project issue) so each can draw on that issue's linked policies and any
     // development-type-specific policy snippets (admin_console.issue_types).
     let linkedPoliciesByTrack = null;
+    let linkedPlansByTrack = null;
     let linkedSnippetsByTrack = null;
     let allIssueTypes = null;
 
@@ -745,14 +771,16 @@ export async function generateDraftFromPaNotes(req, res) {
       // the whole snippet-template library, offered to the model as candidates
       // for any issue that isn't explicitly linked to any via linkedSnippetsByTrack.
       if (!linkedPoliciesByTrack) {
-        const [linkedRes, allTypesRes] = await Promise.all([
+        const [linkedRes, plansRes, allTypesRes] = await Promise.all([
           fetchLinkedPoliciesForDraftType(draftType, projectId),
+          fetchLinkedPlansForDraftType(draftType, projectId),
           pool.query(
             `SELECT id, label, development_type, nppf_text, nppg_text, other_national_text, other_guidance_text
              FROM admin_console.issue_types ORDER BY label`
           ),
         ]);
         linkedPoliciesByTrack = linkedRes;
+        linkedPlansByTrack = plansRes;
         allIssueTypes = allTypesRes.rows;
 
         if (draftType.slug === V3_SLUG) {
@@ -836,6 +864,7 @@ export async function generateDraftFromPaNotes(req, res) {
             projectName: project.project_name,
             issues,
             linkedPoliciesByTrack,
+            linkedPlansByTrack,
             linkedSnippetsByTrack,
             allIssueTypes,
             guidingBrief: sectionGuidingBrief,
@@ -1036,6 +1065,7 @@ export async function generateSectionFromPaNotes(req, res) {
             projectName: project.project_name,
             issues: context.issues,
             linkedPoliciesByTrack: context.linkedPoliciesByTrack,
+            linkedPlansByTrack: context.linkedPlansByTrack,
             linkedSnippetsByTrack: context.linkedSnippetsByTrack,
             allIssueTypes: context.allIssueTypes,
             guidingBrief: null,

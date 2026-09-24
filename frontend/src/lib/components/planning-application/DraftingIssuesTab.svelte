@@ -3,9 +3,11 @@
     getDraftingIssues, createDraftingIssue, updateDraftingIssue,
     deleteDraftingIssue, draftIssuesFromBriefing, draftIssuesFromTracker,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
+    getDraftingIssuePlanRelevance, toggleDraftingIssuePlan,
     summarizeSpecialistReport,
   } from '$lib/api/draftingIssues.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
+  import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
   import DraftingIssuePolicyNotes from './DraftingIssuePolicyNotes.svelte';
   import NoteSourcePicker from '$lib/components/shared/NoteSourcePicker.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
@@ -18,7 +20,9 @@
 
   let issues = [];
   let policyRelevance = {};  // { [draftingIssueId]: [policyId, ...] }
+  let planRelevance = {};    // { [draftingIssueId]: [planId, ...] }
   let projectPolicies = [];
+  let projectPlans = [];     // policy_documents with a relevance summary but no policies of their own
   let loading = true;
   let newLabel = '';
   let newDiscipline = '';
@@ -116,21 +120,26 @@
   async function load() {
     loading = true;
 
-    const [issuesR, policyR, policiesR] = await Promise.allSettled([
+    const [issuesR, policyR, planR, policiesR, plansR] = await Promise.allSettled([
       getDraftingIssues(project.id),
       getDraftingIssuePolicyRelevance(project.id),
+      getDraftingIssuePlanRelevance(project.id),
       getPolicies(project.id),
+      getPolicyDocuments(project.id),
     ]);
 
     for (const [label, r] of [
-      ['drafting issues', issuesR], ['policy relevance', policyR], ['project policies', policiesR],
+      ['drafting issues', issuesR], ['policy relevance', policyR], ['plan relevance', planR],
+      ['project policies', policiesR], ['project plans', plansR],
     ]) {
       if (r.status === 'rejected') console.error(`Failed to load ${label}:`, r.reason);
     }
 
     if (issuesR.status === 'fulfilled') issues = issuesR.value;
     if (policyR.status === 'fulfilled') policyRelevance = policyR.value;
+    if (planR.status === 'fulfilled') planRelevance = planR.value;
     if (policiesR.status === 'fulfilled') projectPolicies = policiesR.value;
+    if (plansR.status === 'fulfilled') projectPlans = plansR.value;
 
     loading = false;
   }
@@ -254,6 +263,16 @@
     return result;
   }
 
+  async function handlePlanToggle(issueId, planId) {
+    const result = await toggleDraftingIssuePlan(issueId, planId);
+    const current = planRelevance[issueId] ?? [];
+    planRelevance = {
+      ...planRelevance,
+      [issueId]: result.linked ? [...current, planId] : current.filter(id => id !== planId),
+    };
+    return result;
+  }
+
 </script>
 
 <div class="drafting-issues-tab">
@@ -312,6 +331,9 @@
                 policies={projectPolicies}
                 relevantPolicyIds={policyRelevance[issue.id] ?? []}
                 toggleFn={(policyId) => handlePolicyToggle(issue.id, policyId)}
+                plans={projectPlans}
+                relevantPlanIds={planRelevance[issue.id] ?? []}
+                planToggleFn={(planId) => handlePlanToggle(issue.id, planId)}
                 onNoteChange={(tierKey, value) => handleFieldBlur(issue, tierKey, value)}
               />
 
@@ -643,6 +665,7 @@
   .di-field-label { font-size: 0.72rem; font-weight: 600; color: var(--color-violet-600); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.4rem; }
 
   .di-textarea {
+    box-sizing: border-box;
     width: 100%; min-height: 4rem; padding: 0.5rem 0.6rem; border: 1px solid var(--color-slate-200); border-radius: 6px;
     font-size: 0.825rem; font-family: inherit; color: var(--color-slate-700); resize: vertical;
   }
