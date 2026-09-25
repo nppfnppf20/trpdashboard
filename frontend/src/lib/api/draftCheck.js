@@ -28,3 +28,11 @@ export function checkGrammar(projectId, { draft_html, document_type, development
 export function checkPolicyReview(projectId, { draft_html, document_type, development_type }) {
   return runCheck('policy', projectId, { draft_html, document_type, development_type });
 }
+
+export function checkNppfInconsistency(projectId, { draft_html, document_type, development_type }) {
+  return runCheck('nppf', projectId, { draft_html, document_type, development_type });
+}
+
+export function checkNppfPolicyLibrary(projectId) {
+  return runCheck('nppf-library', projectId, {});
+}

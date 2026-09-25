@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { checkBriefCoverage, checkConsistency, checkGrammar, checkPolicyReview } from '$lib/api/draftCheck.js';
+  import { checkBriefCoverage, checkConsistency, checkGrammar, checkPolicyReview, checkNppfInconsistency } from '$lib/api/draftCheck.js';
   import { getActionPrompt, saveActionPrompt, resetActionPrompt } from '$lib/api/planningApplication.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
 
@@ -25,6 +25,7 @@
     { key: 'consistency', promptKey: 'draft_check_consistency', label: 'Project Information',    icon: 'la-clipboard-list', run: checkConsistency },
     { key: 'grammar',     promptKey: 'draft_check_grammar',     label: 'Grammar & Style',        icon: 'la-spell-check',    run: checkGrammar },
     { key: 'policy',      promptKey: 'draft_check_policy',      label: 'Policy Review',          icon: 'la-balance-scale',  run: checkPolicyReview },
+    { key: 'nppf',        promptKey: 'draft_check_nppf',        label: 'NPPF Inconsistency',     icon: 'la-exchange-alt',   run: checkNppfInconsistency },
   ];
 
   let sections = {
@@ -32,8 +33,9 @@
     consistency: { status: 'idle', items: [], error: null, meta: {} },
     grammar:     { status: 'idle', items: [], error: null, meta: {} },
     policy:      { status: 'idle', items: [], error: null, meta: {} },
+    nppf:        { status: 'idle', items: [], error: null, meta: {} },
   };
-  let expanded = { brief: true, consistency: true, grammar: true, policy: true, policyUpdates: false };
+  let expanded = { brief: true, consistency: true, grammar: true, policy: true, nppf: true, policyUpdates: false };
   let noDraft = false;
 
   async function runSection(def) {
@@ -68,6 +70,7 @@
     if (key === 'consistency') return items.filter(i => i.status === 'mismatch').length;
     if (key === 'grammar')     return items.length;
     if (key === 'policy')      return items.length;
+    if (key === 'nppf')        return items.filter(i => i.draft_status !== 'already_reconciled').length;
     return 0;
   }
 
@@ -79,6 +82,21 @@
   const POLICY_TONES = { missing: 'missing', weak: 'partial', misinterpreted: 'missing' };
   const POLICY_ICONS = { missing: 'la-times-circle', weak: 'la-exclamation-triangle', misinterpreted: 'la-exclamation-circle' };
   const POLICY_LABELS = { missing: 'Not addressed', weak: 'Could be strengthened', misinterpreted: 'Possible misinterpretation' };
+  const NPPF_TONES = { relies_on_local: 'missing', not_in_draft: 'partial', already_reconciled: 'present' };
+  const NPPF_ICONS = { relies_on_local: 'la-times-circle', not_in_draft: 'la-exclamation-triangle', already_reconciled: 'la-check-circle' };
+  const NPPF_LABELS = {
+    relies_on_local: 'Draft relies on the overridden local wording',
+    not_in_draft: 'Not addressed in the draft',
+    already_reconciled: 'Draft already reconciles this',
+  };
+  const NPPF_KINDS = {
+    requirement_removed: 'Requirement removed by the NPPF',
+    test_differs: 'Different test',
+    weight_differs: 'Different weight',
+    superseded: 'Superseded',
+    scope_differs: 'Different scope',
+    other: 'Inconsistency',
+  };
 
   // Prompt modal state
   let promptModalKey = null;
@@ -194,6 +212,10 @@
               <p class="check-section-empty">No project information recorded to check against.</p>
             {:else if s.meta.no_policies}
               <p class="check-section-empty">No policies linked to this project yet. Add them on the Policy tab first.</p>
+            {:else if s.meta.no_linked_policies}
+              <p class="check-section-empty">No policies are linked to any drafting issue yet. Link NPPF and local plan policies to your drafting issues first.</p>
+            {:else if s.meta.no_policy_pairs}
+              <p class="check-section-empty">No drafting issue has both NPPF policies and local plan policies linked to it, so there is nothing to compare.</p>
 
             {:else if s.status === 'done' && s.items.length === 0}
               <p class="check-section-empty">Nothing flagged.</p>
@@ -279,6 +301,40 @@
                     <span class="check-item-question">{POLICY_LABELS[item.issue_type] ?? item.issue_type}</span>
                     {#if item.excerpt}<span class="check-item-excerpt">"{item.excerpt}"</span>{/if}
                     {#if item.detail}<span class="check-item-detail">{item.detail}</span>{/if}
+                    {#if item.suggestion}<span class="check-item-detail">{item.suggestion}</span>{/if}
+                    {#if notFoundKey === `${def.key}:${idx}`}
+                      <span class="check-item-notfound">Couldn't find this text in the draft, it may have been edited since the check ran.</span>
+                    {/if}
+                  </div>
+                  {#if locatable}<i class="las la-search check-item-locate-icon"></i>{/if}
+                </button>
+              {/each}
+
+            {:else if def.key === 'nppf'}
+              {#if s.meta.truncated}
+                <p class="check-item-notfound">The draft was too long to send in full, so this check only reviewed the first part of the document.</p>
+              {/if}
+              {#if s.meta.issues_failed}
+                <p class="check-item-notfound">{s.meta.issues_failed} of {s.meta.issues_checked} issues could not be checked. Run again to retry.</p>
+              {/if}
+              {#each s.items as item, idx}
+                {@const locatable = !!(locateText && item.excerpt)}
+                <button
+                  class="check-item check-item--{NPPF_TONES[item.draft_status] ?? 'neutral'}"
+                  disabled={!locatable}
+                  title={locatable ? 'Show in the draft' : undefined}
+                  on:click={() => locate(def.key, idx, item.excerpt)}
+                >
+                  <span class="check-item-icon"><i class="las {NPPF_ICONS[item.draft_status] ?? 'la-question-circle'}"></i></span>
+                  <div class="check-item-text">
+                    <span class="check-item-topic">{item.issue_label}: {NPPF_KINDS[item.kind] ?? NPPF_KINDS.other}</span>
+                    <span class="check-item-compare">
+                      <span class="check-compare-expected">NPPF {item.nppf_reference ?? ''}{item.nppf_name ? ` (${item.nppf_name})` : ''}: "{item.nppf_wording}"</span>
+                      <span class="check-compare-found">{item.local_reference ? `${item.local_reference} ` : ''}{item.local_name}: "{item.local_wording}"</span>
+                    </span>
+                    {#if item.explanation}<span class="check-item-detail">{item.explanation}</span>{/if}
+                    <span class="check-item-question">{NPPF_LABELS[item.draft_status] ?? item.draft_status}</span>
+                    {#if item.excerpt}<span class="check-item-excerpt">"{item.excerpt}"</span>{/if}
                     {#if item.suggestion}<span class="check-item-detail">{item.suggestion}</span>{/if}
                     {#if notFoundKey === `${def.key}:${idx}`}
                       <span class="check-item-notfound">Couldn't find this text in the draft, it may have been edited since the check ran.</span>

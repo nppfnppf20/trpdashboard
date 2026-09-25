@@ -536,6 +536,69 @@ async function fetchLinkedPlansForDraftType(draftType, projectId) {
   return map;
 }
 
+// Planning Assessment source mode (starting-docs slot 'briefing_source_mode'):
+//   notes      — summaries + argument notes (default, the original behaviour)
+//   transcript — full transcripts, no argument notes
+//   both       — argument notes guide the structure, full transcripts supply detail
+const BRIEFING_SOURCE_MODES = new Set(['notes', 'transcript', 'both']);
+
+function resolveBriefingSourceMode(startingDocs) {
+  const m = startingDocs?.['briefing_source_mode']?.trim();
+  return BRIEFING_SOURCE_MODES.has(m) ? m : 'notes';
+}
+
+// Full transcript text of the selected briefing notes (falls back to the
+// note's summary where no transcript was stored, e.g. older uploads).
+async function loadBriefingTranscripts(projectId, startingDocs) {
+  const json = startingDocs?.['briefing_notes'];
+  if (!json) return '';
+  try {
+    const ids = JSON.parse(json);
+    if (!Array.isArray(ids) || !ids.length) return '';
+    const { rows } = await pool.query(
+      `SELECT title, transcript_text, summary_html FROM planning_applications.document_summaries
+       WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
+       ORDER BY created_at DESC`,
+      [ids, projectId]
+    );
+    return rows
+      .map(r => {
+        const text = r.transcript_text?.trim() || r.summary_html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || '';
+        return `${r.title ? `[${r.title}]\n` : ''}${text}`;
+      })
+      .join('\n\n---\n\n');
+  } catch { return ''; }
+}
+
+// Planning Assessment sources: the project meeting notes ticked in the
+// generate dialog (starting-docs slot 'assessment_meeting_notes' — ids of
+// planning_applications.meeting_transcripts). Returns each note's summary
+// (used in "notes" mode) and its full transcript (used in "transcript"/"both").
+// If no meeting notes are selected it falls back to the older briefing-note
+// slot so projects set up before this still generate as they did.
+async function loadAssessmentSources(projectId, startingDocs, mode) {
+  let ids = [];
+  try { ids = JSON.parse(startingDocs?.['assessment_meeting_notes'] || '[]'); } catch { ids = []; }
+  if (!Array.isArray(ids) || !ids.length) {
+    return { summaries: '', transcripts: mode === 'notes' ? '' : await loadBriefingTranscripts(projectId, startingDocs) };
+  }
+  const { rows } = await pool.query(
+    `SELECT mt.title, mt.meeting_date, ms.summary_html, mt.transcript_text
+     FROM planning_applications.meeting_transcripts mt
+     LEFT JOIN planning_applications.meeting_summaries ms ON ms.transcript_id = mt.id
+     WHERE mt.id = ANY($1) AND mt.project_id = $2 AND mt.meeting_type = 'project'
+     ORDER BY mt.meeting_date DESC NULLS LAST, mt.created_at DESC`,
+    [ids, projectId]
+  );
+  const strip = (html) => (html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const label = (r) => `[${r.title || 'Meeting note'}${r.meeting_date ? ` (${new Date(r.meeting_date).toISOString().slice(0, 10)})` : ''}]\n`;
+  const join = (parts) => parts.join('\n\n---\n\n');
+  return {
+    summaries: join(rows.map(r => `${label(r)}${strip(r.summary_html)}`)),
+    transcripts: mode === 'notes' ? '' : join(rows.map(r => `${label(r)}${r.transcript_text?.trim() || strip(r.summary_html)}`)),
+  };
+}
+
 // Fetches everything generateIssueOrderedSection needs for one spliced
 // section (Planning Policy / Planning Assessment), standalone. Used by the
 // per-section "Generate" button (generateSectionFromPaNotes below) so that
@@ -644,7 +707,10 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
     );
   }
 
-  return { issues, linkedPoliciesByTrack, linkedPlansByTrack, linkedSnippetsByTrack, allIssueTypes, projectBrief, startingDocs, briefingNotes };
+  const briefingSourceMode = resolveBriefingSourceMode(startingDocs);
+  const { summaries: assessmentSummaries, transcripts: transcriptNotes } = await loadAssessmentSources(projectId, startingDocs, briefingSourceMode);
+
+  return { issues, linkedPoliciesByTrack, linkedPlansByTrack, linkedSnippetsByTrack, allIssueTypes, projectBrief, startingDocs, briefingNotes, assessmentSummaries, briefingSourceMode, transcriptNotes };
 }
 
 export async function generateDraftFromPaNotes(req, res) {
@@ -741,6 +807,9 @@ export async function generateDraftFromPaNotes(req, res) {
     // These sections are generated issue-by-issue (one <h3> + one LLM call per
     // project issue) so each can draw on that issue's linked policies and any
     // development-type-specific policy snippets (admin_console.issue_types).
+    // Planning Assessment source mode — see resolveBriefingSourceMode.
+    const briefingSourceMode = resolveBriefingSourceMode(startingDocs);
+    const { summaries: assessmentSummaries, transcripts: transcriptNotes } = await loadAssessmentSources(projectId, startingDocs, briefingSourceMode);
     let linkedPoliciesByTrack = null;
     let linkedPlansByTrack = null;
     let linkedSnippetsByTrack = null;
@@ -870,7 +939,9 @@ export async function generateDraftFromPaNotes(req, res) {
             guidingBrief: sectionGuidingBrief,
             projectBrief,
             startingDocs,
-            briefingNotes,
+            briefingNotes: assessmentSummaries || briefingNotes,
+            briefingSourceMode,
+            transcriptNotes,
             provider,
           });
       contentHtml = hasMarker
@@ -1071,7 +1142,9 @@ export async function generateSectionFromPaNotes(req, res) {
             guidingBrief: null,
             projectBrief: context.projectBrief,
             startingDocs: context.startingDocs,
-            briefingNotes: context.briefingNotes,
+            briefingNotes: context.assessmentSummaries || context.briefingNotes,
+            briefingSourceMode: context.briefingSourceMode,
+            transcriptNotes: context.transcriptNotes,
             provider,
           });
 
@@ -1166,7 +1239,7 @@ export async function getBriefingNotes(req, res) {
   const { projectId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT id, title, file_name, created_at, length(summary_html) AS summary_length
+      `SELECT id, title, file_name, created_at, length(summary_html) AS summary_length, length(transcript_text) AS transcript_length
        FROM planning_applications.document_summaries
        WHERE project_id = $1 AND doc_type = 'briefing_transcript'
        ORDER BY created_at DESC`,

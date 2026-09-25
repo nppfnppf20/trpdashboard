@@ -9,6 +9,9 @@
   export let loading = false;
   export let saving = false;
   export let saved = false;
+  // Off where there is no in-code default to reset to (e.g. section prompts
+  // that only exist in the database).
+  export let showReset = true;
 
   let activeTab = 'preview';
   $: if (!open) activeTab = 'preview';
@@ -62,9 +65,11 @@
 
       <div class="modal-footer">
         <div class="modal-footer-left">
-          <button class="modal-reset" disabled={saving} on:click={() => dispatch('reset')}>
-            Reset to default
-          </button>
+          {#if showReset}
+            <button class="modal-reset" disabled={saving} on:click={() => dispatch('reset')}>
+              Reset to default
+            </button>
+          {/if}
         </div>
         <div class="modal-footer-right">
           <button class="modal-cancel" on:click={() => dispatch('close')}>Close</button>

@@ -4,8 +4,69 @@
   import { getPolicyDocuments, updatePolicyDocument } from '$lib/api/policyDocuments.js';
   import { listIssueTypes } from '$lib/api/issueTypes.js';
   import { getNppfPolicies } from '$lib/api/nppfPolicies.js';
+  import { checkNppfPolicyLibrary } from '$lib/api/draftCheck.js';
+  import { getActionPrompt, saveActionPrompt, resetActionPrompt } from '$lib/api/planningApplication.js';
+  import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
 
   const dispatch = createEventDispatcher();
+
+  // ── NPPF inconsistency check (whole policy library) ──
+  const NPPF_PROMPT_KEY = 'policy_check_nppf';
+  const NPPF_KINDS = {
+    requirement_removed: 'Requirement removed by the NPPF',
+    test_differs: 'Different test',
+    weight_differs: 'Different weight',
+    superseded: 'Superseded',
+    scope_differs: 'Different scope',
+    other: 'Inconsistency',
+  };
+  let showNppfCheck = false;
+  let nppfCheck = { status: 'idle', items: [], error: null, meta: {} };
+  let nppfPromptOpen = false;
+  let nppfPrompt = { text: '', loading: false, saving: false, saved: false };
+
+  async function runNppfCheck() {
+    nppfCheck = { status: 'running', items: [], error: null, meta: {} };
+    try {
+      const { items = [], ...meta } = await checkNppfPolicyLibrary(projectId);
+      nppfCheck = { status: 'done', items, error: null, meta };
+    } catch (err) {
+      nppfCheck = { status: 'error', items: [], error: err.message, meta: {} };
+    }
+  }
+
+  async function openNppfPrompt() {
+    nppfPromptOpen = true;
+    nppfPrompt = { text: '', loading: true, saving: false, saved: false };
+    try {
+      const data = await getActionPrompt(NPPF_PROMPT_KEY);
+      nppfPrompt = { text: data.prompt ?? '', loading: false, saving: false, saved: false };
+    } catch {
+      nppfPrompt = { text: '', loading: false, saving: false, saved: false };
+    }
+  }
+
+  async function saveNppfPrompt() {
+    nppfPrompt = { ...nppfPrompt, saving: true };
+    try {
+      await saveActionPrompt(NPPF_PROMPT_KEY, nppfPrompt.text);
+      nppfPrompt = { ...nppfPrompt, saving: false, saved: true };
+      setTimeout(() => { nppfPrompt = { ...nppfPrompt, saved: false }; }, 2500);
+    } catch {
+      nppfPrompt = { ...nppfPrompt, saving: false };
+    }
+  }
+
+  async function resetNppfPrompt() {
+    nppfPrompt = { ...nppfPrompt, saving: true };
+    try {
+      const data = await resetActionPrompt(NPPF_PROMPT_KEY);
+      nppfPrompt = { text: data.prompt ?? '', loading: false, saving: false, saved: true };
+      setTimeout(() => { nppfPrompt = { ...nppfPrompt, saved: false }; }, 2500);
+    } catch {
+      nppfPrompt = { ...nppfPrompt, saving: false };
+    }
+  }
 
   export let project;
   $: projectId = project?.id;
@@ -569,6 +630,10 @@
         <i class="las la-history"></i> Used on Similar Projects ({precedents.length})
         <i class="las {showPrecedents ? 'la-angle-up' : 'la-angle-down'}"></i>
       </button>
+      <button class="btn-templates" on:click={() => showNppfCheck = !showNppfCheck}>
+        <i class="las la-exchange-alt"></i> NPPF Inconsistency Check
+        <i class="las {showNppfCheck ? 'la-angle-up' : 'la-angle-down'}"></i>
+      </button>
       <div class="tab-header-actions">
         <button class="btn-add-multiple" on:click={openWordingModal}>
           <i class="las la-file-alt"></i> Extract Policy Wording
@@ -621,6 +686,50 @@
               </details>
             {/each}
           </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#if showNppfCheck}
+      <div class="templates-panel">
+        <p class="templates-hint">Compares this project's NPPF policies against its Local Plan, Neighbourhood Plan, supplementary guidance and other policies, looking for genuine inconsistencies where the NPPF takes precedence.</p>
+        <div class="nppf-check-actions">
+          <button class="btn-import" disabled={nppfCheck.status === 'running'} on:click={runNppfCheck}>
+            {#if nppfCheck.status === 'running'}Checking…{:else}<i class="las la-play"></i> {nppfCheck.status === 'idle' ? 'Run check' : 'Run again'}{/if}
+          </button>
+          <button class="btn-import" title="View / edit prompt" on:click={openNppfPrompt}><i class="las la-sliders-h"></i> Prompt</button>
+        </div>
+
+        {#if nppfCheck.status === 'error'}
+          <p class="nppf-check-error">{nppfCheck.error}</p>
+        {:else if nppfCheck.status === 'done'}
+          {#if nppfCheck.meta.no_nppf_policies}
+            <p class="templates-empty">No NPPF (national) policies recorded for this project yet.</p>
+          {:else if nppfCheck.meta.no_other_policies}
+            <p class="templates-empty">No local, neighbourhood or guidance policies recorded to compare against.</p>
+          {:else}
+            {#if nppfCheck.meta.plans_failed}
+              <p class="nppf-check-error">{nppfCheck.meta.plans_failed} of {nppfCheck.meta.plans_checked} plans could not be checked. Run again to retry.</p>
+            {/if}
+            {#if nppfCheck.items.length === 0}
+              <p class="templates-empty">No inconsistencies found.</p>
+            {:else}
+              <div class="templates-list">
+                {#each nppfCheck.items as item}
+                  <div class="nppf-check-item">
+                    <div class="precedent-header">
+                      <span class="ref-chip">{NPPF_KINDS[item.kind] ?? NPPF_KINDS.other}</span>
+                      <span class="precedent-name">{item.plan_name}</span>
+                    </div>
+                    <div class="nppf-check-quote"><strong>NPPF {item.nppf_reference ?? ''}{item.nppf_name ? ` (${item.nppf_name})` : ''}:</strong> "{item.nppf_wording}"</div>
+                    <div class="nppf-check-quote"><strong>{item.local_reference ? `${item.local_reference} ` : ''}{item.local_name}:</strong> "{item.local_wording}"</div>
+                    {#if item.explanation}<p class="nppf-check-text">{item.explanation}</p>{/if}
+                    {#if item.suggestion}<p class="nppf-check-text nppf-check-suggestion">{item.suggestion}</p>{/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          {/if}
         {/if}
       </div>
     {/if}
@@ -817,6 +926,19 @@
     {/if}
   {/if}
 </div>
+
+<PromptEditModal
+  open={nppfPromptOpen}
+  title="Edit Prompt: NPPF Inconsistency Check"
+  promptText={nppfPrompt.text}
+  loading={nppfPrompt.loading}
+  saving={nppfPrompt.saving}
+  saved={nppfPrompt.saved}
+  on:close={() => nppfPromptOpen = false}
+  on:change={(e) => { nppfPrompt = { ...nppfPrompt, text: e.detail }; }}
+  on:save={saveNppfPrompt}
+  on:reset={resetNppfPrompt}
+/>
 
 <!-- Bulk Add Modal -->
 {#if showBulkModal}
@@ -1205,6 +1327,23 @@
     font-size: 0.82rem;
   }
   .precedent-header { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+
+  .nppf-check-actions { display: flex; gap: 0.5rem; margin: 0.5rem 0; }
+  .nppf-check-item {
+    background: white;
+    border: 1px solid var(--color-slate-200);
+    border-left: 3px solid var(--color-amber-500);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .nppf-check-quote { color: var(--color-slate-700); line-height: 1.45; }
+  .nppf-check-text { margin: 0; color: var(--color-slate-600); line-height: 1.45; }
+  .nppf-check-suggestion { color: var(--color-slate-800); font-weight: 500; }
+  .nppf-check-error { margin: 0.25rem 0; font-size: 0.8rem; color: var(--color-red-600); }
   .precedent-name { flex: 1; font-weight: 500; color: var(--color-slate-800); min-width: 8rem; }
   .precedent-used-on { font-size: 0.72rem; color: var(--color-slate-400); white-space: nowrap; }
   .btn-import {

@@ -4,7 +4,7 @@
   import { initNotes, briefingDraftOpen, runDraftFromBriefing, runDraftFromIssueSummaries, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, loadBriefingNotes, selectBriefingNote, keyIssueDraftOpen } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, initLog, editModalOpen, openEditModal, deleteEntry } from '$lib/stores/planning-log.js';
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal } from '$lib/stores/planning-suggestion.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, requestGenerateSection, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, createCustomDeliverable, updateDeliverableFromHTML, getProjectDeliverables, getDeliverableAsHTML, deleteDeliverable as deleteDeliverableApi, incorporateDeliverableTargeted } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
@@ -26,6 +26,7 @@
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
   import { getStartingDocs, getDraftContext } from '$lib/api/appeal.js';
+  import { getSections as getAppealSections, updateSection as updateAppealSection } from '$lib/api/appeal.js';
   import { md } from '$lib/utils/markdown.js';
   import BriefingDraftModal from '$lib/components/planning-application/BriefingDraftModal.svelte';
   import BriefingUploadModal from '$lib/components/planning-application/BriefingUploadModal.svelte';
@@ -33,6 +34,7 @@
   import DocumentLogEntryModal from '$lib/components/planning-application/DocumentLogEntryModal.svelte';
   import DocumentLogEditModal from '$lib/components/planning-application/DocumentLogEditModal.svelte';
   import DraftSectionsModal from '$lib/components/planning-application/DraftSectionsModal.svelte';
+  import AssessmentSourceDialog from '$lib/components/planning-application/AssessmentSourceDialog.svelte';
   import SectionExampleModal from '$lib/components/planning-application/SectionExampleModal.svelte';
   import SuggestPromptModal from '$lib/components/planning-application/SuggestPromptModal.svelte';
   import RegenerateConfirmModal from '$lib/components/planning-application/RegenerateConfirmModal.svelte';
@@ -44,6 +46,47 @@
   const stage1v2PromptState = actionPromptState('stage1_review_v2');
   const stage1v3PromptState = actionPromptState('stage1_review_v3');
   const hlpvV3PromptState   = actionPromptState('hlpv_v3');
+
+  // ── Edit a section's generation prompt (Planning Statement v3 sections) ──────
+  // Section prompts live in appeals.appeal_draft_sections.generation_prompt.
+  // The text is fetched fresh on open rather than read from the cached card
+  // sections, so what you edit is always what's actually stored.
+  let sectionPromptEdit = null; // { section, typeId, text, example, loading, saving, saved }
+
+  async function openSectionPromptEdit(section, typeId) {
+    sectionPromptEdit = { section, typeId, text: '', example: section.example_text ?? null, loading: true, saving: false, saved: false };
+    try {
+      const raw = parseInt(String(typeId).replace('appeal_', ''), 10);
+      const fresh = (await getAppealSections(raw)).find(s => s.id === section.id) ?? section;
+      sectionPromptEdit = { ...sectionPromptEdit, text: fresh.generation_prompt ?? '', example: fresh.example_text ?? null, loading: false };
+    } catch (err) {
+      console.error('Failed to load section prompt:', err);
+      sectionPromptEdit = { ...sectionPromptEdit, text: section.generation_prompt ?? '', loading: false };
+    }
+  }
+
+  async function saveSectionPromptEdit() {
+    if (!sectionPromptEdit) return;
+    const { section, typeId, text, example } = sectionPromptEdit;
+    sectionPromptEdit = { ...sectionPromptEdit, saving: true };
+    try {
+      // updateSection overwrites example_text too, so send it back unchanged.
+      const updated = await updateAppealSection(section.id, { generation_prompt: text, example_text: example });
+      cardSections.update(m => ({ ...m, [typeId]: (m[typeId] ?? []).map(s => s.id === section.id ? { ...s, ...updated } : s) }));
+      sectionPromptEdit = { ...sectionPromptEdit, saving: false, saved: true };
+      setTimeout(() => { if (sectionPromptEdit) sectionPromptEdit = { ...sectionPromptEdit, saved: false }; }, 2500);
+    } catch (err) {
+      console.error('Failed to save section prompt:', err);
+      alert('Failed to save the prompt.');
+      sectionPromptEdit = { ...sectionPromptEdit, saving: false };
+    }
+  }
+
+  // Shows which {{PLACEHOLDERS}} the text currently uses, so it's clear what
+  // the system fills in around whatever you edit.
+  $: sectionPromptTokens = sectionPromptEdit
+    ? [...new Set((sectionPromptEdit.text.match(/\{\{[A-Z0-9_]+\}\}/g) ?? []))]
+    : [];
 
   $: appealPromptTitle = $draftTypes.find(t => t.id === $appealPromptTypeId)?.name ?? 'Appeal Document';
 
@@ -1228,11 +1271,20 @@
                       <div class="draft-inline-section">
                         <span class="draft-inline-section-name">{section.name}</span>
                         <div class="draft-inline-section-actions">
+                          {#if type.slug === 'planning_statement_v3'}
+                            <button
+                              class="section-generate-btn"
+                              title="View / edit this section's prompt"
+                              on:click={() => openSectionPromptEdit(section, type.id)}
+                            >
+                              <i class="las la-sliders-h"></i>
+                            </button>
+                          {/if}
                           <button
                             class="section-generate-btn"
                             disabled={$sectionGenerating === section.id}
                             title="Generate entire section"
-                            on:click={() => handleGenerateSection(section.id, type.id, draftProviderByType[type.id] || '')}
+                            on:click={() => requestGenerateSection(section, type.id, draftProviderByType[type.id] || '')}
                           >
                             {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
                           </button>
@@ -1370,6 +1422,9 @@
   <DraftSectionsModal {draftProviderByType} />
 {/if}
 
+<!-- Source picker shown when generating the Planning Assessment section -->
+<AssessmentSourceDialog {project} />
+
 <!-- Section example sub-modal -->
 {#if $sectionExampleModalOpen}
   <SectionExampleModal />
@@ -1497,6 +1552,22 @@
 {#if regenPending}
   <RegenerateConfirmModal on:close={() => regenPending = null} on:confirm={confirmRegen} />
 {/if}
+
+<PromptEditModal
+  open={!!sectionPromptEdit}
+  title="Edit Section Prompt: {sectionPromptEdit?.section?.name ?? ''}"
+  promptText={sectionPromptEdit?.text ?? ''}
+  contextTemplate={sectionPromptTokens.length
+    ? `↑ YOUR INSTRUCTIONS (editable above)\n━━━ Filled in by the system where these appear in your text ━━━\n${sectionPromptTokens.join('\n')}`
+    : null}
+  loading={sectionPromptEdit?.loading ?? false}
+  saving={sectionPromptEdit?.saving ?? false}
+  saved={sectionPromptEdit?.saved ?? false}
+  showReset={false}
+  on:close={() => sectionPromptEdit = null}
+  on:change={(e) => { if (sectionPromptEdit) sectionPromptEdit = { ...sectionPromptEdit, text: e.detail }; }}
+  on:save={saveSectionPromptEdit}
+/>
 
 <PromptEditModal
   open={$appealPromptOpen}

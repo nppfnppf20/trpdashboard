@@ -23,7 +23,7 @@
     handleSaveSectionPrompt,
     handleSaveSectionTemplate,
     openSectionExampleModal,
-    handleGenerateSection,
+    requestGenerateSection,
     handleResetSectionPrompt,
     handleAddSection,
     handleDeleteSection,
@@ -139,7 +139,7 @@
                   </div>
                   <span class="section-name">{section.name}</span>
                   <div class="section-row-actions">
-                    <button class="section-generate-btn" disabled={$sectionGenerating === section.id} on:click={() => handleGenerateSection(section.id, null, draftProviderByType[$sectionsTypeId] || '')} title="Generate this section">
+                    <button class="section-generate-btn" disabled={$sectionGenerating === section.id} on:click={() => requestGenerateSection(section, null, draftProviderByType[$sectionsTypeId] || '')} title="Generate this section">
                       {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
                     </button>
                     <button class="section-edit-btn" on:click={() => toggleSectionExpand(section.id)}>

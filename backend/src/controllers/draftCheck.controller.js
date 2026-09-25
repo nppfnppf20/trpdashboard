@@ -154,11 +154,114 @@ Rules:
 - Return at most 25 items, the most significant first
 - If the draft engages well with every relevant policy in the library, return an empty items array`;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. NPPF inconsistency — for each drafting issue, compares the NPPF
+// (national decision-making) policies linked to that issue against the local
+// / neighbourhood plan policies linked to the same issue, looking for genuine
+// inconsistencies where the NPPF takes precedence. Also reports whether the
+// working draft still relies on the overridden local wording. One LLM call
+// per issue, so each prompt only ever holds one issue's policies.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NPPF_HOW_IT_WORKS = `## How the new NPPF works
+- The new NPPF separates plan-making policies from national decision-making policies. Only the decision-making policies below are relevant to deciding this application.
+- Development plan policies, or parts of policies, that are materially inconsistent with the national decision-making policies should be given very limited weight, unless the plan was examined and adopted (or made) against the new Framework. A development plan policy should not be given less weight simply because it pre-dates the new NPPF.
+- Where there is a genuine inconsistency, the NPPF takes precedence over the inconsistent part of the local policy. The rest of the local policy keeps its normal weight.`;
+
+const NPPF_COMPARE_INSTRUCTIONS = `Compare every NPPF policy above against every local policy above and identify GENUINE inconsistencies, where the two cannot both be applied as written. Examples of the kind of thing to look for (not exhaustive, look for anything of this level of detail):
+- A local policy requires something the NPPF now expressly says should not be required (for example, a local criterion requiring the applicant to demonstrate the general need for a form of development, where the NPPF says need should not be required to be demonstrated).
+- A local policy imposes a separate or heightened test (for example, a standalone test protecting a resource or objective) that the NPPF's single decision-making test no longer carries forward, or that the NPPF says has been incorporated or superseded.
+- The two set different tests, thresholds, weights, or wording for the same matter (for example, "substantial weight" versus a balancing exercise, "protect" versus "take into account", "avoid" versus "where possible").
+- A local policy applies to a scenario, or in a way, that the NPPF has changed the scope of.
+- A local policy relies on national policy or guidance that the NPPF has replaced.`;
+
+export const DEFAULT_NPPF_CHECK_TEMPLATE = `You are a senior planning consultant checking whether the local development plan policies linked to a key issue are inconsistent with the new National Planning Policy Framework (NPPF) policies linked to the same issue, and whether a working draft still relies on wording the NPPF has overtaken.
+
+${NPPF_HOW_IT_WORKS}
+
+## Key Issue
+{{ISSUE_LABEL}}
+
+## NPPF Decision-Making Policies linked to this issue (verbatim)
+{{NPPF_POLICIES}}
+
+## Local / Neighbourhood Plan Policies linked to this issue (verbatim)
+{{LOCAL_POLICIES}}
+
+## Working Draft (plain text)
+{{DRAFT_TEXT}}
+
+${NPPF_COMPARE_INSTRUCTIONS}
+
+For each inconsistency, also check the working draft: does it still rely on the local wording that the NPPF overrides, has it already reconciled the two properly, or is the matter not covered in the draft at all?
+
+Return ONLY a valid JSON object, no explanation, no markdown fences:
+{
+  "items": [
+    {
+      "nppf_reference": "NPPF policy reference, e.g. W3(2)",
+      "nppf_name": "NPPF policy name",
+      "nppf_wording": "the specific NPPF wording that creates the inconsistency, quoted verbatim (max 300 characters)",
+      "local_reference": "local policy reference, or null",
+      "local_name": "local policy name",
+      "local_wording": "the specific local wording that is inconsistent, quoted verbatim (max 300 characters)",
+      "kind": "requirement_removed" | "test_differs" | "weight_differs" | "superseded" | "scope_differs" | "other",
+      "explanation": "one or two sentences: what the inconsistency is and why the NPPF takes precedence",
+      "draft_status": "relies_on_local" | "already_reconciled" | "not_in_draft",
+      "excerpt": "verbatim text from the draft this relates to (max 200 characters), or null if not_in_draft",
+      "suggestion": "one or two sentences: how the draft should handle this, e.g. what to say about the weight of the local policy limb"
+    }
+  ]
+}
+
+Rules:
+- Only report genuine, specific inconsistencies supported by the wording above. Do not flag differences in emphasis, or two policies that can sit together. Do not invent wording, and quote only what is given.
+- Every quoted wording field must be copied verbatim from the policy text above.
+- Report each inconsistency once, against the most relevant NPPF and local policy pair.
+- Order the most significant first. If there are no genuine inconsistencies, return an empty items array.`;
+
+export const DEFAULT_NPPF_LIBRARY_CHECK_TEMPLATE = `You are a senior planning consultant reviewing a project's policy library. Check whether the policies from one development plan or guidance document are inconsistent with the new National Planning Policy Framework (NPPF) decision-making policies recorded for the same project.
+
+${NPPF_HOW_IT_WORKS}
+
+## Policies from: {{PLAN_NAME}}
+{{LOCAL_POLICIES}}
+
+## NPPF Decision-Making Policies recorded for this project (verbatim)
+{{NPPF_POLICIES}}
+
+${NPPF_COMPARE_INSTRUCTIONS}
+
+Return ONLY a valid JSON object, no explanation, no markdown fences:
+{
+  "items": [
+    {
+      "nppf_reference": "NPPF policy reference, e.g. W3(2)",
+      "nppf_name": "NPPF policy name",
+      "nppf_wording": "the specific NPPF wording that creates the inconsistency, quoted verbatim (max 300 characters)",
+      "local_reference": "the other policy's reference, or null",
+      "local_name": "the other policy's name",
+      "local_wording": "the specific wording that is inconsistent, quoted verbatim (max 300 characters)",
+      "kind": "requirement_removed" | "test_differs" | "weight_differs" | "superseded" | "scope_differs" | "other",
+      "explanation": "one or two sentences: what the inconsistency is and why the NPPF takes precedence",
+      "suggestion": "one or two sentences: how this should be handled in the project's documents, e.g. what to say about the weight of the affected part of the policy"
+    }
+  ]
+}
+
+Rules:
+- Only report genuine, specific inconsistencies supported by the wording above. Do not flag differences in emphasis, or two policies that can sit together. Do not invent wording, and quote only what is given.
+- Every quoted wording field must be copied verbatim from the policy text above.
+- Report each inconsistency once, against the most relevant NPPF and plan policy pair.
+- Order the most significant first. If there are no genuine inconsistencies, return an empty items array.`;
+
 const DEFAULT_TEMPLATES = {
   draft_check_brief: DEFAULT_BRIEF_CHECK_TEMPLATE,
   draft_check_consistency: DEFAULT_CONSISTENCY_CHECK_TEMPLATE,
   draft_check_grammar: DEFAULT_GRAMMAR_CHECK_TEMPLATE,
   draft_check_policy: DEFAULT_POLICY_CHECK_TEMPLATE,
+  draft_check_nppf: DEFAULT_NPPF_CHECK_TEMPLATE,
+  policy_check_nppf: DEFAULT_NPPF_LIBRARY_CHECK_TEMPLATE,
 };
 
 async function loadPromptTemplate(promptKey) {
@@ -521,5 +624,172 @@ export async function checkPolicyReview(req, res) {
   } catch (err) {
     console.error('draftCheck.policyReview error:', err);
     res.status(500).json({ error: 'Failed to run policy review check' });
+  }
+}
+
+// ── 5. NPPF inconsistency ────────────────────────────────────────────────────
+
+const NPPF_CHECK_TEXT_CAP = 80000;
+const NPPF_CHECK_CONCURRENCY = 3;
+
+function formatPolicyForNppfCheck(p) {
+  const planPrefix = p.plan_name ? `${p.plan_name} — ` : '';
+  const ref = p.policy_reference ? `${p.policy_reference}: ` : '';
+  const lines = [`${planPrefix}${ref}${p.policy_name}`];
+  lines.push(p.policy_text?.trim() ? `Wording: "${p.policy_text.trim()}"` : '(no verbatim wording recorded for this policy)');
+  return lines.join('\n');
+}
+
+export async function checkNppfInconsistency(req, res) {
+  const { draft_html } = req.body;
+  const { projectId } = req.params;
+  if (!draft_html?.trim()) return res.status(400).json({ error: 'draft_html is required' });
+
+  try {
+    const [{ rows }, { rows: bank }] = await Promise.all([
+      pool.query(
+        `SELECT di.id AS issue_id, di.label AS issue_label,
+                pp.policy_reference, pp.policy_name, pp.policy_type, pp.policy_text, pd.plan_name
+         FROM admin_console.drafting_issues di
+         JOIN admin_console.drafting_issue_policy_relevance r ON r.drafting_issue_id = di.id
+         JOIN public.project_policies pp ON pp.id = r.policy_id
+         LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+         WHERE di.project_id = $1
+         ORDER BY di.sort_order, di.id, pp.policy_type, pp.id`,
+        [projectId]
+      ),
+      pool.query(`SELECT policy_reference, policy_name, policy_text FROM admin_console.nppf_policies`),
+    ]);
+
+    if (!rows.length) return res.json({ items: [], no_linked_policies: true });
+
+    // Prefer the canonical NPPF library wording over whatever was copied onto
+    // the project policy row, matching by reference then name (same lookup as
+    // overlayNppfWording in lpaAnalysis.controller.js).
+    const norm = s => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const bankByRef = new Map(bank.filter(b => b.policy_reference).map(b => [norm(b.policy_reference), b]));
+    const bankByName = new Map(bank.filter(b => b.policy_name).map(b => [norm(b.policy_name), b]));
+
+    const issues = new Map();
+    for (const row of rows) {
+      if (!issues.has(row.issue_id)) issues.set(row.issue_id, { label: row.issue_label, nppf: [], local: [] });
+      const group = issues.get(row.issue_id);
+      if (row.policy_type === 'national') {
+        const match = bankByRef.get(norm(row.policy_reference)) || bankByName.get(norm(row.policy_name));
+        group.nppf.push(match ? { ...row, policy_reference: match.policy_reference, policy_name: match.policy_name, policy_text: match.policy_text } : row);
+      } else if (row.policy_type === 'local' || row.policy_type === 'neighbourhood') {
+        group.local.push(row);
+      }
+    }
+
+    const toCheck = [...issues.values()].filter(g => g.nppf.length && g.local.length);
+    if (!toCheck.length) return res.json({ items: [], no_policy_pairs: true });
+
+    const full = draft_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const draftText = full.slice(0, NPPF_CHECK_TEXT_CAP);
+    const truncated = full.length > NPPF_CHECK_TEXT_CAP;
+
+    const results = [];
+    let next = 0;
+    let failed = 0;
+    async function worker() {
+      while (next < toCheck.length) {
+        const group = toCheck[next++];
+        try {
+          const items = await runCheck('draft_check_nppf', {
+            ISSUE_LABEL: group.label,
+            NPPF_POLICIES: group.nppf.map(formatPolicyForNppfCheck).join('\n\n'),
+            LOCAL_POLICIES: group.local.map(formatPolicyForNppfCheck).join('\n\n'),
+            DRAFT_TEXT: draftText,
+          }, { model: MODEL_SONNET, maxTokens: 6000 });
+          results.push(...items.map(item => ({ ...item, issue_label: group.label })));
+        } catch (err) {
+          failed++;
+          console.error(`draftCheck.nppfInconsistency issue "${group.label}" error:`, err);
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(NPPF_CHECK_CONCURRENCY, toCheck.length) }, worker));
+
+    if (failed === toCheck.length) return res.status(500).json({ error: 'Failed to run NPPF inconsistency check' });
+    res.json({ items: results, truncated, issues_checked: toCheck.length, issues_failed: failed });
+  } catch (err) {
+    console.error('draftCheck.nppfInconsistency error:', err);
+    res.status(500).json({ error: 'Failed to run NPPF inconsistency check' });
+  }
+}
+
+// ── 6. NPPF inconsistency across the whole project policy library ───────────
+// Not tied to any draft or drafting issue: compares every national (NPPF)
+// policy recorded for the project against every other policy recorded for it,
+// one call per source plan/document so each prompt holds one plan's policies.
+
+export async function checkNppfPolicyLibrary(req, res) {
+  const { projectId } = req.params;
+
+  try {
+    const [{ rows }, { rows: bank }] = await Promise.all([
+      pool.query(
+        `SELECT pp.plan_id, pp.policy_reference, pp.policy_name, pp.policy_type, pp.policy_text, pd.plan_name
+         FROM public.project_policies pp
+         LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+         WHERE pp.project_id = $1
+         ORDER BY pp.policy_type, pp.plan_id NULLS LAST, pp.id`,
+        [projectId]
+      ),
+      pool.query(`SELECT policy_reference, policy_name, policy_text FROM admin_console.nppf_policies`),
+    ]);
+
+    const norm = s => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const bankByRef = new Map(bank.filter(b => b.policy_reference).map(b => [norm(b.policy_reference), b]));
+    const bankByName = new Map(bank.filter(b => b.policy_name).map(b => [norm(b.policy_name), b]));
+
+    const nppf = [];
+    const groups = new Map();
+    for (const row of rows) {
+      if (row.policy_type === 'national') {
+        const match = bankByRef.get(norm(row.policy_reference)) || bankByName.get(norm(row.policy_name));
+        nppf.push(match ? { ...row, policy_reference: match.policy_reference, policy_name: match.policy_name, policy_text: match.policy_text } : row);
+        continue;
+      }
+      const key = row.plan_id ?? `type:${row.policy_type}`;
+      if (!groups.has(key)) {
+        const fallback = { local: 'Local Plan policies', neighbourhood: 'Neighbourhood Plan policies', supplementary: 'Supplementary guidance', other: 'Other material considerations' };
+        groups.set(key, { name: row.plan_name || fallback[row.policy_type] || 'Other policies', policies: [] });
+      }
+      groups.get(key).policies.push(row);
+    }
+
+    if (!nppf.length) return res.json({ items: [], no_nppf_policies: true });
+    if (!groups.size) return res.json({ items: [], no_other_policies: true });
+
+    const toCheck = [...groups.values()];
+    const nppfText = nppf.map(formatPolicyForNppfCheck).join('\n\n');
+    const results = [];
+    let next = 0;
+    let failed = 0;
+    async function worker() {
+      while (next < toCheck.length) {
+        const group = toCheck[next++];
+        try {
+          const items = await runCheck('policy_check_nppf', {
+            PLAN_NAME: group.name,
+            LOCAL_POLICIES: group.policies.map(p => formatPolicyForNppfCheck({ ...p, plan_name: null })).join('\n\n'),
+            NPPF_POLICIES: nppfText,
+          }, { model: MODEL_SONNET, maxTokens: 6000 });
+          results.push(...items.map(item => ({ ...item, plan_name: group.name })));
+        } catch (err) {
+          failed++;
+          console.error(`draftCheck.nppfPolicyLibrary plan "${group.name}" error:`, err);
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(NPPF_CHECK_CONCURRENCY, toCheck.length) }, worker));
+
+    if (failed === toCheck.length) return res.status(500).json({ error: 'Failed to run NPPF inconsistency check' });
+    res.json({ items: results, plans_checked: toCheck.length, plans_failed: failed });
+  } catch (err) {
+    console.error('draftCheck.nppfPolicyLibrary error:', err);
+    res.status(500).json({ error: 'Failed to run NPPF inconsistency check' });
   }
 }

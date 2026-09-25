@@ -447,7 +447,7 @@ function planBlockLines(plan) {
   return lines;
 }
 
-function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans = []) {
+function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans = [], { includeArgumentNotes = true } = {}) {
   const lines = [];
 
   // --- Group 1: National Policy (NPPF only) ---
@@ -492,7 +492,7 @@ function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans
   // deliberately not used anywhere else in Planning Statement v3.
   // argument_against is not surfaced in that UI at all and is not used here.
   if (issue) {
-    if (issue.argument_for?.trim()) {
+    if (includeArgumentNotes && issue.argument_for?.trim()) {
       lines.push(`### Argument Notes`);
       lines.push(issue.argument_for.trim());
     }
@@ -515,6 +515,27 @@ function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans
   return { text: lines.join('\n\n') };
 }
 
+// Extra instruction appended to the Planning Assessment section prompt when it
+// is generated from full transcripts (see the Starting Documents "briefing
+// source" choice). "notes" mode adds nothing — that is the original prompt.
+const BRIEFING_SOURCE_MODE_BLOCKS = {
+  transcript: `## Source Mode: Full Transcript
+
+The briefing notes above are the full, unedited transcript(s) of the project meeting(s). No argument notes have been supplied for any issue. Build each issue's sub-section directly from the transcript: identify what was discussed and decided for that issue, and use the facts, figures, reasoning and qualifications recorded there.
+
+A transcript is conversational. Extract the substance and write it as concise professional prose. Do not reproduce conversational wording, speaker names or asides. Use only what the transcript records for a given issue; do not carry a point from one issue into another.
+
+Where the transcript records a decision on how an issue is to be argued (its structure, the order of points, how policies are grouped or treated, where the emphasis lies), follow it in preference to the default subsection sequence.`,
+
+  both: `## Source Mode: Argument Notes with Full Transcript
+
+The briefing notes above are the full, unedited transcript(s) of the project meeting(s). Each issue's Argument Notes set the intended structure and sequence of that issue's sub-section: follow them.
+
+The transcript is the source of detail behind them. Use it to supply the facts, figures, reasoning and qualifications for each point, and to include any material point recorded for that issue that the Argument Notes omit or compress. Where an Argument Note and the transcript differ on a matter of fact, follow the transcript, subject to the Source Priority order below. Do not reproduce conversational wording from the transcript.
+
+If the transcript also records a decision on how an issue is to be structured, follow it only where the Argument Notes are silent on that point; where they differ, follow the Argument Notes.`,
+};
+
 // sectionPromptTemplate may use {{ISSUE_LIST}} (one line per issue) and
 // {{ISSUES_CONTEXT}} (every issue's linked-policy context block, each
 // clearly delimited) in addition to the variables
@@ -532,22 +553,43 @@ export async function generateIssueOrderedSection({
   sectionName, sectionPromptTemplate, projectName, issues,
   linkedPoliciesByTrack = {}, linkedPlansByTrack = {},
   guidingBrief = null, projectBrief = null, startingDocs = {}, briefingNotes = '',
+  briefingSourceMode = 'notes', transcriptNotes = '',
   provider = null,
 }) {
   if (!issues.length) return `<h2>${sectionName}</h2>`;
 
+  // notes (default): summaries + each issue's argument notes.
+  // transcript: full transcripts only, argument notes withheld.
+  // both: argument notes guide structure, full transcripts supply detail.
+  const useTranscripts = briefingSourceMode !== 'notes' && !!transcriptNotes?.trim();
+  const includeArgumentNotes = !(useTranscripts && briefingSourceMode === 'transcript');
+
   const issuesContext = issues.map(issue => {
     const linkedPolicies = linkedPoliciesByTrack[issue.id] ?? [];
     const linkedPlans = linkedPlansByTrack[issue.id] ?? [];
-    const { text } = buildIssueSnippetContext(linkedPolicies, issue, linkedPlans);
+    const { text } = buildIssueSnippetContext(linkedPolicies, issue, linkedPlans, { includeArgumentNotes });
     return `### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n\n${text || '(no linked policies or notes recorded for this issue)'}`;
   }).join('\n\n---\n\n');
 
   const issueList = issues.map(i => `- ${i.label}${i.discipline ? ` (${i.discipline})` : ''}`).join('\n');
 
-  const sectionPrompt = sectionPromptTemplate
+  let sectionPrompt = sectionPromptTemplate
     .replace(/\{\{ISSUE_LIST\}\}/g, issueList)
     .replace(/\{\{ISSUES_CONTEXT\}\}/g, issuesContext);
+
+  // Tells the model what the "briefing notes" above actually are in the
+  // chosen mode. Inserted just before "Use of the Sources" so it sits ahead
+  // of the Source Priority rules it refers to.
+  if (useTranscripts) {
+    const modeBlock = BRIEFING_SOURCE_MODE_BLOCKS[briefingSourceMode];
+    sectionPrompt = sectionPrompt.includes('## Use of the Sources')
+      ? sectionPrompt.replace('## Use of the Sources', `${modeBlock}
+
+## Use of the Sources`)
+      : `${sectionPrompt}
+
+${modeBlock}`;
+  }
 
   const html = await generateAppealDraftFromPrompt({
     projectName,
@@ -555,9 +597,12 @@ export async function generateIssueOrderedSection({
     typePrompt: sectionPrompt,
     issues,
     guidingBrief,
-    projectBrief,
+    // The project brief is the latest note's summary, whether or not it was
+    // ticked. Sources for this section come only from the notes/transcripts
+    // the user selected, so it is never injected here.
+    projectBrief: null,
     startingDocs,
-    briefingNotes,
+    briefingNotes: useTranscripts ? transcriptNotes : briefingNotes,
     provider,
     includeIssueNotes: false,
   });

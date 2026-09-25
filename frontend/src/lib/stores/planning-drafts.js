@@ -541,6 +541,25 @@ export async function handleGenerateAssessmentIssue(typeId, sectionId, trackId, 
   }
 }
 
+// Set when a click on a section's Generate button needs the user to pick
+// sources first — { sectionId, typeId, provider } | null. Rendered by
+// AssessmentSourceDialog, which calls handleGenerateSection on confirm.
+export const assessmentPicker = writable(null);
+
+// Entry point for the section Generate buttons. Planning Statement v3's
+// Planning Assessment asks which briefing sources to draft from (notes /
+// full transcript / both) before generating; every other section generates
+// straight away, as before.
+export function requestGenerateSection(section, explicitTypeId = null, provider = '') {
+  const typeId = explicitTypeId ?? get(sectionsTypeId);
+  const type = get(draftTypes).find(t => t.id === typeId);
+  if (section?.slug === 'planning_assessment' && type?.slug === 'planning_statement_v3') {
+    assessmentPicker.set({ sectionId: section.id, typeId, provider });
+    return;
+  }
+  return handleGenerateSection(section.id, explicitTypeId, provider);
+}
+
 export async function handleGenerateSection(sectionId, explicitTypeId = null, provider = '') {
   sectionGenerating.set(sectionId);
   try {
