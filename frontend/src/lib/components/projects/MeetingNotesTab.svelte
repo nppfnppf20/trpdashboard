@@ -1353,7 +1353,7 @@
     gap: 0.5rem;
     text-align: left;
   }
-  .mn-note-type-select:focus { outline: none; border-color: var(--color-primary-500); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+  .mn-note-type-select:focus { outline: none; border-color: var(--color-primary-500); box-shadow: var(--focus-ring-blue); }
   /* Unset is the state that needs attention — pick me — so it gets the
      loud styling. Once chosen, the control settles into the calmer
      look above; the greyed-out form below stays the quiet part. */
@@ -1362,7 +1362,7 @@
     font-weight: 700;
     border: 1.5px solid var(--color-primary-500);
     background: var(--color-primary-50);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    box-shadow: var(--focus-ring-blue);
   }
   .mn-note-type-menu {
     position: absolute;
@@ -1372,8 +1372,8 @@
     z-index: 20;
     background: var(--color-white);
     border: 1px solid var(--color-slate-200);
-    border-radius: 8px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-dropdown);
     padding: 0.35rem;
     display: flex;
     flex-direction: column;
@@ -1422,7 +1422,7 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
     padding: 0.1rem 0.45rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     width: fit-content;
   }
   .mn-type-badge--meeting { background: var(--color-primary-50); color: var(--color-primary-500); }
@@ -1618,10 +1618,10 @@
     font-size: 0.8rem;
     font-family: inherit;
     color: var(--color-slate-700);
-    background: white;
+    background: var(--color-white);
     cursor: pointer;
   }
-  .mn-provider-select:focus { outline: none; border-color: var(--color-violet-600); }
+  .mn-provider-select:focus { outline: none; border-color: var(--color-primary-600); }
   .mn-input-tabs { display: flex; gap: 0.35rem; }
   .mn-custom-hint { font-size: 0.8rem; color: var(--color-primary-500); margin: 0; display: flex; align-items: center; gap: 0.35rem; }
 
@@ -1658,7 +1658,8 @@
   .mn-note-card {
     background: var(--color-white);
     border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-subtle);
     padding: 0.75rem 1rem;
   }
   .mn-note-info {
