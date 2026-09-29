@@ -75,9 +75,11 @@
     return acc;
   }, {});
 
-  function isLinked(item) {
-    return item._kind === 'plan' ? relevantPlanIds.includes(item.id) : relevantPolicyIds.includes(item.id);
-  }
+  // Reactive (not a plain function) so the template and allLinkedItems
+  // re-evaluate as soon as the parent updates the linked-id lists, rather than
+  // only when some unrelated state (e.g. `toggling`) happens to re-render them.
+  $: isLinked = (item) =>
+    item._kind === 'plan' ? relevantPlanIds.includes(item.id) : relevantPolicyIds.includes(item.id);
 
   // "All Linked" — a cross-tier view, not one of POLICY_TIERS, so it needs
   // its own type label per row (mixing national/local/etc. together is the

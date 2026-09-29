@@ -215,6 +215,9 @@
   // Per-card AI provider choice for draft generation — session-only override,
   // not persisted. Empty/unset means "use the AI Providers admin default".
   let draftProviderByType = {};
+  // Per-section override for Planning Statement v3's Policy / Assessment
+  // sections, which are generated one at a time. Falls back to the card choice.
+  let sectionProviderById = {};
 
   // Which draft-type card's "Config" dropdown is open (LLM choice, dev type,
   // version picker, Meeting Guide, edit prompt) — at most one at a time.
@@ -1280,11 +1283,22 @@
                               <i class="las la-sliders-h"></i>
                             </button>
                           {/if}
+                          {#if type.slug === 'planning_statement_v3' && (section.slug === 'planning_policy' || section.slug === 'planning_assessment')}
+                            <select
+                              class="card-dev-type-select section-model-select"
+                              bind:value={sectionProviderById[section.id]}
+                              title="AI model for this section - Default uses the card's AI Model setting"
+                            >
+                              <option value="">Default</option>
+                              <option value="anthropic">Claude</option>
+                              <option value="openai">GPT-5.6</option>
+                            </select>
+                          {/if}
                           <button
                             class="section-generate-btn"
                             disabled={$sectionGenerating === section.id}
                             title="Generate entire section"
-                            on:click={() => requestGenerateSection(section, type.id, draftProviderByType[type.id] || '')}
+                            on:click={() => requestGenerateSection(section, type.id, sectionProviderById[section.id] || draftProviderByType[type.id] || '')}
                           >
                             {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
                           </button>
@@ -2175,6 +2189,7 @@
   }
 
   .card-dev-type-select:focus { outline: none; border-color: var(--color-primary-600); }
+  .section-model-select { padding: 0.2rem 0.375rem; font-size: 0.75rem; max-width: 96px; }
 
   .draft-open-btn {
     padding: 0.4rem 0.875rem;
