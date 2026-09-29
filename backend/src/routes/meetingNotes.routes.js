@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import {
   processMeetingNote,
+  saveVerbatimMeetingNote,
   processMultiProjectMeetingNote,
   processInternalMeetingNote,
   getMeetingNotes,
@@ -29,6 +30,7 @@ router.post('/multi-project/process', upload.single('file'), processMultiProject
 router.post('/:transcriptId/insights', saveExtractedInsights);
 router.post('/actions', createStandaloneAction);
 router.post('/projects/:projectId/process', upload.single('file'), processMeetingNote);
+router.post('/projects/:projectId/save-verbatim', upload.single('file'), saveVerbatimMeetingNote);
 router.get('/projects/:projectId/actions', getMeetingActions);
 router.post('/projects/:projectId/actions', createMeetingAction);
 router.get('/projects/:projectId', getMeetingNotes);

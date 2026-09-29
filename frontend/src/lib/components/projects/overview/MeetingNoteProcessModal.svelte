@@ -11,7 +11,7 @@
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
-  import { processMeetingNote, processMultiProjectNote, updateMeetingSummary } from '$lib/api/meetingNotes.js';
+  import { processMeetingNote, processMultiProjectNote, updateMeetingSummary, saveVerbatimMeetingNote } from '$lib/api/meetingNotes.js';
   import { getProjects } from '$lib/api/projects.js';
   import { createProgrammeEvent } from '$lib/api/quotes.js';
   import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
@@ -145,6 +145,46 @@
       reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
       reviewOtherProjectNames = otherProjectNames;
       reviewCombinedCreated = combinedCreated;
+      reviewSaving = false;
+      reviewSaved = false;
+      reviewError = null;
+    } catch (err) {
+      error = err.message;
+    } finally {
+      processing = false;
+    }
+  }
+
+  // ── Save Verbatim — skips the LLM entirely (text extraction only for an
+  // uploaded file; pasted text is already plain text). Not offered for
+  // multi-project notes since there's no AI to split the text per project.
+  async function saveVerbatim() {
+    if (inputTab === 'upload' && !uploadFile) { error = 'Please select a file to upload.'; return; }
+    if (inputTab === 'paste' && !pasteText.trim()) { error = 'Please paste the transcript text.'; return; }
+
+    const defaultTitle = inputTab === 'upload' ? uploadFile.name.replace(/\.[^.]+$/, '') : 'Meeting Notes';
+    const title = prompt('Title this meeting note:', defaultTitle);
+    if (!title?.trim()) return;
+
+    processing = true;
+    error = null;
+    try {
+      const result = await saveVerbatimMeetingNote(projectId, {
+        file: inputTab === 'upload' ? uploadFile : null,
+        text: inputTab === 'paste' ? pasteText : null,
+        title: title.trim(),
+      });
+
+      reviewTranscript = {
+        id: result.transcript.id,
+        title: result.transcript.title,
+        meeting_date: result.transcript.meeting_date,
+        attendees_text: result.transcript.attendees_text,
+      };
+      reviewSummaryHtml = result.summary?.summary_html || '';
+      reviewDateSuggestions = [];
+      reviewOtherProjectNames = [];
+      reviewCombinedCreated = false;
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
@@ -332,6 +372,11 @@
 
       <div class="mnp-footer">
         <button class="btn btn-secondary btn-sm" on:click={handleClose} disabled={processing}>Cancel</button>
+        {#if !multiProject}
+          <button class="btn btn-secondary mnp-process-btn" on:click={saveVerbatim} disabled={processing} title="Save the text as-is, no AI summary">
+            {#if processing}<span class="mnp-spinner-dark"></span> Saving…{:else}<i class="las la-save"></i> Save Verbatim{/if}
+          </button>
+        {/if}
         <button class="btn btn-primary mnp-process-btn" on:click={submitUpload} disabled={processing}>
           {#if processing}<span class="mnp-spinner"></span> Processing…{:else}<i class="las la-magic"></i> Process{/if}
         </button>
@@ -529,4 +574,13 @@
     animation: mnp-spin 0.7s linear infinite;
   }
   @keyframes mnp-spin { to { transform: rotate(360deg); } }
+
+  .mnp-spinner-dark {
+    display: inline-block;
+    width: 0.85rem; height: 0.85rem;
+    border: 2px solid var(--color-slate-300);
+    border-top-color: var(--color-slate-700);
+    border-radius: 50%;
+    animation: mnp-spin 0.7s linear infinite;
+  }
 </style>

@@ -26,6 +26,28 @@ export async function processMeetingNote(projectId, { file, text, fileName, user
   return res.json(); // { transcript, summary, actions }
 }
 
+export async function saveVerbatimMeetingNote(projectId, { file, text, fileName, title }) {
+  const formData = new FormData();
+  formData.append('title', title);
+
+  if (file) {
+    formData.append('file', file);
+  } else {
+    formData.append('text', text);
+    if (fileName) formData.append('file_name', fileName);
+  }
+
+  const res = await authFetch(`/api/meeting-notes/projects/${projectId}/save-verbatim`, {
+    method: 'POST',
+    body: formData
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to save meeting note');
+  }
+  return res.json(); // { transcript, summary }
+}
+
 export async function getMeetingNotes(projectId) {
   const res = await authFetch(`/api/meeting-notes/projects/${projectId}`);
   if (!res.ok) throw new Error('Failed to fetch meeting notes');

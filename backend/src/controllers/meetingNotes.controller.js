@@ -3,6 +3,73 @@ import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { processMeetingTranscript, processMultiProjectMeetingTranscript, extractInsights } from '../services/meeting.service.js';
 
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save a meeting transcript verbatim (upload/paste → text extraction only,
+// no LLM) — title is supplied by the caller since there's no AI to infer one.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function saveVerbatimMeetingNote(req, res) {
+  try {
+    const { projectId } = req.params;
+    const { title } = req.body;
+    if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+
+    let text;
+    let fileName;
+    if (req.file) {
+      ({ text } = await parseFile(req.file.buffer, req.file.originalname));
+      fileName = req.file.originalname;
+    } else if (req.body.text) {
+      text = req.body.text;
+      fileName = req.body.file_name || null;
+    } else {
+      return res.status(400).json({ error: 'No file or text provided' });
+    }
+
+    const summary_html = `<pre style="white-space:pre-wrap;font-family:inherit;font-size:0.875rem;line-height:1.6;">${escapeHtml(text)}</pre>`;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // meeting_date defaults to today — there's no AI to extract a real
+      // date from the transcript here, and leaving it NULL sorts the note
+      // to the bottom everywhere it's ordered by meeting_date (the main
+      // Meeting Notes page's "latest note" card and its notes list both
+      // sort NULLS LAST, so an undated note looks like it vanished even
+      // though it was just saved). Editable afterward like any other note.
+      const { rows: [transcript] } = await client.query(
+        `INSERT INTO planning_applications.meeting_transcripts
+           (project_id, title, meeting_date, file_name, transcript_text)
+         VALUES ($1, $2, CURRENT_DATE, $3, $4) RETURNING *`,
+        [projectId, title.trim(), fileName, text]
+      );
+
+      const { rows: [summary] } = await client.query(
+        `INSERT INTO planning_applications.meeting_summaries
+           (transcript_id, project_id, summary_html)
+         VALUES ($1, $2, $3) RETURNING *`,
+        [transcript.id, projectId, summary_html]
+      );
+
+      await client.query('COMMIT');
+      res.status(201).json({ transcript, summary });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('meetingNotes.saveVerbatimMeetingNote error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Process + save a meeting transcript (upload → LLM → store all 3 tables)
 // ─────────────────────────────────────────────────────────────────────────────

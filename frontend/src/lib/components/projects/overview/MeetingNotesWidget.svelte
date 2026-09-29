@@ -60,8 +60,13 @@
       if (missing.length) {
         const fetched = await Promise.all(missing.map(async (p) => {
           const all = await getMeetingNotes(p.id);
+          // Sorted by created_at (when it was actually added), not
+          // meeting_date — a note with a future meeting_date (e.g. an
+          // upcoming committee date) would otherwise always outrank
+          // something just saved today, making "recent" not actually
+          // show what's recent.
           const recent = [...(all || [])]
-            .sort((a, b) => String(b.meeting_date || b.created_at || '').localeCompare(String(a.meeting_date || a.created_at || '')))
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
             .slice(0, 2)
             .map(n => ({ ...n, _project: p }));
           return [p.id, recent];
@@ -69,7 +74,7 @@
         for (const [id, recent] of fetched) cache.set(id, recent);
       }
       notes = projectList.flatMap(p => cache.get(p.id) || [])
-        .sort((a, b) => String(b.meeting_date || b.created_at || '').localeCompare(String(a.meeting_date || a.created_at || '')));
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     } catch (err) {
       error = err.message;
     } finally {
@@ -142,7 +147,7 @@
   <div class="widget-head">
     <div class="widget-title">
       <i class="las la-file-signature"></i>
-      Meeting Notes
+      Meeting Notes and Project Docs
     </div>
     <button class="widget-expand" on:click={() => merged ? goto('/meeting-notes') : openProjectModal(projectId, 'meeting_notes', 'details')}>
       View all <i class="las la-angle-right"></i>

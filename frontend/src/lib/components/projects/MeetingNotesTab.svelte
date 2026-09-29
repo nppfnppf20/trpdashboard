@@ -30,7 +30,8 @@
     updateMeetingNote,
     updateMeetingSummary,
     processMeetingNote,
-    processMultiProjectNote
+    processMultiProjectNote,
+    saveVerbatimMeetingNote
   } from '$lib/api/meetingNotes.js';
 
   export let project;
@@ -361,7 +362,14 @@
     }
   }
 
-  $: latestNote = notes[0] ?? null;
+  // Most recently *added* note, not the one with the latest meeting_date —
+  // notes is ordered by meeting_date server-side (for browsing history
+  // chronologically), so a note with a future meeting_date (an upcoming
+  // committee date, say) would otherwise always outrank one just saved
+  // today, making this card show something other than what was just added.
+  $: latestNote = notes.length
+    ? [...notes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+    : null;
 
   // Collapsed-state summary for the Options disclosure in the Add Note card
   $: summaryTypeLabel = uploadSummaryType === 'brief' ? 'Brief' : uploadSummaryType === 'detailed' ? 'Detailed' : 'Custom';
@@ -534,6 +542,56 @@
       reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
       reviewOtherProjectNames = otherProjectNames;
       reviewCombinedCreated = combinedCreated;
+      reviewOpen = true;
+    } catch (err) {
+      uploadError = err.message;
+    } finally {
+      uploadProcessing = false;
+    }
+  }
+
+  // ── Save Verbatim — skips the LLM entirely (text extraction only for an
+  // uploaded file; pasted text is already plain text). Not offered for
+  // multi-project notes since there's no AI to split the text per project.
+  async function saveVerbatim() {
+    if (uploadInputTab === 'upload' && !uploadFile) { uploadError = 'Please select a file to upload.'; return; }
+    if (uploadInputTab === 'paste' && !uploadPasteText.trim()) { uploadError = 'Please paste the transcript text.'; return; }
+
+    const defaultTitle = uploadInputTab === 'upload' ? uploadFile.name.replace(/\.[^.]+$/, '') : 'Meeting Notes';
+    const title = prompt('Title this meeting note:', defaultTitle);
+    if (!title?.trim()) return;
+
+    uploadProcessing = true;
+    uploadError = null;
+    try {
+      const result = await saveVerbatimMeetingNote(projectId, {
+        file: uploadInputTab === 'upload' ? uploadFile : null,
+        text: uploadInputTab === 'paste' ? uploadPasteText : null,
+        title: title.trim(),
+      });
+
+      const newNote = {
+        id: result.transcript.id,
+        title: result.transcript.title,
+        meeting_date: result.transcript.meeting_date,
+        attendees_text: result.transcript.attendees_text,
+        file_name: result.transcript.file_name,
+        created_at: result.transcript.created_at,
+        summary_id: result.summary?.id,
+        summary_html: result.summary?.summary_html
+      };
+
+      notes = [newNote, ...notes];
+      showUploadPanel = false;
+
+      reviewTranscript = newNote;
+      reviewSummaryHtml = newNote.summary_html || '';
+      reviewSaving = false;
+      reviewSaved = false;
+      reviewError = null;
+      reviewDateSuggestions = [];
+      reviewOtherProjectNames = [];
+      reviewCombinedCreated = false;
       reviewOpen = true;
     } catch (err) {
       uploadError = err.message;
@@ -870,13 +928,24 @@
 
           {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
 
-          <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing || !uploadNoteType}>
-            {#if uploadProcessing}
-              <span class="mn-spinner"></span> Processing…
-            {:else}
-              <i class="las la-magic"></i> Process Meeting Notes
+          <div class="mn-form-footer">
+            {#if !isMultiProject}
+              <button class="btn btn-secondary mn-process-btn" on:click={saveVerbatim} disabled={uploadProcessing || !uploadNoteType} title="Save the text as-is, no AI summary">
+                {#if uploadProcessing}
+                  <span class="mn-spinner-blue"></span> Saving…
+                {:else}
+                  <i class="las la-save"></i> Save Verbatim
+                {/if}
+              </button>
             {/if}
-          </button>
+            <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing || !uploadNoteType}>
+              {#if uploadProcessing}
+                <span class="mn-spinner"></span> Processing…
+              {:else}
+                <i class="las la-magic"></i> Process Meeting Notes
+              {/if}
+            </button>
+          </div>
 
         {/if}
         </div>
