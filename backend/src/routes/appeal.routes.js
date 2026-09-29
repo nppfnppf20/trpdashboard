@@ -31,6 +31,7 @@ import {
   deleteStartingDoc,
   getBriefingNotes,
   uploadBriefingNote,
+  getBriefingSourceContentForSlot,
 } from '../controllers/appeal.controller.js';
 
 const router = express.Router();
@@ -70,6 +71,7 @@ router.post('/projects/:projectId/drafts/:typeId/incorporate-targeted', upload.s
 // Briefing notes
 router.get('/projects/:projectId/briefing-notes', getBriefingNotes);
 router.post('/projects/:projectId/briefing-notes', upload.single('file'), uploadBriefingNote);
+router.get('/projects/:projectId/briefing-source-content/:type/:id', getBriefingSourceContentForSlot);
 
 // Starting documents (PA workspace appeal draft types)
 router.get('/projects/:projectId/starting-docs/:typeId', getStartingDocs);

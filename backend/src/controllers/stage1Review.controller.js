@@ -11,6 +11,7 @@ import { MODEL_SONNET, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../s
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 import { parseFile } from '../services/parser.service.js';
+import { resolveBriefingNotesSelection } from '../services/briefingSelection.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1405,22 +1406,8 @@ export async function generateStage1Review(req, res) {
       );
       const selectionJson = selectionRows[0]?.content_text;
       if (selectionJson) {
-        try {
-          const ids = JSON.parse(selectionJson);
-          if (Array.isArray(ids) && ids.length > 0) {
-            const { rows: noteRows } = await pool.query(
-              `SELECT title, summary_html FROM planning_applications.document_summaries
-               WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
-               ORDER BY created_at DESC`,
-              [ids, projectId]
-            );
-            if (noteRows.length) {
-              briefingText = noteRows
-                .map(r => `${r.title ? `[${r.title}]\n` : ''}${r.summary_html ?? ''}`)
-                .join('\n\n---\n\n');
-            }
-          }
-        } catch { /* malformed JSON */ }
+        const resolved = await resolveBriefingNotesSelection(projectId, selectionJson);
+        if (resolved) briefingText = resolved;
       }
       // Fall back to most recent transcript
       if (!briefingText) {

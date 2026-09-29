@@ -1104,19 +1104,28 @@
             {@const isExpanded = $cardExpandedTypeId === type.id}
             {@const typeSections = $cardSections[type.id] ?? []}
             {@const typeLoading = $cardSectionsLoading[type.id] ?? false}
-            <div class="card draft-type-card">
+            {@const isComingSoon = type.slug === 'socio_economic_baseline'}
+            <div class="card draft-type-card" class:draft-type-card--coming-soon={isComingSoon}>
               <div class="draft-type-main">
                 <div class="draft-type-info">
-                  <span class="draft-type-name">{type.name}<span class="beta-badge">BETA</span></span>
+                  <span class="draft-type-name">
+                    {type.name}
+                    {#if isComingSoon}<span class="coming-soon-badge">Coming Soon</span>{:else}<span class="beta-badge">BETA</span>{/if}
+                  </span>
                   {#if draft?.generated_at}
                     <span class="draft-type-meta">Last generated {new Date(draft.generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                   {/if}
                 </div>
                 <div class="draft-type-actions">
                   {#if draft}
-                    <button class="draft-open-btn" on:click={() => openDraft(type.id)}>Open</button>
+                    <button class="draft-open-btn" disabled={isComingSoon} on:click={() => openDraft(type.id)}>Open</button>
                   {/if}
-                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id} on:click={() => requestGenerate(type.id, { developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || '' }, !!draft)}>
+                  {#if type.tool === 'appeal' || type.tool === 'stage1' || type.tool === 'hlpv'}
+                    <button class="draft-setting-btn" disabled={isComingSoon} title="Select the source documents and notes for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name, ...(type.tool === 'stage1' ? { tool: type.tool } : {}) }}>
+                      <i class="las la-file-import"></i> Sources
+                    </button>
+                  {/if}
+                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id || isComingSoon} on:click={() => requestGenerate(type.id, { developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || '' }, !!draft)}>
                     {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
                     {:else}
@@ -1124,29 +1133,20 @@
                     {/if}
                   </button>
                   {#if type.tool === 'appeal'}
-                    <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name }}>
-                      <i class="las la-file-import"></i> Starting docs
-                    </button>
                     {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
-                      <button class="draft-setting-btn" title="View / edit the drafting issues this draft is generated from" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the drafting issues this draft is generated from" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
                     {/if}
                   {:else if type.tool === 'stage1'}
-                    <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name, tool: type.tool }}>
-                      <i class="las la-file-import"></i> Starting docs
-                    </button>
                     {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
-                      <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
                     {/if}
                   {:else if type.tool === 'hlpv'}
-                    <button class="draft-setting-btn" title="Upload starting documents for this draft" on:click={() => startingDocsType = { id: type.id, slug: type.slug, name: type.name }}>
-                      <i class="las la-file-import"></i> Starting docs
-                    </button>
                     {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
-                      <button class="draft-setting-btn" title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
                         <i class="las la-list-alt"></i> Issues
                       </button>
                     {/if}
@@ -1156,7 +1156,7 @@
                        Guide, the generation prompt itself) tucked behind one toggle so
                        the card's primary actions above aren't crowded out. -->
                   <div class="draft-config-group" use:clickOutside={() => { if (configOpenTypeId === type.id) configOpenTypeId = null; }}>
-                    <button class="draft-config-btn" on:click={(e) => toggleConfig(e, type.id)}>
+                    <button class="draft-config-btn" disabled={isComingSoon} on:click={(e) => toggleConfig(e, type.id)}>
                       <i class="las la-cog"></i> Config <i class="las la-angle-down"></i>
                     </button>
                     {#if configOpenTypeId === type.id}

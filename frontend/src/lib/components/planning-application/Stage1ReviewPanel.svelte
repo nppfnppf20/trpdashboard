@@ -1,5 +1,5 @@
 <script>
-  import { briefingNotes, openBriefingUpload } from '$lib/stores/planning-notes.js';
+  import { briefingNotes } from '$lib/stores/planning-notes.js';
   import { generateStage1Review } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
@@ -135,9 +135,6 @@
               <span class="briefing-dropdown-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
             </button>
           {/each}
-          <button class="briefing-dropdown-item briefing-dropdown-upload" on:click={openBriefingUpload}>
-            <i class="las la-plus"></i> Upload new briefing note
-          </button>
         </div>
       {/if}
     </div>
@@ -175,7 +172,7 @@
       {#if $briefingNotes.length === 0}
         <i class="las la-file-upload"></i>
         <p>No briefing notes uploaded yet.</p>
-        <p class="hint">Upload a briefing note via the project documents modal, then return here to generate.</p>
+        <p class="hint">Record a meeting note, or add a briefing note via Starting Documents, then return here to generate.</p>
       {:else}
         <i class="las la-table"></i>
         <p>Select a briefing note and click <strong>Generate Stage 1 Review</strong> to fill the appraisal table.</p>
@@ -383,16 +380,6 @@
     font-size: 0.75rem;
     color: var(--color-slate-400);
     flex-shrink: 0;
-  }
-
-  .briefing-dropdown-upload {
-    border-top: 1px solid var(--color-slate-200);
-    color: var(--color-teal-600);
-    gap: 0.5rem;
-  }
-
-  .briefing-dropdown-upload i {
-    font-size: 0.875rem;
   }
 
   .btn-open-editor {

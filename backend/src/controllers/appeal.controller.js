@@ -13,6 +13,7 @@ import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateDraftSection, summariseDocument, scopeDocumentIncorporation, incorporateTargetedParagraphs, resolveProvider } from '../services/llm.service.js';
 import { generateAppealDraftFromPrompt, generateIssueOrderedSection, generatePlanningPolicySection, DEFAULT_DRAFT_PROMPT, incorporateSpecialistReportIntoIssue } from '../services/appeal.service.js';
 import { fetchLinkedPoliciesByTrack, fetchIssueTypesByTrack } from './planningApplication.controller.js';
+import { resolveBriefingNotesSelection, resolveBriefingTranscriptsSelection, getBriefingSourceContent } from '../services/briefingSelection.service.js';
 
 async function loadGlobalPrompt(key) {
   const { rows } = await pool.query(
@@ -550,24 +551,7 @@ function resolveBriefingSourceMode(startingDocs) {
 // Full transcript text of the selected briefing notes (falls back to the
 // note's summary where no transcript was stored, e.g. older uploads).
 async function loadBriefingTranscripts(projectId, startingDocs) {
-  const json = startingDocs?.['briefing_notes'];
-  if (!json) return '';
-  try {
-    const ids = JSON.parse(json);
-    if (!Array.isArray(ids) || !ids.length) return '';
-    const { rows } = await pool.query(
-      `SELECT title, transcript_text, summary_html FROM planning_applications.document_summaries
-       WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
-       ORDER BY created_at DESC`,
-      [ids, projectId]
-    );
-    return rows
-      .map(r => {
-        const text = r.transcript_text?.trim() || r.summary_html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || '';
-        return `${r.title ? `[${r.title}]\n` : ''}${text}`;
-      })
-      .join('\n\n---\n\n');
-  } catch { return ''; }
+  return resolveBriefingTranscriptsSelection(projectId, startingDocs?.['briefing_notes']);
 }
 
 // Planning Assessment sources: the project meeting notes ticked in the
@@ -644,24 +628,7 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
   const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
   const allIssueTypes = allTypesRes.rows;
 
-  let briefingNotes = '';
-  const briefingSelectionJson = startingDocs['briefing_notes'];
-  if (briefingSelectionJson) {
-    try {
-      const ids = JSON.parse(briefingSelectionJson);
-      if (Array.isArray(ids) && ids.length > 0) {
-        const { rows: noteRows } = await pool.query(
-          `SELECT title, summary_html FROM planning_applications.document_summaries
-           WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
-           ORDER BY created_at DESC`,
-          [ids, projectId]
-        );
-        briefingNotes = noteRows
-          .map(r => `${r.title ? `[${r.title}]\n` : ''}${r.summary_html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? ''}`)
-          .join('\n\n---\n\n');
-      }
-    } catch { /* malformed JSON — ignore */ }
-  }
+  const briefingNotes = await resolveBriefingNotesSelection(projectId, startingDocs['briefing_notes']);
 
   // Same shape-normalisation as the full-draft splice loop: v3 links snippet
   // templates many-to-many per (issue, field); other draft types match a
@@ -770,24 +737,7 @@ export async function generateDraftFromPaNotes(req, res) {
     const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
 
     // Resolve briefing note selections stored in the starting docs slot
-    let briefingNotes = '';
-    const briefingSelectionJson = startingDocs['briefing_notes'];
-    if (briefingSelectionJson) {
-      try {
-        const ids = JSON.parse(briefingSelectionJson);
-        if (Array.isArray(ids) && ids.length > 0) {
-          const { rows: noteRows } = await pool.query(
-            `SELECT title, summary_html FROM planning_applications.document_summaries
-             WHERE id = ANY($1) AND project_id = $2 AND doc_type = 'briefing_transcript'
-             ORDER BY created_at DESC`,
-            [ids, projectId]
-          );
-          briefingNotes = noteRows
-            .map(r => `${r.title ? `[${r.title}]\n` : ''}${r.summary_html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? ''}`)
-            .join('\n\n---\n\n');
-        }
-      } catch { /* malformed JSON — ignore */ }
-    }
+    const briefingNotes = await resolveBriefingNotesSelection(projectId, startingDocs['briefing_notes']);
 
     let contentHtml = await generateAppealDraftFromPrompt({
       projectName: project.project_name,
@@ -1234,6 +1184,20 @@ async function fetchExampleDoc(projectId, typeId) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Briefing notes (shared storage with planning-application)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// A single briefing note or meeting note's content, for the "import from an
+// existing note" picker on each starting-doc slot card.
+export async function getBriefingSourceContentForSlot(req, res) {
+  const { projectId, type, id } = req.params;
+  try {
+    const result = await getBriefingSourceContent(projectId, type, id);
+    if (!result) return res.status(404).json({ error: 'Not found' });
+    res.json(result);
+  } catch (err) {
+    console.error('appeal.getBriefingSourceContentForSlot error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
 
 export async function getBriefingNotes(req, res) {
   const { projectId } = req.params;

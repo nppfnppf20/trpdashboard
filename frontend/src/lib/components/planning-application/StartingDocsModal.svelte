@@ -6,9 +6,10 @@
     upsertStartingDocFile,
     deleteStartingDoc as apiDeleteStartingDoc,
     getDraftContext,
-    getBriefingNotes,
     uploadBriefingNote,
+    getBriefingSourceContent,
   } from '$lib/api/appeal.js';
+  import { getBriefingSources } from '$lib/api/quoteRequests.js';
   import {
     getStage1StartingDocs,
     upsertStage1StartingDocText,
@@ -73,8 +74,11 @@
   let loading = true;
   let fileInputs = {};
 
-  // Briefing note multi-select
+  // Briefing note + meeting note multi-select — selection is stored as
+  // composite keys ("doc:12" / "meeting:7") since ids aren't unique across
+  // the two source tables.
   let briefingNotes = [];
+  let meetingNotes = [];
   let selectedNoteIds = new Set();
   let briefingNotesSaving = false;
   let briefingUploading = false;
@@ -144,14 +148,15 @@
   onMount(async () => {
     initSlotState();
     try {
-      const [rows, ctx, notes, hlpvSessionsData, socioSessionsData] = await Promise.all([
+      const [rows, ctx, sources, hlpvSessionsData, socioSessionsData] = await Promise.all([
         tool === 'stage1' ? getStage1StartingDocs(project.id) : getStartingDocs(project.id, rawTypeId),
         tool === 'stage1' ? Promise.resolve(null) : getDraftContext(project.id, rawTypeId).catch(() => null),
-        getBriefingNotes(project.id).catch(() => []),
+        getBriefingSources(project.unique_id).catch(() => ({ briefingNotes: [], meetingNotes: [] })),
         typeSlug === 'hlpv_narrative' ? listHlpvSessions(project.id).catch(() => []) : Promise.resolve([]),
         typeSlug === 'socio_economic_baseline' ? listSocioSessions(project.id).catch(() => []) : Promise.resolve([]),
       ]);
-      briefingNotes = notes;
+      briefingNotes = sources.briefingNotes ?? [];
+      meetingNotes = sources.meetingNotes ?? [];
       hlpvSessions = hlpvSessionsData;
       socioSessions = socioSessionsData;
       for (const row of rows) {
@@ -160,12 +165,17 @@
           slotState[row.slot_slug].file_name = row.file_name;
         }
       }
-      // Load saved briefing note selection
+      // Load saved briefing note selection — accepts both the legacy format
+      // (bare document_summaries ids) and the current format
+      // ([{type, id}]), so selections saved before meeting notes were
+      // selectable here still load correctly.
       const sel = rows.find(r => r.slot_slug === 'briefing_notes');
       if (sel?.content_text) {
         try {
-          const ids = JSON.parse(sel.content_text);
-          selectedNoteIds = new Set(ids);
+          const raw = JSON.parse(sel.content_text);
+          selectedNoteIds = new Set(raw.map(entry =>
+            typeof entry === 'number' ? `doc:${entry}` : `${entry.type}:${entry.id}`
+          ));
         } catch { /* ignore malformed */ }
       }
       if (ctx) {
@@ -186,16 +196,21 @@
     }
   });
 
-  async function toggleNote(id) {
+  async function toggleNote(type, id) {
+    const key = `${type}:${id}`;
     const next = new Set(selectedNoteIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
+    if (next.has(key)) next.delete(key); else next.add(key);
     selectedNoteIds = next;
     briefingNotesSaving = true;
     try {
+      const payload = JSON.stringify([...next].map(k => {
+        const [t, i] = k.split(':');
+        return { type: t, id: Number(i) };
+      }));
       if (tool === 'stage1') {
-        await upsertStage1StartingDocText(project.id, 'briefing_notes', JSON.stringify([...next]));
+        await upsertStage1StartingDocText(project.id, 'briefing_notes', payload);
       } else {
-        await upsertStartingDocText(project.id, rawTypeId, 'briefing_notes', JSON.stringify([...next]));
+        await upsertStartingDocText(project.id, rawTypeId, 'briefing_notes', payload);
       }
     } catch (err) {
       console.error('Failed to save briefing note selection:', err);
@@ -211,7 +226,7 @@
     try {
       const note = await uploadBriefingNote(project.id, { file, title: file.name.replace(/\.[^.]+$/, '') });
       briefingNotes = [...briefingNotes, note];
-      await toggleNote(note.id);
+      await toggleNote('doc', note.id);
     } catch (err) {
       console.error('Failed to upload briefing note:', err);
     } finally {
@@ -226,7 +241,7 @@
     try {
       const note = await uploadBriefingNote(project.id, { text: pasteText.trim(), title: pasteTitle.trim() || 'Briefing note' });
       briefingNotes = [...briefingNotes, note];
-      await toggleNote(note.id);
+      await toggleNote('doc', note.id);
       pasteText = '';
       pasteTitle = '';
       pasteOpen = false;
@@ -275,6 +290,31 @@
     }
   }
 
+  // Import an existing briefing note or meeting note's content straight into
+  // a slot's textarea, as an alternative to pasting or uploading a file.
+  let importSourceBySlot = {}; // slug -> "doc:12" / "meeting:7"
+  let importingSlot = null;    // slug currently importing, or null
+  let importErrorBySlot = {};  // slug -> error message
+
+  async function importSourceIntoSlot(slug) {
+    const key = importSourceBySlot[slug];
+    if (!key) return;
+    const [srcType, srcId] = key.split(':');
+    importingSlot = slug;
+    importErrorBySlot = { ...importErrorBySlot, [slug]: null };
+    try {
+      const { text } = await getBriefingSourceContent(project.id, srcType, srcId);
+      slotState[slug].content_text = text;
+      slotState = slotState;
+      await handleBlur(slug);
+      importSourceBySlot = { ...importSourceBySlot, [slug]: '' };
+    } catch (err) {
+      importErrorBySlot = { ...importErrorBySlot, [slug]: err.message || 'Import failed' };
+    } finally {
+      importingSlot = null;
+    }
+  }
+
   async function handleRemove(slug) {
     slotState[slug].saving = true;
     slotState = slotState;
@@ -297,11 +337,14 @@
   // Context % — all injected content, out of 200 000 chars
   $: docsChars = Object.values(slotState).reduce((acc, st) => acc + (st.content_text?.length ?? 0), 0);
   $: briefingNotesChars = briefingNotes
-    .filter(n => selectedNoteIds.has(n.id))
-    .reduce((acc, n) => acc + (n.summary_length ?? 0), 0);
+    .filter(n => selectedNoteIds.has(`doc:${n.id}`))
+    .reduce((acc, n) => acc + (n.summary_chars ?? 0), 0)
+    + meetingNotes
+    .filter(n => selectedNoteIds.has(`meeting:${n.id}`))
+    .reduce((acc, n) => acc + (n.summary_chars ?? 0), 0);
   $: totalChars = baselineChars + docsChars + briefingNotesChars;
   $: contextPct = Math.min(100, Math.round(totalChars / 200000 * 100));
-  $: contextColour = contextPct >= 75 ? '#dc2626' : contextPct >= 50 ? '#d97706' : '#16a34a';
+  $: contextColour = contextPct >= 75 ? 'var(--color-red-600)' : contextPct >= 50 ? 'var(--color-amber-600)' : 'var(--color-emerald-600)';
 </script>
 
 <div class="modal-overlay" on:click|self={() => dispatch('close')} role="dialog" aria-modal="true">
@@ -365,24 +408,46 @@
             </div>
           {/if}
 
-          {#if briefingNotes.length === 0 && !pasteOpen}
-            <p class="sd-briefing-empty">No briefing notes yet, paste or upload one using the buttons above.</p>
+          {#if briefingNotes.length === 0 && meetingNotes.length === 0 && !pasteOpen}
+            <p class="sd-briefing-empty">No briefing notes or meeting notes yet, paste or upload a briefing note using the buttons above, or record a meeting note on the project's Meeting Notes page.</p>
           {:else}
-            <p class="sd-briefing-desc">Select meeting notes to inject as project-specific context. Multiple notes can be selected.</p>
-            <div class="sd-briefing-list">
-              {#each briefingNotes as note (note.id)}
-                <label class="sd-briefing-item" class:sd-briefing-item--checked={selectedNoteIds.has(note.id)}>
-                  <input
-                    type="checkbox"
-                    checked={selectedNoteIds.has(note.id)}
-                    on:change={() => toggleNote(note.id)}
-                    disabled={briefingNotesSaving || briefingUploading}
-                  />
-                  <span class="sd-briefing-name">{note.title || note.file_name || `Briefing note ${note.id}`}</span>
-                  <span class="sd-briefing-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                </label>
-              {/each}
-            </div>
+            <p class="sd-briefing-desc">These feed <code>{'{{BRIEFING_NOTES}}'}</code> &mdash; the project's briefing-note context that most prompts have specific instructions built around. Tick from your saved Briefing Notes or Meeting Notes below; a Meeting Note ticked here still serves as briefing content. Multiple can be selected.</p>
+
+            {#if briefingNotes.length > 0}
+              <p class="sd-briefing-group-label">Briefing Notes</p>
+              <div class="sd-briefing-list">
+                {#each briefingNotes as note (note.id)}
+                  <label class="sd-briefing-item" class:sd-briefing-item--checked={selectedNoteIds.has(`doc:${note.id}`)}>
+                    <input
+                      type="checkbox"
+                      checked={selectedNoteIds.has(`doc:${note.id}`)}
+                      on:change={() => toggleNote('doc', note.id)}
+                      disabled={briefingNotesSaving || briefingUploading}
+                    />
+                    <span class="sd-briefing-name">{note.title || note.file_name || `Briefing note ${note.id}`}</span>
+                    <span class="sd-briefing-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </label>
+                {/each}
+              </div>
+            {/if}
+
+            {#if meetingNotes.length > 0}
+              <p class="sd-briefing-group-label">Meeting Notes</p>
+              <div class="sd-briefing-list">
+                {#each meetingNotes as note (note.id)}
+                  <label class="sd-briefing-item" class:sd-briefing-item--checked={selectedNoteIds.has(`meeting:${note.id}`)}>
+                    <input
+                      type="checkbox"
+                      checked={selectedNoteIds.has(`meeting:${note.id}`)}
+                      on:change={() => toggleNote('meeting', note.id)}
+                      disabled={briefingNotesSaving}
+                    />
+                    <span class="sd-briefing-name">{note.title || `Meeting note ${note.id}`}</span>
+                    <span class="sd-briefing-date">{new Date(note.meeting_date || note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </label>
+                {/each}
+              </div>
+            {/if}
           {/if}
         </div>
 
@@ -492,6 +557,42 @@
                   on:blur={() => handleBlur(slot.slug)}
                   disabled={st?.uploading}
                 ></textarea>
+
+                {#if briefingNotes.length > 0 || meetingNotes.length > 0}
+                  <div class="sd-hlpv-import">
+                    <select
+                      class="sd-hlpv-select"
+                      bind:value={importSourceBySlot[slot.slug]}
+                      disabled={importingSlot === slot.slug}
+                    >
+                      <option value="">Import from existing...</option>
+                      {#if briefingNotes.length > 0}
+                        <optgroup label="Briefing Notes">
+                          {#each briefingNotes as note (note.id)}
+                            <option value={`doc:${note.id}`}>{note.title || note.file_name || `Briefing note ${note.id}`}</option>
+                          {/each}
+                        </optgroup>
+                      {/if}
+                      {#if meetingNotes.length > 0}
+                        <optgroup label="Meeting Notes">
+                          {#each meetingNotes as note (note.id)}
+                            <option value={`meeting:${note.id}`}>{note.title || `Meeting note ${note.id}`}</option>
+                          {/each}
+                        </optgroup>
+                      {/if}
+                    </select>
+                    <button
+                      class="sd-hlpv-import-btn"
+                      disabled={!importSourceBySlot[slot.slug] || importingSlot === slot.slug}
+                      on:click={() => importSourceIntoSlot(slot.slug)}
+                    >
+                      {#if importingSlot === slot.slug}<div class="mini-spinner"></div> Importing...{:else}<i class="las la-download"></i> Import{/if}
+                    </button>
+                  </div>
+                  {#if importErrorBySlot[slot.slug]}
+                    <span class="sd-hlpv-error">{importErrorBySlot[slot.slug]}</span>
+                  {/if}
+                {/if}
 
                 <div class="sd-card-actions">
                   <label class="sd-upload-btn" title="Upload file">
@@ -733,11 +834,28 @@
     color: var(--color-slate-500);
     line-height: 1.5;
   }
+  .sd-briefing-desc code {
+    font-size: 0.7rem;
+    color: var(--color-violet-600);
+    background: var(--color-violet-100);
+    padding: 0.05rem 0.3rem;
+    border-radius: 4px;
+  }
+
+  .sd-briefing-group-label {
+    margin: 0.5rem 0 0;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-slate-400);
+  }
 
   .sd-briefing-list {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    margin-top: 0.35rem;
   }
 
   .sd-briefing-item {

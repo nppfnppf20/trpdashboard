@@ -168,6 +168,12 @@ export async function getBriefingNotes(projectId) {
   return res.json();
 }
 
+export async function getBriefingSourceContent(projectId, type, id) {
+  const res = await authFetch(`/api/appeal/projects/${projectId}/briefing-source-content/${type}/${id}`);
+  if (!res.ok) throw new Error('Failed to fetch note content');
+  return res.json(); // { title, text }
+}
+
 export async function uploadBriefingNote(projectId, { file, text, title }) {
   if (file) {
     const fd = new FormData();
