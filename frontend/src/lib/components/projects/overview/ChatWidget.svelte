@@ -514,7 +514,7 @@
 
   .cw-error { font-size: 0.72rem; color: var(--color-red-600); }
 
-  .cw-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .cw-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-shrink: 0; }
 
   .cw-sources-btn {
     display: flex; align-items: center; gap: 4px;

@@ -70,9 +70,10 @@
 
 .widget-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.5rem 0.75rem;
   padding: 0.875rem 1rem 0.625rem;
   flex-shrink: 0;
 }

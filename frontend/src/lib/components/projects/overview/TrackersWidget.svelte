@@ -609,7 +609,7 @@
         <div class="tr-row">
           <div class="tr-name">
             <div class="tr-name-text">
-              {row.name}
+              <span class="tr-name-label" title={row.name}>{row.name}</span>
               {#if merged}<span class="badge badge-neutral tr-project-tag">{row.projectName}</span>{/if}
             </div>
             {#if row.badgeLabel}<span class="badge {row.badgeClass}">{row.badgeLabel}</span>{/if}
@@ -701,7 +701,7 @@
 <style>
   .tr-widget { grid-row: span 2; }
   .tr-head { align-items: flex-start; }
-  .tr-pills { display: flex; gap: 6px; margin-top: 16px; }
+  .tr-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
   .tab-pill {
     font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
     display: flex; align-items: center; gap: 5px;
@@ -709,7 +709,7 @@
     border: none; cursor: pointer; font-family: inherit;
   }
   .tab-pill.active { background: var(--color-slate-900); color: var(--color-white); }
-  .tr-head-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .tr-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex-shrink: 0; }
 
   .tr-body { display: flex; flex-direction: column; gap: 0; padding-top: 6px; }
   .tr-state { padding: 1.5rem; text-align: center; color: var(--color-slate-400); font-size: 0.83rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
@@ -718,7 +718,11 @@
   .tr-row { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 4px; border-bottom: 1px solid var(--color-slate-100); }
   .tr-row:last-child { border-bottom: none; }
   .tr-name { flex: 1; min-width: 0; }
-  .tr-name-text { font-size: 12.5px; font-weight: 600; color: var(--color-slate-900); margin-bottom: 2px; }
+  .tr-name-text {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: 12.5px; font-weight: 600; color: var(--color-slate-900); margin-bottom: 2px;
+  }
+  .tr-name-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* The shared .badge/.badge-* classes are the same geometry used
      everywhere else (e.g. ProjectsTable's status pill) — full-size in this
@@ -731,7 +735,7 @@
     flex-shrink: 0;
   }
   .tr-name .badge { margin-top: 2px; }
-  .tr-project-tag { margin-left: 6px; }
+  .tr-project-tag { margin-left: 6px; flex-shrink: 0; }
 
   .tr-status-badge {
     max-width: 90px;
