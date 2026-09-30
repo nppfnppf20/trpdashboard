@@ -5,6 +5,15 @@ import { sendEmail, sendBatch } from '../services/emailService.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getLookupOptions } from '../services/lookups.service.js';
 import { CONTEXT_BUDGET } from '../services/projectChat.service.js';
+import { resolvePrimaryNoteHtml } from '../services/briefingSelection.service.js';
+
+// Default when nothing is ticked in the source picker: the latest note of
+// either kind (Briefing Note or project Meeting Note). projectUniqueId is the
+// public.projects.unique_id these routes are addressed by.
+async function latestNoteHtmlForUniqueId(projectUniqueId) {
+  const { rows } = await pool.query(`SELECT id FROM public.projects WHERE unique_id = $1`, [projectUniqueId]);
+  return rows[0] ? resolvePrimaryNoteHtml(rows[0].id) : null;
+}
 
 /**
  * GET /api/admin-console/quote-request-templates
@@ -199,21 +208,12 @@ export async function analyseDisciplines(req, res) {
     if (sources.length > 0) {
       briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
     } else {
-      // Default entry point (nothing ticked in the picker): latest briefing note
-      const { rows: noteRows } = await pool.query(
-        `SELECT ds.summary_html
-         FROM planning_applications.document_summaries ds
-         JOIN public.projects p ON p.id = ds.project_id
-         WHERE p.unique_id = $1
-           AND ds.doc_type IN ('briefing_transcript', 'briefing_note')
-         ORDER BY ds.created_at DESC LIMIT 1`,
-        [projectId]
-      );
-      briefingText = noteRows[0]?.summary_html || null;
+      // Default entry point (nothing ticked in the picker): latest note
+      briefingText = await latestNoteHtmlForUniqueId(projectId);
     }
 
     if (!briefingText) {
-      return res.status(404).json({ error: 'No briefing note found for this project. Upload a briefing note first.' });
+      return res.status(404).json({ error: 'No notes found for this project. Add a meeting note first.' });
     }
     if (briefingText.length > CONTEXT_BUDGET) {
       const pct = Math.round(briefingText.length / CONTEXT_BUDGET * 100);
@@ -362,20 +362,11 @@ export async function suggestEmailEditsForDiscipline(req, res) {
     if (sources.length > 0) {
       briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
     } else {
-      const { rows: noteRows } = await pool.query(
-        `SELECT ds.summary_html
-         FROM planning_applications.document_summaries ds
-         JOIN public.projects p ON p.id = ds.project_id
-         WHERE p.unique_id = $1
-           AND ds.doc_type IN ('briefing_transcript', 'briefing_note')
-         ORDER BY ds.created_at DESC LIMIT 1`,
-        [projectId]
-      );
-      briefingText = noteRows[0]?.summary_html || null;
+      briefingText = await latestNoteHtmlForUniqueId(projectId);
     }
 
     if (!briefingText) {
-      return res.status(404).json({ error: 'No briefing note found for this project' });
+      return res.status(404).json({ error: 'No notes found for this project' });
     }
     if (briefingText.length > CONTEXT_BUDGET) {
       const pct = Math.round(briefingText.length / CONTEXT_BUDGET * 100);

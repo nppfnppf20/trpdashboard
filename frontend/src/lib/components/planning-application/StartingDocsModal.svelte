@@ -80,6 +80,7 @@
   let briefingNotes = [];
   let meetingNotes = [];
   let selectedNoteIds = new Set();
+  let primaryNoteKey = null; // 'doc:12' | 'meeting:7' | null — fills {{PROJECT_BRIEF}}
   let briefingNotesSaving = false;
   let briefingUploading = false;
   let briefingFileInput;
@@ -176,11 +177,12 @@
           selectedNoteIds = new Set(raw.map(entry =>
             typeof entry === 'number' ? `doc:${entry}` : `${entry.type}:${entry.id}`
           ));
+          const primary = raw.find(entry => entry && typeof entry === 'object' && entry.primary);
+          primaryNoteKey = primary ? `${primary.type}:${primary.id}` : null;
         } catch { /* ignore malformed */ }
       }
       if (ctx) {
         if (ctx.guidingBrief?.content)  baselineChars += ctx.guidingBrief.content.length;
-        if (ctx.projectBrief)           baselineChars += ctx.projectBrief.replace(/<[^>]+>/g, '').length;
         if (ctx.contextChars) {
           baselineChars += ctx.contextChars.promptTemplate   ?? 0;
           baselineChars += ctx.contextChars.styleExample     ?? 0;
@@ -199,13 +201,31 @@
   async function toggleNote(type, id) {
     const key = `${type}:${id}`;
     const next = new Set(selectedNoteIds);
-    if (next.has(key)) next.delete(key); else next.add(key);
+    if (next.has(key)) {
+      next.delete(key);
+      if (primaryNoteKey === key) primaryNoteKey = null;
+    } else {
+      next.add(key);
+    }
     selectedNoteIds = next;
+    await saveNoteSelection();
+  }
+
+  // One ticked note can be flagged "primary" — it fills {{PROJECT_BRIEF}}.
+  async function setPrimaryNote(type, id) {
+    const key = `${type}:${id}`;
+    primaryNoteKey = primaryNoteKey === key ? null : key;
+    await saveNoteSelection();
+  }
+
+  async function saveNoteSelection() {
     briefingNotesSaving = true;
     try {
-      const payload = JSON.stringify([...next].map(k => {
+      const payload = JSON.stringify([...selectedNoteIds].map(k => {
         const [t, i] = k.split(':');
-        return { type: t, id: Number(i) };
+        return k === primaryNoteKey
+          ? { type: t, id: Number(i), primary: true }
+          : { type: t, id: Number(i) };
       }));
       if (tool === 'stage1') {
         await upsertStage1StartingDocText(project.id, 'briefing_notes', payload);
@@ -342,7 +362,12 @@
     + meetingNotes
     .filter(n => selectedNoteIds.has(`meeting:${n.id}`))
     .reduce((acc, n) => acc + (n.summary_chars ?? 0), 0);
-  $: totalChars = baselineChars + docsChars + briefingNotesChars;
+  // The primary note is sent twice (once as {{PROJECT_BRIEF}}, once in the pool).
+  $: primaryNoteChars = primaryNoteKey
+    ? ([...briefingNotes.map(n => ({ k: `doc:${n.id}`, n })), ...meetingNotes.map(n => ({ k: `meeting:${n.id}`, n }))]
+        .find(x => x.k === primaryNoteKey)?.n.summary_chars ?? 0)
+    : 0;
+  $: totalChars = baselineChars + docsChars + briefingNotesChars + primaryNoteChars;
   $: contextPct = Math.min(100, Math.round(totalChars / 200000 * 100));
   $: contextColour = contextPct >= 75 ? 'var(--color-red-600)' : contextPct >= 50 ? 'var(--color-amber-600)' : 'var(--color-emerald-600)';
 </script>
@@ -411,7 +436,7 @@
           {#if briefingNotes.length === 0 && meetingNotes.length === 0 && !pasteOpen}
             <p class="sd-briefing-empty">No briefing notes or meeting notes yet, paste or upload a briefing note using the buttons above, or record a meeting note on the project's Meeting Notes page.</p>
           {:else}
-            <p class="sd-briefing-desc">These feed <code>{'{{BRIEFING_NOTES}}'}</code> &mdash; the project's briefing-note context that most prompts have specific instructions built around. Tick from your saved Briefing Notes or Meeting Notes below; a Meeting Note ticked here still serves as briefing content. Multiple can be selected.</p>
+            <p class="sd-briefing-desc">These feed <code>{'{{BRIEFING_NOTES}}'}</code> &mdash; the project's briefing-note context that most prompts have specific instructions built around. Tick any notes below (Briefing or Meeting &mdash; they're treated alike). Optionally mark one ticked note as <strong>Primary</strong>: it fills <code>{'{{PROJECT_BRIEF}}'}</code>, the confirmed-facts source. If none is marked, that variable is empty.</p>
 
             {#if briefingNotes.length > 0}
               <p class="sd-briefing-group-label">Briefing Notes</p>
@@ -425,6 +450,13 @@
                       disabled={briefingNotesSaving || briefingUploading}
                     />
                     <span class="sd-briefing-name">{note.title || note.file_name || `Briefing note ${note.id}`}</span>
+                    {#if tool !== 'stage1' && selectedNoteIds.has(`doc:${note.id}`)}
+                      <button type="button" class="sd-primary-btn" class:sd-primary-btn--active={primaryNoteKey === `doc:${note.id}`}
+                        title="Use as the primary note ({'{{PROJECT_BRIEF}}'})" disabled={briefingNotesSaving}
+                        on:click|preventDefault={() => setPrimaryNote('doc', note.id)}>
+                        <i class="las la-star"></i> Primary
+                      </button>
+                    {/if}
                     <span class="sd-briefing-date">{new Date(note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                   </label>
                 {/each}
@@ -443,6 +475,13 @@
                       disabled={briefingNotesSaving}
                     />
                     <span class="sd-briefing-name">{note.title || `Meeting note ${note.id}`}</span>
+                    {#if tool !== 'stage1' && selectedNoteIds.has(`meeting:${note.id}`)}
+                      <button type="button" class="sd-primary-btn" class:sd-primary-btn--active={primaryNoteKey === `meeting:${note.id}`}
+                        title="Use as the primary note ({'{{PROJECT_BRIEF}}'})" disabled={briefingNotesSaving}
+                        on:click|preventDefault={() => setPrimaryNote('meeting', note.id)}>
+                        <i class="las la-star"></i> Primary
+                      </button>
+                    {/if}
                     <span class="sd-briefing-date">{new Date(note.meeting_date || note.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                   </label>
                 {/each}
@@ -897,6 +936,29 @@
     flex-shrink: 0;
     font-size: 0.75rem;
     color: var(--color-slate-400);
+  }
+
+  .sd-primary-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-slate-500);
+    background: transparent;
+    border: 1px solid var(--color-slate-300);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+  }
+  .sd-primary-btn:hover:not(:disabled) {
+    border-color: var(--color-primary-500);
+    color: var(--color-primary-600);
+  }
+  .sd-primary-btn--active {
+    background: var(--color-primary-50);
+    border-color: var(--color-primary-500);
+    color: var(--color-primary-700);
   }
 
   .sd-grid {

@@ -7,6 +7,7 @@
  */
 
 import { pool } from '../db.js';
+import { resolvePrimaryNoteHtml } from '../services/briefingSelection.service.js';
 import { MODEL_SONNET, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 
 const HLPV_V3_SYSTEM_PROMPT = `You are a specialist planning consultant preparing a High-Level Planning View (HLPV) for a proposed development in England. This is an early-stage, desk-based preliminary appraisal, not a submission document — your entries must be proportionate, cautious, and draw only from the material provided. Write in the third person in clear, professional UK planning language. This document is client-facing: never reference the briefing transcript, the drafting issue notes, or any internal documents in your output — present all information as established fact as if you are the author of the appraisal.${ANTI_AI_SLOP_BLOCK}`;
@@ -1008,25 +1009,10 @@ export async function generateHlpvV3(req, res) {
 
     // ── 2. Briefing note ─ explicit id, else most recent transcript (no starting-docs
     // selection layer — kept simple, unlike Stage 1 Review's extra selection tier) ────────
-    let briefingText = null;
-    if (briefing_note_id) {
-      const { rows } = await pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE id = $1 AND project_id = $2`,
-        [briefing_note_id, projectId]
-      );
-      briefingText = rows[0]?.summary_html ?? null;
-    } else {
-      const { rows } = await pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-         ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      );
-      briefingText = rows[0]?.summary_html ?? null;
-    }
+    // Any note counts (Briefing Note or project Meeting Note).
+    const briefingText = await resolvePrimaryNoteHtml(projectId, { noteRef: briefing_note_id });
     if (!briefingText?.trim()) {
-      return res.status(400).json({ error: 'No briefing note found for this project. Please upload a briefing note first.' });
+      return res.status(400).json({ error: 'No notes found for this project. Please add a meeting note first.' });
     }
     const briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 

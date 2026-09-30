@@ -11,7 +11,7 @@ import { MODEL_SONNET, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../s
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getDocumentStyleTemplateByDocType } from './documentStyleTemplates.controller.js';
 import { parseFile } from '../services/parser.service.js';
-import { resolveBriefingNotesSelection } from '../services/briefingSelection.service.js';
+import { resolveBriefingNotesSelection, resolvePrimaryNoteHtml } from '../services/briefingSelection.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1391,12 +1391,7 @@ export async function generateStage1Review(req, res) {
     // Priority: explicit briefing_note_id → starting docs selection → most recent transcript
     let briefingText = null;
     if (briefing_note_id) {
-      const { rows: noteRows } = await pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE id = $1 AND project_id = $2`,
-        [briefing_note_id, projectId]
-      );
-      briefingText = noteRows[0]?.summary_html ?? null;
+      briefingText = await resolvePrimaryNoteHtml(projectId, { noteRef: briefing_note_id, latestFallback: false });
     } else {
       // Check starting docs for a briefing note selection
       const { rows: selectionRows } = await pool.query(
@@ -1409,20 +1404,14 @@ export async function generateStage1Review(req, res) {
         const resolved = await resolveBriefingNotesSelection(projectId, selectionJson);
         if (resolved) briefingText = resolved;
       }
-      // Fall back to most recent transcript
+      // Fall back to most recent note of either kind
       if (!briefingText) {
-        const { rows: noteRows } = await pool.query(
-          `SELECT summary_html FROM planning_applications.document_summaries
-           WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-           ORDER BY created_at DESC LIMIT 1`,
-          [projectId]
-        );
-        briefingText = noteRows[0]?.summary_html ?? null;
+        briefingText = await resolvePrimaryNoteHtml(projectId);
       }
     }
 
     if (!briefingText?.trim()) {
-      return res.status(400).json({ error: 'No briefing note found for this project. Please upload a briefing note first.' });
+      return res.status(400).json({ error: 'No notes found for this project. Please add a meeting note first.' });
     }
 
     // Strip HTML tags — keep full text, no character cap
@@ -1690,20 +1679,15 @@ export async function deleteStage1StartingDoc(req, res) {
 export async function getStage1Context(req, res) {
   const { projectId } = req.params;
   try {
-    const [projectRows, briefRows] = await Promise.all([
+    const [projectRows, projectBrief] = await Promise.all([
       pool.query(`SELECT development_type FROM public.projects WHERE id = $1`, [projectId]),
-      pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-         ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      )
+      resolvePrimaryNoteHtml(projectId)
     ]);
     const developmentType = projectRows.rows[0]?.development_type ?? null;
     const guidingBrief = await getGuidingBrief('stage1_review', developmentType);
     res.json({
       guidingBrief: guidingBrief ? { name: guidingBrief.name, content: guidingBrief.guidance_content ?? null } : null,
-      projectBrief: briefRows.rows[0]?.summary_html ?? null,
+      projectBrief: projectBrief ?? null,
       toneExampleLoaded: TONE_EXAMPLE_BLOCK.length > 0,
     });
   } catch (err) {

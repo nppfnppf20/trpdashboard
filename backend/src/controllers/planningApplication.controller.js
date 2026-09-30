@@ -4,6 +4,7 @@
  */
 
 import { pool } from '../db.js';
+import { resolvePrimaryNoteHtml } from '../services/briefingSelection.service.js';
 import { resolveProvider } from '../services/llm.shared.js';
 import { parseFile, chunkText } from '../services/parser.service.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
@@ -1292,12 +1293,7 @@ export async function generateDraft(req, res) {
 
     } else if (Object.keys(linkedPoliciesByTrack).length > 0) {
       const issueContext = buildIssueContext(issues, evidenceByTrack);
-      const { rows: bsRows } = await pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      );
-      const fallbackBriefingSummary = bsRows[0]?.summary_html ?? null;
+      const fallbackBriefingSummary = await resolvePrimaryNoteHtml(projectId);
       const sectionParts = [];
       for (const section of sections) {
         let html;
@@ -1605,7 +1601,7 @@ export async function generateSection(req, res) {
       html = await generateFromTemplate({ section, variables, briefingSummary, styleTemplate, provider });
 
     } else if (section.slug === 'planning_assessment') {
-      const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, { rows: bsRows }] = await Promise.all([
+      const [{ rows: issues }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, latestNoteHtml] = await Promise.all([
         pool.query(
           `SELECT pit.id, pit.label, pit.discipline,
                   ain.argument_against, ain.argument_for,
@@ -1621,16 +1617,12 @@ export async function generateSection(req, res) {
         fetchEvidenceByTrack(projectId),
         fetchLinkedPoliciesByTrack(projectId),
         fetchIssueTypesByTrack(projectId),
-        pool.query(
-          `SELECT summary_html FROM planning_applications.document_summaries
-           WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-          [projectId]
-        )
+        resolvePrimaryNoteHtml(projectId)
       ]);
       html = await generatePlanningStatementAssessment({
         projectName: projectRows[0].project_name,
         section, issues, linkedPoliciesByTrack, evidenceByTrack, issueTypesByTrack,
-        briefingSummary: bsRows[0]?.summary_html ?? null,
+        briefingSummary: latestNoteHtml ?? null,
         guidingBrief, styleTemplate, provider
       });
 
@@ -1739,18 +1731,8 @@ export async function draftArgumentsFromBriefing(req, res) {
   try {
     const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
 
-    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
-      briefingNoteId
-        ? pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
-            [projectId, briefingNoteId]
-          )
-        : pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-            [projectId]
-          ),
+    const [briefingHtml, { rows: issues }] = await Promise.all([
+      resolvePrimaryNoteHtml(projectId, { noteRef: briefingNoteId }),
       pool.query(
         `SELECT pit.id, pit.label, pit.discipline, ain.argument_for
          FROM admin_console.project_issue_tracks pit
@@ -1761,11 +1743,11 @@ export async function draftArgumentsFromBriefing(req, res) {
         [projectId]
       )
     ]);
-    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript summary found for this project. Upload and summarise a briefing transcript first.' });
+    if (!briefingHtml) return res.status(404).json({ error: 'No notes found for this project. Add a meeting note first.' });
     const { rows: promptRows } = await pool.query(
       `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'draft_arguments_from_briefing'`
     );
-    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null, provider: req.body.provider ?? null });
+    const suggestions = await draftIssueArgumentsFromBriefing({ briefingSummary: briefingHtml, issues, customPrompt: promptRows[0]?.prompt_text ?? null, provider: req.body.provider ?? null });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1817,18 +1799,8 @@ export async function draftKeySummariesFromBriefing(req, res) {
   try {
     const briefingNoteId = req.body.briefing_note_id ? parseInt(req.body.briefing_note_id) : null;
 
-    const [{ rows: bsRows }, { rows: issues }] = await Promise.all([
-      briefingNoteId
-        ? pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE id = $2 AND project_id = $1 AND doc_type = 'briefing_transcript'`,
-            [projectId, briefingNoteId]
-          )
-        : pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-            [projectId]
-          ),
+    const [briefingHtml, { rows: issues }] = await Promise.all([
+      resolvePrimaryNoteHtml(projectId, { noteRef: briefingNoteId }),
       pool.query(
         `SELECT id, label, discipline, summary
          FROM admin_console.project_issue_tracks
@@ -1837,11 +1809,11 @@ export async function draftKeySummariesFromBriefing(req, res) {
         [projectId]
       )
     ]);
-    if (!bsRows.length) return res.status(404).json({ error: 'No briefing transcript found for this project.' });
+    if (!briefingHtml) return res.status(404).json({ error: 'No notes found for this project. Add a meeting note first.' });
     const { rows: promptRows } = await pool.query(
       `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'draft_key_summaries'`
     );
-    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: bsRows[0].summary_html, issues, customPrompt: promptRows[0]?.prompt_text ?? null, provider: req.body.provider ?? null });
+    const suggestions = await draftKeyIssueSummariesFromBriefing({ briefingSummary: briefingHtml, issues, customPrompt: promptRows[0]?.prompt_text ?? null, provider: req.body.provider ?? null });
     const issueMap = Object.fromEntries(issues.map(i => [i.id, i.label]));
     res.json({ suggestions: suggestions.map(s => ({ ...s, label: issueMap[s.track_id] ?? '' })) });
   } catch (err) {
@@ -1904,7 +1876,7 @@ export async function getAssessmentIssues(req, res) {
 export async function generateAssessmentIssue(req, res) {
   const { projectId, typeId, sectionId, trackId } = req.params;
   try {
-    const [{ rows: projectRows }, { rows: sectionRows }, { rows: issueRows }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, { rows: bsRows }] = await Promise.all([
+    const [{ rows: projectRows }, { rows: sectionRows }, { rows: issueRows }, evidenceByTrack, linkedPoliciesByTrack, issueTypesByTrack, latestNoteHtml] = await Promise.all([
       pool.query(`SELECT project_name FROM public.projects WHERE id = $1`, [projectId]),
       pool.query(`SELECT * FROM planning_applications.draft_sections WHERE id = $1`, [sectionId]),
       pool.query(
@@ -1921,11 +1893,7 @@ export async function generateAssessmentIssue(req, res) {
       fetchEvidenceByTrack(projectId),
       fetchLinkedPoliciesByTrack(projectId),
       fetchIssueTypesByTrack(projectId),
-      pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript' ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      )
+      resolvePrimaryNoteHtml(projectId)
     ]);
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
     if (!sectionRows.length) return res.status(404).json({ error: 'Section not found' });
@@ -1939,7 +1907,7 @@ export async function generateAssessmentIssue(req, res) {
       linkedPolicies: linkedPoliciesByTrack[issue.id] ?? [],
       evidence: evidenceByTrack[issue.id] ?? [],
       issueType: issueTypesByTrack[issue.id] ?? null,
-      briefingSummary: bsRows[0]?.summary_html ?? null
+      briefingSummary: latestNoteHtml ?? null
     });
     res.json({ html });
   } catch (err) {
@@ -2067,13 +2035,7 @@ export async function suggestArgument(req, res) {
     }
 
     // Fetch briefing transcript
-    const { rows: briefingRows } = await pool.query(
-      `SELECT summary_html FROM planning_applications.document_summaries
-       WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-       ORDER BY created_at DESC LIMIT 1`,
-      [projectId]
-    );
-    const briefingNote = briefingRows[0]?.summary_html ?? null;
+    const briefingNote = await resolvePrimaryNoteHtml(projectId);
 
     // Fetch saved suggest template
     const { rows: templateRows } = await pool.query(
@@ -2326,19 +2288,8 @@ export async function populateFromBriefing(req, res) {
   const projectId = parseInt(req.params.projectId);
   const briefingId = req.body?.briefing_id ? parseInt(req.body.briefing_id) : null;
   try {
-    const [briefingResult, tracksResult, projectResult] = await Promise.all([
-      briefingId
-        ? pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
-            [briefingId, projectId]
-          )
-        : pool.query(
-            `SELECT summary_html FROM planning_applications.document_summaries
-             WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-             ORDER BY created_at DESC LIMIT 1`,
-            [projectId]
-          ),
+    const [briefingHtml, tracksResult, projectResult] = await Promise.all([
+      resolvePrimaryNoteHtml(projectId, { noteRef: briefingId }),
       pool.query(
         `SELECT id, label, discipline, summary FROM admin_console.project_issue_tracks
          WHERE project_id = $1 AND is_active = TRUE ORDER BY sort_order, id`,
@@ -2347,11 +2298,10 @@ export async function populateFromBriefing(req, res) {
       pool.query(`SELECT development_type FROM public.projects WHERE id = $1`, [projectId])
     ]);
 
-    if (!briefingResult.rows.length) {
-      return res.status(404).json({ error: 'No briefing transcript found for this project.' });
+    if (!briefingHtml) {
+      return res.status(404).json({ error: 'No notes found for this project. Add a meeting note first.' });
     }
 
-    const briefingHtml = briefingResult.rows[0].summary_html;
     const briefingText = briefingHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const tracks = tracksResult.rows;
     const developmentType = projectResult.rows[0]?.development_type || null;

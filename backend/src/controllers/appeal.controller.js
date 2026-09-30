@@ -13,7 +13,7 @@ import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { generateDraftSection, summariseDocument, scopeDocumentIncorporation, incorporateTargetedParagraphs, resolveProvider } from '../services/llm.service.js';
 import { generateAppealDraftFromPrompt, generateIssueOrderedSection, generatePlanningPolicySection, DEFAULT_DRAFT_PROMPT, incorporateSpecialistReportIntoIssue } from '../services/appeal.service.js';
 import { fetchLinkedPoliciesByTrack, fetchIssueTypesByTrack } from './planningApplication.controller.js';
-import { resolveBriefingNotesSelection, resolveBriefingTranscriptsSelection, getBriefingSourceContent } from '../services/briefingSelection.service.js';
+import { resolveBriefingNotesSelection, resolveBriefingTranscriptsSelection, getBriefingSourceContent, resolvePrimaryNoteHtml } from '../services/briefingSelection.service.js';
 
 async function loadGlobalPrompt(key) {
   const { rows } = await pool.query(
@@ -590,27 +590,10 @@ async function loadAssessmentSources(projectId, startingDocs, mode) {
 // instead of silently falling back to the older, generic per-draft-type
 // mechanism (wrong issue source, wrong guiding brief, wrong style field)
 // that has no idea these sections exist.
-async function buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId) {
+async function buildV3SectionContext(project, projectId, typeId, draftType) {
   const issues = await fetchIssuesForDraftType(draftType, projectId);
 
-  let briefingNoteQuery;
-  if (briefingNoteId) {
-    briefingNoteQuery = pool.query(
-      `SELECT summary_html FROM planning_applications.document_summaries
-       WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
-      [briefingNoteId, projectId]
-    );
-  } else {
-    briefingNoteQuery = pool.query(
-      `SELECT summary_html FROM planning_applications.document_summaries
-       WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-       ORDER BY created_at DESC LIMIT 1`,
-      [projectId]
-    );
-  }
-
-  const [{ rows: briefingRows }, { rows: startingDocRows }, linkedPoliciesByTrack, linkedPlansByTrack, allTypesRes] = await Promise.all([
-    briefingNoteQuery,
+  const [{ rows: startingDocRows }, linkedPoliciesByTrack, linkedPlansByTrack, allTypesRes] = await Promise.all([
     pool.query(
       `SELECT slot_slug, content_text FROM appeals.pa_draft_starting_docs
        WHERE project_id = $1 AND draft_type_id = $2`,
@@ -624,9 +607,16 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
     ),
   ]);
 
-  const projectBrief = briefingRows[0]?.summary_html ?? null;
   const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
   const allIssueTypes = allTypesRes.rows;
+
+  // {{PROJECT_BRIEF}} = the note flagged "primary" in the Sources modal
+  // (Briefing Note or Meeting Note alike). No primary flagged → empty; there
+  // is deliberately no silent "latest note" fallback.
+  const projectBrief = await resolvePrimaryNoteHtml(projectId, {
+    selectionJson: startingDocs['briefing_notes'],
+    latestFallback: false,
+  });
 
   const briefingNotes = await resolveBriefingNotesSelection(projectId, startingDocs['briefing_notes']);
 
@@ -682,7 +672,7 @@ async function buildV3SectionContext(project, projectId, typeId, draftType, brie
 
 export async function generateDraftFromPaNotes(req, res) {
   const { projectId, typeId } = req.params;
-  const { briefingNoteId, developmentType: bodyDevType, provider } = req.body ?? {};
+  const { developmentType: bodyDevType, provider } = req.body ?? {};
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, development_type, address, local_planning_authority, development_description
@@ -701,29 +691,12 @@ export async function generateDraftFromPaNotes(req, res) {
 
     const issues = await fetchIssuesForDraftType(draftType, projectId);
 
-    // Fetch briefing note (specific by ID, or latest)
-    let briefingNoteQuery;
-    if (briefingNoteId) {
-      briefingNoteQuery = pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE id = $1 AND project_id = $2 AND doc_type = 'briefing_transcript'`,
-        [briefingNoteId, projectId]
-      );
-    } else {
-      briefingNoteQuery = pool.query(
-        `SELECT summary_html FROM planning_applications.document_summaries
-         WHERE project_id = $1 AND doc_type = 'briefing_transcript'
-         ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      );
-    }
     // planning_statement_v3 is running without any guiding brief as a test —
     // its prompts (top-level and both spliced sections) have their guidance
     // and style example inlined directly as prose instead (see migrations
     // 131-133), so fetching one here would only risk the style example
     // being auto-appended a second time by generateAppealDraftFromPrompt.
-    const [{ rows: briefingRows }, guidingBrief, { rows: startingDocRows }] = await Promise.all([
-      briefingNoteQuery,
+    const [guidingBrief, { rows: startingDocRows }] = await Promise.all([
       draftType.slug === V3_SLUG
         ? null
         : getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
@@ -733,8 +706,14 @@ export async function generateDraftFromPaNotes(req, res) {
         [projectId, typeId]
       )
     ]);
-    const projectBrief = briefingRows[0]?.summary_html ?? null;
     const startingDocs = Object.fromEntries(startingDocRows.map(r => [r.slot_slug, r.content_text]));
+
+    // {{PROJECT_BRIEF}} = the note flagged "primary" in the Sources modal (no
+    // flag → empty; no silent "latest note" fallback).
+    const projectBrief = await resolvePrimaryNoteHtml(projectId, {
+      selectionJson: startingDocs['briefing_notes'],
+      latestFallback: false,
+    });
 
     // Resolve briefing note selections stored in the starting docs slot
     const briefingNotes = await resolveBriefingNotesSelection(projectId, startingDocs['briefing_notes']);
@@ -1022,7 +1001,7 @@ export async function resetAppealTypePrompt(req, res) {
 
 export async function generateSectionFromPaNotes(req, res) {
   const { projectId, typeId, sectionId } = req.params;
-  const { briefingNoteId, developmentType: bodyDevType, provider: requestedProvider } = req.body ?? {};
+  const { developmentType: bodyDevType, provider: requestedProvider } = req.body ?? {};
   try {
     const provider = await resolveProvider('appeal_draft_pa_notes', requestedProvider);
     const { rows: projectRows } = await pool.query(
@@ -1058,7 +1037,7 @@ export async function generateSectionFromPaNotes(req, res) {
       const sectionPrompt = sectionDef.generation_prompt?.trim();
       if (!sectionPrompt) return res.status(400).json({ error: 'No generation prompt configured for this section' });
 
-      const context = await buildV3SectionContext(project, projectId, typeId, draftType, briefingNoteId);
+      const context = await buildV3SectionContext(project, projectId, typeId, draftType);
 
       // planning_statement_v3's section prompts have their guidance and
       // style inlined directly (migrations 132/133) and run without a

@@ -101,6 +101,91 @@ export async function resolveBriefingTranscriptsSelection(projectId, selectionJs
     .join('\n\n---\n\n');
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// "Primary note" helpers — a note is just a note, whether it started life as a
+// Briefing Note (document_summaries) or a project Meeting Note
+// (meeting_transcripts). Tools that need ONE note as their principal source
+// (e.g. {{PROJECT_BRIEF}}, HLPV, Stage 1) resolve it through these.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Normalises an explicit note reference: {type, id}, a bare doc id, or
+// a "doc:12" / "meeting:7" key. Returns {type, id} or null.
+export function normaliseNoteRef(ref) {
+  if (ref == null || ref === '') return null;
+  if (typeof ref === 'number') return { type: 'doc', id: ref };
+  if (typeof ref === 'string') {
+    const [t, i] = ref.includes(':') ? ref.split(':') : ['doc', ref];
+    const id = Number(i);
+    return (t === 'doc' || t === 'meeting') && Number.isFinite(id) ? { type: t, id } : null;
+  }
+  if ((ref.type === 'doc' || ref.type === 'meeting') && ref.id != null) {
+    return { type: ref.type, id: Number(ref.id) };
+  }
+  return null;
+}
+
+// The entry flagged `primary: true` in a 'briefing_notes' slot selection, if any.
+export function parsePrimaryRef(selectionJson) {
+  if (!selectionJson) return null;
+  try {
+    const raw = JSON.parse(selectionJson);
+    if (!Array.isArray(raw)) return null;
+    const entry = raw.find(e => e && typeof e === 'object' && e.primary);
+    return entry ? normaliseNoteRef(entry) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Most recent note of either kind for a project (by date), as a {type, id} ref.
+export async function getLatestNoteRef(projectId) {
+  const { rows } = await pool.query(
+    `SELECT type, id FROM (
+       SELECT 'doc' AS type, id, created_at AS sort_at
+         FROM planning_applications.document_summaries
+        WHERE project_id = $1 AND doc_type IN ('briefing_transcript', 'briefing_note')
+       UNION ALL
+       SELECT 'meeting' AS type, mt.id, COALESCE(mt.meeting_date::timestamptz, mt.created_at) AS sort_at
+         FROM planning_applications.meeting_transcripts mt
+         JOIN planning_applications.meeting_summaries ms ON ms.transcript_id = mt.id
+        WHERE mt.project_id = $1 AND mt.meeting_type = 'project'
+     ) n ORDER BY sort_at DESC LIMIT 1`,
+    [projectId]
+  );
+  return rows[0] ? { type: rows[0].type, id: rows[0].id } : null;
+}
+
+// Summary HTML of one note ({type, id}) — null if it isn't found for the project.
+export async function getNoteHtml(projectId, ref) {
+  const r = normaliseNoteRef(ref);
+  if (!r) return null;
+  if (r.type === 'meeting') {
+    const { rows } = await pool.query(
+      `SELECT ms.summary_html
+         FROM planning_applications.meeting_transcripts mt
+         JOIN planning_applications.meeting_summaries ms ON ms.transcript_id = mt.id
+        WHERE mt.id = $1 AND mt.project_id = $2 AND mt.meeting_type = 'project'`,
+      [r.id, projectId]
+    );
+    return rows[0]?.summary_html ?? null;
+  }
+  const { rows } = await pool.query(
+    `SELECT summary_html FROM planning_applications.document_summaries
+      WHERE id = $1 AND project_id = $2 AND doc_type IN ('briefing_transcript', 'briefing_note')`,
+    [r.id, projectId]
+  );
+  return rows[0]?.summary_html ?? null;
+}
+
+// Resolve the one note a tool should treat as its principal source.
+// Order: explicit ref → primary flag in the slot selection → latest note of
+// either kind (only when latestFallback is true).
+export async function resolvePrimaryNoteHtml(projectId, { noteRef = null, selectionJson = null, latestFallback = true } = {}) {
+  let ref = normaliseNoteRef(noteRef) ?? parsePrimaryRef(selectionJson);
+  if (!ref && latestFallback) ref = await getLatestNoteRef(projectId);
+  return ref ? getNoteHtml(projectId, ref) : null;
+}
+
 // A single briefing note or meeting note's plain-text summary, for pulling
 // its content into a starting-doc slot's textarea (the "import from an
 // existing note" picker on each slot card). Returns null if not found.

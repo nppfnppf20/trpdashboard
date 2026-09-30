@@ -280,8 +280,8 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
   const issueContext = includeIssueNotes ? buildIssueContext(issues, {}) : '';
 
   const cleanProjectBrief = projectBrief?.trim()
-    ? projectBrief.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 3000)
-    : '(no project brief uploaded)';
+    ? projectBrief.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    : '(no primary note selected)';
 
   const cleanBriefingNotes = briefingNotes?.trim() || '(no briefing notes provided for this document)';
 
@@ -302,10 +302,6 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
       startingDocs[slug]?.trim() || '(not provided)'
     );
   }
-
-  const projectBriefBlock = !basePrompt.includes('{{PROJECT_BRIEF}}') && projectBrief?.trim()
-    ? `\nProject brief:\n${cleanProjectBrief}`
-    : '';
 
   // Auto-append any starting docs not explicitly referenced in the prompt
   const appendedDocLines = STARTING_DOC_VARS
@@ -331,7 +327,7 @@ export async function generateAppealDraftFromPrompt({ projectName, draftTypeName
     ? `\n\nWorking argument notes by issue:\n${issueContext}`
     : '';
 
-  const prompt = `${instructions}${projectBriefBlock}${startingDocsBlock}${briefingNotesBlock}${styleExampleBlock}
+  const prompt = `${instructions}${startingDocsBlock}${briefingNotesBlock}${styleExampleBlock}
 
 Project: ${projectName}
 Document type: ${draftTypeName}${issueContextBlock}

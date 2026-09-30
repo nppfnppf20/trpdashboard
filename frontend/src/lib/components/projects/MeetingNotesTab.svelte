@@ -18,8 +18,6 @@
   } from '$lib/stores/projectViewModal.js';
   import {
     getDocumentSummaries,
-    generateDocumentSummary,
-    saveDocumentSummary,
     updateDocumentSummary,
     deleteDocumentSummary,
     getDocumentSummaryTranscript
@@ -59,40 +57,10 @@
   let reviewCombinedCreated = false; // set when a combined note was also created
   let reviewProposals = null;  // tracker proposals drafted in parallel with the summary; null = not available, draft on demand
 
-  // Note type — drives which fields/buttons show in the Add Note card.
-  // Starts unselected: the user must explicitly choose one before the
-  // rest of the form (and the ability to summarise) appears.
-  //
-  // Custom dropdown (not a native <select>) because the two states need
-  // different amounts of text: the option list shows a description to
-  // help the user pick, but once chosen the closed control should just
-  // read "Meeting Note" / "Briefing Note" — a native select always shows
-  // the same option text in both places.
-  let uploadNoteType = ''; // '' | 'meeting' | 'briefing'
-  let noteTypeMenuOpen = false;
-  let noteTypeDropdownEl;
-  const noteTypeOptions = [
-    { value: 'meeting', label: 'Meeting Note', description: 'General project or internal meeting' },
-    { value: 'briefing', label: 'Briefing Note', description: 'Kick-off, survey briefing, or a meeting that informs a planning deliverable' }
-  ];
-  $: selectedNoteTypeOption = noteTypeOptions.find(o => o.value === uploadNoteType) ?? null;
-
-  function selectNoteType(value) {
-    uploadNoteType = value;
-    noteTypeMenuOpen = false;
-  }
-
-  function handleWindowClick(e) {
-    if (noteTypeMenuOpen && noteTypeDropdownEl && !noteTypeDropdownEl.contains(e.target)) {
-      noteTypeMenuOpen = false;
-    }
-  }
-
   // Full screen view
   let isFullscreen = false;
   function handleFullscreenKeydown(e) {
     if (e.key !== 'Escape') return;
-    if (noteTypeMenuOpen) { noteTypeMenuOpen = false; return; }
     if (isFullscreen) isFullscreen = false;
   }
 
@@ -102,17 +70,6 @@
   let briefingsLoaded = false;
   let briefingsLoading = false;
   let briefingsError = null;
-  let bInputTab = 'upload'; // 'upload' | 'paste'
-  let bFile = null;
-  let bPasteText = '';
-  let bDragOver = false;
-  let bProcessing = false;
-  let bError = null;
-  let bFileInput;
-  let bResult = null; // { summary_html, file_name }
-  let bTitle = '';
-  let bSaving = false;
-  let bSaveError = null;
 
   async function loadBriefings() {
     briefingsLoading = true;
@@ -125,77 +82,6 @@
       briefingsError = err.message;
     } finally {
       briefingsLoading = false;
-    }
-  }
-
-  function handleBriefingDrop(e) {
-    e.preventDefault();
-    bDragOver = false;
-    const file = e.dataTransfer.files[0];
-    if (file) { bFile = file; bInputTab = 'upload'; }
-  }
-
-  function handleBriefingFileChange(e) {
-    bFile = e.target.files[0] || null;
-  }
-
-  function saveBriefingDirectly() {
-    if (!bPasteText.trim()) { bError = 'Please paste some text first.'; return; }
-    bError = null;
-    const escaped = bPasteText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    bResult = {
-      summary_html: `<pre style="white-space:pre-wrap;font-family:inherit;font-size:0.875rem;line-height:1.6;">${escaped}</pre>`,
-      file_name: null,
-      transcript_text: bPasteText
-    };
-    bTitle = 'Briefing Transcript';
-  }
-
-  async function submitBriefingUpload() {
-    bError = null;
-    if (bInputTab === 'upload' && !bFile) { bError = 'Please select a file.'; return; }
-    if (bInputTab === 'paste' && !bPasteText.trim()) { bError = 'Please paste the briefing text.'; return; }
-    bProcessing = true;
-    bResult = null;
-    try {
-      const payload = { docType: 'briefing_transcript' };
-      if (bInputTab === 'upload') {
-        payload.file = bFile;
-      } else {
-        payload.text = bPasteText;
-        payload.fileName = 'Pasted text';
-      }
-      const result = await generateDocumentSummary(projectId, payload);
-      bResult = result;
-      bTitle = result.file_name || (bFile ? bFile.name : 'Briefing Transcript');
-    } catch (err) {
-      bError = err.message;
-    } finally {
-      bProcessing = false;
-    }
-  }
-
-  async function saveBriefing() {
-    if (!bTitle.trim()) { bSaveError = 'Please enter a title.'; return; }
-    bSaving = true;
-    bSaveError = null;
-    try {
-      const entry = await saveDocumentSummary(projectId, {
-        title: bTitle,
-        file_name: bResult.file_name || null,
-        doc_type: 'briefing_transcript',
-        summary_html: bResult.summary_html,
-        transcript_text: bResult.transcript_text || null
-      });
-      briefings = [entry, ...briefings];
-      bResult = null;
-      bTitle = '';
-      bFile = null;
-      bPasteText = '';
-    } catch (err) {
-      bSaveError = err.message;
-    } finally {
-      bSaving = false;
     }
   }
 
@@ -338,14 +224,12 @@
     if (pendingFile) {
       uploadFile = pendingFile;
       uploadInputTab = 'upload';
-      uploadNoteType = 'meeting';
       showUploadPanel = true;
     }
     const pendingText = consumePendingMeetingUploadText();
     if (pendingText) {
       uploadPasteText = pendingText;
       uploadInputTab = 'paste';
-      uploadNoteType = 'meeting';
       showUploadPanel = true;
     }
   });
@@ -695,7 +579,7 @@
   on:close={() => showDraftIssuesModal = false}
 />
 
-<svelte:window on:keydown={handleFullscreenKeydown} on:click={handleWindowClick} />
+<svelte:window on:keydown={handleFullscreenKeydown} />
 
 <div class="mn-tab" class:mn-fullscreen={isFullscreen}>
 
@@ -720,121 +604,7 @@
       <div class="card mn-upload-card">
         <h3 class="mn-card-title">Summarise Meeting</h3>
 
-        <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
-          <button
-            type="button"
-            class="mn-note-type-select"
-            class:mn-note-type-select--unset={!uploadNoteType}
-            aria-haspopup="listbox"
-            aria-expanded={noteTypeMenuOpen}
-            on:click={() => noteTypeMenuOpen = !noteTypeMenuOpen}
-          >
-            <span>{selectedNoteTypeOption ? selectedNoteTypeOption.label : 'Select a note type…'}</span>
-            <i class="las la-{noteTypeMenuOpen ? 'angle-up' : 'angle-down'}"></i>
-          </button>
-          {#if noteTypeMenuOpen}
-            <div class="mn-note-type-menu" role="listbox">
-              {#each noteTypeOptions as opt (opt.value)}
-                <button
-                  type="button"
-                  class="mn-note-type-option"
-                  class:mn-note-type-option--active={uploadNoteType === opt.value}
-                  role="option"
-                  aria-selected={uploadNoteType === opt.value}
-                  on:click={() => selectNoteType(opt.value)}
-                >
-                  <span class="mn-note-type-option-label">{opt.label}</span>
-                  <span class="mn-note-type-option-desc">{opt.description}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        {#if !uploadNoteType}
-          <p class="mn-type-placeholder">Choose a note type above to enable the form below.</p>
-        {/if}
-
-        <div class="mn-upload-form" class:mn-upload-form--disabled={!uploadNoteType} inert={!uploadNoteType}>
-        {#if uploadNoteType === 'briefing'}
-
-          <p class="mn-briefing-hint">Once uploaded, the transcript powers "Populate from Briefing" in the Key Issues board.</p>
-
-          <div class="mn-input-tabs">
-            <button class="btn btn-sm" class:btn-secondary={bInputTab === 'upload'} class:btn-ghost={bInputTab !== 'upload'} on:click={() => bInputTab = 'upload'}>
-              <i class="las la-upload"></i> Upload File
-            </button>
-            <button class="btn btn-sm" class:btn-secondary={bInputTab === 'paste'} class:btn-ghost={bInputTab !== 'paste'} on:click={() => bInputTab = 'paste'}>
-              <i class="las la-clipboard"></i> Paste Text
-            </button>
-          </div>
-
-          {#if bInputTab === 'upload'}
-            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-            <div class="mn-drop-zone" class:drag-over={bDragOver} role="button" tabindex="0"
-              on:dragover|preventDefault={() => bDragOver = true}
-              on:dragleave={() => bDragOver = false}
-              on:drop={handleBriefingDrop}
-              on:click={() => bFileInput.click()}
-              on:keydown={(e) => e.key === 'Enter' && bFileInput.click()}
-            >
-              {#if bFile}
-                <i class="las la-file-alt mn-drop-icon"></i>
-                <span class="mn-drop-filename">{bFile.name}</span>
-                <span class="mn-drop-hint">Click to change file</span>
-              {:else}
-                <i class="las la-cloud-upload-alt mn-drop-icon"></i>
-                <span>Drop a file here or click to browse</span>
-                <span class="mn-drop-hint">PDF, DOCX or TXT</span>
-              {/if}
-            </div>
-            <input bind:this={bFileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleBriefingFileChange} />
-          {:else}
-            <textarea class="form-input mn-paste" bind:value={bPasteText} placeholder="Paste the briefing transcript here…" rows="4"></textarea>
-          {/if}
-
-          {#if bError}<div class="mn-error">{bError}</div>{/if}
-
-          {#if bInputTab === 'paste' && !bResult}
-            <div class="mn-briefing-paste-actions">
-              <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing || !uploadNoteType}>
-                {#if bProcessing}
-                  <span class="mn-spinner"></span> Processing…
-                {:else}
-                  <i class="las la-magic"></i> Summarise with AI
-                {/if}
-              </button>
-              <button class="btn btn-secondary mn-process-btn" on:click={saveBriefingDirectly} disabled={bProcessing || !uploadNoteType}>
-                <i class="las la-save"></i> Save as-is
-              </button>
-            </div>
-          {/if}
-
-          {#if bResult}
-            <div class="mn-briefing-result">
-              <div class="form-group">
-                <label>Title</label>
-                <input type="text" class="form-input" bind:value={bTitle} placeholder="e.g. Briefing Note - Feb 2025" />
-              </div>
-              <div class="mn-briefing-preview">{@html bResult.summary_html}</div>
-              {#if bSaveError}<div class="mn-error-sm">{bSaveError}</div>{/if}
-              <div class="mn-form-footer">
-                <button class="btn btn-secondary btn-sm" on:click={() => { bResult = null; bTitle = ''; }}>Discard</button>
-                <button class="btn btn-primary btn-sm" on:click={saveBriefing} disabled={bSaving || !uploadNoteType}>
-                  {bSaving ? 'Saving…' : 'Save Briefing'}
-                </button>
-              </div>
-            </div>
-          {:else if bInputTab === 'upload'}
-            <button class="btn btn-primary mn-process-btn" on:click={submitBriefingUpload} disabled={bProcessing || !uploadNoteType}>
-              {#if bProcessing}
-                <span class="mn-spinner"></span> Processing…
-              {:else}
-                <i class="las la-magic"></i> Process Briefing
-              {/if}
-            </button>
-          {/if}
-
-        {:else}
+        <div class="mn-upload-form">
 
           <div class="mn-input-tabs">
             <button class="btn btn-sm" class:btn-secondary={uploadInputTab === 'upload'} class:btn-ghost={uploadInputTab !== 'upload'} on:click={() => uploadInputTab = 'upload'}>
@@ -935,7 +705,7 @@
 
           <div class="mn-form-footer">
             {#if !isMultiProject}
-              <button class="btn btn-secondary mn-process-btn" on:click={saveVerbatim} disabled={uploadProcessing || !uploadNoteType} title="Save the text as-is, no AI summary">
+              <button class="btn btn-secondary mn-process-btn" on:click={saveVerbatim} disabled={uploadProcessing} title="Save the text as-is, no AI summary">
                 {#if uploadProcessing}
                   <span class="mn-spinner-blue"></span> Saving…
                 {:else}
@@ -943,7 +713,7 @@
                 {/if}
               </button>
             {/if}
-            <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing || !uploadNoteType}>
+            <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
               {#if uploadProcessing}
                 <span class="mn-spinner"></span> Processing…
               {:else}
@@ -952,7 +722,6 @@
             </button>
           </div>
 
-        {/if}
         </div>
       </div>
 
@@ -990,7 +759,6 @@
 
     </div>
 
-    {#if uploadNoteType === 'briefing'}
       <!-- Meeting Guide card -->
       <div class="card mn-guide-card">
         <div class="mn-guide-card-left">
@@ -1004,7 +772,6 @@
           <i class="las la-clipboard-list"></i> Open Meeting Guide
         </button>
       </div>
-    {/if}
 
     <!-- ── All Notes ──────────────────────────────────────────────────── -->
     <div class="card mn-section mn-section-muted">
@@ -1334,89 +1101,11 @@
     margin: 0;
   }
 
-  /* ── Add Note card: note-type selector ──────────────────────────────────
-     Deliberately the most prominent control in the card — nothing else
-     shows until this is set, so it needs to read as step one. Custom
-     dropdown (button + floating list) rather than a native <select> so
-     the closed control can show just the name while the open list shows
-     the full description — a native select can't split those. */
-  .mn-note-type-dropdown { position: relative; z-index: 5; }
-  .mn-note-type-select {
-    width: 100%;
-    padding: 0.6rem 0.75rem;
-    border: 1.5px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: var(--color-slate-50);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    text-align: left;
-  }
-  .mn-note-type-select:focus { outline: none; border-color: var(--color-primary-500); box-shadow: var(--focus-ring-blue); }
-  /* Unset is the state that needs attention — pick me — so it gets the
-     loud styling. Once chosen, the control settles into the calmer
-     look above; the greyed-out form below stays the quiet part. */
-  .mn-note-type-select--unset {
-    color: var(--color-primary-700);
-    font-weight: 700;
-    border: 1.5px solid var(--color-primary-500);
-    background: var(--color-primary-50);
-    box-shadow: var(--focus-ring-blue);
-  }
-  .mn-note-type-menu {
-    position: absolute;
-    top: calc(100% + 0.35rem);
-    left: 0;
-    right: 0;
-    z-index: 20;
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-dropdown);
-    padding: 0.35rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .mn-note-type-option {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.1rem;
-    width: 100%;
-    padding: 0.5rem 0.6rem;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    cursor: pointer;
-    text-align: left;
-    font-family: inherit;
-  }
-  .mn-note-type-option:hover { background: var(--color-slate-100); }
-  .mn-note-type-option--active { background: var(--color-primary-50); }
-  .mn-note-type-option-label { font-size: 0.85rem; font-weight: 600; color: var(--color-slate-800); }
-  .mn-note-type-option-desc { font-size: 0.75rem; color: var(--color-slate-500); line-height: 1.35; }
-  .mn-type-placeholder {
-    color: var(--color-slate-400);
-    font-size: 0.78rem;
-    margin: 0.15rem 0 0;
-  }
-
-  /* Rest of the card — greyed out and inert until a note type is chosen */
+  /* Add Note card form */
   .mn-upload-form {
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
-  }
-  .mn-upload-form--disabled {
-    opacity: 0.45;
-    filter: grayscale(0.4);
   }
 
   /* ── Type badge (All Notes list) ──────────────────────────────────────── */
@@ -1452,27 +1141,6 @@
   }
   .mn-guide-title { font-size: 0.9rem; font-weight: 600; color: var(--color-slate-800); }
   .mn-guide-desc { font-size: 0.8rem; color: var(--color-slate-500); margin-top: 0.1rem; }
-
-  .mn-briefing-hint { font-size: 0.8rem; color: var(--color-slate-500); margin: 0; }
-
-  .mn-briefing-result {
-    border: 1px solid var(--color-slate-200);
-    border-radius: 6px;
-    padding: 0.875rem;
-    background: var(--color-slate-50);
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  .mn-briefing-preview {
-    font-size: 0.8rem;
-    color: var(--color-slate-600);
-    max-height: 200px;
-    overflow-y: auto;
-    line-height: 1.6;
-  }
-  .mn-briefing-title-input { font-weight: 600; max-width: 480px; }
-  .mn-briefing-paste-actions { display: flex; flex-direction: column; gap: 0.4rem; }
 
   /* ── Top row ────────────────────────────────────────────────────────────── */
   .mn-top-row {
