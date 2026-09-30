@@ -811,9 +811,20 @@ export async function commitDraftedActions(req, res) {
     const createdSubIssues = [];
     const createdActions = [];
 
-    for (const p of accepted) {
+    // New issues go first so a new sub-issue proposed under one of them
+    // (linked by parent_client_key -> client_key) finds its parent already
+    // created, whatever order the proposals arrived in.
+    const newIssueIdByClientKey = new Map();
+    const ordered = [...accepted].sort((a, b) => (b.kind === 'new_issue') - (a.kind === 'new_issue'));
+
+    for (const p of ordered) {
       let issueId = p.issue_id;
       let subIssueId = null;
+
+      if (p.kind === 'new_sub_issue' && !issueId && p.parent_client_key != null) {
+        issueId = newIssueIdByClientKey.get(p.parent_client_key);
+        if (!issueId) throw new Error(`The new issue for sub-issue "${p.sub_issue_title}" was not saved. Tick its parent issue too.`);
+      }
 
       if (p.kind === 'new_issue') {
         if (!p.title?.trim()) throw new Error('A new issue proposal is missing a title');
@@ -825,6 +836,7 @@ export async function commitDraftedActions(req, res) {
         );
         createdIssues.push(issue);
         issueId = issue.id;
+        if (p.client_key != null) newIssueIdByClientKey.set(p.client_key, issue.id);
       }
 
       if (p.kind === 'new_sub_issue') {

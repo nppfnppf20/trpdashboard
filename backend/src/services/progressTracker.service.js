@@ -306,6 +306,18 @@ Return your response using EXACTLY this XML structure — one <PROPOSAL> block p
 </DATE_SUGGESTION>
 </PROPOSAL>
 
+A NEW_SUB_ISSUE can also sit under a NEW_ISSUE you are proposing in this same response (the parent doesn't exist yet, so it has no id). In that case leave out <ISSUE_ID> and instead give <NEW_PARENT_TITLE> with the exact <TITLE> of that new_issue proposal:
+
+<PROPOSAL>
+<KIND>new_sub_issue</KIND>
+<NEW_PARENT_TITLE>the exact title of the new_issue proposal in this response to attach this under</NEW_PARENT_TITLE>
+<SUB_ISSUE_TITLE>a short title for the new sub-issue</SUB_ISSUE_TITLE>
+<SUMMARY>the 1-2 sentence action summary for its first logged action</SUMMARY>
+<SOURCE_NOTE_ID>the numeric id of the meeting note this came from</SOURCE_NOTE_ID>
+</PROPOSAL>
+
+Never invent an ISSUE_ID. It must be an id from the TRACKED ISSUES list, otherwise use NEW_PARENT_TITLE.
+
 <PROPOSAL>
 <KIND>new_issue</KIND>
 <TITLE>a short title for the new issue</TITLE>
@@ -377,8 +389,9 @@ ${issueBlocks}`;
   // meeting_date is looked up programmatically from the transcript row rather
   // than trusted from the LLM, so proposed actions always carry a real date.
   const dateByNoteId = Object.fromEntries(transcripts.map(t => [t.id, t.meeting_date]));
+  const validIssueIds = new Set(issues.map(i => i.id));
 
-  return blocks
+  const parsed = blocks
     .map(block => {
       const kind = extractTag(block, 'KIND');
       const sourceNoteId = parseInt(extractTag(block, 'SOURCE_NOTE_ID'), 10);
@@ -404,6 +417,7 @@ ${issueBlocks}`;
           ...base,
           kind: 'new_sub_issue',
           issue_id: Number.isFinite(issueId) ? issueId : null,
+          parent_new_title: stripDashes(extractTag(block, 'NEW_PARENT_TITLE')),
           sub_issue_title: stripDashes(extractTag(block, 'SUB_ISSUE_TITLE')),
         };
       }
@@ -412,11 +426,32 @@ ${issueBlocks}`;
         kind: 'existing_issue',
         issue_id: Number.isFinite(issueId) ? issueId : null,
       };
+    });
+
+  // The model can return an issue id that isn't one of this project's issues
+  // (made up, or a note id mixed up with an issue id), which would fail at
+  // commit with "Issue N does not belong to this project". A sub-issue is kept
+  // if its parent is a real issue OR a new_issue proposed in this same batch
+  // (linked by title, since that parent has no id yet). Otherwise it becomes a
+  // new top-level issue rather than failing, and an action against an unknown
+  // issue id is dropped.
+  const newIssueTitles = new Set(
+    parsed.filter(p => p.kind === 'new_issue' && p.title).map(p => p.title.trim().toLowerCase())
+  );
+
+  return parsed
+    .map(p => {
+      if (p.kind !== 'new_sub_issue') return p;
+      if (p.issue_id && validIssueIds.has(p.issue_id)) return { ...p, parent_new_title: null };
+      if (p.parent_new_title && newIssueTitles.has(p.parent_new_title.trim().toLowerCase())) {
+        return { ...p, issue_id: null };
+      }
+      return { ...p, kind: 'new_issue', issue_id: null, title: p.sub_issue_title, discipline: null, sub_issue_title: undefined, parent_new_title: undefined };
     })
     .filter(p => {
       if (!p.summary) return false;
       if (p.kind === 'new_issue') return !!p.title;
-      if (p.kind === 'new_sub_issue') return !!(p.issue_id && p.sub_issue_title);
-      return !!p.issue_id;
+      if (p.kind === 'new_sub_issue') return !!((p.issue_id || p.parent_new_title) && p.sub_issue_title);
+      return !!p.issue_id && validIssueIds.has(p.issue_id);
     });
 }

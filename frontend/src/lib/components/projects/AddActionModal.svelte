@@ -381,7 +381,21 @@
       // existing issue — new issues/sub-issues don't have a real id to
       // attach a key date to until after commit, so it's just shown there.
       proposals = raw.map((p, i) => ({ ...p, _key: i, accepted: true, dsStatus: p.date_suggestion ? 'pending' : null }));
+      // A sub-issue proposed under a brand-new issue has no real parent id yet,
+      // so link it to that parent proposal by key (matched on the parent's title
+      // as drafted). The parent's title can then be edited freely afterwards.
+      for (const p of proposals) {
+        if (p.kind === 'new_sub_issue' && !p.issue_id && p.parent_new_title) {
+          const parent = proposals.find(q => q.kind === 'new_issue' && q.title?.trim().toLowerCase() === p.parent_new_title.trim().toLowerCase());
+          p.parent_key = parent ? parent._key : null;
+        }
+      }
     }
+  }
+
+  // Live title of a sub-issue's new parent (follows edits to the parent's title box).
+  function newParentTitle(p, list) {
+    return list.find(q => q._key === p.parent_key)?.title || p.parent_new_title || 'a new issue';
   }
 
   async function runDraft() {
@@ -420,14 +434,16 @@
   async function commitAccepted() {
     const accepted = proposals.filter(p => p.accepted);
     if (!accepted.length) { draftError = 'Tick at least one proposal to save.'; return; }
+    const orphan = accepted.find(p => p.kind === 'new_sub_issue' && p.parent_key != null && !proposals.find(q => q._key === p.parent_key)?.accepted);
+    if (orphan) { draftError = `Sub-issue "${orphan.sub_issue_title}" belongs to a new issue that isn't ticked. Tick that issue too, or untick this sub-issue.`; return; }
     committing = true;
     draftError = null;
     try {
       const result = await commitDraftedActions(projectId, {
         stage_instance_id: stageInstanceId || null,
         accepted: accepted.map(p => {
-          if (p.kind === 'new_issue') return { kind: 'new_issue', title: p.title, discipline: p.discipline, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
-          if (p.kind === 'new_sub_issue') return { kind: 'new_sub_issue', issue_id: p.issue_id, sub_issue_title: p.sub_issue_title, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
+          if (p.kind === 'new_issue') return { kind: 'new_issue', client_key: p._key, title: p.title, discipline: p.discipline, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
+          if (p.kind === 'new_sub_issue') return { kind: 'new_sub_issue', issue_id: p.issue_id, parent_client_key: p.parent_key ?? null, sub_issue_title: p.sub_issue_title, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
           return { kind: 'existing_issue', issue_id: p.issue_id, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
         }),
       });
@@ -643,7 +659,7 @@
                         <input class="proposal-title-input" bind:value={p.title} placeholder="Issue title" />
                         <input class="proposal-discipline-input" bind:value={p.discipline} placeholder="Discipline" />
                       {:else if p.kind === 'new_sub_issue'}
-                        <span class="proposal-badge new-sub-issue-badge">New sub-issue of {issueTitleById(p.issue_id, mnIssues)}</span>
+                        <span class="proposal-badge new-sub-issue-badge">New sub-issue of {p.issue_id ? issueTitleById(p.issue_id, mnIssues) : newParentTitle(p, proposals)}</span>
                         <input class="proposal-title-input" bind:value={p.sub_issue_title} placeholder="Sub-issue title" />
                       {:else}
                         <span class="proposal-badge">{issueTitleById(p.issue_id, mnIssues)}</span>
