@@ -52,6 +52,21 @@ const suggestProjectDateTool = {
   },
 };
 
+// Offers the user a button that opens the "Draft from Briefing Note" flow
+// (same one as the Surveyor Management page). The model never drafts the
+// requests itself — the user picks the briefing/meeting notes in the flow.
+const suggestFeeQuoteRequestsTool = {
+  name: 'suggest_fee_quote_requests',
+  description: "Offer the user a button to start drafting fee quote requests to surveyors for this project. Call this whenever the user asks you to draft, prepare, write or send fee quote requests / quote requests / fee proposals to surveyors or consultants (one or several). Do not write the request emails yourself — the button opens a guided flow where the user picks a briefing or meeting note and the surveyors.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      reason: { type: 'string', description: 'One short sentence on what the user asked for' },
+    },
+    required: [],
+  },
+};
+
 const toISODate = d => {
   if (!d) return null;
   const dt = new Date(d);
@@ -140,6 +155,7 @@ ${sourceBlocks}`
       + (includeDateTool
         ? `\n\nYou additionally have a suggest_project_date tool available. Call it when — and only when — a source or the user explicitly states a specific new date for one of this project's tracked date fields, and it differs from the value already shown for that field above. Do not call it speculatively, for approximate dates, or for a date that matches what is already recorded. Always still produce your normal text reply regardless of whether you call the tool.`
         : '')
+      + `\n\nYou also have a suggest_fee_quote_requests tool. If the user asks you to draft, prepare or send fee quote requests to surveyors, call it and keep your text reply to one or two sentences saying a button below will start the guided draft flow (where they choose a briefing or meeting note). Do not draft the request emails in the reply, and do not add a citations block for this reply.`
       + emailToneInstructions(emailTone)
       + ANTI_AI_SLOP_BLOCK;
 
@@ -148,7 +164,7 @@ ${sourceBlocks}`
       max_tokens: 4096,
       system: systemPrompt,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
-      ...(includeDateTool ? { tools: [suggestProjectDateTool] } : {}),
+      tools: [...(includeDateTool ? [suggestProjectDateTool] : []), suggestFeeQuoteRequestsTool],
     });
 
     const textBlock = response.content.find(b => b.type === 'text');
@@ -161,7 +177,9 @@ ${sourceBlocks}`
     const labelByColumn = Object.fromEntries(PROJECT_DATE_FIELDS.map(f => [f.column, f.label]));
     const currentDates = Object.fromEntries(PROJECT_DATE_FIELDS.map(f => [f.column, toISODate(projectRows[0][f.column])]));
 
-    const suggestions = response.content
+    const feeQuoteCall = response.content.find(b => b.type === 'tool_use' && b.name === 'suggest_fee_quote_requests');
+
+    const dateSuggestions = response.content
       .filter(b => b.type === 'tool_use' && b.name === 'suggest_project_date')
       .map(b => b.input)
       .filter(s => validColumns.has(s?.field) && /^\d{4}-\d{2}-\d{2}$/.test(s?.date || ''))
@@ -175,8 +193,13 @@ ${sourceBlocks}`
         source_id: s.source_id || null,
       }));
 
+    const suggestions = [
+      ...dateSuggestions,
+      ...(feeQuoteCall ? [{ kind: 'fee_quote_request', reason: feeQuoteCall.input?.reason || null }] : []),
+    ];
+
     res.json({
-      reply,
+      reply: reply || (feeQuoteCall ? 'Use the button below to start drafting the fee quote requests.' : reply),
       citations,
       sources_used: [...new Set(citations.map(c => c.source_id))],
       context_chars: totalChars,

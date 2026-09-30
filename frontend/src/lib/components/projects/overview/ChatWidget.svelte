@@ -6,10 +6,14 @@
   import { renderReply, buildSourceLabels, copyReplyToClipboard } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
+  import FeeQuoteSuggestionCard from '$lib/components/projects/FeeQuoteSuggestionCard.svelte';
+  import DraftFromBriefingFlow from '$lib/components/surveyor-briefings/DraftFromBriefingFlow.svelte';
 
   export let project;
   export let onAcceptDateSuggestion = null; // async (field, date) => boolean
   $: projectId = project?.id;
+
+  let draftFlow; // bind:this — Draft from Briefing Note flow, opened by the fee quote suggestion card
 
   const CONTEXT_BUDGET = 200000;
   // 'documents' (Project Docs) is being phased out as a chat source, so it's
@@ -315,7 +319,11 @@
           {#if m.role === 'assistant'}
             {@html renderReply(m.content, sourceLabels)}
             {#each m.suggestions ?? [] as suggestion}
-              <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} compact />
+              {#if suggestion.kind === 'fee_quote_request'}
+                <FeeQuoteSuggestionCard {suggestion} onStart={() => draftFlow?.open()} compact />
+              {:else}
+                <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} compact />
+              {/if}
             {/each}
             <button class="cw-copy-btn" on:click={() => copyReply(idx, m.content)} title="Copy response (citations excluded)">
               <i class="las {copiedIdx === idx ? 'la-check' : 'la-copy'}"></i> {copiedIdx === idx ? 'Copied' : 'Copy'}
@@ -345,6 +353,8 @@
     </div>
   </div>
 </div>
+
+<DraftFromBriefingFlow bind:this={draftFlow} projectUniqueId={project?.unique_id} />
 
 {#if sourcesOpen}
   <div class="cw-sources-popover" style={popoverStyle} on:click|stopPropagation>

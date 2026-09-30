@@ -443,13 +443,10 @@
             <i class="las la-save"></i> Save as Sent
           {/if}
         </button>
-        <button class="btn btn-send" on:click={handleSendEmail}
-          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}>
-          {#if sending}
-            <div class="btn-spinner"></div> Sending...
-          {:else}
-            <i class="las la-paper-plane"></i> Send Email
-          {/if}
+        <!-- Sending is switched off for now; handleSendEmail is left in place to re-enable -->
+        <button class="btn btn-send-all" disabled title="Coming soon - send the email directly from here">
+          <i class="las la-paper-plane"></i> Send Email
+          <span class="soon-badge">Coming soon</span>
         </button>
         {#if stepTotal > 1}
           <button class="btn btn-send-all" disabled title="Coming soon - send every drafted email in one go">

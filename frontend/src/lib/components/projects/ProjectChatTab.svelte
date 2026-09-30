@@ -5,9 +5,13 @@
   import { renderReply, buildSourceLabels, copyReplyToClipboard } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
+  import FeeQuoteSuggestionCard from '$lib/components/projects/FeeQuoteSuggestionCard.svelte';
+  import DraftFromBriefingFlow from '$lib/components/surveyor-briefings/DraftFromBriefingFlow.svelte';
 
   export let project;
   export let onAcceptDateSuggestion = null; // async (field, date) => boolean
+
+  let draftFlow; // bind:this — Draft from Briefing Note flow, opened by the fee quote suggestion card
 
   const CONTEXT_BUDGET = 200000;
 
@@ -442,7 +446,11 @@
                 {/if}
               {/if}
               {#each msg.suggestions ?? [] as suggestion}
-                <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} />
+                {#if suggestion.kind === 'fee_quote_request'}
+                  <FeeQuoteSuggestionCard {suggestion} onStart={() => draftFlow?.open()} />
+                {:else}
+                  <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} />
+                {/if}
               {/each}
               <button class="pc-copy-btn" on:click={() => copyReply(idx, msg.content)} title="Copy response (citations excluded)">
                 <i class="las {copiedIdx === idx ? 'la-check' : 'la-copy'}"></i> {copiedIdx === idx ? 'Copied' : 'Copy'}
@@ -482,6 +490,8 @@
     </div>
   </div>
 </div>
+
+<DraftFromBriefingFlow bind:this={draftFlow} projectUniqueId={project?.unique_id} />
 
 {#if toneOpen}
   <div class="pc-tone-popover" style={tonePopoverStyle} on:click|stopPropagation>
