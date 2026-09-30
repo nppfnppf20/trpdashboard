@@ -8,6 +8,12 @@
 @import './lib/styles/tables.css';
 
 /* Global styles */
+html {
+  /* Scales every rem-based size (text, spacing, cards, buttons) together.
+     Fixed-px values are unaffected. */
+  font-size: 90%;
+}
+
 :root {
   --page-max-width: 1100px;
 

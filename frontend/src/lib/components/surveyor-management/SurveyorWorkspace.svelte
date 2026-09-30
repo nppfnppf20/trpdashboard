@@ -258,7 +258,10 @@
   .workspace {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    /* Scaled to 87% on top of the global 90% root size. zoom also shrinks
+       the vh-based height, so divide it back out to keep filling the screen. */
+    zoom: 0.87;
+    height: calc(100vh / 0.87);
     background: var(--color-slate-100);
   }
 

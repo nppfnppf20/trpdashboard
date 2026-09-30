@@ -450,6 +450,7 @@
           summary: a.summary,
           fullText: a.full_text,
           sourceType: a.source_type,
+          meetingNoteTitle: a.meeting_note_title,
           rowId: iss.id,
           rowTitle: iss.title,
         })))
