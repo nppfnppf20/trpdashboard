@@ -723,6 +723,50 @@ export async function listMeetingNotesForPicker(req, res) {
   }
 }
 
+// A project's issues with their sub-issues and recent actions attached, the
+// context the drafting LLM needs to decide where a note's content belongs.
+export async function loadIssuesForDrafting(projectId) {
+  const [{ rows: issues }, { rows: subIssues }, { rows: actions }] = await Promise.all([
+    pool.query(
+      `SELECT id, title, discipline
+       FROM planning_applications.progress_issues
+       WHERE project_id = $1
+       ORDER BY sort_order ASC, id ASC`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT si.issue_id, si.sub_issue_text
+       FROM planning_applications.progress_sub_issues si
+       JOIN planning_applications.progress_issues i ON i.id = si.issue_id
+       WHERE i.project_id = $1
+       ORDER BY si.sort_order ASC, si.id ASC`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT a.issue_id, a.action_date::text, a.summary
+       FROM planning_applications.progress_actions a
+       JOIN planning_applications.progress_issues i ON i.id = a.issue_id
+       WHERE i.project_id = $1
+       ORDER BY a.action_date DESC, a.id DESC`,
+      [projectId]
+    ),
+  ]);
+
+  const actionsByIssue = {};
+  for (const a of actions) {
+    (actionsByIssue[a.issue_id] ||= []).push(a);
+  }
+  const subIssuesByIssue = {};
+  for (const s of subIssues) {
+    (subIssuesByIssue[s.issue_id] ||= []).push(s);
+  }
+  return issues.map(iss => ({
+    ...iss,
+    actions: actionsByIssue[iss.id] || [],
+    sub_issues: subIssuesByIssue[iss.id] || [],
+  }));
+}
+
 export async function draftFromMeetingNotes(req, res) {
   const { projectId } = req.params;
   const { transcript_ids } = req.body;
@@ -730,52 +774,16 @@ export async function draftFromMeetingNotes(req, res) {
     return res.status(400).json({ error: 'At least one meeting note is required' });
   }
   try {
-    const [{ rows: transcripts }, { rows: issues }, { rows: subIssues }, { rows: actions }] = await Promise.all([
+    const [{ rows: transcripts }, enrichedIssues] = await Promise.all([
       pool.query(
         `SELECT id, title, meeting_date::text, transcript_text, user_notes
          FROM planning_applications.meeting_transcripts
          WHERE project_id = $1 AND id = ANY($2::int[])`,
         [projectId, transcript_ids]
       ),
-      pool.query(
-        `SELECT id, title, discipline
-         FROM planning_applications.progress_issues
-         WHERE project_id = $1
-         ORDER BY sort_order ASC, id ASC`,
-        [projectId]
-      ),
-      pool.query(
-        `SELECT si.issue_id, si.sub_issue_text
-         FROM planning_applications.progress_sub_issues si
-         JOIN planning_applications.progress_issues i ON i.id = si.issue_id
-         WHERE i.project_id = $1
-         ORDER BY si.sort_order ASC, si.id ASC`,
-        [projectId]
-      ),
-      pool.query(
-        `SELECT a.issue_id, a.action_date::text, a.summary
-         FROM planning_applications.progress_actions a
-         JOIN planning_applications.progress_issues i ON i.id = a.issue_id
-         WHERE i.project_id = $1
-         ORDER BY a.action_date DESC, a.id DESC`,
-        [projectId]
-      ),
+      loadIssuesForDrafting(projectId),
     ]);
     if (!transcripts.length) return res.status(404).json({ error: 'No matching meeting notes found' });
-
-    const actionsByIssue = {};
-    for (const a of actions) {
-      (actionsByIssue[a.issue_id] ||= []).push(a);
-    }
-    const subIssuesByIssue = {};
-    for (const s of subIssues) {
-      (subIssuesByIssue[s.issue_id] ||= []).push(s);
-    }
-    const enrichedIssues = issues.map(iss => ({
-      ...iss,
-      actions: actionsByIssue[iss.id] || [],
-      sub_issues: subIssuesByIssue[iss.id] || [],
-    }));
 
     const proposals = await draftActionsFromMeetingNotes(transcripts, enrichedIssues);
     res.json({ proposals });

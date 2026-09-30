@@ -88,6 +88,7 @@
   let reviewSaved = false;
   let reviewError = null;
   let reviewDateSuggestions = [];
+  let reviewProposals = null; // tracker proposals drafted in parallel with the summary; null = draft on demand
 
   async function submitUpload() {
     if (inputTab === 'upload' && !uploadFile) { error = 'Please select a file to upload.'; return; }
@@ -97,7 +98,7 @@
     processing = true;
     error = null;
     try {
-      let transcript, summaryHtml, dateSuggestions, otherProjectNames = [], combinedCreated = false;
+      let transcript, summaryHtml, dateSuggestions, otherProjectNames = [], combinedCreated = false, proposals = null;
 
       if (multiProject) {
         const result = await processMultiProjectNote({
@@ -133,6 +134,7 @@
         transcript = result.transcript;
         summaryHtml = result.summary?.summary_html || '';
         dateSuggestions = result.dateSuggestions || [];
+        proposals = result.proposals ?? null;
       }
 
       reviewTranscript = {
@@ -145,6 +147,7 @@
       reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
       reviewOtherProjectNames = otherProjectNames;
       reviewCombinedCreated = combinedCreated;
+      reviewProposals = proposals;
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
@@ -185,6 +188,7 @@
       reviewDateSuggestions = [];
       reviewOtherProjectNames = [];
       reviewCombinedCreated = false;
+      reviewProposals = null;
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
@@ -433,6 +437,7 @@
   {projectId}
   initialMode="meeting-notes"
   preselectedTranscriptId={reviewTranscript?.id ?? null}
+  initialProposals={reviewProposals}
   on:done={issuesModalDone}
   on:close={issuesModalClosed}
 />

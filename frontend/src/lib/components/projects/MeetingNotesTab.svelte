@@ -57,6 +57,7 @@
   let reviewDateSuggestions = []; // dates spotted in the transcript, offered alongside the Issues Tracker prompt
   let reviewOtherProjectNames = []; // set when this note came from a multi-project upload
   let reviewCombinedCreated = false; // set when a combined note was also created
+  let reviewProposals = null;  // tracker proposals drafted in parallel with the summary; null = not available, draft on demand
 
   // Note type — drives which fields/buttons show in the Add Note card.
   // Starts unselected: the user must explicitly choose one before the
@@ -475,7 +476,7 @@
     uploadProcessing = true;
     uploadError = null;
     try {
-      let newNote, dateSuggestions, otherProjectNames = [], combinedCreated = false;
+      let newNote, dateSuggestions, otherProjectNames = [], combinedCreated = false, proposals = null;
 
       if (isMultiProject) {
         const result = await processMultiProjectNote({
@@ -527,6 +528,7 @@
           summary_html: result.summary?.summary_html
         };
         dateSuggestions = result.dateSuggestions || [];
+        proposals = result.proposals ?? null;
       }
 
       notes = [newNote, ...notes];
@@ -542,6 +544,7 @@
       reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
       reviewOtherProjectNames = otherProjectNames;
       reviewCombinedCreated = combinedCreated;
+      reviewProposals = proposals;
       reviewOpen = true;
     } catch (err) {
       uploadError = err.message;
@@ -592,6 +595,7 @@
       reviewDateSuggestions = [];
       reviewOtherProjectNames = [];
       reviewCombinedCreated = false;
+      reviewProposals = null;
       reviewOpen = true;
     } catch (err) {
       uploadError = err.message;
@@ -686,6 +690,7 @@
   {projectId}
   initialMode="meeting-notes"
   preselectedTranscriptId={issuesPromptNoteId}
+  initialProposals={reviewProposals}
   on:done={() => { showDraftIssuesModal = false; issuesPromptNoteId = null; }}
   on:close={() => showDraftIssuesModal = false}
 />

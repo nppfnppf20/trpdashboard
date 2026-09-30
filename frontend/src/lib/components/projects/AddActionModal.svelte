@@ -20,6 +20,7 @@
   export let preselectedIssueId = null;   // open with one issue already ticked
   export let defaultStageInstanceId = null;
   export let initialMode = 'manual';      // 'manual' | 'meeting-notes' — which tab the modal opens on
+  export let initialProposals = null;          // meeting-notes mode: proposals already drafted (in parallel with the summary) for preselectedTranscriptId — skips the LLM call. null = draft on demand
   export let preselectedTranscriptId = null;   // meeting-notes mode: skip picking a note, draft from this one straight away
 
   const dispatch = createEventDispatcher();
@@ -353,7 +354,8 @@
     // Tracker?") — skip the picker and go straight to drafting.
     if (preselectedTranscriptId) {
       selectedNoteIds = { [preselectedTranscriptId]: true };
-      await runDraft();
+      if (initialProposals) applyProposals(initialProposals);
+      else await runDraft();
     }
     autoDrafting = false;
   }
@@ -364,8 +366,22 @@
     selectedNoteIds = { ...selectedNoteIds, [id]: !selectedNoteIds[id] };
   }
 
-  function issueTitleById(id) {
-    return mnIssues.find(iss => iss.id === id)?.title || `Issue #${id}`;
+  // `list` is passed in (rather than read from mnIssues inside) so the template
+  // re-renders the labels if the issue list finishes loading after the proposals.
+  function issueTitleById(id, list) {
+    return list.find(iss => iss.id === id)?.title || `Issue #${id}`;
+  }
+
+  function applyProposals(raw) {
+    if (!raw.length) {
+      draftError = 'Nothing relevant to the tracked issues was found in the selected notes.';
+      proposals = [];
+    } else {
+      // A date suggestion can only be accepted straight away for an
+      // existing issue — new issues/sub-issues don't have a real id to
+      // attach a key date to until after commit, so it's just shown there.
+      proposals = raw.map((p, i) => ({ ...p, _key: i, accepted: true, dsStatus: p.date_suggestion ? 'pending' : null }));
+    }
   }
 
   async function runDraft() {
@@ -375,15 +391,7 @@
     draftError = null;
     try {
       const { proposals: raw } = await draftFromMeetingNotes(projectId, ids);
-      if (!raw.length) {
-        draftError = 'Nothing relevant to the tracked issues was found in the selected notes.';
-        proposals = [];
-      } else {
-        // A date suggestion can only be accepted straight away for an
-        // existing issue — new issues/sub-issues don't have a real id to
-        // attach a key date to until after commit, so it's just shown there.
-        proposals = raw.map((p, i) => ({ ...p, _key: i, accepted: true, dsStatus: p.date_suggestion ? 'pending' : null }));
-      }
+      applyProposals(raw);
     } catch (err) {
       draftError = err.message;
     } finally {
@@ -635,10 +643,10 @@
                         <input class="proposal-title-input" bind:value={p.title} placeholder="Issue title" />
                         <input class="proposal-discipline-input" bind:value={p.discipline} placeholder="Discipline" />
                       {:else if p.kind === 'new_sub_issue'}
-                        <span class="proposal-badge new-sub-issue-badge">New sub-issue of {issueTitleById(p.issue_id)}</span>
+                        <span class="proposal-badge new-sub-issue-badge">New sub-issue of {issueTitleById(p.issue_id, mnIssues)}</span>
                         <input class="proposal-title-input" bind:value={p.sub_issue_title} placeholder="Sub-issue title" />
                       {:else}
-                        <span class="proposal-badge">{issueTitleById(p.issue_id)}</span>
+                        <span class="proposal-badge">{issueTitleById(p.issue_id, mnIssues)}</span>
                       {/if}
                     </label>
                     <textarea class="adv-summary-input proposal-summary" rows="2" bind:value={p.summary}></textarea>

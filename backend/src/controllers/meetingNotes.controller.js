@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
 import { processMeetingTranscript, processMultiProjectMeetingTranscript, extractInsights } from '../services/meeting.service.js';
+import { draftActionsFromMeetingNotes } from '../services/progressTracker.service.js';
+import { loadIssuesForDrafting } from './progressTracker.controller.js';
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -97,9 +99,26 @@ export async function processMeetingNote(req, res) {
       [projectId]
     );
 
-    const { meeting_title, meeting_date, attendees, summary_html, actions, completedActions, dateSuggestions } = await processMeetingTranscript(
-      text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null, existingOpenActions
-    );
+    // Tracker drafting only needs the raw text, not the summary, so it runs
+    // alongside the summary instead of after it. It's best-effort: a failure
+    // returns null and the client falls back to drafting on demand.
+    const PLACEHOLDER_NOTE_ID = 0; // real id doesn't exist until the transcript row is inserted below
+    const draftPromise = loadIssuesForDrafting(projectId)
+      .then(issues => draftActionsFromMeetingNotes(
+        [{ id: PLACEHOLDER_NOTE_ID, title: fileName || 'Meeting Notes', meeting_date: null, transcript_text: text, user_notes: user_notes || null }],
+        issues
+      ))
+      .catch(err => {
+        console.error('meetingNotes.processMeetingNote: parallel tracker draft failed:', err);
+        return null;
+      });
+
+    const [{ meeting_title, meeting_date, attendees, summary_html, actions, completedActions, dateSuggestions }, draftedProposals] = await Promise.all([
+      processMeetingTranscript(
+        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null, existingOpenActions
+      ),
+      draftPromise,
+    ]);
 
     const title = meeting_title
       || (fileName ? fileName.replace(/\.[^.]+$/, '') : null)
@@ -124,7 +143,13 @@ export async function processMeetingNote(req, res) {
       );
 
       await client.query('COMMIT');
-      res.status(201).json({ transcript, summary, suggestedActions: actions, completedActions, dateSuggestions });
+      // Point the drafted proposals at the real transcript now it exists.
+      const proposals = draftedProposals && draftedProposals.map(p => ({
+        ...p,
+        source_note_id: transcript.id,
+        action_date: meeting_date || p.action_date,
+      }));
+      res.status(201).json({ transcript, summary, suggestedActions: actions, completedActions, dateSuggestions, proposals });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
