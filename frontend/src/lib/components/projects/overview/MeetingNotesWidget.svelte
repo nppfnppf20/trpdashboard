@@ -138,14 +138,22 @@
 
   async function removeNote(n) {
     if (!confirm(`Delete "${n.title}"?`)) return;
+
+    // Remove it from the screen straight away rather than waiting for the
+    // server. The cache is cleaned too, or re-ticking its project would bring
+    // it back. Snapshots let us put everything back if the delete fails.
+    const previousNotes = notes;
+    const previousCache = new Map(cache);
+    for (const [id, list] of cache) cache.set(id, list.filter(x => x.id !== n.id));
+    notes = notes.filter(x => x.id !== n.id);
+    if (editingNote?.id === n.id) editingNote = null;
+    if (viewingTranscript?.id === n.id) viewingTranscript = null;
+
     try {
       await deleteMeetingNote(n.id);
-      // Drop it from the cache too, or re-ticking its project would bring it back.
-      for (const [id, list] of cache) cache.set(id, list.filter(x => x.id !== n.id));
-      notes = notes.filter(x => x.id !== n.id);
-      if (editingNote?.id === n.id) editingNote = null;
-      if (viewingTranscript?.id === n.id) viewingTranscript = null;
     } catch (err) {
+      notes = previousNotes;
+      for (const [id, list] of previousCache) cache.set(id, list);
       alert(err.message);
     }
   }
