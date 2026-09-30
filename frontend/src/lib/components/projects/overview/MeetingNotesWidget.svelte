@@ -232,7 +232,7 @@
             <button class="mnw-note-btn" on:click={() => viewNotes(n)}><i class="las la-eye"></i> View Notes</button>
             <button class="mnw-note-btn" on:click={() => viewTranscript(n)}><i class="las la-file-alt"></i> Transcript</button>
             <button class="mnw-note-btn" on:click={() => downloadNote(n)}><i class="las la-download"></i> Download</button>
-            <button class="mnw-note-btn mnw-note-btn-danger" on:click={() => removeNote(n)} title="Delete this note"><i class="las la-trash"></i> Delete</button>
+            <button class="mnw-note-btn mnw-note-btn-danger" on:click={() => removeNote(n)} title="Delete this note" aria-label="Delete this note"><i class="las la-trash"></i></button>
           </div>
         </div>
       {/each}

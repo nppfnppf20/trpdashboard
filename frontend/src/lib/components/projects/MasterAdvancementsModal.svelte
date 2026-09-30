@@ -57,7 +57,27 @@
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
 
-  $: groups = groupByDate(items);
+  // Within a date, bucket again by source so the badge shows once above its
+  // rows instead of on every row. Sections keep first-appearance order and
+  // rows keep their order inside a section. Entries with no source or kind
+  // badge fall into one unlabelled section.
+  function sourceKey(item) {
+    if (item.sourceType) return `s:${item.sourceType}:${item.sourceType === 'meeting' ? (item.meetingNoteTitle || '') : ''}`;
+    if (item.kindBadge) return `k:${item.kindBadge.label}`;
+    return 'none';
+  }
+
+  function groupBySource(list) {
+    const map = new Map();
+    for (const item of list) {
+      const key = sourceKey(item);
+      if (!map.has(key)) map.set(key, { key, first: item, items: [] });
+      map.get(key).items.push(item);
+    }
+    return [...map.values()];
+  }
+
+  $: groups = groupByDate(items).map(g => ({ ...g, sections: groupBySource(g.items) }));
 </script>
 
 {#if show}
@@ -80,38 +100,46 @@
               <div class="mam-group">
                 <div class="mam-group-header">{formatDate(group.date)}</div>
                 <div class="mam-list">
-                  {#each group.items as item (item.id)}
-                    <div class="mam-row">
-                      <div class="mam-row-head">
-                        {#if item.sourceType}
-                          <AdvancementSourceBadge sourceType={item.sourceType} meetingNoteTitle={item.meetingNoteTitle} />
-                        {:else if item.kindBadge}
-                          <span class="mam-kind-badge" title={item.kindBadge.title || ''}>
-                            {#if item.kindBadge.icon}<i class="las {item.kindBadge.icon}"></i>{/if}
-                            {item.kindBadge.label}
+                  {#each group.sections as section (section.key)}
+                    {#if section.first.sourceType || section.first.kindBadge}
+                      <div class="mam-source-head">
+                        {#if section.first.sourceType}
+                          <AdvancementSourceBadge sourceType={section.first.sourceType} meetingNoteTitle={section.first.meetingNoteTitle} />
+                        {:else}
+                          <span class="mam-kind-badge" title={section.first.kindBadge.title || ''}>
+                            {#if section.first.kindBadge.icon}<i class="las {section.first.kindBadge.icon}"></i>{/if}
+                            {section.first.kindBadge.label}
                           </span>
                         {/if}
-                        {#if item.rowTitle}
-                          <button
-                            class="mam-row-title"
-                            class:mam-row-title-static={!onJumpToRow}
-                            on:click={() => jumpTo(item.rowId)}
-                            disabled={!onJumpToRow}
-                            title={onJumpToRow ? 'Open this row\'s full timeline' : ''}
-                          >{item.rowTitle}</button>
-                        {/if}
-                        {#if item.rowSubtitle}<span class="mam-row-subtitle">{item.rowSubtitle}</span>{/if}
                       </div>
-                      <p class="mam-row-summary">{item.summary}</p>
-                      {#if item.fullText}
-                        <button class="mam-expand-btn" on:click={() => toggleExpand(item.id)}>
-                          {expandedId === item.id ? 'Hide detail' : 'Show detail'}
-                        </button>
-                        {#if expandedId === item.id}
-                          <pre class="mam-fulltext">{item.fullText}</pre>
+                    {/if}
+                    {#each section.items as item (item.id)}
+                      <div class="mam-row">
+                        {#if item.rowTitle || item.rowSubtitle}
+                          <div class="mam-row-head">
+                            {#if item.rowTitle}
+                              <button
+                                class="mam-row-title"
+                                class:mam-row-title-static={!onJumpToRow}
+                                on:click={() => jumpTo(item.rowId)}
+                                disabled={!onJumpToRow}
+                                title={onJumpToRow ? "Open this row's full timeline" : ''}
+                              >{item.rowTitle}</button>
+                            {/if}
+                            {#if item.rowSubtitle}<span class="mam-row-subtitle">{item.rowSubtitle}</span>{/if}
+                          </div>
                         {/if}
-                      {/if}
-                    </div>
+                        <p class="mam-row-summary">{item.summary}</p>
+                        {#if item.fullText}
+                          <button class="mam-expand-btn" on:click={() => toggleExpand(item.id)}>
+                            {expandedId === item.id ? 'Hide detail' : 'Show detail'}
+                          </button>
+                          {#if expandedId === item.id}
+                            <pre class="mam-fulltext">{item.fullText}</pre>
+                          {/if}
+                        {/if}
+                      </div>
+                    {/each}
                   {/each}
                 </div>
               </div>
@@ -170,6 +198,11 @@
   }
 
   .mam-list { display: flex; flex-direction: column; border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); overflow: hidden; }
+  .mam-source-head {
+    padding: 0.4rem 0.9rem; background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-100);
+  }
+  .mam-source-head :global(.asb-badge) { display: inline-flex; }
   .mam-row { padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--color-slate-100); }
   .mam-row:last-child { border-bottom: none; }
   .mam-row-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; }
