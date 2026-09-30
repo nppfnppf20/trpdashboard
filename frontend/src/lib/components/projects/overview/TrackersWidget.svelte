@@ -35,6 +35,7 @@
   import AddConsultationAdvancementModal from '$lib/components/projects/AddConsultationAdvancementModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
+  import { trackerVersion } from '$lib/stores/trackerRefresh.js';
   import AdvancementTimelineModal from './AdvancementTimelineModal.svelte';
   import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
   import DateSuggestionPopup from '$lib/components/projects/DateSuggestionPopup.svelte';
@@ -74,6 +75,14 @@
   // API's per-user rate limit in seconds).
   const cache = new Map();
   const scheduleLoad = debounce(load, 350);
+
+  // Refetch (bypassing the cache) when an advancement is saved from anywhere,
+  // e.g. the "Add to Project Tracker?" hop after saving a meeting note.
+  let seenTrackerVersion = $trackerVersion;
+  $: if ($trackerVersion !== seenTrackerVersion) {
+    seenTrackerVersion = $trackerVersion;
+    refresh();
+  }
 
   let loadedKey = null;
   $: {

@@ -5,6 +5,7 @@
   import { exportProgressPdf } from '$lib/services/progressTrackerPdfExport.js';
   import AddIssuesModal from '$lib/components/projects/AddIssuesModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
+  import { trackerVersion } from '$lib/stores/trackerRefresh.js';
   import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
   import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from '$lib/components/projects/AdvancementEntryFields.svelte';
@@ -127,6 +128,14 @@
       loading = false;
     }
     loadStages();
+  }
+
+  // Advancements saved from elsewhere (e.g. after a meeting note) while this
+  // tab is open.
+  let seenTrackerVersion = $trackerVersion;
+  $: if ($trackerVersion !== seenTrackerVersion) {
+    seenTrackerVersion = $trackerVersion;
+    refreshData();
   }
 
   async function refreshData() {

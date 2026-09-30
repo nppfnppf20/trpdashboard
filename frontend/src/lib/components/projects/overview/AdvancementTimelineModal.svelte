@@ -343,7 +343,12 @@
   }
   .atm-close-btn:hover { color: var(--color-slate-800); }
 
-  .atm-body { flex: 1; overflow-y: auto; padding: 1.1rem 1.4rem; display: flex; flex-direction: column; gap: 1rem; }
+  /* min-height: 0 lets this flex child shrink below its content height so it
+     scrolls instead of being clipped by .atm-modal's overflow: hidden. Its
+     children must not shrink either, or the (overflow: hidden) list gets
+     squashed rather than the body scrolling. */
+  .atm-body { flex: 1; min-height: 0; overflow-y: auto; padding: 1.1rem 1.4rem; display: flex; flex-direction: column; gap: 1rem; }
+  .atm-body > :global(*) { flex-shrink: 0; }
 
   .atm-keydates { border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.65rem 0.75rem; background: var(--color-slate-50); }
   .atm-keydates-hd { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }

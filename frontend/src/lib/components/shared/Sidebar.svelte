@@ -22,12 +22,20 @@
     { href: '/team', label: 'Team', icon: 'la-users' },
     { href: '/policy', label: 'Policy & Industry Updates', icon: 'la-newspaper' },
     { href: '/meeting-notes', label: 'Meeting Notes', icon: 'la-file-signature' },
-    { href: '/appeal-search', label: 'Appeal Precedent Search', icon: 'la-gavel', beta: true },
-    { href: '/tenders', label: 'Tenders', icon: 'la-landmark', beta: true },
-    { href: '/marketing', label: 'Marketing', icon: 'la-bullhorn', beta: true },
-    { href: '/webscraper', label: 'Web Scraper Data', icon: 'la-database' },
+    { href: '/webscraper', label: 'Web Scraper Data', icon: 'la-database' }
+  ];
+  // Global pages still being built, tucked into a collapsed folder.
+  const underConstructionItems = [
+    { href: '/appeal-search', label: 'Appeal Precedent Search', icon: 'la-gavel' },
+    { href: '/tenders', label: 'Tenders', icon: 'la-landmark' },
+    { href: '/marketing', label: 'Marketing', icon: 'la-bullhorn' },
     { href: '/socioeconomics', label: 'Socioeconomics', icon: 'la-chart-bar' }
   ];
+  let underConstructionOpen = false;
+  // Keep the folder open when you're on one of its pages.
+  $: if ($mainView === null && underConstructionItems.some(i => $page.url.pathname.startsWith(i.href))) {
+    underConstructionOpen = true;
+  }
   const adminNavItem = { href: '/admin-console', label: 'Admin Console', icon: 'la-cog' };
 
   const overviewItem = { label: 'Overview', icon: 'la-info-circle', tab: 'details' };
@@ -259,9 +267,22 @@
       <a href={item.href} class="nav-item" class:active={$mainView === null && ($page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href)))} on:click={goToGlobalPage}>
         <i class="las {item.icon}"></i>
         <span>{item.label}</span>
-        {#if item.beta}<span class="beta-tag">BETA</span>{/if}
       </a>
     {/each}
+
+    <button class="beta-toggle" on:click={() => underConstructionOpen = !underConstructionOpen}>
+      <i class="las la-hard-hat"></i>
+      <span>Under Construction</span>
+      <i class="las la-angle-down beta-caret {underConstructionOpen ? 'open' : ''}"></i>
+    </button>
+    {#if underConstructionOpen}
+      {#each underConstructionItems as item}
+        <a href={item.href} class="nav-item" class:active={$mainView === null && $page.url.pathname.startsWith(item.href)} on:click={goToGlobalPage}>
+          <i class="las {item.icon}"></i>
+          <span>{item.label}</span>
+        </a>
+      {/each}
+    {/if}
 
     <div class="divider"></div>
     <a href={adminNavItem.href} class="nav-item" class:active={$mainView === null && $page.url.pathname.startsWith(adminNavItem.href)} on:click={goToGlobalPage}>
@@ -419,17 +440,6 @@
 
   .beta-caret.open {
     transform: rotate(180deg);
-  }
-
-  .beta-tag {
-    margin-left: var(--space-1);
-    font-size: 0.5625rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: var(--color-amber-800);
-    background: var(--color-amber-100);
-    border-radius: 4px;
-    padding: 2px 5px;
   }
 
   .divider {

@@ -216,6 +216,7 @@
                 <i class="las la-sort-{sortDirection === 'asc' ? 'up' : 'down'}"></i>
               {/if}
             </th>
+            <th class="actions-column">Actions</th>
             <th on:click={() => sortTable('client')} class:sorted={sortColumn === 'client'}>
               Client
               {#if sortColumn === 'client'}
@@ -333,7 +334,6 @@
               {/if}
             </th>
             <th>Comments</th>
-            <th class="actions-column">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -341,6 +341,22 @@
             <tr>
               <td class="project-id">{project.project_id || '-'}</td>
               <td class="project-name">{project.project_name}</td>
+              <td class="actions-cell">
+                <button
+                  class="action-btn edit-btn"
+                  title="Edit project"
+                  on:click|stopPropagation={() => openSharedEditModal(project.id)}
+                >
+                  <i class="las la-edit"></i>
+                </button>
+                <button
+                  class="action-btn delete-btn"
+                  title="Delete project"
+                  on:click|stopPropagation={() => deleteProject(project.id, project.project_name)}
+                >
+                  <i class="las la-trash"></i>
+                </button>
+              </td>
               <td>{project.client || '-'}</td>
               <td class="lpa-cell" title={project.local_planning_authority?.join(', ') || '-'}>
                 {formatLPA(project.local_planning_authority)}
@@ -372,22 +388,6 @@
               <td class="date-cell">{formatDate(project.eot_date)}</td>
               <td class="date-cell">{formatDate(project.six_months_appeal_window_date)}</td>
               <td class="comments-cell">{project.comments || '-'}</td>
-              <td class="actions-cell">
-                <button
-                  class="action-btn edit-btn"
-                  title="Edit project"
-                  on:click|stopPropagation={() => openSharedEditModal(project.id)}
-                >
-                  <i class="las la-edit"></i>
-                </button>
-                <button
-                  class="action-btn delete-btn"
-                  title="Delete project"
-                  on:click|stopPropagation={() => deleteProject(project.id, project.project_name)}
-                >
-                  <i class="las la-trash"></i>
-                </button>
-              </td>
             </tr>
           {/each}
         </tbody>

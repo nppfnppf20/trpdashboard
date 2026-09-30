@@ -12,6 +12,7 @@
   import VoiceDictationButton from './VoiceDictationButton.svelte';
   import DateSuggestionPopup from './DateSuggestionPopup.svelte';
   import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
+  import { bumpTrackerVersion } from '$lib/stores/trackerRefresh.js';
 
   export let show = false;
   export let projectId;
@@ -218,6 +219,7 @@
         items,
       });
       dispatch('done', { rows });
+      bumpTrackerVersion();
       saving = false;
       const capturedFullText = fullText;
       close();
@@ -319,10 +321,15 @@
   let mnIssues = [];
   let mnIssuesLoaded = false;
 
+  // True from the moment a preselected note opens this mode until its draft
+  // finishes, so the note picker never flashes up before the loader.
+  let autoDrafting = false;
+
   async function enterMeetingNotesMode() {
     mode = 'meeting-notes';
     proposals = [];
     draftError = null;
+    autoDrafting = !!preselectedTranscriptId;
     if (issues.length) {
       mnIssues = issues;
     } else if (!mnIssuesLoaded) {
@@ -348,6 +355,7 @@
       selectedNoteIds = { [preselectedTranscriptId]: true };
       await runDraft();
     }
+    autoDrafting = false;
   }
 
   $: selectedNoteCount = Object.values(selectedNoteIds).filter(Boolean).length;
@@ -416,6 +424,7 @@
         }),
       });
       dispatch('done', { issues: result.issues, subIssues: result.sub_issues, rows: result.actions });
+      bumpTrackerVersion();
       committing = false;
       close();
     } catch (err) {
@@ -437,7 +446,16 @@
   }
 </script>
 
-{#if show}
+{#if show && autoDrafting && !proposals.length}
+  <!-- Opened straight from a just-saved note: show only a loader over the
+       previous modal, not this one, until the draft is ready. -->
+  <div class="adv-backdrop" role="presentation">
+    <div class="drafting-card">
+      <div class="spinner"></div>
+      <p>Drafting tracker updates from your meeting note…</p>
+    </div>
+  </div>
+{:else if show}
   <div class="adv-backdrop" on:click|self={close} role="presentation">
     <div class="adv-modal">
       <div class="adv-header">
@@ -580,7 +598,12 @@
       {:else}
         <!-- Meeting notes mode -->
         <div class="adv-body">
-          {#if !proposals.length}
+          {#if !proposals.length && drafting}
+            <div class="drafting-loader">
+              <div class="spinner"></div>
+              <p>Drafting tracker updates from your meeting note…</p>
+            </div>
+          {:else if !proposals.length}
             <div class="field">
               <label>Meeting notes <span class="label-hint">tick one or more saved meeting notes to draft from</span></label>
               {#if notesLoading}
@@ -657,10 +680,8 @@
               <button class="btn-save" on:click={commitAccepted} disabled={committing}>
                 {committing ? 'Saving…' : 'Save Accepted'}
               </button>
-            {:else}
-              <button class="btn-save" on:click={runDraft} disabled={drafting || notesLoading}>
-                {drafting ? 'Drafting…' : 'Draft Proposals'}
-              </button>
+            {:else if !drafting && !autoDrafting}
+              <button class="btn-save" on:click={runDraft} disabled={notesLoading}>Draft Proposals</button>
             {/if}
           </div>
         </div>
@@ -679,6 +700,30 @@
 />
 
 <style>
+  .drafting-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    color: var(--color-slate-600);
+  }
+  .drafting-loader p { margin: 0; font-size: 0.875rem; }
+  .drafting-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    /* Same footprint as the modals it sits on top of, so nothing shows behind it */
+    width: 95%;
+    max-width: 800px;
+    height: 90vh;
+    background: var(--color-white);
+    border-radius: 12px;
+    box-shadow: var(--shadow-modal);
+    color: var(--color-slate-600);
+  }
+  .drafting-card p { margin: 0; font-size: 0.875rem; }
   .adv-backdrop {
     position: fixed;
     inset: 0;

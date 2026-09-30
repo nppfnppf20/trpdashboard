@@ -318,6 +318,15 @@ Return your response using EXACTLY this XML structure — one <PROPOSAL> block p
 </DATE_SUGGESTION>
 </PROPOSAL>`;
 
+// Belt and braces for the "no dashes" prompt rule: spaced en/em dashes become
+// a comma, unspaced ones (ranges like 9–5) become a hyphen.
+function stripDashes(str) {
+  if (!str) return str;
+  return str.replace(/\s+[–—]\s+/g, ', ').replace(/[–—]/g, '-');
+}
+
+const NO_DASHES_RULE = `\n\nDo not use en dashes (–) or em dashes (—) anywhere in your output. Use a comma, colon or full stop instead, and a plain hyphen (-) for ranges.`;
+
 export async function draftActionsFromMeetingNotes(transcripts, issues) {
   const noteBlocks = transcripts.map(t => `MEETING NOTE (id: ${t.id})
 Title: ${t.title}
@@ -356,7 +365,7 @@ TRACKED ISSUES:
 
 ${issueBlocks}`;
 
-  const raw = await callClaude(MEETING_DRAFT_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK, content, undefined, 8000);
+  const raw = await callClaude(MEETING_DRAFT_SYSTEM_PROMPT + ANTI_AI_SLOP_BLOCK + NO_DASHES_RULE, content, undefined, 8000);
 
   const blocks = raw.match(/<PROPOSAL>[\s\S]*?<\/PROPOSAL>/gi) || [];
   if (!blocks.length) {
@@ -373,19 +382,20 @@ ${issueBlocks}`;
     .map(block => {
       const kind = extractTag(block, 'KIND');
       const sourceNoteId = parseInt(extractTag(block, 'SOURCE_NOTE_ID'), 10);
-      const summary = extractTag(block, 'SUMMARY');
+      const summary = stripDashes(extractTag(block, 'SUMMARY'));
+      const dateSuggestion = extractDateSuggestion(block);
       const base = {
         summary,
         source_note_id: Number.isFinite(sourceNoteId) ? sourceNoteId : null,
         action_date: dateByNoteId[sourceNoteId] || new Date().toISOString().slice(0, 10),
-        date_suggestion: extractDateSuggestion(block),
+        date_suggestion: dateSuggestion && { ...dateSuggestion, title: stripDashes(dateSuggestion.title) },
       };
       if (kind === 'new_issue') {
         return {
           ...base,
           kind: 'new_issue',
-          title: extractTag(block, 'TITLE'),
-          discipline: extractTag(block, 'DISCIPLINE'),
+          title: stripDashes(extractTag(block, 'TITLE')),
+          discipline: stripDashes(extractTag(block, 'DISCIPLINE')),
         };
       }
       const issueId = parseInt(extractTag(block, 'ISSUE_ID'), 10);
@@ -394,7 +404,7 @@ ${issueBlocks}`;
           ...base,
           kind: 'new_sub_issue',
           issue_id: Number.isFinite(issueId) ? issueId : null,
-          sub_issue_title: extractTag(block, 'SUB_ISSUE_TITLE'),
+          sub_issue_title: stripDashes(extractTag(block, 'SUB_ISSUE_TITLE')),
         };
       }
       return {
