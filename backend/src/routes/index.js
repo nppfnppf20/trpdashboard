@@ -60,6 +60,7 @@ import publicCommentsRoutes from './public_comments.routes.js';
 import marketingRoutes from './marketing.routes.js';
 import policyUpdatesRoutes from './policyUpdates.routes.js';
 import nppfPoliciesRoutes from './nppfPolicies.routes.js';
+import slideshowRoutes from './slideshow.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -182,6 +183,9 @@ router.use('/api/project-chat', projectChatRoutes);
 router.use('/api/cross-project-chat', crossProjectChatRoutes);
 router.use('/api/lpa', planningHistoryRoutes);
 router.use('/api/lpa', policyDocumentsRoutes);
+
+// Slideshow generation from briefing/meeting notes (.pptx)
+router.use('/api/slideshows', slideshowRoutes);
 
 // Marketing tool
 router.use('/api/marketing', marketingRoutes);

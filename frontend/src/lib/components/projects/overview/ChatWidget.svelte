@@ -8,11 +8,14 @@
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
   import FeeQuoteSuggestionCard from '$lib/components/projects/FeeQuoteSuggestionCard.svelte';
   import DraftFromBriefingFlow from '$lib/components/surveyor-briefings/DraftFromBriefingFlow.svelte';
+  import SlideshowSuggestionCard from '$lib/components/projects/SlideshowSuggestionCard.svelte';
+  import CreateSlideshowModal from '$lib/components/projects/CreateSlideshowModal.svelte';
 
   export let project;
   export let onAcceptDateSuggestion = null; // async (field, date) => boolean
   $: projectId = project?.id;
 
+  let slideshowModal; // bind:this - Create Slideshow modal, opened by the slideshow suggestion card
   let draftFlow; // bind:this — Draft from Briefing Note flow, opened by the fee quote suggestion card
 
   const CONTEXT_BUDGET = 200000;
@@ -321,6 +324,8 @@
             {#each m.suggestions ?? [] as suggestion}
               {#if suggestion.kind === 'fee_quote_request'}
                 <FeeQuoteSuggestionCard {suggestion} onStart={() => draftFlow?.open()} compact />
+              {:else if suggestion.kind === 'slideshow'}
+                <SlideshowSuggestionCard {suggestion} onStart={() => slideshowModal?.open({ guidance: suggestion.guidance })} compact />
               {:else}
                 <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} compact />
               {/if}
@@ -355,6 +360,7 @@
 </div>
 
 <DraftFromBriefingFlow bind:this={draftFlow} projectUniqueId={project?.unique_id} />
+<CreateSlideshowModal bind:this={slideshowModal} projectUniqueId={project?.unique_id} />
 
 {#if sourcesOpen}
   <div class="cw-sources-popover" style={popoverStyle} on:click|stopPropagation>

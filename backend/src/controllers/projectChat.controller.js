@@ -67,6 +67,20 @@ const suggestFeeQuoteRequestsTool = {
   },
 };
 
+// Offers a button that opens the "Create slideshow" modal. The deck itself is
+// built by the slideshow service from the notes the user ticks in that modal.
+const suggestSlideshowTool = {
+  name: 'suggest_slideshow',
+  description: "Offer the user a button to create a PowerPoint slideshow from one or more of this project's briefing or meeting notes. Call this whenever the user asks you to make, create, build or draft a slideshow, slide deck, presentation or PowerPoint. Do not write the slides yourself - the button opens a form where the user picks the notes and confirms what they want.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      guidance: { type: 'string', description: "The user's own wording about what the deck should cover, audience, length or tone, passed through to pre-fill the form. Omit if they gave none." },
+    },
+    required: [],
+  },
+};
+
 const toISODate = d => {
   if (!d) return null;
   const dt = new Date(d);
@@ -155,7 +169,9 @@ ${sourceBlocks}`
       + (includeDateTool
         ? `\n\nYou additionally have a suggest_project_date tool available. Call it when — and only when — a source or the user explicitly states a specific new date for one of this project's tracked date fields, and it differs from the value already shown for that field above. Do not call it speculatively, for approximate dates, or for a date that matches what is already recorded. Always still produce your normal text reply regardless of whether you call the tool.`
         : '')
-      + `\n\nYou also have a suggest_fee_quote_requests tool. If the user asks you to draft, prepare or send fee quote requests to surveyors, call it and keep your text reply to one or two sentences saying a button below will start the guided draft flow (where they choose a briefing or meeting note). Do not draft the request emails in the reply, and do not add a citations block for this reply.`
+      + `\n\nYou also have a suggest_fee_quote_requests tool. If the user asks you to draft, prepare or send fee quote requests to surveyors, call it and keep your text reply to one or two sentences saying a button below will start the guided draft flow (where they choose a briefing or meeting note). Do not draft the request emails in the reply, and do not add a citations block for this reply.
+
+You also have a suggest_slideshow tool. If the user asks you to make a slideshow, slide deck, presentation or PowerPoint, call it and keep your text reply to one or two sentences saying a button below will open the form where they choose the notes and confirm the guidance. Do not write the slides in the reply, and do not add a citations block for this reply.`
       + emailToneInstructions(emailTone)
       + ANTI_AI_SLOP_BLOCK;
 
@@ -164,7 +180,7 @@ ${sourceBlocks}`
       max_tokens: 4096,
       system: systemPrompt,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
-      tools: [...(includeDateTool ? [suggestProjectDateTool] : []), suggestFeeQuoteRequestsTool],
+      tools: [...(includeDateTool ? [suggestProjectDateTool] : []), suggestFeeQuoteRequestsTool, suggestSlideshowTool],
     });
 
     const textBlock = response.content.find(b => b.type === 'text');
@@ -178,6 +194,8 @@ ${sourceBlocks}`
     const currentDates = Object.fromEntries(PROJECT_DATE_FIELDS.map(f => [f.column, toISODate(projectRows[0][f.column])]));
 
     const feeQuoteCall = response.content.find(b => b.type === 'tool_use' && b.name === 'suggest_fee_quote_requests');
+
+    const slideshowCall = response.content.find(b => b.type === 'tool_use' && b.name === 'suggest_slideshow');
 
     const dateSuggestions = response.content
       .filter(b => b.type === 'tool_use' && b.name === 'suggest_project_date')
@@ -196,10 +214,11 @@ ${sourceBlocks}`
     const suggestions = [
       ...dateSuggestions,
       ...(feeQuoteCall ? [{ kind: 'fee_quote_request', reason: feeQuoteCall.input?.reason || null }] : []),
+      ...(slideshowCall ? [{ kind: 'slideshow', guidance: slideshowCall.input?.guidance || '' }] : []),
     ];
 
     res.json({
-      reply: reply || (feeQuoteCall ? 'Use the button below to start drafting the fee quote requests.' : reply),
+      reply: reply || (feeQuoteCall ? 'Use the button below to start drafting the fee quote requests.' : slideshowCall ? 'Use the button below to set up the slideshow.' : reply),
       citations,
       sources_used: [...new Set(citations.map(c => c.source_id))],
       context_chars: totalChars,
