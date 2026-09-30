@@ -98,8 +98,11 @@
     }
   }
 
-  async function load() {
-    loading = true;
+  // `quiet` keeps the current rows on screen while refetching (no spinner) —
+  // used after a mutation, where the list is already showing and just needs
+  // the fresh data swapped in.
+  async function load({ quiet = false } = {}) {
+    if (!quiet) loading = true;
     error = null;
     try {
       const missing = projectList.filter(p => !cache.has(p.id));
@@ -138,7 +141,7 @@
   // silently keep showing the pre-mutation cached data.
   function refresh() {
     for (const p of projectList) cache.delete(p.id);
-    return load();
+    return load({ quiet: true });
   }
 
   // Default to whichever tracker has the most information for this project —
@@ -343,7 +346,6 @@
 
   function closeTimeline() {
     timelineRow = null;
-    refresh();
   }
 
   // responses/conditions/issues are passed in explicitly (rather than just
