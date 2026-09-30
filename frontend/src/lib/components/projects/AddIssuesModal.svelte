@@ -18,7 +18,7 @@
 
   // Seed rows whenever the modal opens
   $: if (show && bulkRows.length === 0) {
-    bulkRows = Array.from({ length: 3 }, emptyRow);
+    bulkRows = [emptyRow()];
   }
 
   function closeBulkModal() {

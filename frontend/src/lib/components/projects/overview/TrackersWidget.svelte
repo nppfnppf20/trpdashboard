@@ -35,6 +35,7 @@
   import AddConsultationAdvancementModal from '$lib/components/projects/AddConsultationAdvancementModal.svelte';
   import AddAdvancementModal from '$lib/components/projects/AddAdvancementModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
+  import AddIssuesModal from '$lib/components/projects/AddIssuesModal.svelte';
   import { trackerVersion } from '$lib/stores/trackerRefresh.js';
   import AdvancementTimelineModal from './AdvancementTimelineModal.svelte';
   import MasterAdvancementsModal from '$lib/components/projects/MasterAdvancementsModal.svelte';
@@ -306,6 +307,7 @@
 
   // ── Bulk "Add Advancement" modal ──────────────────────────────────────────
   let showBulkAdd = false;
+  let showAddIssue = false; // "+" under the Issues list — creates a new issue row
   let bulkPreselectId = null;
 
   function openBulkAdd(preselectId = null) {
@@ -641,10 +643,25 @@
         </div>
       {/each}
     {/if}
+
+    {#if !merged && activeType === 'progress' && !loading && !error}
+      <div class="tr-add-row">
+        <button class="tr-add-issue-btn" on:click={() => showAddIssue = true}>
+          <i class="las la-plus-circle"></i> Add Issue
+        </button>
+      </div>
+    {/if}
   </div>
 </div>
 
 {#if !merged}
+  <AddIssuesModal
+    bind:show={showAddIssue}
+    {projectId}
+    on:done={handleBulkDone}
+    on:close={() => showAddIssue = false}
+  />
+
   {#if activeType === 'consultation'}
     <AddConsultationAdvancementModal
       bind:show={showBulkAdd}
@@ -774,6 +791,26 @@
     border: 1px dashed var(--color-slate-300); background: none; border-radius: 50%;
     font-size: 11px; color: var(--color-slate-500); cursor: pointer; padding: 0;
   }
+  .tr-add-row { padding: 8px 4px 2px; }
+  /* Same look as the Add Row button in the Add Issues modal */
+  .tr-add-issue-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.6rem 1.25rem;
+    border: 2px dashed var(--color-sky-200);
+    background: var(--color-white);
+    color: var(--color-primary-600);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .tr-add-issue-btn:hover { background: var(--color-primary-50); border-color: var(--color-primary-600); }
+  .tr-add-issue-btn i { font-size: 1.1rem; }
   .add-icon-btn:hover { background: var(--color-slate-50); color: var(--color-slate-700); }
 
   .mini-spinner {

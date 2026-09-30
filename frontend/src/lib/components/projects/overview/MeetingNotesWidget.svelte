@@ -1,6 +1,6 @@
 <script>
   import { goto } from '$app/navigation';
-  import { getMeetingNotes } from '$lib/api/meetingNotes.js';
+  import { getMeetingNotes, deleteMeetingNote } from '$lib/api/meetingNotes.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
@@ -60,14 +60,13 @@
       if (missing.length) {
         const fetched = await Promise.all(missing.map(async (p) => {
           const all = await getMeetingNotes(p.id);
-          // Sorted by created_at (when it was actually added), not
-          // meeting_date — a note with a future meeting_date (e.g. an
-          // upcoming committee date) would otherwise always outrank
-          // something just saved today, making "recent" not actually
-          // show what's recent.
+          // All notes, newest first, sorted by created_at (when it was
+          // actually added), not meeting_date — a note with a future
+          // meeting_date (e.g. an upcoming committee date) would otherwise
+          // always outrank something just saved today. The card keeps a fixed
+          // height and scrolls.
           const recent = [...(all || [])]
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-            .slice(0, 2)
             .map(n => ({ ...n, _project: p }));
           return [p.id, recent];
         }));
@@ -135,6 +134,20 @@
     const metaLine = [dateStr, n.attendees_text].filter(Boolean).join(' · ');
     const html = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${n.summary_html || '<p>No summary available.</p>'}`;
     await exportHtmlToWord(html, buildExportFilename(n._project || project, `${title}${dateStr ? ` ${dateStr}` : ''}`), '/basicdocument.docx');
+  }
+
+  async function removeNote(n) {
+    if (!confirm(`Delete "${n.title}"?`)) return;
+    try {
+      await deleteMeetingNote(n.id);
+      // Drop it from the cache too, or re-ticking its project would bring it back.
+      for (const [id, list] of cache) cache.set(id, list.filter(x => x.id !== n.id));
+      notes = notes.filter(x => x.id !== n.id);
+      if (editingNote?.id === n.id) editingNote = null;
+      if (viewingTranscript?.id === n.id) viewingTranscript = null;
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   function formatDate(d) {
@@ -211,6 +224,7 @@
             <button class="mnw-note-btn" on:click={() => viewNotes(n)}><i class="las la-eye"></i> View Notes</button>
             <button class="mnw-note-btn" on:click={() => viewTranscript(n)}><i class="las la-file-alt"></i> Transcript</button>
             <button class="mnw-note-btn" on:click={() => downloadNote(n)}><i class="las la-download"></i> Download</button>
+            <button class="mnw-note-btn mnw-note-btn-danger" on:click={() => removeNote(n)} title="Delete this note"><i class="las la-trash"></i> Delete</button>
           </div>
         </div>
       {/each}
@@ -239,6 +253,8 @@
 
 <style>
   .mnw-body { display: flex; flex-direction: column; gap: 8px; }
+  /* The list scrolls inside the fixed-height card, so rows must not shrink to fit. */
+  .mnw-body > :global(*) { flex-shrink: 0; }
   .mnw-project-tag { margin-left: 6px; }
 
   .mnw-input-tabs { display: flex; gap: 5px; }
@@ -292,4 +308,5 @@
     cursor: pointer; font-family: inherit;
   }
   .mnw-note-btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+  .mnw-note-btn-danger:hover { background: var(--color-red-50); color: var(--color-red-600); border-color: var(--color-red-200); }
 </style>
