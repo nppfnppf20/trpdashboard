@@ -325,6 +325,8 @@
   // True from the moment a preselected note opens this mode until its draft
   // finishes, so the note picker never flashes up before the loader.
   let autoDrafting = false;
+  // Opened straight from a just-saved meeting note, not from the tracker itself.
+  $: fromNote = initialMode === 'meeting-notes' && !!preselectedTranscriptId;
 
   async function enterMeetingNotesMode() {
     mode = 'meeting-notes';
@@ -483,10 +485,13 @@
   <div class="adv-backdrop" on:click|self={close} role="presentation">
     <div class="adv-modal">
       <div class="adv-header">
-        <h3>Add Advancement</h3>
+        <h3>{fromNote ? 'Proposed tracker updates' : 'Add Advancement'}</h3>
         <button class="adv-close-btn" on:click={close}>&times;</button>
       </div>
 
+      <!-- Manual/Draft tabs and the stage picker only apply when adding an
+           advancement directly in the tracker, not when opened from a note. -->
+      {#if !fromNote}
       <div class="mode-tabs">
         <button class="mode-tab" class:active={mode === 'manual'} on:click={() => mode = 'manual'}>
           <i class="las la-pen"></i> Manual
@@ -518,6 +523,8 @@
           <button class="stage-add-toggle" on:click={() => showAddStage = true}><i class="las la-plus"></i> New stage</button>
         {/if}
       </div>
+
+      {/if}
 
       {#if mode === 'manual'}
         <div class="adv-body">
@@ -700,7 +707,9 @@
           <div class="adv-footer-actions">
             <button class="btn-cancel" on:click={close} disabled={drafting || committing}>Cancel</button>
             {#if proposals.length}
-              <button class="btn-cancel" on:click={() => { proposals = []; }} disabled={committing}>Back</button>
+              {#if !fromNote}
+                <button class="btn-cancel" on:click={() => { proposals = []; }} disabled={committing}>Back</button>
+              {/if}
               <button class="btn-save" on:click={commitAccepted} disabled={committing}>
                 {committing ? 'Saving…' : 'Save Accepted'}
               </button>
