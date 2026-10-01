@@ -5,15 +5,6 @@ import { sendEmail, sendBatch } from '../services/emailService.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
 import { getLookupOptions } from '../services/lookups.service.js';
 import { CONTEXT_BUDGET } from '../services/projectChat.service.js';
-import { resolvePrimaryNoteHtml } from '../services/briefingSelection.service.js';
-
-// Default when nothing is ticked in the source picker: the latest note of
-// either kind (Briefing Note or project Meeting Note). projectUniqueId is the
-// public.projects.unique_id these routes are addressed by.
-async function latestNoteHtmlForUniqueId(projectUniqueId) {
-  const { rows } = await pool.query(`SELECT id FROM public.projects WHERE unique_id = $1`, [projectUniqueId]);
-  return rows[0] ? resolvePrimaryNoteHtml(rows[0].id) : null;
-}
 
 /**
  * GET /api/admin-console/quote-request-templates
@@ -202,18 +193,15 @@ export async function deleteSentRequest(req, res) {
  */
 export async function analyseDisciplines(req, res) {
   const { projectId } = req.params;
-  const { sources = [], development_type: developmentType = null } = req.body;
+  const { sources = [], development_type: developmentType = null, guidance = '' } = req.body;
   try {
-    let briefingText;
-    if (sources.length > 0) {
-      briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
-    } else {
-      // Default entry point (nothing ticked in the picker): latest note
-      briefingText = await latestNoteHtmlForUniqueId(projectId);
+    if (!sources.length) {
+      return res.status(400).json({ error: 'Select at least one meeting note or doc to draft from.' });
     }
+    const briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
 
     if (!briefingText) {
-      return res.status(404).json({ error: 'No notes found for this project. Add a meeting note first.' });
+      return res.status(404).json({ error: 'The selected notes could not be found or are empty.' });
     }
     if (briefingText.length > CONTEXT_BUDGET) {
       const pct = Math.round(briefingText.length / CONTEXT_BUDGET * 100);
@@ -233,7 +221,7 @@ export async function analyseDisciplines(req, res) {
       ...templates.filter(t => t.discipline).map(t => t.discipline)
     ])];
 
-    const disciplineSuggestions = await analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief);
+    const disciplineSuggestions = await analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief, typeof guidance === 'string' ? guidance : '');
 
     const generalTemplate = templates.find(t => t.discipline === null) ?? null;
 
@@ -358,15 +346,13 @@ export async function suggestEmailEditsForDiscipline(req, res) {
   }
 
   try {
-    let briefingText;
-    if (sources.length > 0) {
-      briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
-    } else {
-      briefingText = await latestNoteHtmlForUniqueId(projectId);
+    if (!sources.length) {
+      return res.status(400).json({ error: 'Select at least one meeting note or doc to draft from.' });
     }
+    const briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
 
     if (!briefingText) {
-      return res.status(404).json({ error: 'No notes found for this project' });
+      return res.status(404).json({ error: 'The selected notes could not be found or are empty.' });
     }
     if (briefingText.length > CONTEXT_BUDGET) {
       const pct = Math.round(briefingText.length / CONTEXT_BUDGET * 100);

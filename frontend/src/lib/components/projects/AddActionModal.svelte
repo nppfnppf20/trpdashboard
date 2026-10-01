@@ -478,7 +478,7 @@
   <div class="adv-backdrop" role="presentation">
     <div class="drafting-card">
       <div class="spinner"></div>
-      <p>Drafting tracker updates from your meeting note…</p>
+      <p>Drafting tracker updates…</p>
     </div>
   </div>
 {:else if show}
@@ -632,7 +632,7 @@
           {#if !proposals.length && drafting}
             <div class="drafting-loader">
               <div class="spinner"></div>
-              <p>Drafting tracker updates from your meeting note…</p>
+              <p>Drafting tracker updates…</p>
             </div>
           {:else if !proposals.length}
             <div class="field">

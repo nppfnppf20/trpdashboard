@@ -7,6 +7,7 @@
   export let show = false;
   export let projectId;
   export let developmentType = null;
+  export let guidance = '';
   export let sources = [];
 
   const dispatch = createEventDispatcher();
@@ -47,7 +48,7 @@
     selectedSurveyors = {};
     try {
       const [{ suggestions: result }, templates, disciplineOptions] = await Promise.all([
-        analyseDisciplines(projectId, { sources, developmentType }),
+        analyseDisciplines(projectId, { sources, developmentType, guidance }),
         getTemplates(),
         getLookupOptions('surveyor_disciplines')
       ]);
@@ -196,7 +197,7 @@
       <div class="modal-header">
         <div class="header-left">
           <i class="las la-magic"></i>
-          <h2>Draft from Briefing Note</h2>
+          <h2>Draft Fee Quote Request</h2>
         </div>
         <button class="close-btn" on:click={handleClose}>
           <i class="las la-times"></i>
@@ -207,7 +208,7 @@
         {#if loading}
           <div class="loading-state">
             <div class="spinner"></div>
-            <p>Analysing briefing note and identifying required disciplines…</p>
+            <p>{guidance ? 'Reading your notes and instructions to pick disciplines…' : 'Analysing notes and identifying required disciplines…'}</p>
           </div>
 
         {:else if error}
@@ -220,12 +221,12 @@
         {:else if suggestions.length === 0}
           <div class="empty-state">
             <i class="las la-search"></i>
-            <p>No disciplines identified from the briefing note. Make sure a briefing note has been uploaded for this project.</p>
+            <p>No disciplines identified from the selected notes{guidance ? ' and your instructions' : ''}. Make sure a note or doc has been added to this project.</p>
           </div>
 
         {:else}
           <p class="intro-text">
-            The following disciplines were identified from the project briefing note.
+            {guidance ? 'The following disciplines were chosen from your instructions and the selected notes.' : 'The following disciplines were identified from the selected notes.'}
             Review the suggested surveyors and accept or skip each discipline.
           </p>
 

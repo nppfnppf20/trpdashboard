@@ -21,13 +21,14 @@
   let draftDevelopmentType = null;
   let selectedTemplate = null;
 
-  // Source picker — nothing ticked = fall back to the latest briefing note,
-  // matching the previous single-select default.
+  // Source picker — at least one note/doc must be ticked (no latest-note fallback)
   let sourcePicker; // bind:this — used to reset ticks when the setup modal reopens
   let setupSources = []; // [{ type, id, full }] — bound from NoteSourcePicker
   let setupOverBudget = false;
   let selectedSources = []; // [{ type, id, full }] — confirmed selection, threaded to DraftBriefingsModal/BriefingEditor
-  let setupDevType = null;
+  let setupDevType = null; // dropdown is disabled ("coming soon"), so this stays null for now
+  let setupGuidance = '';
+  let draftGuidance = ''; // confirmed instructions, threaded to DraftBriefingsModal
 
   // Development types with a guiding brief already set up for surveyor briefings —
   // drives the setup modal's dropdown instead of a hardcoded list
@@ -51,12 +52,14 @@
   export function open() {
     sourcePicker?.reset();
     setupDevType = null;
+    setupGuidance = '';
     showDraftSetupModal = true;
   }
 
   function confirmDraftSetup() {
     selectedSources = setupSources;
     draftDevelopmentType = setupDevType;
+    draftGuidance = setupGuidance.trim();
     showDraftSetupModal = false;
     showDraftModal = true;
   }
@@ -199,7 +202,7 @@
       <div class="setup-header">
         <div class="setup-header-left">
           <i class="las la-magic"></i>
-          <h3>Draft from Briefing Note</h3>
+          <h3>Draft Fee Quote Request</h3>
         </div>
         <button class="setup-close" on:click={handleSetupClose}><i class="las la-times"></i></button>
       </div>
@@ -207,24 +210,31 @@
         <NoteSourcePicker
           bind:this={sourcePicker}
           {projectUniqueId}
-          hint="Tick any briefing notes and meeting notes to use as source material - leave everything unticked to use the latest briefing note automatically."
+          hint="Tick the meeting notes and docs to use as source material."
           bind:selectedSources={setupSources}
           bind:overBudget={setupOverBudget}
         />
 
         <div class="setup-field">
-          <label for="draft-flow-dev-type">Development type</label>
-          <select id="draft-flow-dev-type" bind:value={setupDevType}>
+          <label for="draft-flow-guidance">Instructions (optional)</label>
+          <textarea
+            id="draft-flow-guidance"
+            rows="3"
+            bind:value={setupGuidance}
+            placeholder="Tell the AI what you want: which disciplines to draft, or which of the ticked notes to rely on for what. Leave blank to find all relevant disciplines."
+          ></textarea>
+        </div>
+
+        <div class="setup-field">
+          <label for="draft-flow-dev-type">Development type <span class="coming-soon">Coming soon</span></label>
+          <select id="draft-flow-dev-type" disabled>
             <option value={null}>Other (no guiding brief)</option>
-            {#each devTypes as dt}
-              <option value={dt}>{dt}</option>
-            {/each}
           </select>
         </div>
       </div>
       <div class="setup-footer">
         <button class="btn btn-secondary" on:click={handleSetupClose}>Cancel</button>
-        <button class="btn btn-draft-go" on:click={confirmDraftSetup} disabled={setupOverBudget}>
+        <button class="btn btn-draft-go" on:click={confirmDraftSetup} disabled={setupOverBudget || setupSources.length === 0}>
           <i class="las la-magic"></i> Draft
         </button>
       </div>
@@ -236,6 +246,7 @@
   show={showDraftModal}
   projectId={projectUniqueId}
   developmentType={draftDevelopmentType || null}
+  guidance={draftGuidance}
   sources={selectedSources}
   on:proceed={handleDraftProceed}
   on:close={handleDraftModalClose}
@@ -339,6 +350,34 @@
     cursor: pointer;
     font-family: inherit;
   }
+  .setup-field select:disabled {
+    background: var(--color-slate-100);
+    color: var(--color-slate-400);
+    cursor: not-allowed;
+  }
+
+  .setup-field textarea {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-slate-300);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: var(--color-slate-800);
+    background: white;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .setup-field textarea:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
+
+  .coming-soon {
+    margin-left: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-slate-500);
+    background: var(--color-slate-100);
+    padding: 0.0625rem 0.4rem;
+    border-radius: 999px;
+  }
+
   .setup-field select:focus { outline: none; border-color: var(--color-violet-600); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
 
   .setup-footer {

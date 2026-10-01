@@ -638,7 +638,7 @@ export async function getSourceCatalogue(projectId) {
 
   groups.push({
     key: 'meetings',
-    label: 'Meeting Notes',
+    label: 'Notes and Docs',
     items: meetings.transcripts.map(m => ({
       id: m.id,
       label: m.title + (m.meeting_date ? ` — ${fmtDate(m.meeting_date)}` : ''),
@@ -711,7 +711,7 @@ export async function assembleContext(projectId, sources = {}) {
     availableGroups: [
       { key: 'project_details', label: 'Project Details' },
       { key: 'documents', label: 'Project Docs' },
-      { key: 'meetings', label: 'Meeting Notes' },
+      { key: 'meetings', label: 'Notes and Docs' },
       ...TABLE_GROUPS.map(g => ({ key: g.key, label: g.label })),
     ],
   };

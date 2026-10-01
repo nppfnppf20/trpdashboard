@@ -129,11 +129,11 @@ export async function deleteSentRequest(requestId) {
  * @param {Array<{type: 'briefing_note'|'meeting_note', id: number, full?: boolean}>} params.sources - Selected sources (empty = latest briefing note)
  * @returns {Promise<{suggestions: Array}>} suggestions: [{ discipline, reasoning, template, surveyors }]
  */
-export async function analyseDisciplines(projectId, { sources = [], developmentType = null } = {}) {
+export async function analyseDisciplines(projectId, { sources = [], developmentType = null, guidance = '' } = {}) {
   const response = await authFetch(`${API_BASE}/projects/${projectId}/analyse-disciplines`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sources, development_type: developmentType })
+    body: JSON.stringify({ sources, development_type: developmentType, guidance })
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));

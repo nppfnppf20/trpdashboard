@@ -16,9 +16,10 @@ Only include disciplines that are clearly needed or strongly implied — do not 
  * @param {string} briefingText - Briefing note content (may be HTML)
  * @param {string[]} availableDisciplines - Discipline names from templates in the DB
  * @param {object|null} guidingBrief - Optional guiding brief for this development type
+ * @param {string} guidance - Optional free-text instruction from the user (which disciplines, how to use the notes)
  * @returns {Promise<Array<{discipline: string, reasoning: string}>>}
  */
-export async function analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief = null) {
+export async function analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief = null, guidance = '') {
   const list = availableDisciplines.map(d => `- ${d}`).join('\n');
 
   const guidingBlock = guidingBrief?.guidance_content?.trim()
@@ -32,7 +33,19 @@ This guide may distinguish two tiers of discipline, and you must apply them diff
 If the guide is not split into these tiers, treat all disciplines it lists as essential under the same "include unless explicitly ruled out" rule.`
     : '';
 
-  const user = `Review this project briefing note and identify which of the following surveyor disciplines are needed.${guidingBlock}
+  const guidanceBlock = guidance?.trim()
+    ? `\n\nUser instruction (written by the person requesting these fee quotes):
+"""
+${guidance.trim()}
+"""
+This instruction takes priority over the standard discipline requirements above. Apply it as follows:
+- If it names specific disciplines (e.g. "just an ecology one", "ecology and heritage only"), return ONLY those disciplines, matched to the exact names in the available list. Include them even if the notes do not mention them, and do not add any others. If a named discipline has no sensible match in the list, leave it out.
+- If it asks for all relevant disciplines, or does not restrict the disciplines at all, determine the disciplines as you normally would.
+- If it says which notes or documents to rely on (for example "use the X note for context but the Y note for the scope"), weight those sources accordingly when deciding which disciplines are needed. Sources are headed with their titles.
+- For a discipline the user explicitly asked for, the reasoning should say it was requested by the user, plus any relevant supporting detail from the notes.`
+    : '';
+
+  const user = `Review this project briefing note and identify which of the following surveyor disciplines are needed.${guidingBlock}${guidanceBlock}
 
 Available disciplines:
 ${list}
