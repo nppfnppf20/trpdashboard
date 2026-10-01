@@ -165,7 +165,7 @@
         <i class="las la-clipboard"></i> Paste Text
       </button>
       <button class="sv-tab sv-draft-btn" on:click={() => draftFlow?.open()} disabled={!draftProjectUniqueId}>
-        <i class="las la-magic"></i> Draft Fee Quote
+        <i class="las la-magic"></i> Fee Quote Request
       </button>
     </div>
 

@@ -3,6 +3,7 @@
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import SelectSurveyorModal from './SelectSurveyorModal.svelte';
   import { getTemplates, mergeTemplate, saveSentRequest, sendBriefingEmails } from '$lib/api/quoteRequests.js';
+  import { applyEmailFont } from '$lib/utils/emailFont.js';
 
   export let show = false;
   export let projectId;
@@ -206,7 +207,7 @@
   async function handleCopyToClipboard() {
     if (!richTextEditor) return;
     try {
-      const htmlContent = stripInlineBold(richTextEditor.getHTML());
+      const htmlContent = applyEmailFont(stripInlineBold(richTextEditor.getHTML()));
       const plainText = stripHtml(htmlContent);
       if (navigator.clipboard && window.ClipboardItem) {
         const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
@@ -217,14 +218,41 @@
         fallbackCopyRichText(htmlContent);
       }
     } catch (err) {
-      fallbackCopyRichText(stripInlineBold(richTextEditor.getHTML()));
+      fallbackCopyRichText(applyEmailFont(stripInlineBold(richTextEditor.getHTML())));
     }
   }
 
+  // Plain-text version of the email that keeps its shape (used for "Open in Email" and the plain-text
+  // half of "Copy"): paragraphs separated by a blank line, a blank line around headings, and each
+  // bullet / numbered item on its own line.
   function stripHtml(html) {
     const tmp = document.createElement('div');
     tmp.innerHTML = html;
-    return (tmp.textContent || tmp.innerText || '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+
+    const walk = (node, listType = null, index = 0) => {
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent.replace(/\s+/g, ' ');
+      if (node.nodeType !== Node.ELEMENT_NODE) return '';
+      const tag = node.tagName.toLowerCase();
+      const inner = (type = listType) => {
+        let n = 0;
+        return Array.from(node.childNodes).map(c => walk(c, type, c.nodeName === 'LI' ? ++n : 0)).join('');
+      };
+      if (tag === 'br') return '\n';
+      if (tag === 'ul' || tag === 'ol') return `\n${inner(tag)}\n`;
+      if (tag === 'li') {
+        const marker = listType === 'ol' ? `${index}. ` : '- ';
+        return `${marker}${inner(null).trim()}\n`;
+      }
+      if (/^h[1-6]$/.test(tag)) return `\n\n${inner(null).trim()}\n\n`;
+      if (tag === 'p' || tag === 'div') return `\n\n${inner(null).trim()}\n\n`;
+      return inner(null);
+    };
+
+    return walk(tmp)
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   function fallbackCopyRichText(html) {
@@ -252,7 +280,7 @@
     if (!richTextEditor) return;
     const plainText = stripHtml(richTextEditor.getHTML());
     const to = selectedSurveyors[0]?.contactEmail || '';
-    window.location.href = `mailto:${to}?subject=${encodeURIComponent(currentSubject || '')}&body=${encodeURIComponent(plainText)}`;
+    window.location.href = `mailto:${to}?subject=${encodeURIComponent(currentSubject || '')}&body=${encodeURIComponent(plainText.replace(/\n/g, '\r\n'))}`;
   }
 
   async function handleSaveAsSent() {
@@ -289,7 +317,7 @@
     try {
       const result = await sendBriefingEmails(projectId, {
         templateId: selectedTemplateId || null,
-        emailContent: richTextEditor.getHTML(),
+        emailContent: applyEmailFont(richTextEditor.getHTML()),
         subject: currentSubject,
         recipients: selectedSurveyors.map(s => ({
           surveyorId: s.surveyorId, contactId: s.contactId,
@@ -673,6 +701,7 @@
   .editor-hidden {
     display: none;
   }
+
 
   .merging-indicator {
     display: flex;
