@@ -43,6 +43,9 @@
   let mergeDone = false;   // true once first merge has populated the editor
   let briefingApplied = false; // prevent double-apply of precomputedCheck
 
+  // True while the LLM-drafted intro/Project Information is still being generated
+  $: drafting = precomputedCheck?.status === 'loading';
+
   // Apply precomputedCheck once merge is done and result is ready
   $: if (precomputedCheck?.status === 'ready' && mergeDone && !briefingApplied) {
     briefingApplied = true;
@@ -115,30 +118,53 @@
     }
   }
 
-  // Inserts sectionHtml before <h3>Key Requirements</h3> if present, otherwise
-  // before the closing lines ("If you require any additional information…" /
-  // "Best regards"), falling back to the end of the email.
-  function appendAdditionalSection(fullHtml, sectionHtml) {
+  // Applies the LLM-drafted pieces to the merged template:
+  //  - intro replaces the template's own "We are seeking a fee quote for…" paragraph
+  //    (or goes straight after the salutation if that paragraph can't be found);
+  //  - the Project Information section goes directly after the intro, before the
+  //    first heading (Project Details). With no headings at all it falls back to
+  //    before the closing lines, then the end of the email.
+  // The template's Project Details and Scope of Work are left untouched.
+  function applyDraftedSections(fullHtml, { intro, projectInfo }) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(fullHtml, 'text/html');
     const body = doc.body;
     const children = Array.from(body.childNodes);
-    const insertBeforeNode =
-      children.find(n => n.nodeName === 'H3' && n.textContent.trim().toLowerCase() === 'key requirements')
-      ?? children.find(n => /^(if you require|best regards|kind regards|many thanks|yours\b)/i.test(n.textContent?.trim() ?? ''))
-      ?? null;
-    const tempDiv = doc.createElement('div');
-    tempDiv.innerHTML = sectionHtml;
-    while (tempDiv.firstChild) body.insertBefore(tempDiv.firstChild, insertBeforeNode);
+    const firstH3 = children.find(n => n.nodeName === 'H3') ?? null;
+    const insertHtml = (html, beforeNode) => {
+      const tempDiv = doc.createElement('div');
+      tempDiv.innerHTML = html;
+      while (tempDiv.firstChild) body.insertBefore(tempDiv.firstChild, beforeNode);
+    };
+
+    if (intro) {
+      const introIdx = firstH3 ? children.indexOf(firstH3) : children.length;
+      const existingIntro = children.find((n, i) => i < introIdx && n.nodeName === 'P' && /fee quote/i.test(n.textContent ?? ''));
+      if (existingIntro) {
+        insertHtml(intro, existingIntro);
+        existingIntro.remove();
+      } else {
+        const salutation = children.find(n => n.nodeName === 'P') ?? null;
+        insertHtml(intro, salutation ? salutation.nextSibling : firstH3);
+      }
+    }
+
+    if (projectInfo) {
+      const anchor = firstH3
+        ?? children.find(n => /^(if you require|best regards|kind regards|many thanks|yours\b)/i.test(n.textContent?.trim() ?? ''))
+        ?? null;
+      insertHtml(projectInfo, anchor);
+    }
     return body.innerHTML;
   }
 
   function applyPrecomputedCheck(currentHtml) {
     const result = precomputedCheck?.apiResult;
-    console.log('[BriefingEditor] applyPrecomputedCheck', { hasChanges: result?.hasChanges, hasSuggestedContent: !!result?.suggestedContent });
-    if (!result?.hasChanges || !result?.suggestedContent) return;
-    const newHtml = appendAdditionalSection(currentHtml, result.suggestedContent);
-    richTextEditor?.setHTML(newHtml);
+    console.log('[BriefingEditor] applyPrecomputedCheck', { hasIntro: !!result?.intro, hasProjectInfo: !!(result?.hasChanges && result?.suggestedContent) });
+    const intro = result?.intro || null;
+    const projectInfo = result?.hasChanges ? result.suggestedContent : null;
+    if (!intro && !projectInfo) return;
+    richTextEditor?.setHTML(applyDraftedSections(currentHtml, { intro, projectInfo }));
   }
 
   function handleSurveyorSelect(event) {
@@ -373,43 +399,47 @@
         <div class="form-group">
           <label>Email Content:</label>
           {#if precomputedCheck}
-            {#if precomputedCheck.status === 'loading'}
-              <div class="check-status check-loading">
-                <i class="las la-circle-notch la-spin"></i>
-                Checking briefing note for additional scope items…
-              </div>
-            {:else if precomputedCheck.status === 'error'}
+            {#if precomputedCheck.status === 'error'}
               <div class="check-status check-error">
                 <i class="las la-exclamation-triangle"></i>
-                Briefing note check failed: {precomputedCheck.error}
+                Drafting from notes failed: {precomputedCheck.error}
               </div>
             {:else if precomputedCheck.status === 'ready' && !precomputedCheck.apiResult}
               <div class="check-status check-skipped">
                 <i class="las la-info-circle"></i>
-                Briefing note check skipped - no "Scope of Work" section found in this template
+                Drafting from notes skipped - no template selected
               </div>
-            {:else if precomputedCheck.status === 'ready' && precomputedCheck.apiResult.hasChanges}
+            {:else if precomputedCheck.status === 'ready' && (precomputedCheck.apiResult.intro || precomputedCheck.apiResult.hasChanges)}
               <div class="check-status check-applied">
                 <i class="las la-magic"></i>
-                "Additional Information" section added from the briefing note
+                Introduction{precomputedCheck.apiResult.hasChanges ? ' and "Project Information" section' : ''} drafted from your notes
               </div>
             {:else if precomputedCheck.status === 'ready'}
               <div class="check-status check-none">
                 <i class="las la-check"></i>
-                Briefing note checked - nothing to add beyond the standard scope
+                Notes checked - nothing to add to the standard template
               </div>
             {/if}
           {/if}
-          {#if merging}
+          {#if drafting}
+            <!-- Hold the unfinished template back until the LLM-drafted sections are ready -->
+            <div class="merging-indicator">
+              <div class="spinner"></div>
+              <p>Drafting the email from your notes…</p>
+            </div>
+          {:else if merging}
             <div class="merging-indicator">
               <div class="spinner"></div>
               <p>Merging template…</p>
             </div>
           {/if}
-          <RichTextEditor
-            bind:this={richTextEditor}
-            placeholder="Select a template and surveyors to generate content, or write your own message..."
-          />
+          <!-- Kept mounted (just hidden) so the merged template can still be loaded into it while drafting -->
+          <div class:editor-hidden={drafting}>
+            <RichTextEditor
+              bind:this={richTextEditor}
+              placeholder="Select a template and surveyors to generate content, or write your own message..."
+            />
+          </div>
         </div>
       </div>
 
@@ -428,15 +458,15 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" on:click={handleClose}>Cancel</button>
         <button class="btn btn-secondary" on:click={handleCopyToClipboard}
-          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}>
+          disabled={saving || sending || drafting || !richTextEditor || !hasSurveyorSelected}>
           <i class="las la-copy"></i> Copy to Clipboard
         </button>
         <button class="btn btn-secondary" on:click={handleOpenInEmail}
-          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}>
+          disabled={saving || sending || drafting || !richTextEditor || !hasSurveyorSelected}>
           <i class="las la-envelope"></i> Open in Email
         </button>
         <button class="btn btn-secondary" on:click={handleSaveAsSent}
-          disabled={saving || sending || !richTextEditor || !hasSurveyorSelected}>
+          disabled={saving || sending || drafting || !richTextEditor || !hasSurveyorSelected}>
           {#if saving}
             <div class="btn-spinner"></div> Saving...
           {:else}
@@ -628,6 +658,10 @@
     color: var(--color-slate-800);
   }
   .subject-preview strong { color: var(--color-slate-600); }
+
+  .editor-hidden {
+    display: none;
+  }
 
   .merging-indicator {
     display: flex;

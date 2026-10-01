@@ -7,6 +7,7 @@
   // [{ type: 'briefing_note'|'meeting_note', id, full }].
   export let projectUniqueId = null;
   export let contextBudget = 200000;
+  export let title = 'Briefing & Meeting Notes';
   export let hint = 'Tick any briefing notes and meeting notes to use as source material.';
   export let selectedSources = []; // bindable output
   export let overBudget = false;   // bindable output
@@ -67,7 +68,7 @@
   {/if}
 
   <div class="picker-field">
-    <label>Briefing &amp; Meeting Notes</label>
+    <label>{title}</label>
     {#if notes.length === 0}
       <p class="picker-empty">No briefing or meeting notes for this project yet.</p>
     {:else}

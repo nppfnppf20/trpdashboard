@@ -57,9 +57,18 @@
       suggestions = result;
       for (const s of suggestions) {
         accepted = new Set([...accepted, s.discipline]);
-        selectedSurveyors[s.discipline] = new Set();
+        // Surveyors named in the notes/instructions start ticked, but can be unticked. If a person
+        // was named, their contact is selected; otherwise the primary contact.
+        const mentioned = s.surveyors.filter(sv => sv.mentioned);
+        selectedSurveyors[s.discipline] = new Set(mentioned.map(sv => sv.id));
         selectedContacts[s.discipline] = {};
-        expandedOrgs[s.discipline] = new Set();
+        for (const sv of mentioned) {
+          const chosen = sv.contacts?.find(c => c.id === sv.mentionedContactId)
+            ?? sv.contacts?.find(c => c.is_primary)
+            ?? sv.contacts?.[0];
+          if (chosen) selectedContacts[s.discipline][sv.id] = chosen.id;
+        }
+        expandedOrgs[s.discipline] = new Set(mentioned.map(sv => sv.id));
       }
     } catch (err) {
       error = err.message || 'Failed to analyse disciplines';
@@ -310,7 +319,11 @@
                               on:change={() => selectSurveyor(suggestion.discipline, surveyor.id)}
                             />
                             <div class="surveyor-details">
-                              <span class="surveyor-name">{surveyor.organisation}</span>
+                              <span class="surveyor-name">{surveyor.organisation}
+                                {#if surveyor.mentioned}
+                                  <span class="mentioned-pill" title="Named in your notes or instructions">Named in notes</span>
+                                {/if}
+                              </span>
                               <div class="surveyor-sub">
                                 {#if surveyor.location}<span class="surveyor-location">{surveyor.location}</span>{/if}
                                 {#if isSelected && chosenContact}
@@ -695,6 +708,17 @@
     background: var(--color-amber-100);
     padding: 0.125rem 0.5rem;
     border-radius: 999px;
+  }
+
+  .mentioned-pill {
+    margin-left: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-primary-800);
+    background: var(--color-primary-100);
+    padding: 0.0625rem 0.45rem;
+    border-radius: 999px;
+    white-space: nowrap;
   }
 
   .card-header-right {

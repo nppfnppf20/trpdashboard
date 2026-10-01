@@ -21,7 +21,8 @@
   let draftDevelopmentType = null;
   let selectedTemplate = null;
 
-  // Source picker — at least one note/doc must be ticked (no latest-note fallback)
+  // Source picker — no latest-note fallback: either tick at least one note/doc, or give instructions
+  // (with nothing ticked, the instructions are the only source material)
   let sourcePicker; // bind:this — used to reset ticks when the setup modal reopens
   let setupSources = []; // [{ type, id, full }] — bound from NoteSourcePicker
   let setupOverBudget = false;
@@ -49,10 +50,11 @@
     }
   });
 
-  export function open() {
+  // guidance pre-fills the Instructions box (e.g. the request the user typed in project chat)
+  export function open({ guidance = '' } = {}) {
     sourcePicker?.reset();
     setupDevType = null;
-    setupGuidance = '';
+    setupGuidance = guidance;
     showDraftSetupModal = true;
   }
 
@@ -88,15 +90,14 @@
         }
         const surveyorIds = draft.surveyors.map(sv => sv.id);
         const merged = await mergeTemplate(draft.template.id, projectUniqueId, surveyorIds);
-        const scopeContent = extractScopeFromHtml(merged.content);
-        if (!scopeContent) {
-          draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'ready', apiResult: null } };
-          return;
-        }
+        // The intro and Project Information are still drafted when the template has no
+        // "Scope of Work" heading; the LLM just has nothing to de-duplicate against.
+        const scopeContent = extractScopeFromHtml(merged.content) ?? '(This template has no separate scope of work section.)';
         const apiResult = await suggestEmailEditsForDiscipline(projectUniqueId, {
           sources,
           discipline: draft.discipline,
-          templateContent: scopeContent
+          templateContent: scopeContent,
+          guidance: draftGuidance
         });
         console.log(`[BriefingCheck] ${draft.discipline}:`, { hasChanges: apiResult.hasChanges, reasoning: apiResult.reasoning });
         draftCheckResults = { ...draftCheckResults, [draft.discipline]: { status: 'ready', apiResult } };
@@ -210,7 +211,8 @@
         <NoteSourcePicker
           bind:this={sourcePicker}
           {projectUniqueId}
-          hint="Tick the meeting notes and docs to use as source material."
+          title="Notes and Docs"
+          hint="Tick the notes and docs to use as source material, or leave empty and describe what you need in the instructions below."
           bind:selectedSources={setupSources}
           bind:overBudget={setupOverBudget}
         />
@@ -234,7 +236,7 @@
       </div>
       <div class="setup-footer">
         <button class="btn btn-secondary" on:click={handleSetupClose}>Cancel</button>
-        <button class="btn btn-draft-go" on:click={confirmDraftSetup} disabled={setupOverBudget || setupSources.length === 0}>
+        <button class="btn btn-draft-go" on:click={confirmDraftSetup} disabled={setupOverBudget || (setupSources.length === 0 && !setupGuidance.trim())}>
           <i class="las la-magic"></i> Draft
         </button>
       </div>

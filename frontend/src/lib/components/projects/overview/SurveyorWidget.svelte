@@ -7,6 +7,7 @@
     setPendingQuoteUploadText
   } from '$lib/stores/projectViewModal.js';
   import { debounce } from '$lib/utils/debounce.js';
+  import DraftFromBriefingFlow from '$lib/components/surveyor-briefings/DraftFromBriefingFlow.svelte';
 
   export let project;
   // Optional — when set (non-empty), sums stats across all these projects
@@ -85,6 +86,15 @@
     }
   }
 
+  // Draft Fee Quote Request flow — in merged mode it applies to the project picked above
+  let draftFlow; // bind:this
+  $: draftProjectUniqueId = merged ? projectList.find(p => p.id === targetProjectId)?.unique_id : uniqueId;
+
+  function handleDraftSaved() {
+    cache.clear(); // sent-request count changed
+    load();
+  }
+
   function openManage() {
     openSurveyorManagement(merged ? targetProjectId : projectId, null, 'details');
   }
@@ -133,6 +143,9 @@
         {/each}
       </select>
     {/if}
+    <button class="btn btn-primary btn-sm sv-draft-btn" on:click={() => draftFlow?.open()} disabled={!draftProjectUniqueId}>
+      <i class="las la-magic"></i> Draft Fee Quote Request
+    </button>
     <div class="sv-input-tabs">
       <button class="sv-tab" class:active={inputMode === 'upload'} on:click={() => inputMode = 'upload'}>
         <i class="las la-upload"></i> Upload
@@ -186,6 +199,8 @@
   </div>
 </div>
 
+<DraftFromBriefingFlow bind:this={draftFlow} projectUniqueId={draftProjectUniqueId} on:saved={handleDraftSaved} />
+
 <style>
   .sv-body { display: flex; flex-direction: column; gap: 10px; }
   .sv-target-select { font-size: 11px; padding: 0.35rem 0.5rem; }
@@ -228,4 +243,5 @@
 
   .sv-paste { font-size: 11px; resize: vertical; }
   .sv-process-btn { align-self: flex-start; }
+  .sv-draft-btn { align-self: flex-start; }
 </style>

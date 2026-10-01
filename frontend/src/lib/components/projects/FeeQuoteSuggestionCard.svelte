@@ -1,16 +1,16 @@
 <script>
   export let suggestion; // { reason }
-  export let onStart;    // () => void — opens the Draft from Briefing Note flow
+  export let onStart;    // () => void — opens the Draft Fee Quote Request flow
   export let compact = false;
 </script>
 
 <div class="fqc" class:fqc-compact={compact}>
   <div class="fqc-icon"><i class="las la-magic"></i></div>
   <div class="fqc-body">
-    <div class="fqc-label">Draft <strong>fee quote requests</strong> from a briefing or meeting note?</div>
+    <div class="fqc-label">Draft <strong>fee quote requests</strong> from your meeting notes and docs?</div>
     {#if suggestion.reason}<div class="fqc-reason">{suggestion.reason}</div>{/if}
     <div class="fqc-actions">
-      <button class="fqc-btn" on:click={() => onStart?.()}>Choose briefing note</button>
+      <button class="fqc-btn" on:click={() => onStart?.()}>Draft Fee Quote Request</button>
     </div>
   </div>
 </div>

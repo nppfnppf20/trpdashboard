@@ -16,7 +16,15 @@
   $: projectId = project?.id;
 
   let slideshowModal; // bind:this - Create Slideshow modal, opened by the slideshow suggestion card
-  let draftFlow; // bind:this — Draft from Briefing Note flow, opened by the fee quote suggestion card
+  let draftFlow; // bind:this — Draft Fee Quote Request flow, opened by the fee quote suggestion card
+
+  // The user's typed request that led to the assistant message at idx — pre-fills the flow's Instructions box
+  function lastUserMessageBefore(idx) {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') return messages[i].content;
+    }
+    return '';
+  }
 
   const CONTEXT_BUDGET = 200000;
   // 'documents' (Project Docs) is being phased out as a chat source, so it's
@@ -323,7 +331,7 @@
             {@html renderReply(m.content, sourceLabels)}
             {#each m.suggestions ?? [] as suggestion}
               {#if suggestion.kind === 'fee_quote_request'}
-                <FeeQuoteSuggestionCard {suggestion} onStart={() => draftFlow?.open()} compact />
+                <FeeQuoteSuggestionCard {suggestion} onStart={() => draftFlow?.open({ guidance: lastUserMessageBefore(idx) })} compact />
               {:else if suggestion.kind === 'slideshow'}
                 <SlideshowSuggestionCard {suggestion} onStart={() => slideshowModal?.open({ guidance: suggestion.guidance })} compact />
               {:else}

@@ -187,6 +187,43 @@ export async function deleteSentRequest(req, res) {
   }
 }
 
+// Matches a person's name as written in the notes (full, first-name-only, surname-only, any
+// casing) to one contact of an organisation. Returns the contact id, or null if none or ambiguous.
+function matchContactByName(contacts, rawName) {
+  const norm = (v) => String(v ?? '').toLowerCase().replace(/[^a-z\s'-]/g, ' ').split(/\s+/).filter(Boolean);
+  const wanted = norm(rawName);
+  if (!wanted.length) return null;
+  const exact = contacts.filter(c => norm(c.name).join(' ') === wanted.join(' '));
+  if (exact.length === 1) return exact[0].id;
+  const partial = contacts.filter(c => {
+    const tokens = norm(c.name);
+    return wanted.every(w => tokens.includes(w));
+  });
+  return partial.length === 1 ? partial[0].id : null;
+}
+
+// Last-resort, LLM-independent check on one organisation's contacts. First tries a full name
+// appearing verbatim in the notes/instructions; then a first name appearing as a whole word.
+// Only returns an id when exactly one contact fits at that level (so two "Sam"s stay ambiguous).
+function findContactNamedInText(contacts, text) {
+  const hay = ` ${String(text ?? '').toLowerCase().replace(/\s+/g, ' ')} `;
+  const clean = (v) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const byFullName = contacts.filter(c => {
+    const name = clean(c.name);
+    return name.includes(' ') && hay.includes(name);
+  });
+  if (byFullName.length === 1) return byFullName[0].id;
+  if (byFullName.length > 1) return null;
+
+  const words = new Set(hay.split(/[^a-z]+/).filter(Boolean));
+  const byFirstName = contacts.filter(c => {
+    const first = clean(c.name).split(' ')[0].replace(/[^a-z]/g, '');
+    return first.length >= 2 && words.has(first);
+  });
+  return byFirstName.length === 1 ? byFirstName[0].id : null;
+}
+
 /**
  * POST /api/admin-console/quote-requests/projects/:projectId/analyse-disciplines
  * Analyse the project's latest briefing note and suggest disciplines + 4★+ surveyors.
@@ -195,12 +232,16 @@ export async function analyseDisciplines(req, res) {
   const { projectId } = req.params;
   const { sources = [], development_type: developmentType = null, guidance = '' } = req.body;
   try {
-    if (!sources.length) {
-      return res.status(400).json({ error: 'Select at least one meeting note or doc to draft from.' });
+    // No latest-note fallback: either notes/docs are ticked, or the user's instructions are the only source
+    const hasGuidance = typeof guidance === 'string' && guidance.trim().length > 0;
+    if (!sources.length && !hasGuidance) {
+      return res.status(400).json({ error: 'Select at least one note or doc, or write instructions to draft from.' });
     }
-    const briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
+    const briefingText = sources.length
+      ? await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId)
+      : '';
 
-    if (!briefingText) {
+    if (sources.length && !briefingText) {
       return res.status(404).json({ error: 'The selected notes could not be found or are empty.' });
     }
     if (briefingText.length > CONTEXT_BUDGET) {
@@ -221,12 +262,48 @@ export async function analyseDisciplines(req, res) {
       ...templates.filter(t => t.discipline).map(t => t.discipline)
     ])];
 
-    const disciplineSuggestions = await analyseBriefingForDisciplines(briefingText, availableDisciplines, guidingBrief, typeof guidance === 'string' ? guidance : '');
+    const { rows: surveyorOrgs } = await pool.query(
+      `SELECT id, organisation, discipline
+         FROM admin_console.surveyor_organisations
+        WHERE approval_status = 'approved'
+        ORDER BY organisation`
+    );
+    const { rows: contactRows } = await pool.query(
+      `SELECT c.id, c.name, c.organisation_id
+         FROM admin_console.contacts c
+         JOIN admin_console.surveyor_organisations so ON so.id = c.organisation_id
+        WHERE c.organisation_type = 'surveyor' AND so.approval_status = 'approved'
+        ORDER BY c.name`
+    );
+    const orgById = new Map(surveyorOrgs.map(o => [o.id, o]));
+    for (const o of surveyorOrgs) o.contacts = [];
+    for (const c of contactRows) orgById.get(c.organisation_id)?.contacts.push({ id: c.id, name: c.name });
+
+    const disciplineSuggestions = await analyseBriefingForDisciplines(
+      briefingText, availableDisciplines, guidingBrief, typeof guidance === 'string' ? guidance : '', surveyorOrgs
+    );
 
     const generalTemplate = templates.find(t => t.discipline === null) ?? null;
 
     const results = await Promise.all(
-      disciplineSuggestions.map(async ({ discipline, reasoning }) => {
+      disciplineSuggestions.map(async ({ discipline, reasoning, named_surveyors }) => {
+        // Only trust ids that exist and whose own discipline matches this entry. A contact id is
+        // only kept if that person actually belongs to the named organisation.
+        const namedById = new Map();
+        for (const n of Array.isArray(named_surveyors) ? named_surveyors : []) {
+          const id = String(n?.id ?? '');
+          const org = orgById.get(id);
+          if (!org || org.discipline?.toLowerCase() !== discipline.toLowerCase()) continue;
+          const contactId = n.contact_id ? String(n.contact_id).replace(/[\[\]\s]/g, '') : null;
+          const validContact = (contactId && org.contacts.find(c => c.id === contactId)?.id)
+            ?? matchContactByName(org.contacts, n.contact_name)
+            ?? findContactNamedInText(org.contacts, `${briefingText}
+${guidance}`);
+          namedById.set(id, validContact ?? namedById.get(id) ?? null);
+        }
+        const namedIds = [...namedById.keys()];
+        console.log(`[analyseDisciplines] ${discipline} named_surveyors from LLM:`, JSON.stringify(named_surveyors), '→ resolved:', JSON.stringify([...namedById]));
+
         const specificTemplate = templates.find(t => t.discipline?.toLowerCase() === discipline.toLowerCase()) ?? null;
         const template = specificTemplate ?? generalTemplate;
         const hasSpecificTemplate = !!specificTemplate;
@@ -243,12 +320,18 @@ export async function analyseDisciplines(req, res) {
            LEFT JOIN admin_console.contacts c
              ON c.organisation_id = so.id AND c.organisation_type = 'surveyor'
            WHERE LOWER(so.discipline) = LOWER($1)
-             AND so.avg_overall >= 4
              AND so.approval_status = 'approved'
+             AND (so.avg_overall >= 4 OR so.id = ANY($2::uuid[]))
            GROUP BY so.id
-           ORDER BY so.avg_overall DESC`,
-          [discipline]
+           ORDER BY so.avg_overall DESC NULLS LAST`,
+          [discipline, namedIds]
         );
+        // Surveyors named in the notes/instructions are flagged so the UI pre-ticks them
+        // (and, if a person was named, mentionedContactId says which contact to pre-select)
+        for (const sv of surveyors) {
+          sv.mentioned = namedById.has(sv.id);
+          sv.mentionedContactId = namedById.get(sv.id) ?? null;
+        }
 
         return { discipline, reasoning, template, hasSpecificTemplate, surveyors };
       })
@@ -339,19 +422,23 @@ export async function getSurveyorsForDiscipline(req, res) {
  */
 export async function suggestEmailEditsForDiscipline(req, res) {
   const { projectId } = req.params;
-  const { sources = [], discipline, template_content } = req.body;
+  const { sources = [], discipline, template_content, guidance = '' } = req.body;
 
   if (!discipline || !template_content) {
     return res.status(400).json({ error: 'discipline and template_content are required' });
   }
 
   try {
-    if (!sources.length) {
-      return res.status(400).json({ error: 'Select at least one meeting note or doc to draft from.' });
+    // No latest-note fallback: either notes/docs are ticked, or the user's instructions are the only source
+    const hasGuidance = typeof guidance === 'string' && guidance.trim().length > 0;
+    if (!sources.length && !hasGuidance) {
+      return res.status(400).json({ error: 'Select at least one note or doc, or write instructions to draft from.' });
     }
-    const briefingText = await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId);
+    const briefingText = sources.length
+      ? await quoteRequestsService.resolveBriefingSourceTexts(sources, projectId)
+      : '';
 
-    if (!briefingText) {
+    if (sources.length && !briefingText) {
       return res.status(404).json({ error: 'The selected notes could not be found or are empty.' });
     }
     if (briefingText.length > CONTEXT_BUDGET) {
@@ -359,7 +446,7 @@ export async function suggestEmailEditsForDiscipline(req, res) {
       return res.status(400).json({ error: `Selected sources exceed the context budget (~${pct}%). Untick some sources or switch a full transcript to its summary and try again.` });
     }
 
-    const result = await suggestEmailEdits(briefingText, discipline, template_content);
+    const result = await suggestEmailEdits(briefingText, discipline, template_content, typeof guidance === 'string' ? guidance : '');
     res.json(result);
   } catch (err) {
     console.error('suggestEmailEditsForDiscipline error:', err);

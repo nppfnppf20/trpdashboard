@@ -143,16 +143,16 @@ export async function analyseDisciplines(projectId, { sources = [], developmentT
 }
 
 /**
- * Suggest scope-section edits to a briefing email from the selected source(s).
+ * Draft the opening paragraph and "Project Information" section of a fee quote request email from the selected source(s).
  * @param {string} projectId - Project UUID
- * @param {Object} params - { sources, discipline, templateContent }
- * @returns {Promise<{hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
+ * @param {Object} params - { sources, discipline, templateContent, guidance }
+ * @returns {Promise<{intro: string|null, hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
  */
-export async function suggestEmailEditsForDiscipline(projectId, { sources = [], discipline, templateContent }) {
+export async function suggestEmailEditsForDiscipline(projectId, { sources = [], discipline, templateContent, guidance = '' }) {
   const response = await authFetch(`${API_BASE}/projects/${projectId}/suggest-email-edits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sources, discipline, template_content: templateContent })
+    body: JSON.stringify({ sources, discipline, template_content: templateContent, guidance })
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
