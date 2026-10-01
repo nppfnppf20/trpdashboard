@@ -15,17 +15,6 @@
     });
   }
 
-  function formatRecipients(recipients) {
-    if (!recipients || recipients.length === 0) return '-';
-    return recipients.map(r => r.organisation).join(', ');
-  }
-
-  function getDisciplines(recipients) {
-    if (!recipients || recipients.length === 0) return '';
-    const disciplines = [...new Set(recipients.map(r => r.discipline))];
-    return disciplines.join(', ');
-  }
-
   async function copyToClipboard(emailContent) {
     try {
       await navigator.clipboard.writeText(emailContent);
@@ -79,30 +68,40 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Surveyors</th>
-            <th>Disciplines</th>
-            <th>Template</th>
+            <th>Date Sent</th>
+            <th>Surveyor</th>
+            <th>Contact</th>
+            <th>Contact Email</th>
+            <th>Discipline</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {#each sentRequests as request}
+            {@const recipients = request.recipients?.length ? request.recipients : [null]}
             <tr>
               <td>{formatDate(request.sent_date)}</td>
+              <!-- One request can have several recipients: each cell stacks them in the same order -->
               <td>
-                <div class="recipients">
-                  {formatRecipients(request.recipients)}
-                </div>
+                {#each recipients as r}<div class="recipient-line">{r?.organisation || '-'}</div>{/each}
               </td>
               <td>
-                <div class="disciplines">
-                  {#each [...new Set((request.recipients || []).map(r => r.discipline))] as discipline}
-                    <span class="discipline-tag">{discipline}</span>
-                  {/each}
-                </div>
+                {#each recipients as r}<div class="recipient-line">{r?.contact_name || '-'}</div>{/each}
               </td>
-              <td>{request.template_name || 'Custom'}</td>
+              <td>
+                {#each recipients as r}
+                  <div class="recipient-line">
+                    {#if r?.contact_email}<a href="mailto:{r.contact_email}">{r.contact_email}</a>{:else}-{/if}
+                  </div>
+                {/each}
+              </td>
+              <td>
+                {#each recipients as r}
+                  <div class="recipient-line">
+                    {#if r?.discipline}<span class="discipline-tag">{r.discipline}</span>{:else}-{/if}
+                  </div>
+                {/each}
+              </td>
               <td class="actions-cell">
                 <button
                   class="action-btn view-btn"
@@ -188,17 +187,20 @@
     background: var(--color-slate-50);
   }
 
-  .recipients {
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  /* One line per recipient so the Surveyor / Contact / Email / Discipline cells stay aligned row-for-row */
+  .recipient-line {
+    min-height: 1.6rem;
+    display: flex;
+    align-items: center;
   }
 
-  .disciplines {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
+  .recipient-line a {
+    color: var(--color-primary-600);
+    text-decoration: none;
+  }
+
+  .recipient-line a:hover {
+    text-decoration: underline;
   }
 
   .discipline-tag {

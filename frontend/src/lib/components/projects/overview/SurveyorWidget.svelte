@@ -8,6 +8,7 @@
   } from '$lib/stores/projectViewModal.js';
   import { debounce } from '$lib/utils/debounce.js';
   import DraftFromBriefingFlow from '$lib/components/surveyor-briefings/DraftFromBriefingFlow.svelte';
+  import SurveyorModal from '$lib/components/surveyor-management/SurveyorModal.svelte';
 
   export let project;
   // Optional — when set (non-empty), sums stats across all these projects
@@ -95,8 +96,21 @@
     load();
   }
 
+  // Single-project overview: Manage opens the Surveyor Management modal in place. Merged mode
+  // (several projects ticked) keeps going to the full page, as the modal is single-project only.
+  let showSurveyorModal = false;
+
   function openManage() {
-    openSurveyorManagement(merged ? targetProjectId : projectId, null, 'details');
+    if (merged) {
+      openSurveyorManagement(targetProjectId, null, 'details');
+    } else {
+      showSurveyorModal = true;
+    }
+  }
+
+  function openFullPage(tab) {
+    showSurveyorModal = false;
+    openSurveyorManagement(projectId, tab, 'details');
   }
 
   // Hands off to the full Quotes tab rather than parsing here — same pattern
@@ -143,15 +157,15 @@
         {/each}
       </select>
     {/if}
-    <button class="btn btn-primary btn-sm sv-draft-btn" on:click={() => draftFlow?.open()} disabled={!draftProjectUniqueId}>
-      <i class="las la-magic"></i> Draft Fee Quote Request
-    </button>
     <div class="sv-input-tabs">
       <button class="sv-tab" class:active={inputMode === 'upload'} on:click={() => inputMode = 'upload'}>
         <i class="las la-upload"></i> Upload
       </button>
       <button class="sv-tab" class:active={inputMode === 'paste'} on:click={() => inputMode = 'paste'}>
         <i class="las la-clipboard"></i> Paste Text
+      </button>
+      <button class="sv-tab sv-draft-btn" on:click={() => draftFlow?.open()} disabled={!draftProjectUniqueId}>
+        <i class="las la-magic"></i> Draft Fee Quote
       </button>
     </div>
 
@@ -162,6 +176,7 @@
         class:drag-over={dragOver}
         role="button"
         tabindex="0"
+        title="PDF, DOCX or TXT"
         on:dragover|preventDefault={() => dragOver = true}
         on:dragleave={() => dragOver = false}
         on:drop={handleDrop}
@@ -170,7 +185,6 @@
       >
         <i class="las la-cloud-upload-alt sv-drop-icon"></i>
         <span>Drop a quote here or click to browse</span>
-        <span class="sv-drop-hint">PDF, DOCX or TXT</span>
       </div>
       <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
     {:else}
@@ -201,6 +215,14 @@
 
 <DraftFromBriefingFlow bind:this={draftFlow} projectUniqueId={draftProjectUniqueId} on:saved={handleDraftSaved} />
 
+{#if showSurveyorModal && !merged}
+  <SurveyorModal
+    {project}
+    onClose={() => { showSurveyorModal = false; cache.clear(); load(); }}
+    onOpenFullPage={openFullPage}
+  />
+{/if}
+
 <style>
   .sv-body { display: flex; flex-direction: column; gap: 10px; }
   .sv-target-select { font-size: 11px; padding: 0.35rem 0.5rem; }
@@ -218,7 +240,7 @@
     padding: 3px 9px; border-radius: var(--radius-pill);
     border: 1px solid var(--color-slate-200); background: var(--color-white);
     font-size: 0.6875rem; font-weight: 600; color: var(--color-slate-500);
-    cursor: pointer; font-family: inherit;
+    cursor: pointer; font-family: inherit; white-space: nowrap;
   }
   .sv-tab:hover { background: var(--color-slate-50); }
   .sv-tab.active { border-color: var(--color-primary-200); background: var(--color-primary-50); color: var(--color-primary-700); }
@@ -226,22 +248,31 @@
   .sv-drop-zone {
     border: 2px dashed var(--color-primary-200);
     border-radius: var(--radius-md);
-    padding: 0.65rem 0.75rem;
+    padding: 0.3rem 0.6rem;
     text-align: center;
     cursor: pointer;
     color: var(--color-slate-500);
     font-size: 11px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 0.15rem;
+    justify-content: center;
+    gap: 0.4rem;
     transition: background 0.15s, border-color 0.15s;
   }
   .sv-drop-zone:hover, .sv-drop-zone.drag-over { background: var(--color-primary-50); border-color: var(--color-primary-500); }
-  .sv-drop-icon { font-size: 1.15rem; color: var(--color-primary-200); }
-  .sv-drop-hint { font-size: 9.5px; color: var(--color-slate-400); }
+  .sv-drop-icon { font-size: 1rem; color: var(--color-primary-200); }
 
   .sv-paste { font-size: 11px; resize: vertical; }
   .sv-process-btn { align-self: flex-start; }
-  .sv-draft-btn { align-self: flex-start; }
+  /* Same size as the Upload / Paste Text pills, in the primary blue, pushed to the right of the row */
+  .sv-draft-btn {
+    margin-left: auto;
+    white-space: nowrap;
+    border-color: var(--color-primary-500);
+    background: var(--color-primary-500);
+    color: var(--color-white);
+  }
+  .sv-draft-btn:hover:not(:disabled) { background: var(--color-primary-600); border-color: var(--color-primary-600); }
+  .sv-draft-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
