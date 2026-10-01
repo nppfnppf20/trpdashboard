@@ -80,8 +80,8 @@ const EMAIL_EDIT_SYSTEM = `You are a planning consultant preparing a fee quote r
 You write two pieces that are inserted into the email: an opening paragraph, and a "Project Information" section that sits directly after it. The template's own Project Details list and Scope of Work are added separately and must not be rewritten or repeated.
 
 1. Opening paragraph ("intro"):
-- One short, standard-sounding paragraph, returned as HTML: <p>...</p>.
-- It opens with "Hope you are well." and then says what we are seeking a fee quote for, in the form "We are seeking a fee quote for <headline> for a <scheme type> scheme."
+- Returned as HTML in two paragraphs. The first is only the greeting: <p>Hi [CONTACT_FIRST_NAME],</p>. Write the token [CONTACT_FIRST_NAME] exactly like that, it is replaced with the recipient's first name afterwards. Always greet with "Hi", never "Dear" or "Hello".
+- The second paragraph is one short, standard-sounding paragraph: <p>...</p>. It opens with "Hope you are well." and then says what we are seeking a fee quote for, in the form "We are seeking a fee quote for <headline> for a <scheme type> scheme."
 - The headline is a short, natural phrase for the work asked for, judged from the discipline, the notes and any user instruction (e.g. "ecology work", "an archaeological desk-based assessment", "a noise assessment"). Do not just paste the discipline name plus "services".
 - The scheme type is the kind of development, taken from the notes (e.g. a solar scheme, a residential scheme, a battery storage scheme). If the notes do not make it clear, drop the "for a ... scheme" part rather than guess.
 - Do not list the scope items and do not repeat the project name, address or other details that appear in the Project Details list.
@@ -94,7 +94,7 @@ You write two pieces that are inserted into the email: an opening paragraph, and
 - If there is nothing relevant to add, return hasChanges: false and suggestedContent: null.
 
 General rules:
-- Do NOT modify any [PLACEHOLDER] tokens.
+- Do NOT modify any [PLACEHOLDER] tokens, and keep [CONTACT_FIRST_NAME] exactly as written.
 - If the user gave an instruction, follow it for emphasis and for which sources to rely on, but never invent facts that are not in the sources.
 
 Tone and style rules:
@@ -105,6 +105,24 @@ Tone and style rules:
 // Used when the user ticked no notes or docs and the instruction is the only source material
 const NO_SOURCES_NOTE = '(No notes or documents were selected. Rely entirely on the user instruction above, which is the only source material. Do not invent anything beyond what it states.)';
 
+// The sender's own email tone: voice only. Structure, headings and the style rules above still win.
+function toneBlock(tone) {
+  if (!tone?.sample_text?.trim()) return '';
+  const notes = tone.guidance_notes?.trim()
+    ? `
+
+Instructions for this tone, follow these precisely:
+${tone.guidance_notes.trim()}`
+    : '';
+  return `
+
+Write both pieces in the voice of the person sending this email, modelled on these real emails they have sent before. This affects word choice, warmth, formality and sentence rhythm only. It does not change the required HTML structure, the exact "Project Information" heading, or the rules above, and you must not copy facts, names or details from the examples.
+
+Tone: ${tone.label}
+Example emails:
+${tone.sample_text}${notes}`;
+}
+
 const cleanDashes = (html) => noEmDash(html).replace(/\s*–\s*/g, ' to ');
 
 /**
@@ -113,9 +131,10 @@ const cleanDashes = (html) => noEmDash(html).replace(/\s*–\s*/g, ' to ');
  * @param {string} discipline - Discipline name (e.g. "Heritage")
  * @param {string} templateContent - Scope of work section HTML (extracted client-side), used to avoid repeating it
  * @param {string} guidance - Optional free-text instruction from the user
+ * @param {{label: string, sample_text: string, guidance_notes?: string}|null} tone - The sender's email tone (example emails + notes)
  * @returns {Promise<{intro: string|null, hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
  */
-export async function suggestEmailEdits(briefingText, discipline, templateContent, guidance = '') {
+export async function suggestEmailEdits(briefingText, discipline, templateContent, guidance = '', tone = null) {
   const guidanceBlock = guidance?.trim()
     ? `\n\nUser instruction (from the person sending this email):\n"""\n${guidance.trim()}\n"""\n`
     : '';
@@ -136,11 +155,11 @@ Write the opening paragraph and the Project Information section for the ${discip
 
 Respond with JSON only:
 { "intro": string, "hasChanges": boolean, "reasoning": string, "suggestedContent": string | null }
-- intro: the opening paragraph as <p>...</p> HTML.
+- intro: the greeting paragraph followed by the opening paragraph, as HTML (<p>Hi [CONTACT_FIRST_NAME],</p><p>...</p>).
 - hasChanges / suggestedContent: whether there is a Project Information section, and its HTML (or null).
 - reasoning: one or two sentences on what you included and why.`;
 
-  const raw = await callClaude(EMAIL_EDIT_SYSTEM + ANTI_AI_SLOP_BLOCK, user, MODEL_SONNET);
+  const raw = await callClaude(EMAIL_EDIT_SYSTEM + toneBlock(tone) + ANTI_AI_SLOP_BLOCK, user, MODEL_SONNET);
   const parsed = parseJSON(raw);
   if (!parsed) return { intro: null, hasChanges: false, reasoning: 'Could not parse LLM response', suggestedContent: null };
   parsed.intro = typeof parsed.intro === 'string' && parsed.intro.trim() ? cleanDashes(parsed.intro) : null;

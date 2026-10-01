@@ -6,12 +6,18 @@
   export let content = '';
   export let placeholder = 'Start typing...';
   export let fullHeight = false;
-  // Off for table-format deliverables (Stage 1 Review, HLPV) — their content
+  // Opt-in: only editors that listen for `textselected` (the planning deliverable
+  // comment/AI popup) should turn this on. When on, finishing a highlight drops
+  // the real browser selection and draws a fake one instead, so Delete/Backspace/
+  // typing over a highlighted chunk does nothing — every other editor (emails,
+  // notes, templates) needs the native selection left alone.
+  //
+  // Also off for table-format deliverables (Stage 1 Review, HLPV) — their content
   // is an HTML <table>, and selecting across table cells is a fundamentally
   // different, cell-bounded browser behavior rather than flowing text
   // selection. The paragraph-id scoping this popup relies on doesn't map onto
   // table content sensibly anyway (the whole table is one "paragraph").
-  export let enableSelectionPopup = true;
+  export let enableSelectionPopup = false;
   // Planning deliverable drafts use "[...]" as a fill-in/flag-for-review
   // placeholder convention — off by default since this component is reused
   // for meeting notes, email templates, etc. where square brackets don't
@@ -389,6 +395,7 @@
 
   <div
     class="editor-content trp-document-content"
+    class:popup-selection={enableSelectionPopup}
     contenteditable="true"
     bind:this={editorElement}
     on:input={handleInput}
@@ -489,13 +496,16 @@
     font-style: italic;
   }
 
-  /* Native selection is painted invisibly for the entire drag — see
+  /* Only in popup mode (enableSelectionPopup) — every other editor keeps the normal visible
+     native selection so highlighted text can be seen and deleted/overtyped.
+
+     Native selection is painted invisibly for the entire drag — see
      selectionHighlightRects in the script, which draws our own highlight as
      plain positioned boxes instead, once the drag settles. Native selection
      highlighting is left off throughout (rather than only after mouseup)
      because Firefox's selection-painting bug for multi-block contenteditable
      ranges shows up mid-drag too, not just at the end. */
-  .editor-content ::selection {
+  .editor-content.popup-selection ::selection {
     background-color: transparent;
     color: inherit;
   }

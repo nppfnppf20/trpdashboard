@@ -404,6 +404,7 @@
             bind:this={editor}
             content={currentHTML}
             placeholder="Start editing your document..."
+            enableSelectionPopup={true}
             on:change={handleContentChange}
             on:textselected={handleTextSelected}
           />

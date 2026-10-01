@@ -125,7 +125,7 @@
   //    first heading (Project Details). With no headings at all it falls back to
   //    before the closing lines, then the end of the email.
   // The template's Project Details and Scope of Work are left untouched.
-  function applyDraftedSections(fullHtml, { intro, projectInfo }) {
+  function applyDraftedSections(fullHtml, { intro, projectInfo, firstName }) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(fullHtml, 'text/html');
     const body = doc.body;
@@ -138,15 +138,24 @@
     };
 
     if (intro) {
+      // The LLM's intro starts with "Hi [CONTACT_FIRST_NAME],"; swap in the real first name
+      const filledIntro = intro.replace(/\[CONTACT_FIRST_NAME\]/g, firstName || 'there');
+      const hasGreeting = /^\s*<p>\s*(hi|hello|dear)\b/i.test(filledIntro);
       const introIdx = firstH3 ? children.indexOf(firstH3) : children.length;
-      const existingIntro = children.find((n, i) => i < introIdx && n.nodeName === 'P' && /fee quote/i.test(n.textContent ?? ''));
+      const beforeHeadings = children.filter((n, i) => i < introIdx);
+      // When the intro brings its own greeting, the template's "Dear [SURVEYOR_NAME]," line is replaced
+      const templateSalutation = hasGreeting
+        ? beforeHeadings.find(n => n.nodeName === 'P' && /^\s*(dear|hi|hello)\b/i.test(n.textContent ?? ''))
+        : null;
+      const existingIntro = beforeHeadings.find(n => n.nodeName === 'P' && /fee quote/i.test(n.textContent ?? ''));
       if (existingIntro) {
-        insertHtml(intro, existingIntro);
+        insertHtml(filledIntro, existingIntro);
         existingIntro.remove();
       } else {
         const salutation = children.find(n => n.nodeName === 'P') ?? null;
-        insertHtml(intro, salutation ? salutation.nextSibling : firstH3);
+        insertHtml(filledIntro, salutation ? salutation.nextSibling : firstH3);
       }
+      templateSalutation?.remove();
     }
 
     if (projectInfo) {
@@ -164,7 +173,9 @@
     const intro = result?.intro || null;
     const projectInfo = result?.hasChanges ? result.suggestedContent : null;
     if (!intro && !projectInfo) return;
-    richTextEditor?.setHTML(applyDraftedSections(currentHtml, { intro, projectInfo }));
+    // First word of the chosen contact's name; blank falls back to "Hi there,"
+    const firstName = (preSelectedSurveyors?.[0]?.contactName ?? '').trim().split(/\s+/)[0] || '';
+    richTextEditor?.setHTML(applyDraftedSections(currentHtml, { intro, projectInfo, firstName }));
   }
 
   function handleSurveyorSelect(event) {

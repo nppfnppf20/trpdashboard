@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import { analyseBriefingForDisciplines, suggestEmailEdits } from '../services/surveyorBriefing.service.js';
 import { sendEmail, sendBatch } from '../services/emailService.js';
 import { getGuidingBrief } from './guidingBriefs.controller.js';
+import { getDefaultToneForUser } from '../services/emailTones.service.js';
 import { getLookupOptions } from '../services/lookups.service.js';
 import { CONTEXT_BUDGET } from '../services/projectChat.service.js';
 
@@ -446,7 +447,12 @@ export async function suggestEmailEditsForDiscipline(req, res) {
       return res.status(400).json({ error: `Selected sources exceed the context budget (~${pct}%). Untick some sources or switch a full transcript to its summary and try again.` });
     }
 
-    const result = await suggestEmailEdits(briefingText, discipline, template_content, typeof guidance === 'string' ? guidance : '');
+    // The sender's own default tone; none set up = no tone, just the anti-AI-slop block
+    const tone = await getDefaultToneForUser(req.user?.id).catch(err => {
+      console.error('getDefaultToneForUser failed, drafting without a tone:', err);
+      return null;
+    });
+    const result = await suggestEmailEdits(briefingText, discipline, template_content, typeof guidance === 'string' ? guidance : '', tone);
     res.json(result);
   } catch (err) {
     console.error('suggestEmailEditsForDiscipline error:', err);

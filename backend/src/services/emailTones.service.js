@@ -83,3 +83,19 @@ export async function getTone(userId, toneId) {
   );
   return rows[0] ?? null;
 }
+
+// The tone to use when drafting emails on a user's behalf without them picking one: their own
+// default (or, failing that, their first saved tone). Null if they haven't set one up, in which
+// case callers just draft without a tone (the anti-AI-slop block still applies).
+export async function getDefaultToneForUser(userId) {
+  if (!userId) return null;
+  const { rows } = await pool.query(
+    `SELECT id, label, sample_text, guidance_notes, is_default
+       FROM public.user_email_tones
+      WHERE user_id = $1
+      ORDER BY is_default DESC, created_at
+      LIMIT 1`,
+    [userId]
+  );
+  return rows[0] ?? null;
+}

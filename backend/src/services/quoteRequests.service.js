@@ -369,7 +369,9 @@ export async function mergeTemplate(templateId, projectId, surveyorIds) {
   }
 
   // Merge template content and subject line
-  const mergedContent = replacePlaceholders(template.template_content, { dropBlankLines: true });
+  // The templates label the [PROJECT_CODE] line "Project Code:"; in emails it's called the TRP code
+  const mergedContent = replacePlaceholders(template.template_content, { dropBlankLines: true })
+    .replace(/Project Code:/g, 'TRP Code:');
   const mergedSubject = replacePlaceholders(template.subject_line);
 
   return {
