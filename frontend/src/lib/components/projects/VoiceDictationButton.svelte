@@ -6,10 +6,17 @@
   // it via the passed `class` (see AdvancementEntryFields.svelte's
   // .aef-mic-btn for the absolute-overlay layout, or ChatWidget/
   // ProjectChatTab for the inline-row layout).
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
   import { transcribeAudio } from '$lib/api/voice.js';
 
   export let disabled = false;
+  // Optional text shown beside the icon (e.g. "Record"); it switches to "Stop" while recording and
+  // "Transcribing…" while the clip is being converted. Leave empty for the icon-only round button.
+  export let label = '';
+  // Auto-stops (and transcribes what was recorded) after this many seconds; 0 = no cap. While
+  // recording, a 'tick' event reports the elapsed seconds so a caller can show a clock/progress bar,
+  // and 'limitreached' fires if the cap is what ended the recording.
+  export let maxSeconds = 0;
   let className = '';
   export { className as class };
 
@@ -18,6 +25,47 @@
   let micState = 'idle'; // idle | recording | transcribing | error
   let mediaRecorder = null;
   let audioChunks = [];
+  let timer = null;
+  let activeStream = null;
+  let errorMessage = '';
+
+  // A readable reason for the user, whatever the browser/server threw
+  function describeMicError(err) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
+      return "Microphone access is blocked. Allow the microphone for this site in your browser's address bar or site settings, then try again.";
+    }
+    if (err?.name === 'NotFoundError' || err?.name === 'OverconstrainedError') {
+      return 'No microphone was found. Check one is connected and selected.';
+    }
+    if (err?.name === 'NotReadableError') {
+      return 'The microphone is in use by another app or tab.';
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return 'This browser cannot record audio here (it needs HTTPS or localhost).';
+    }
+    return `Could not start recording: ${err?.message || err}`;
+  }
+
+  function fail(message) {
+    errorMessage = message;
+    dispatch('error', message);
+    setMicState('error');
+    setTimeout(() => { setMicState('idle'); }, 2500);
+  }
+
+  function clearTimer() {
+    if (timer) clearInterval(timer);
+    timer = null;
+  }
+
+  onDestroy(() => {
+    clearTimer();
+    if (mediaRecorder?.state === 'recording') {
+      mediaRecorder.onstop = null; // leaving the page: drop the clip rather than transcribe it
+      mediaRecorder.stop();
+    }
+    activeStream?.getTracks().forEach(t => t.stop());
+  });
 
   // Reports every state transition (not just the final transcript) so a
   // caller can show its own "recording in progress" feedback — e.g. pulsing
@@ -36,29 +84,40 @@
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      activeStream = stream;
       audioChunks = [];
       mediaRecorder = new MediaRecorder(stream);
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
       mediaRecorder.onstop = async () => {
+        clearTimer();
         stream.getTracks().forEach(t => t.stop());
         setMicState('transcribing');
         try {
           const blob = new Blob(audioChunks, { type: 'audio/webm' });
           const text = await transcribeAudio(blob);
           if (text) dispatch('transcript', text);
+          else dispatch('empty'); // nothing was picked up (silence, or a very short clip)
           setMicState('idle');
         } catch (err) {
           console.error('Voice transcription failed:', err);
-          setMicState('error');
-          setTimeout(() => { setMicState('idle'); }, 2500);
+          fail(`Transcription failed. ${err?.message || err}`);
         }
       };
       mediaRecorder.start();
       setMicState('recording');
+      const startedAt = Date.now();
+      dispatch('tick', 0);
+      timer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        dispatch('tick', elapsed);
+        if (maxSeconds && elapsed >= maxSeconds && mediaRecorder?.state === 'recording') {
+          dispatch('limitreached');
+          mediaRecorder.stop();
+        }
+      }, 250);
     } catch (err) {
       console.error('Microphone access failed:', err);
-      setMicState('error');
-      setTimeout(() => { setMicState('idle'); }, 2500);
+      fail(describeMicError(err));
     }
   }
 </script>
@@ -70,7 +129,7 @@
   class:vdb-btn--error={micState === 'error'}
   disabled={disabled || micState === 'transcribing'}
   on:click={toggleMic}
-  title={micState === 'recording' ? 'Stop recording' : micState === 'transcribing' ? 'Transcribing…' : micState === 'error' ? 'Voice dictation failed' : 'Dictate'}
+  title={micState === 'recording' ? 'Stop recording' : micState === 'transcribing' ? 'Transcribing…' : micState === 'error' ? (errorMessage || 'Voice dictation failed') : 'Dictate'}
 >
   {#if micState === 'transcribing'}
     <span class="vdb-spinner"></span>
@@ -81,6 +140,9 @@
     {#if micState === 'recording'}
       <span class="vdb-dot"></span>
     {/if}
+  {/if}
+  {#if label}
+    <span class="vdb-label">{micState === 'recording' ? 'Stop' : micState === 'transcribing' ? 'Transcribing…' : micState === 'error' ? 'Failed' : label}</span>
   {/if}
 </button>
 

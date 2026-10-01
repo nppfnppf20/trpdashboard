@@ -6,6 +6,7 @@
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
   import MeetingNoteProcessModal from './MeetingNoteProcessModal.svelte';
+  import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { debounce } from '$lib/utils/debounce.js';
 
@@ -79,6 +80,31 @@
     } finally {
       loading = false;
     }
+  }
+
+  // Record: dictate (Whisper) straight into the paste box, as if the text had been pasted
+  const MAX_RECORD_SECONDS = 300; // 5 minutes
+  let recordElapsed = null;  // seconds into the current recording, or null when not recording
+  let recordNotice = '';
+  let recordState = 'idle';  // mirrors the mic button: idle | recording | transcribing | error
+  let recordError = '';  // why the last recording failed (mic blocked, transcription error, ...)
+
+  const formatClock = (secs) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+
+  function handleRecordState(e) {
+    recordState = e.detail;
+    if (e.detail === 'recording') {
+      inputMode = 'paste';
+      recordNotice = '';
+      recordError = '';
+    } else {
+      recordElapsed = null;
+    }
+  }
+
+  function handleRecordTranscript(e) {
+    inputMode = 'paste';
+    pasteText = pasteText.trim() ? `${pasteText.trim()} ${e.detail}` : e.detail;
   }
 
   function handOffFile(file) {
@@ -183,7 +209,29 @@
         <button class="mnw-tab" class:active={inputMode === 'paste'} on:click={() => inputMode = 'paste'}>
           <i class="las la-clipboard"></i> Paste Text
         </button>
+        <VoiceDictationButton
+          class="mnw-tab mnw-record-btn"
+          label="Record"
+          maxSeconds={MAX_RECORD_SECONDS}
+          on:statechange={handleRecordState}
+          on:tick={(e) => recordElapsed = e.detail}
+          on:limitreached={() => recordNotice = 'Reached the 5 minute limit, so recording stopped.'}
+          on:error={(e) => { recordError = e.detail; recordNotice = ''; }}
+          on:empty={() => recordNotice = 'No speech was picked up. Check the right microphone is selected and try again.'}
+          on:transcript={handleRecordTranscript}
+        />
       </div>
+
+      {#if recordElapsed !== null}
+        <div class="mnw-rec" role="progressbar" aria-valuemin="0" aria-valuemax={MAX_RECORD_SECONDS} aria-valuenow={recordElapsed}>
+          <div class="mnw-rec-bar"><div class="mnw-rec-fill" style="width: {Math.min(100, (recordElapsed / MAX_RECORD_SECONDS) * 100)}%"></div></div>
+          <span class="mnw-rec-time">{formatClock(recordElapsed)} / {formatClock(MAX_RECORD_SECONDS)}</span>
+        </div>
+      {:else if recordError}
+        <div class="mnw-rec-error"><i class="las la-exclamation-triangle"></i> {recordError}</div>
+      {:else if recordNotice}
+        <div class="mnw-rec-notice">{recordNotice}</div>
+      {/if}
 
       <label class="mnw-checkbox-row">
         <input type="checkbox" bind:checked={multiProject} />
@@ -210,9 +258,12 @@
         <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
       {:else}
         <textarea class="form-input mnw-paste" bind:value={pasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
-        <button class="btn btn-primary btn-sm mnw-process-btn" on:click={handOffText} disabled={!pasteText.trim()}>
-          <i class="las la-magic"></i> Process
-        </button>
+        <!-- Hidden while recording/transcribing: the text isn't complete until the recording is stopped and transcribed -->
+        {#if recordState !== 'recording' && recordState !== 'transcribing'}
+          <button class="btn btn-primary btn-sm mnw-process-btn" on:click={handOffText} disabled={!pasteText.trim()}>
+            <i class="las la-magic"></i> Process
+          </button>
+        {/if}
       {/if}
     {/if}
 
@@ -275,6 +326,21 @@
   }
   .mnw-tab:hover { background: var(--color-slate-50); }
   .mnw-tab.active { border-color: var(--color-primary-200); background: var(--color-primary-50); color: var(--color-primary-700); }
+
+  /* Record pill: VoiceDictationButton renders the button, so the pill look has to be :global */
+  .mnw-input-tabs :global(.mnw-record-btn) {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: var(--radius-pill);
+    font-size: 0.6875rem; font-weight: 600; font-family: inherit;
+    color: var(--color-slate-500);
+  }
+
+  .mnw-rec { display: flex; align-items: center; gap: 8px; }
+  .mnw-rec-bar { flex: 1; height: 5px; border-radius: var(--radius-pill); background: var(--color-slate-200); overflow: hidden; }
+  .mnw-rec-fill { height: 100%; background: var(--color-red-600); transition: width 0.25s linear; }
+  .mnw-rec-time { font-size: 11px; font-weight: 600; color: var(--color-red-600); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mnw-rec-notice { font-size: 11px; color: var(--color-slate-500); }
+  .mnw-rec-error { font-size: 11px; color: var(--color-red-600); line-height: 1.35; }
 
   .mnw-checkbox-row { display: flex; align-items: center; gap: 0.3rem; font-size: 11px; font-weight: 600; color: var(--color-slate-500); cursor: pointer; }
   .mnw-checkbox-row input[type="checkbox"] { width: 12px; height: 12px; accent-color: var(--color-primary-500); cursor: pointer; }

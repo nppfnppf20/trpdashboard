@@ -9,6 +9,6 @@ export async function transcribe(req, res) {
     res.json({ text });
   } catch (err) {
     console.error('transcribe failed:', err);
-    res.status(500).json({ error: 'Failed to transcribe audio' });
+    res.status(500).json({ error: 'Failed to transcribe audio', details: err?.message || String(err) });
   }
 }

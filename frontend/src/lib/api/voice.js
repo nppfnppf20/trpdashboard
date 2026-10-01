@@ -11,7 +11,7 @@ export async function transcribeAudio(blob) {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
-    throw new Error(e.error || 'Failed to transcribe audio');
+    throw new Error(e.details ? `${e.error || 'Failed to transcribe audio'}: ${e.details}` : (e.error || `Failed to transcribe audio (HTTP ${res.status})`));
   }
   const { text } = await res.json();
   return text;
