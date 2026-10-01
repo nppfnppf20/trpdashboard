@@ -7,6 +7,7 @@
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
   import MeetingNoteProcessModal from './MeetingNoteProcessModal.svelte';
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
+  import VoiceRecordingBar from '$lib/components/projects/VoiceRecordingBar.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { debounce } from '$lib/utils/debounce.js';
 
@@ -88,8 +89,6 @@
   let recordNotice = '';
   let recordState = 'idle';  // mirrors the mic button: idle | recording | transcribing | error
   let recordError = '';  // why the last recording failed (mic blocked, transcription error, ...)
-
-  const formatClock = (secs) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
 
   function handleRecordState(e) {
     recordState = e.detail;
@@ -222,16 +221,7 @@
         />
       </div>
 
-      {#if recordElapsed !== null}
-        <div class="mnw-rec" role="progressbar" aria-valuemin="0" aria-valuemax={MAX_RECORD_SECONDS} aria-valuenow={recordElapsed}>
-          <div class="mnw-rec-bar"><div class="mnw-rec-fill" style="width: {Math.min(100, (recordElapsed / MAX_RECORD_SECONDS) * 100)}%"></div></div>
-          <span class="mnw-rec-time">{formatClock(recordElapsed)} / {formatClock(MAX_RECORD_SECONDS)}</span>
-        </div>
-      {:else if recordError}
-        <div class="mnw-rec-error"><i class="las la-exclamation-triangle"></i> {recordError}</div>
-      {:else if recordNotice}
-        <div class="mnw-rec-notice">{recordNotice}</div>
-      {/if}
+      <VoiceRecordingBar elapsed={recordElapsed} max={MAX_RECORD_SECONDS} error={recordError} notice={recordNotice} />
 
       <label class="mnw-checkbox-row">
         <input type="checkbox" bind:checked={multiProject} />
@@ -335,12 +325,6 @@
     color: var(--color-slate-500);
   }
 
-  .mnw-rec { display: flex; align-items: center; gap: 8px; }
-  .mnw-rec-bar { flex: 1; height: 5px; border-radius: var(--radius-pill); background: var(--color-slate-200); overflow: hidden; }
-  .mnw-rec-fill { height: 100%; background: var(--color-red-600); transition: width 0.25s linear; }
-  .mnw-rec-time { font-size: 11px; font-weight: 600; color: var(--color-red-600); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .mnw-rec-notice { font-size: 11px; color: var(--color-slate-500); }
-  .mnw-rec-error { font-size: 11px; color: var(--color-red-600); line-height: 1.35; }
 
   .mnw-checkbox-row { display: flex; align-items: center; gap: 0.3rem; font-size: 11px; font-weight: 600; color: var(--color-slate-500); cursor: pointer; }
   .mnw-checkbox-row input[type="checkbox"] { width: 12px; height: 12px; accent-color: var(--color-primary-500); cursor: pointer; }

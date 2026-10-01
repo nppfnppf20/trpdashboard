@@ -1,5 +1,6 @@
 <script>
   import VoiceDictationButton from './VoiceDictationButton.svelte';
+  import VoiceRecordingBar from './VoiceRecordingBar.svelte';
 
   // Shared date + full-text + "Generate & Fill" block for every advancement
   // add/edit form (bulk-add modals, the timeline view/edit popup, and each
@@ -19,6 +20,16 @@
   export let fullTextPlaceholder = 'Paste a note, email, or transcript. Generate will draft the summary below from this.';
   export let rows = 7;
 
+  const MAX_RECORD_SECONDS = 300; // 5 minutes
+  let recordElapsed = null;
+  let recordError = '';
+  let recordNotice = '';
+
+  function onRecordState(e) {
+    if (e.detail === 'recording') { recordError = ''; recordNotice = ''; }
+    else recordElapsed = null;
+  }
+
   function onTranscript(e) {
     const text = e.detail;
     fullText = fullText?.trim() ? `${fullText.trim()} ${text}` : text;
@@ -37,8 +48,18 @@
   </label>
   <div class="aef-textarea-wrap">
     <textarea id="aef-text" class="form-input aef-textarea" {rows} bind:value={fullText} placeholder={fullTextPlaceholder}></textarea>
-    <VoiceDictationButton class="aef-mic-btn" on:transcript={onTranscript} />
+    <VoiceDictationButton
+      class="aef-mic-btn"
+      maxSeconds={MAX_RECORD_SECONDS}
+      on:statechange={onRecordState}
+      on:tick={(e) => recordElapsed = e.detail}
+      on:limitreached={() => recordNotice = 'Reached the 5 minute limit, so recording stopped.'}
+      on:error={(e) => { recordError = e.detail; recordNotice = ''; }}
+      on:empty={() => recordNotice = 'No speech was picked up. Check the right microphone is selected and try again.'}
+      on:transcript={onTranscript}
+    />
   </div>
+  <VoiceRecordingBar elapsed={recordElapsed} max={MAX_RECORD_SECONDS} error={recordError} notice={recordNotice} />
   {#if onGenerate}
     <div class="aef-generate-row">
       <button type="button" class="aef-generate-btn" on:click={onGenerate} disabled={!canGenerate || generating}>
