@@ -528,6 +528,9 @@
 
 <style>
   .pd-page {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     padding: 1.25rem 1.75rem 1.75rem;
   }
 
