@@ -9,6 +9,9 @@
   //               draw / reshape / clear (area is e.g. "12.34 ha", or '')
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { browser } from '$app/environment';
+  // Vite must bundle the MapLibre worker itself — the prebundled dev copy is
+  // served with a bad MIME type and fails to load.
+  import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
   export let geojson = null;
   export let editable = false;
@@ -48,9 +51,10 @@
   let draw;
   let maplibregl;
   let ready = false;
+  let resizeObserver;
   let basemap = BASEMAPS[0].id;
   let hasPolygon = false;
-  let mode = 'static';
+  let mode = 'render';
   let lastEmitted = undefined; // last geojson string we emitted, to ignore our own echo
   let loadedGeojson = undefined; // last prop value pushed into the draw store
 
@@ -144,8 +148,8 @@
   function applyMode() {
     if (!ready) return;
     if (!editable) {
-      draw.setMode('static');
-      mode = 'static';
+      draw.setMode('render');
+      mode = 'render';
       return;
     }
     if (hasPolygon) {
@@ -207,6 +211,7 @@
     ]);
     if (!container) return;
     maplibregl = mlModule.default ?? mlModule;
+    maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
     map = new maplibregl.Map({
       container,
@@ -214,6 +219,13 @@
       center: [-2.5, 54.5],
       zoom: 5
     });
+    // The container is often laid out after the map is created (modal
+    // open animation, flex sizing), which leaves the canvas undersized and
+    // the top/bottom of the map grey until something triggers a resize.
+    resizeObserver = new ResizeObserver(() => map?.resize());
+    resizeObserver.observe(container);
+    requestAnimationFrame(() => map?.resize());
+
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
@@ -229,7 +241,9 @@
         adapter: new TerraDrawMapLibreGLAdapter({ map, lib: maplibregl }),
         modes: [
           new td.TerraDrawPolygonMode({
-            allowSelfIntersections: false,
+            // Only check the finished shape; in-progress polygons are degenerate
+            validation: (feature, { updateType }) =>
+              updateType === 'finish' ? td.ValidateNotSelfIntersecting(feature) : { valid: true },
             styles: { ...polygonStyles, closingPointColor: colour, closingPointOutlineColor: colour }
           }),
           new td.TerraDrawSelectMode({
@@ -252,23 +266,33 @@
               midPointOutlineColor: colour
             }
           }),
-          new td.TerraDrawStaticMode({ styles: polygonStyles })
+          new td.TerraDrawRenderMode({
+            modeName: 'render',
+            styles: {
+              polygonFillColor: colour,
+              polygonFillOpacity: 0.2,
+              polygonOutlineColor: colour,
+              polygonOutlineWidth: 3
+            }
+          })
         ]
       });
       draw.on('finish', onFinish);
       draw.on('change', onChange);
       draw.start();
       ready = true;
+      map.resize();
       loadGeojson(geojson);
       applyMode();
     });
   }
 
   onMount(() => {
-    if (browser) init();
+    if (browser) init().catch(err => console.error('Site boundary map failed to initialise:', err));
   });
 
   onDestroy(() => {
+    resizeObserver?.disconnect();
     try { draw?.stop(); } catch { /* adapter may already be gone */ }
     map?.remove();
     map = null;
@@ -282,13 +306,13 @@
   }
 
   // Cancelling an edit: restore whatever the parent considers saved.
-  $: if (ready && !editable && mode !== 'static') {
+  $: if (ready && !editable && mode !== 'render') {
     loadGeojson(geojson);
     applyMode();
   }
 
   // Entering edit mode.
-  $: if (ready && editable && (mode === 'static')) {
+  $: if (ready && editable && (mode === 'render')) {
     applyMode();
   }
 </script>
@@ -306,9 +330,9 @@
     {/each}
   </div>
 
-  {#if editable && ready}
+  {#if editable}
     <div class="draw-toolbar" role="group" aria-label="Boundary tools">
-      <button type="button" class:active={mode === 'polygon'} on:click={startDraw}>
+      <button type="button" class:active={mode === 'polygon'} disabled={!ready} on:click={startDraw}>
         {hasPolygon ? 'Redraw' : 'Draw'}
       </button>
       <button type="button" class:active={mode === 'select'} disabled={!hasPolygon} on:click={startSelect}>
