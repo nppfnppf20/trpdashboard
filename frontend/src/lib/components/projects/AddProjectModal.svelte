@@ -1,5 +1,4 @@
 <script>
-  import { onMount, onDestroy, tick } from 'svelte';
   import { browser } from '$app/environment';
   import { authFetch } from '$lib/api/client.js';
   import { getLookupOptions } from '$lib/api/lookups.js';
@@ -7,6 +6,7 @@
   import SearchableDropdown from '$lib/components/shared/SearchableDropdown.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import NudgeBoundaryModal from '$lib/components/projects/NudgeBoundaryModal.svelte';
+  import SiteBoundaryMap from '$lib/components/projects/SiteBoundaryMap.svelte';
 
   export let isOpen = false;
   export let onClose = () => {};
@@ -69,23 +69,14 @@
         .slice(0, 8)
     : [];
 
-  // Map state
-  let mapContainer;
-  let map;
-  let L;
-  let drawnItems;
-  let drawControl;
+  // Map state — the map itself lives in SiteBoundaryMap; it only reports
+  // the drawn polygon back via handleBoundaryChange.
+  let mapKey = 0; // bump to remount the map with a clean slate after close
 
   // Validation
   let errors = {};
   let saving = false;
-  let mapInitialized = false;
-  let mapInitError = false;
   let showNudgeBoundary = false;
-
-  $: if (browser && isOpen && !mapInitialized && !mapInitError && mapContainer) {
-    initializeMap();
-  }
 
   // Fetch lookup options when modal opens
   $: if (browser && isOpen && clientOptions.length === 0 && !clientOptionsLoading) {
@@ -192,143 +183,15 @@
     }
   }
 
-  onDestroy(() => {
-    if (map) {
-      map.remove();
-      map = null;
-      mapInitialized = false;
-      mapInitError = false;
-    }
-  });
+  function handleBoundaryChange(event) {
+    const { geojson, area } = event.detail;
+    formData.polygon_geojson = geojson;
+    formData.area = area;
 
-  async function initializeMap() {
-    if (!browser || !mapContainer || mapInitialized) return;
-
-    try {
-      // Dynamically import Leaflet and Leaflet Draw
-      const leafletModule = await import('leaflet');
-      L = leafletModule.default || leafletModule;
-      // Required for leaflet-draw UMD plugin to find Leaflet
-      window.L = L;
-
-      await import('leaflet-draw');
-
-      await tick(); // Wait for DOM to be ready
-
-      // Initialize map centered on UK
-      map = L.map(mapContainer).setView([54.5, -2.5], 6);
-
-      // Add OSM tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19
-      }).addTo(map);
-
-      // Create feature group for drawn items
-      drawnItems = new L.FeatureGroup();
-      map.addLayer(drawnItems);
-
-      // Add drawing control
-      drawControl = new L.Control.Draw({
-        draw: {
-          polygon: {
-            allowIntersection: false,
-            showArea: false, // Disabled to avoid strict mode bug
-            shapeOptions: {
-              color: '#9333ea',
-              weight: 3,
-              opacity: 0.8,
-              fillOpacity: 0.2
-            },
-            metric: true
-          },
-          polyline: false,
-          rectangle: false,
-          circle: false,
-          marker: false,
-          circlemarker: false
-        },
-        edit: {
-          featureGroup: drawnItems,
-          remove: true
-        }
-      });
-      map.addControl(drawControl);
-
-      // Debug: Log drawing events
-      map.on(L.Draw.Event.DRAWSTART, function () {
-        console.log('Drawing started');
-      });
-
-      map.on(L.Draw.Event.DRAWSTOP, function () {
-        console.log('Drawing stopped');
-      });
-
-      map.on(L.Draw.Event.DRAWVERTEX, function (e) {
-        console.log('Vertex added:', e);
-      });
-
-      // Handle polygon created
-      map.on(L.Draw.Event.CREATED, function (e) {
-        const layer = e.layer;
-        
-        // Extract GeoJSON
-        const geojson = layer.toGeoJSON().geometry;
-        
-        // VALIDATION: Check polygon complexity
-        const numPoints = geojson.coordinates[0].length;
-        if (numPoints > 1000) {
-          alert('Polygon too complex. Please draw a simpler shape (max 1000 points).\n\nThis prevents performance issues during analysis.');
-          // Don't add the polygon to the map
-          return;
-        }
-        
-        drawnItems.clearLayers(); // Only one polygon at a time
-        drawnItems.addLayer(layer);
-        
-        formData.polygon_geojson = JSON.stringify(geojson);
-
-        // Calculate area (approximate)
-        const areaInSqMeters = L.GeometryUtil && layer.getLatLngs
-          ? L.GeometryUtil.geodesicArea(layer.getLatLngs()[0])
-          : null;
-
-        if (areaInSqMeters) {
-          const areaInHectares = (areaInSqMeters / 10000).toFixed(2);
-          formData.area = `${areaInHectares} ha`;
-        }
-
-        // Clear geometry error if it exists
-        if (errors.geometry) {
-          delete errors.geometry;
-          errors = { ...errors };
-        }
-      });
-
-      // Handle polygon edited
-      map.on(L.Draw.Event.EDITED, function (e) {
-        const layers = e.layers;
-        layers.eachLayer(function (layer) {
-          const geojson = layer.toGeoJSON().geometry;
-          formData.polygon_geojson = JSON.stringify(geojson);
-        });
-      });
-
-      // Handle polygon deleted
-      map.on(L.Draw.Event.DELETED, function () {
-        formData.polygon_geojson = null;
-        formData.area = '';
-      });
-
-      // Force map to resize after initialization
-      setTimeout(() => {
-        if (map) map.invalidateSize();
-      }, 100);
-
-      mapInitialized = true;
-    } catch (error) {
-      console.error('Error initializing map:', error);
-      mapInitError = true;
+    // Clear geometry error once a boundary exists
+    if (geojson && errors.geometry) {
+      delete errors.geometry;
+      errors = { ...errors };
     }
   }
 
@@ -445,14 +308,8 @@
     errors = {};
     lpaInput = '';
 
-    // Destroy map so it reinitializes fresh next time
-    if (map) {
-      map.remove();
-      map = null;
-      mapInitialized = false;
-      drawnItems = null;
-      drawControl = null;
-    }
+    // Remount the map so it starts fresh next time
+    mapKey += 1;
 
     onClose();
   }
@@ -676,9 +533,15 @@
         <div class="map-section">
           <div class="map-header">
             <h3>Draw Site Boundary</h3>
-            <p class="map-hint">Use the polygon tool to draw the site boundary on the map</p>
+            <p class="map-hint">Click Draw, then click to place points, then click the last point again (or press Enter) to finish. Switch to Satellite to see field margins.</p>
           </div>
-          <div class="map-container" bind:this={mapContainer}></div>
+          <div class="map-container">
+            {#if isOpen}
+              {#key mapKey}
+                <SiteBoundaryMap editable={true} geojson={null} on:change={handleBoundaryChange} />
+              {/key}
+            {/if}
+          </div>
           {#if errors.geometry}
             <span class="error-text">{errors.geometry}</span>
           {/if}
@@ -927,6 +790,7 @@
   }
 
   .map-container {
+    position: relative;
     flex: 1;
     border-radius: 0.5rem;
     overflow: hidden;

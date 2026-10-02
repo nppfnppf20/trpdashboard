@@ -1,11 +1,11 @@
 <script>
-  import { onDestroy, tick } from 'svelte';
   import { browser } from '$app/environment';
   import ConflictDetailPopup from './ConflictDetailPopup.svelte';
   import { authFetch } from '$lib/api/client.js';
   import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
   import ProjectOverviewTab from '$lib/components/projects/overview/ProjectOverviewTab.svelte';
   import ProjectDetailsTab from '$lib/components/projects/ProjectDetailsTab.svelte';
+  import SiteBoundaryMap from '$lib/components/projects/SiteBoundaryMap.svelte';
   import SimilarSchemesTab from '$lib/components/projects/SimilarSchemesTab.svelte';
   import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
   import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
@@ -66,11 +66,6 @@
   };
 
   // Map state
-  let mapContainer;
-  let map;
-  let L;
-  let polygonLayer;
-  let mapInitialized = false;
 
   // Conflict check state
   let conflictCheckRunning = false;
@@ -95,7 +90,8 @@
     conflictError = null;
     savedCheckInfo = null;
     loadingSavedCheck = false;
-    cleanupMap();
+    siteBoundaryEditMode = false;
+    siteBoundaryError = null;
     loadProject();
   }
 
@@ -111,33 +107,9 @@
     loadSavedConflictCheck();
   }
 
-  // Initialize map when container is available and on site boundary tab
-  $: if (browser && isOpen && projectData && activeTab === 'site_boundary' && !mapInitialized && mapContainer) {
-    initializeMapWithPolygon();
-  }
-
-  // Cleanup map when switching away from site boundary tab
-  $: if (activeTab !== 'site_boundary' && map) {
-    cleanupMap();
-  }
-
-  $: if (!isOpen && map) {
-    cleanupMap();
-  }
-
-  onDestroy(() => {
-    cleanupMap();
-  });
-
-  function cleanupMap() {
-    if (map) {
-      map.remove();
-      map = null;
-      mapInitialized = false;
-      polygonLayer = null;
-    }
-    drawControl = null;
-    drawnItems = null;
+  // The map lives in SiteBoundaryMap and unmounts with the tab — just drop
+  // any half-finished edit when leaving the tab or closing the modal.
+  $: if (!isOpen || activeTab !== 'site_boundary') {
     siteBoundaryEditMode = false;
     siteBoundaryError = null;
   }
@@ -157,78 +129,6 @@
       error = err.message;
     } finally {
       loading = false;
-    }
-  }
-
-  async function initializeMapWithPolygon() {
-    try {
-      await initializeMap();
-
-      // Display polygon if it exists
-      if (projectData && projectData.polygon_geojson) {
-        displayPolygon(projectData.polygon_geojson);
-      }
-    } catch (err) {
-      console.error('Error initializing map:', err);
-    }
-  }
-
-  async function initializeMap() {
-    if (!browser || !mapContainer || mapInitialized) return;
-
-    try {
-      // Dynamically import Leaflet
-      const leafletModule = await import('leaflet');
-      L = leafletModule.default || leafletModule;
-
-      await tick(); // Wait for DOM to be ready
-
-      // Initialize map centered on UK
-      map = L.map(mapContainer).setView([54.5, -2.5], 6);
-
-      // Add OSM tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19
-      }).addTo(map);
-
-      // Force resize after a short delay
-      setTimeout(() => {
-        if (map) map.invalidateSize();
-      }, 100);
-
-      mapInitialized = true;
-    } catch (err) {
-      console.error('Error initializing map:', err);
-      error = 'Failed to initialize map';
-    }
-  }
-
-  function displayPolygon(geojsonString) {
-    if (!map || !L) return;
-
-    try {
-      const geojson = JSON.parse(geojsonString);
-
-      // Remove existing polygon if any
-      if (polygonLayer) {
-        map.removeLayer(polygonLayer);
-      }
-
-      // Create polygon layer
-      polygonLayer = L.geoJSON(geojson, {
-        style: {
-          color: '#9333ea',
-          weight: 3,
-          opacity: 0.8,
-          fillOpacity: 0.2
-        }
-      }).addTo(map);
-
-      // Zoom to polygon bounds
-      map.fitBounds(polygonLayer.getBounds());
-    } catch (err) {
-      console.error('Error displaying polygon:', err);
     }
   }
 
@@ -318,90 +218,26 @@
 
   // ── Site Boundary inline editing ────────────────────────────────────────
   let siteBoundaryEditMode = false;
-  let drawnItems;
-  let drawControl;
   let siteBoundarySaving = false;
   let siteBoundaryError = null;
   let draftPolygonGeojson = null;
   let draftArea = '';
 
-  function handleDrawCreated(e) {
-    drawnItems.clearLayers();
-    drawnItems.addLayer(e.layer);
-    draftPolygonGeojson = JSON.stringify(e.layer.toGeoJSON().geometry);
-    const area = L.GeometryUtil && e.layer.getLatLngs
-      ? L.GeometryUtil.geodesicArea(e.layer.getLatLngs()[0]) : null;
-    if (area) draftArea = `${(area / 10000).toFixed(2)} ha`;
+  function handleBoundaryChange(event) {
+    draftPolygonGeojson = event.detail.geojson;
+    draftArea = event.detail.area;
   }
 
-  function handleDrawEdited(e) {
-    e.layers.eachLayer(layer => {
-      draftPolygonGeojson = JSON.stringify(layer.toGeoJSON().geometry);
-    });
-  }
-
-  function handleDrawDeleted() {
-    draftPolygonGeojson = null;
-    draftArea = '';
-  }
-
-  async function enableSiteBoundaryEdit() {
-    if (!map || !L) return;
+  function enableSiteBoundaryEdit() {
     siteBoundaryError = null;
     draftPolygonGeojson = projectData.polygon_geojson || null;
     draftArea = projectData.area || '';
-
-    await import('leaflet-draw');
-
-    drawnItems = new L.FeatureGroup();
-    map.addLayer(drawnItems);
-
-    if (polygonLayer) {
-      polygonLayer.eachLayer(layer => drawnItems.addLayer(layer));
-      map.removeLayer(polygonLayer);
-      polygonLayer = null;
-    }
-
-    drawControl = new L.Control.Draw({
-      draw: {
-        polygon: {
-          allowIntersection: false,
-          showArea: false,
-          shapeOptions: { color: '#9333ea', weight: 3, opacity: 0.8, fillOpacity: 0.2 },
-          metric: true
-        },
-        polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false
-      },
-      edit: { featureGroup: drawnItems, remove: true }
-    });
-    map.addControl(drawControl);
-
-    map.on(L.Draw.Event.CREATED, handleDrawCreated);
-    map.on(L.Draw.Event.EDITED, handleDrawEdited);
-    map.on(L.Draw.Event.DELETED, handleDrawDeleted);
-
     siteBoundaryEditMode = true;
   }
 
-  function teardownDrawControl() {
-    if (drawControl && map) map.removeControl(drawControl);
-    if (drawnItems && map) map.removeLayer(drawnItems);
-    if (map && L?.Draw?.Event) {
-      map.off(L.Draw.Event.CREATED, handleDrawCreated);
-      map.off(L.Draw.Event.EDITED, handleDrawEdited);
-      map.off(L.Draw.Event.DELETED, handleDrawDeleted);
-    }
-    drawControl = null;
-    drawnItems = null;
-  }
-
   function cancelSiteBoundaryEdit() {
-    teardownDrawControl();
     siteBoundaryEditMode = false;
     siteBoundaryError = null;
-    if (projectData?.polygon_geojson) {
-      displayPolygon(projectData.polygon_geojson);
-    }
   }
 
   async function saveSiteBoundary() {
@@ -417,9 +253,7 @@
       const data = await response.json();
       if (response.ok && data.success) {
         handleProjectUpdated(data.project);
-        teardownDrawControl();
         siteBoundaryEditMode = false;
-        if (projectData.polygon_geojson) displayPolygon(projectData.polygon_geojson);
       } else {
         siteBoundaryError = data.error || 'Failed to update site boundary';
       }
@@ -841,7 +675,13 @@
                   <p>No site boundary defined for this project.</p>
                 </div>
               {/if}
-              <div class="map-container" bind:this={mapContainer}></div>
+              <div class="map-container">
+                <SiteBoundaryMap
+                  geojson={projectData.polygon_geojson || null}
+                  editable={siteBoundaryEditMode}
+                  on:change={handleBoundaryChange}
+                />
+              </div>
             </div>
           {:else if activeTab === 'details'}
             <ProjectOverviewTab project={projectData} onAcceptDateSuggestion={handleAcceptDateSuggestion} />
@@ -1731,6 +1571,7 @@
   }
 
   .map-container {
+    position: relative;
     flex: 1;
     border-radius: 0.5rem;
     overflow: hidden;
