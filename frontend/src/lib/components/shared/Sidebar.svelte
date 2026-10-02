@@ -72,6 +72,7 @@
   // group so the main Project Workspace list stays short.
   const betaItems = [
     { label: 'Similar Schemes', icon: 'la-search', tab: 'similar_schemes' },
+    { label: 'Appeal Precedent', icon: 'la-gavel', tab: 'appeal_precedent' },
     { label: 'LPA Decision Analysis', icon: 'la-balance-scale', tab: 'lpa_decision_analysis' },
     { label: 'Conflict Check', icon: 'la-exclamation-triangle', tab: 'conflict' },
     { label: 'HLPV', icon: 'la-sun', tab: 'hlpv' },

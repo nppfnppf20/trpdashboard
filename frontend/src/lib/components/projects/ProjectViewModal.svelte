@@ -7,6 +7,7 @@
   import ProjectDetailsTab from '$lib/components/projects/ProjectDetailsTab.svelte';
   import SiteBoundaryMap from '$lib/components/projects/SiteBoundaryMap.svelte';
   import SimilarSchemesTab from '$lib/components/projects/SimilarSchemesTab.svelte';
+  import AppealPrecedentTab from '$lib/components/projects/AppealPrecedentTab.svelte';
   import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
   import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
   import ProjectDocsTab from '$lib/components/projects/ProjectDocsTab.svelte';
@@ -57,6 +58,7 @@
     meeting_notes: 'Meeting Notes',
     ...trackerLabels,
     similar_schemes: 'Similar Schemes',
+    appeal_precedent: 'Appeal Precedent',
     lpa_decision_analysis: 'LPA Decision Analysis',
     conflict: 'Nearby Renewables Check',
     hlpv: 'Renewables HLPV Analysis',
@@ -1238,6 +1240,10 @@
             </div>
           {:else if activeTab === 'similar_schemes'}
             <SimilarSchemesTab project={projectData} />
+          {:else if activeTab === 'appeal_precedent'}
+            <div class="ct-scroll-wrap">
+              <AppealPrecedentTab project={projectData} />
+            </div>
           {:else if activeTab === 'lpa_decision_analysis'}
             <LpaDecisionAnalysisTab project={projectData} />
           {:else if activeTab === 'project_docs'}

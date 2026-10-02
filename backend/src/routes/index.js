@@ -27,6 +27,7 @@ import ingestionRoutes from './ingestion.routes.js';
 import voiceRoutes from './voice.routes.js';
 import planitRoutes from './planit.routes.js';
 import appealbaseRoutes from './appealbase.routes.js';
+import appealPrecedentRoutes from './appealPrecedent.routes.js';
 import tendersRoutes from './tenders.routes.js';
 import lpaAnalysisRoutes from './lpaAnalysis.routes.js';
 import appealRoutes from './appeal.routes.js';
@@ -136,6 +137,9 @@ router.use('/api/planit', planitRoutes);
 
 // Appealbase — planning appeal precedent search
 router.use('/api/appealbase', appealbaseRoutes);
+
+// Appeal Precedent — project-aware precedent search (background agent run) + chat over ticked decisions
+router.use('/api/appeal-precedent', appealPrecedentRoutes);
 
 // Tender intelligence — Find a Tender collector + relevance filtering
 router.use('/api/tenders', tendersRoutes);

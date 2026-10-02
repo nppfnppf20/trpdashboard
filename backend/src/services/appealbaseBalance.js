@@ -54,15 +54,17 @@ export const ENTRY_PROMPT = `BALANCE ENTRIES: list each harm and each benefit th
   "para": "<paragraph number or ''>" }
 RULES: copy the wording exactly from the decision. If the inspector does not state a level or a weight, leave that field empty; never infer one. Level of harm (how severe) and weight (how much it counts) are different things, so keep them in their own fields.`;
 
-const ISSUE_IDS = new Set([...ISSUES.map(i => i.id), 'other']);
+const DEFAULT_ISSUE_IDS = [...ISSUES.map(i => i.id), 'other'];
 
 /**
  * Verify entries against the decision text and map wording onto the scales.
  * An entry is kept only if its quote or at least one wording phrase is found verbatim in the text.
  * @param {Array} entries raw model entries
  * @param {(q: string) => boolean} found verbatim finder (see appealbaseQuotes.makeFinder)
+ * @param {string[]} [issueIds] valid issue ids for this project (defaults to the Landulph test set); anything else becomes 'other'
  */
-export function processEntries(entries, found) {
+export function processEntries(entries, found, issueIds = DEFAULT_ISSUE_IDS) {
+  const validIds = new Set([...issueIds, 'other']);
   const kept = [];
   let dropped = 0;
   for (const e of entries ?? []) {
@@ -81,7 +83,7 @@ export function processEntries(entries, found) {
     const lv = side === 'harm' && levelOk ? mapLevel(e.level_wording) : { level: side === 'harm' ? 'not_stated' : '', position: '' };
     kept.push({
       side,
-      issue_id: ISSUE_IDS.has(e.issue_id) ? e.issue_id : 'other',
+      issue_id: validIds.has(e.issue_id) ? e.issue_id : 'other',
       description: e.description || '',
       level: lv.level,
       level_position: lv.position,
