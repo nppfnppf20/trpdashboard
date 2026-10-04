@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { createEventDispatcher } from 'svelte';
 
   export let isOpen = false;
@@ -52,7 +53,7 @@
         {#if hint}
           <p class="hint">
             <i class="las la-lightbulb"></i>
-            <span>{@html hint}</span>
+            <span>{@html sanitizeHtml(hint)}</span>
           </p>
         {/if}
       </div>

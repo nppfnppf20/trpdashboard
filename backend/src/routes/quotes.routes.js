@@ -4,15 +4,12 @@
  */
 
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import * as quotesController from '../controllers/quotes.controller.js';
 
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-});
+const upload = createUpload({ maxMB: 25, exts: ['pdf', 'docx', 'doc', 'txt', 'md'] });
 
 // POST /api/admin-console/quotes/extract-from-document - Prefill quote fields from an uploaded PDF/Word quote
 router.post('/extract-from-document', upload.single('file'), quotesController.extractFromDocument);

@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount, onDestroy } from 'svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
@@ -249,7 +250,7 @@
 
   function stripHtml(html) {
     const tmp = document.createElement('div');
-    tmp.innerHTML = html;
+    tmp.innerHTML = sanitizeHtml(html);
     return (tmp.textContent || tmp.innerText || '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
   }
 

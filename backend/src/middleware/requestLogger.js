@@ -22,15 +22,19 @@ export function requestLogger(req, res, next) {
   const reqId = `${start}-${Math.random().toString(36).slice(2, 8)}`;
   req._logId = reqId;
 
-  log('debug', `start ${req.method} ${req.originalUrl}`, { reqId, ...poolStats() });
+  // Log the path only. Query strings can carry search terms, ids or tokens and
+  // don't belong in a log file (ASVS V14.2.1).
+  const loggedUrl = req.originalUrl.split('?')[0];
+
+  log('debug', `start ${req.method} ${loggedUrl}`, { reqId, ...poolStats() });
 
   res.on('finish', () => {
     const durationMs = Date.now() - start;
-    const meta = { reqId, method: req.method, path: req.originalUrl, status: res.statusCode, durationMs, ...poolStats() };
+    const meta = { reqId, method: req.method, path: loggedUrl, status: res.statusCode, durationMs, ...poolStats() };
     if (durationMs > SLOW_MS || res.statusCode >= 500) {
-      log('warn', `done ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms`, meta);
+      log('warn', `done ${req.method} ${loggedUrl} ${res.statusCode} ${durationMs}ms`, meta);
     } else {
-      log('debug', `done ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms`, meta);
+      log('debug', `done ${req.method} ${loggedUrl} ${res.statusCode} ${durationMs}ms`, meta);
     }
   });
 

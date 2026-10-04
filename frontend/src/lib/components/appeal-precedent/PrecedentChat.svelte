@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   import { askAboutPrecedents } from '$lib/api/appealPrecedent.js';
   import { escapeHtml } from '$lib/utils/chatMarkdown.js';
 
@@ -124,7 +125,7 @@
                     <div class="citation">
                       <div class="c-head">
                         <span class="c-n">{c.n}</span>
-                        <a href={c.url} target="_blank" rel="noopener">{c.lpa} {c.ref}</a>
+                        <a href={safeUrl(c.url)} target="_blank" rel="noopener">{c.lpa} {c.ref}</a>
                         {#if c.para}<span class="c-para">paragraph {c.para}</span>{/if}
                       </div>
                       {#if c.verified}

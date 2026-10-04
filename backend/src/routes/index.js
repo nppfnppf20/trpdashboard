@@ -67,9 +67,18 @@ import { analysisLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
-// Apply authentication to all /api/* and /analyze/* routes
-router.use('/api', authenticate);
-router.use('/analyze', authenticate);
+// Apply authentication to all /api/* and /analyze/* routes.
+//
+// requireAdmin is applied here too: the frontend already only lets admins in
+// (see frontend/src/hooks.server.js), so the API must not be more permissive
+// than the UI. Without this, any valid Supabase token — e.g. a non-admin
+// account, or a self-signup if public signup is ever enabled — could call every
+// endpoint directly and read or edit any project (ASVS V8.2.1 / V8.2.2).
+//
+// When non-admin roles (surveyor/client) are introduced, replace this blanket
+// check with per-router requireRole(...) calls plus project-level access checks.
+router.use('/api', authenticate, requireAdmin);
+router.use('/analyze', authenticate, requireAdmin);
 
 // Analysis endpoints with stricter rate limiting (POST /analyze/*)
 // Apply analysis-specific rate limit on top of general API limit
@@ -96,8 +105,8 @@ router.use('/api/conflict-check', conflictCheckRoutes);
 
 // Site and TRP report endpoints (POST /save-site, /save-trp-edits)
 // Apply authentication directly since these are at root level
-router.use('/save-site', authenticate);
-router.use('/save-trp-edits', authenticate);
+router.use('/save-site', authenticate, requireAdmin);
+router.use('/save-trp-edits', authenticate, requireAdmin);
 router.use('/', sitesRoutes);
 
 // Admin Console — restricted to admin role

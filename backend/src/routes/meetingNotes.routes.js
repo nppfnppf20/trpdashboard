@@ -1,5 +1,5 @@
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import {
   processMeetingNote,
   saveVerbatimMeetingNote,
@@ -21,7 +21,7 @@ import {
 } from '../controllers/meetingNotes.controller.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = createUpload({ maxMB: 50 });
 
 // Literal-segment routes first to avoid param shadowing
 router.get('/', getAllMeetingNotes);

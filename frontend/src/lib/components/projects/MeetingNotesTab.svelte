@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount } from 'svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
@@ -969,7 +970,7 @@
 
       <div class="modal-body">
         <div class="mn-summary-html">
-          {@html viewingBriefing.summary_html}
+          {@html sanitizeHtml(viewingBriefing.summary_html)}
         </div>
       </div>
 

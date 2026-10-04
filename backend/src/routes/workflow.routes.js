@@ -5,6 +5,7 @@
 
 import express from 'express';
 import multer from 'multer';
+import { validateUploadedFile } from '../middleware/upload.js';
 import { analyseStageDocument, checkDocumentSizeHandler } from '../controllers/stageAnalysis.controller.js';
 import {
   getWorkflowNotificationsHandler,
@@ -31,6 +32,10 @@ import {
   deleteRefusalReasonHandler,
   reorderRefusalReasonsHandler
 } from '../controllers/refusalReasons.controller.js';
+
+// This router keeps its own multer instance because it maps multer errors to
+// route-specific JSON; content (magic-byte) validation comes from the shared middleware.
+const checkUploadContents = validateUploadedFile(['pdf', 'docx', 'txt', 'md']);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -78,6 +83,7 @@ router.post(
       next();
     });
   },
+  checkUploadContents,
   checkDocumentSizeHandler
 );
 
@@ -99,6 +105,7 @@ router.post(
       next();
     });
   },
+  checkUploadContents,
   analyseStageDocument
 );
 

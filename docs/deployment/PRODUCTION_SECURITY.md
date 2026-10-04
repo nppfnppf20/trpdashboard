@@ -1,6 +1,6 @@
 # Production Security Roadmap
 
-**Last Updated:** January 18, 2026  
+**Last Updated:** October 2, 2026 (figures corrected against the code; see the update note below)  
 **Current Status:** Trial-ready (2-person deployment)  
 **Target:** Production-ready (50+ users)
 
@@ -14,6 +14,8 @@ This document tracks the security posture of the HLPV web application as it evol
 - Strong backend security (auth, RLS, rate limiting)
 - Minimal frontend validation (sufficient for trusted users)
 - Not yet hardened for untrusted/malicious users
+
+> **Update 2026-10-02:** an OWASP ASVS 5.0 Level 1 assessment was run and most of its findings fixed on branch `security/asvs-l1-fixes`. Results: `ASVS_LEVEL1_ASSESSMENT.md`. The written rules for access, validation, rate limiting and dependencies: `SECURITY_CONTROLS.md`. Where this older document disagrees with those two, they are correct.
 
 ---
 
@@ -70,15 +72,16 @@ let this document go stale again as new tables/schemas get added.
 
 **What we have:**
 - ✅ JWT authentication on all endpoints
+- ✅ Admin-only enforcement on every API route (added 2026-10-02; previously only `/api/admin-console` checked the role)
 - ✅ Rate limiting (user-based):
-  - General API: 100 requests/15 minutes per user
-  - Analysis: 20 requests/15 minutes per user
-  - Auth: 10 requests/15 minutes per IP
+  - General API: 1000 requests/15 minutes per user
+  - Analysis (`/analyze`): 40 requests/15 minutes per user
+  - Login: handled by Supabase Auth's own limits (the API's `authLimiter` is defined but not used)
 - ✅ Trust proxy enabled (works on Render/Railway/Heroku)
 - ✅ Security headers (Helmet)
 - ✅ CORS restrictions (only frontend allowed)
-- ✅ Body size limits (2MB max)
-- ✅ Error handling (no stack traces exposed)
+- ✅ Body size limits (10MB JSON/form; uploads 20–50MB per route, with type and content checks)
+- ✅ Error handling (no stack traces exposed; raw `details` removed from 5xx responses in production)
 
 **Protection level:** ⭐⭐⭐⭐⭐
 - Prevents DDoS attacks
@@ -193,8 +196,8 @@ let this document go stale again as new tables/schemas get added.
 
 ---
 
-#### **C. Rich Text HTML Sanitization** ⚠️ HIGH RISK
-**Current:** None ❌  
+#### **C. Rich Text HTML Sanitization** ✅ IMPLEMENTED (2026-10-02)
+**Current:** DOMPurify is applied at every `{@html}` and data-driven `innerHTML` (`frontend/src/lib/utils/sanitizeHtml.js`). Backend write-time sanitization still covers policies only.  
 **Add:**
 - [ ] Sanitize HTML from rich text editor
 - [ ] Allow only safe tags: `<p>`, `<strong>`, `<em>`, `<u>`, `<h1-h3>`, `<ul>`, `<ol>`, `<li>`, `<br>`
@@ -214,8 +217,8 @@ let this document go stale again as new tables/schemas get added.
 
 ---
 
-#### **D. URL Validation**
-**Current:** None ❌  
+#### **D. URL Validation** ✅ IMPLEMENTED (2026-10-02)
+**Current:** `safeUrl()` (`frontend/src/lib/utils/safeUrl.js`) allows only http(s) and mailto links for all data-driven hrefs.  
 **Add:**
 - [ ] Validate SharePoint/external links
 - [ ] Block `javascript:` URLs
@@ -374,7 +377,7 @@ npm install package@latest
 - ⚠️ Known vulnerabilities in dependencies
 - ⚠️ Supply chain attacks (malicious packages)
 
-**Current status:** ✅ Checked January 18, 2026 - No critical vulnerabilities
+**Current status (2026-10-02):** frontend 0 advisories; backend 3 (two documented exceptions, see `SECURITY_CONTROLS.md` §4). The January 2026 "no critical vulnerabilities" result had gone stale: 8 high/critical advisories had accumulated.
 
 ---
 
@@ -412,7 +415,7 @@ npm install package@latest
 
 ## **🔴 KNOWN RISKS (Current Trial)**
 
-### **1. Rich Text XSS (HIGH - but mitigated by trust)**
+### **1. Rich Text XSS** ✅ RESOLVED 2026-10-02 (render-time sanitization; originally HIGH, mitigated by trust)
 **Risk:** Malicious HTML can be stored in planning deliverables  
 **Likelihood:** LOW (only 2 trusted users)  
 **Impact:** HIGH (if exploited, can steal auth tokens)  
@@ -448,7 +451,7 @@ npm install package@latest
 
 ---
 
-### **5. URL Injection (LOW)**
+### **5. URL Injection** ✅ RESOLVED 2026-10-02 (`safeUrl()`; originally LOW)
 **Risk:** `javascript:` URLs could execute code  
 **Likelihood:** LOW (you won't enter malicious URLs)  
 **Impact:** MEDIUM (if clicked, can run JS)  

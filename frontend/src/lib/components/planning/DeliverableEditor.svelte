@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount, createEventDispatcher } from 'svelte';
   import { getDeliverableAsHTML, updateDeliverableFromHTML, updateDeliverable, incorporateDeliverableTargeted } from '$lib/services/planningDeliverablesApi.js';
   import { exportDeliverableToWord } from '$lib/services/planningDeliverablesExport.js';
@@ -283,7 +284,7 @@
 
   function prepareForWord(html) {
     const div = document.createElement('div');
-    div.innerHTML = html;
+    div.innerHTML = sanitizeHtml(html);
 
     // Strip leading numbers from headings and apply inline styles
     div.querySelectorAll('h1, h2, h3, h4, p, li').forEach(el => {

@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { briefingNotes } from '$lib/stores/planning-notes.js';
   import { generateStage1Review } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, updateDeliverableFromHTML } from '$lib/services/planningDeliverablesApi.js';
@@ -196,7 +197,7 @@
       <span class="preview-hint">Click <strong>Open in Editor</strong> to edit and save this document.</span>
     </div>
     <div class="preview-wrapper trp-document-content">
-      {@html generatedHtml}
+      {@html sanitizeHtml(generatedHtml)}
     </div>
   {/if}
 </div>

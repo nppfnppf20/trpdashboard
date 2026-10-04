@@ -3,11 +3,11 @@
  */
 
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import { generateStage1Review, getStage1Context, getStage1StartingDocs, upsertStage1StartingDoc, deleteStage1StartingDoc } from '../controllers/stage1Review.controller.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = createUpload({ maxMB: 20 });
 
 router.post('/projects/:projectId/generate', generateStage1Review);
 router.get('/projects/:projectId/context', getStage1Context);

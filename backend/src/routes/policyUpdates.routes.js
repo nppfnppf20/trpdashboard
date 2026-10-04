@@ -1,5 +1,5 @@
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import {
   listPolicyItems,
   uploadPolicyDocument,
@@ -10,7 +10,7 @@ import {
 } from '../controllers/policy.controller.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = createUpload({ maxMB: 50 });
 
 router.get('/',                         listPolicyItems);
 router.post('/upload',  upload.single('file'), uploadPolicyDocument);

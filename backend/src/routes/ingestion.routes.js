@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import {
   getTopics,
   createTopic,
@@ -23,20 +23,7 @@ const router = express.Router();
 
 // Store file in memory so we can pass the buffer straight to pdf-parse.
 // Limit to 20MB — large PDFs over this should be split before upload.
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['application/pdf', 'text/plain', 'text/markdown'];
-    // multer can report text/plain for .md files — also check extension
-    const ext = file.originalname.split('.').pop().toLowerCase();
-    if (allowed.includes(file.mimetype) || ['pdf', 'txt', 'md'].includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF, .txt, and .md files are accepted'));
-    }
-  }
-});
+const upload = createUpload({ exts: ['pdf', 'txt', 'md'] });
 
 // Topics
 router.get('/projects/:projectId/topics', getTopics);

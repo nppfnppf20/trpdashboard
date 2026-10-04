@@ -1,4 +1,5 @@
 ﻿<script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { createEventDispatcher, tick, onMount } from 'svelte';
   import { diffArrays, diffWords } from 'diff';
   import { paScopeIncorporation, paIncorporateTargeted } from '$lib/api/planningApplication.js';
@@ -536,7 +537,7 @@
             <button class="btn btn-secondary" on:click={() => { projDocState = 'idle'; projDocSummaryHtml = ''; projDocError = null; }}>Replace</button>
           </div>
           <div class="proj-preview-body">
-            {@html projDocSummaryHtml}
+            {@html sanitizeHtml(projDocSummaryHtml)}
           </div>
           {#if projDocError}<p class="proj-error-msg">{projDocError}</p>{/if}
           {#if existingSummary && projDocState !== 'saved'}
@@ -776,7 +777,7 @@
             <div class="review-row" class:review-row--changed={group.type !== 'unchanged'}>
               <div class="review-row-doc" class:review-row-doc--unchanged={group.type === 'unchanged'}>
                 {#if group.type === 'unchanged'}
-                  {@html group.html}
+                  {@html sanitizeHtml(group.html)}
                 {:else if group.type === 'added'}
                   <div class="doc-para-change {group.accepted ? 'doc-para-added' : ''}">
                     <div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}{:else}<span>{w.value}</span>{/if}{/each}</div>
@@ -785,13 +786,13 @@
                   {#if group.accepted}
                     <div class="doc-para-change doc-para-removed"><div class="word-diff">{#each group.words as w}{#if w.removed}<del class="wd-del">{w.value}</del>{:else if w.added}{:else}<span>{w.value}</span>{/if}{/each}</div></div>
                   {:else}
-                    <div class="doc-para-kept">{@html group.html}</div>
+                    <div class="doc-para-kept">{@html sanitizeHtml(group.html)}</div>
                   {/if}
                 {:else if group.type === 'modified'}
                   {#if group.accepted}
                     <div class="doc-para-change doc-para-modified"><div class="word-diff">{#each group.words as w}{#if w.added}<ins class="wd-add">{w.value}</ins>{:else if w.removed}<del class="wd-del">{w.value}</del>{:else}<span>{w.value}</span>{/if}{/each}</div></div>
                   {:else}
-                    <div class="doc-para-change doc-para-kept-original">{@html group.oldHtml}</div>
+                    <div class="doc-para-change doc-para-kept-original">{@html sanitizeHtml(group.oldHtml)}</div>
                   {/if}
                 {/if}
               </div>

@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount, createEventDispatcher } from 'svelte';
   import '$lib/styles/trpformatting.css';
   import { highlightPlaceholders } from '$lib/utils/draftParagraphs.js';
@@ -37,7 +38,7 @@
 
   onMount(() => {
     if (editorElement && content) {
-      editorElement.innerHTML = applyContent(content);
+      editorElement.innerHTML = sanitizeHtml(applyContent(content));
     }
 
     // Firefox's contenteditable implementation has a legacy "object resizing"
@@ -210,7 +211,7 @@
 
   export function setHTML(html) {
     if (editorElement) {
-      editorElement.innerHTML = applyContent(html);
+      editorElement.innerHTML = sanitizeHtml(applyContent(html));
     }
   }
 

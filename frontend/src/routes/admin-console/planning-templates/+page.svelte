@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount, tick } from 'svelte';
   import { listPolicyContextTemplates, updatePolicyContextTemplate } from '$lib/api/planningApplication.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
@@ -153,7 +154,7 @@
         <h2>{previewTitle}</h2>
         <button class="close-btn" on:click={() => previewOpen = false}><i class="las la-times"></i></button>
       </div>
-      <div class="preview-body prose">{@html previewHtml}</div>
+      <div class="preview-body prose">{@html sanitizeHtml(previewHtml)}</div>
     </div>
   </div>
 {/if}

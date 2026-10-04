@@ -1,13 +1,10 @@
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import { sectionChat, parseSectionDoc } from '../controllers/sectionChat.controller.js';
 
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
-});
+const upload = createUpload({ maxMB: 20 });
 
 router.post('/projects/:projectId/section-chat', sectionChat);
 router.post('/projects/:projectId/section-chat/parse-doc', upload.single('file'), parseSectionDoc);

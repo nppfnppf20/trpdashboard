@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { createEventDispatcher } from 'svelte';
 
   export let template;
@@ -77,7 +78,7 @@
       <div class="template-preview">
         <h3>Template Content</h3>
         <div class="preview-content">
-          {@html templateHTML}
+          {@html sanitizeHtml(templateHTML)}
         </div>
       </div>
 

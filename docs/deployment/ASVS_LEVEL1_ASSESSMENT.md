@@ -3,28 +3,34 @@
 **Date:** 2026-10-02
 **Standard:** OWASP ASVS 5.0.0, Level 1 (70 requirements, taken from the official CSV)
 **Scope:** `backend/` (Express 5 API), `frontend/` (SvelteKit), live hosts `trpdashboard.co.uk` (frontend) and `trp-dash-dski.onrender.com` (production backend, read from the live frontend's JavaScript bundle; the `hlpv-web-app-test3.onrender.com` fallback in `frontend/src/lib/config.js` is not what production uses)
-**Method:** static code review, `npm audit`, read-only HTTP checks of the live hosts, and the existing docs in `docs/deployment/`. No code was changed.
+**Method:** static code review, `npm audit`, read-only HTTP checks of the live hosts, and the existing docs in `docs/deployment/`.
 **Not covered:** anything that lives only in the Supabase dashboard or the Render/Cloudflare dashboards. Those rows are marked VERIFY and listed in the checklist at the end.
 
-## Result
+## Status
 
-| Status | Count | Meaning |
+This document was first written before any fixes (**29 of 59 applicable requirements passing**). Most findings were then fixed on branch `security/asvs-l1-fixes`; the statuses below reflect **that branch's code**. Nothing is live until the branch is merged and deployed, so rows say "confirm live after deploy" where the check was on the live site.
+
+| Status | Before fixes | On the branch |
 |---|---|---|
-| PASS | 29 | Met, with evidence |
-| PARTIAL | 13 | Some of the requirement is met |
-| FAIL | 13 | Not met |
-| VERIFY | 4 | Depends on a setting or process I couldn't see |
-| N/A | 11 | Doesn't apply to this architecture |
+| PASS | 29 | 41 |
+| PARTIAL | 13 | 13 |
+| FAIL | 13 | 1 |
+| VERIFY | 4 | 4 |
+| N/A | 11 | 11 |
 
-Of the 59 applicable requirements, 29 pass outright (49%). The failures cluster in four areas: authorization (V8), HTML rendering and sanitization (V1/V3), dependency hygiene (V15), and security documentation.
+Of the 59 applicable requirements, 41 now pass (69%).
 
-## Fix first
+## Remaining work
 
-1. **V8.2.1 / V8.2.2 / V8.3.1 — authorization lives only in the UI.** `frontend/src/hooks.server.js` sends any non-admin to `/auth/unauthorized`, so the UI is admin-only. The Express API doesn't repeat that check: only `/api/admin-console` uses `requireAdmin` (`backend/src/routes/index.js:103`). Every other `/api` route accepts any valid Supabase token, and controllers never check a project against the caller. Anyone holding a valid non-admin token (an invited surveyor or client, or a self-signup if public signup is on) can call the API directly. Per `SUPABASE_SECURITY_ADVISOR_REPORT.md`, several `SECURITY DEFINER` write functions were also callable with just the public anon key; check migrations 156 and 157 are applied.
-2. **V1.3.1 / V1.2.1 / V3.2.2 — stored XSS.** About 30 `{@html}` / `innerHTML` uses, no DOMPurify, and `md()` doesn't escape HTML. `sanitizeRichText` is applied only in `policy.controller.js`. LLM output derived from uploaded documents is stored and rendered unsanitized. The Supabase session lives in JS-readable cookies, so an XSS means account takeover.
-3. **V15.2.1 — vulnerable dependencies.** Backend: 13 advisories (8 high), including `multer`, `path-to-regexp`, `@xmldom/xmldom`, `lodash`. Frontend: 8 (1 critical, 4 high), including `jspdf`. `npm audit fix` resolves several without major bumps.
-4. **V3.3.1 / V3.4.1 — frontend transport and cookie hardening.** `trpdashboard.co.uk` sends no `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options` or CSP header. Session cookies have no `__Host-`/`__Secure-` prefix.
-5. **V6.2.2 — no way to change or reset a password in the app.** There is no change-password UI and no "forgot password" link; password setting only happens through an invite or recovery email link.
+1. **V6.2.2 (FAIL):** there is no change-password or forgot-password flow in the app.
+   **V3.4.1, V4.1.1 (PARTIAL):** static files and redirects carry no security headers. Turn on HSTS in Cloudflare to cover them.
+2. **V8.2.2 (PARTIAL):** no per-project access check. Fine while every user is an admin; **must be built before signup is enabled or any non-admin role gets API access** (steps in `SECURITY_CONTROLS.md` §1).
+3. **V3.3.1 (PARTIAL):** session cookies are `Secure` now but have no `__Host-`/`__Secure-` prefix and are JS-readable.
+4. **V2.1.1, V2.2.1, V2.2.2 (PARTIAL):** server-side validation rules exist for the project endpoints only. Extend to quotes, conditions and meeting notes.
+5. **V15.2.1 (PARTIAL):** two documented dependency exceptions remain (`@anthropic-ai/sdk`, `pptxgenjs` → `image-size`), to be reviewed by 2026-12-31.
+6. **V6.1.1, V6.2.1, V6.2.4, V6.3.1 (PARTIAL / VERIFY):** Supabase Auth settings that need checking in the dashboard (see the checklist).
+7. **V2.3.1 (VERIFY):** server-side ordering of multi-step flows hasn't been reviewed.
+8. **V7.4.1, V7.4.2, V14.2.1 (PARTIAL):** shorten the access-token lifetime in Supabase, and prefer PKCE for invite/recovery email links.
 
 ## Matrix
 
@@ -34,20 +40,20 @@ Evidence paths are relative to the repo root.
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V1.2.1 | Context-appropriate output encoding | FAIL | Svelte escapes `{text}` by default, but `{@html}` is used with unsanitized data (e.g. `frontend/src/lib/components/projects/MeetingNotesTab.svelte:972`, `ProjectDocsTab.svelte:719`). `md()` in `frontend/src/lib/utils/markdown.js` doesn't escape input. `renderReply` in `chatMarkdown.js` does escape first. | Sanitize or escape before every `{@html}`; escape inside `md()` |
-| V1.2.2 | Encode untrusted data in URLs; allow only safe protocols | FAIL | `href={item.url}`, `href={project.sharepoint_link}`, `href={r.pins_url}` etc. with no protocol allowlist (`EditableGeneralInfo.svelte:744`, `NoticesTab.svelte:253`). `mailto:${to}` is unencoded in `BriefingEditor.svelte:283`. Already noted in `PRODUCTION_SECURITY.md` §5D. | Add a shared `safeUrl()` that permits only `http(s):` and `mailto:` |
+| V1.2.1 | Context-appropriate output encoding | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. All data-driven `{@html}` and `innerHTML` now go through DOMPurify (`frontend/src/lib/utils/sanitizeHtml.js`); `md()` escapes input. Chat/report renderers already escaped. Svelte escapes `{text}` by default, but `{@html}` is used with unsanitized data (e.g. `frontend/src/lib/components/projects/MeetingNotesTab.svelte:972`, `ProjectDocsTab.svelte:719`). `md()` in `frontend/src/lib/utils/markdown.js` doesn't escape input. `renderReply` in `chatMarkdown.js` does escape first. Review found and fixed 11 more sinks: every Leaflet `bindPopup()` (9 in `ProjectMapPanel.svelte`, 2 in `Map2.svelte`) interpolated third-party dataset fields straight into HTML and now goes through `sanitizeHtml`. | Smoke-test rich-text screens in the browser |
+| V1.2.2 | Encode untrusted data in URLs; allow only safe protocols | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. Every data-driven `href` uses `safeUrl()` (`frontend/src/lib/utils/safeUrl.js`: http, https, mailto only); the `mailto:` recipient in `BriefingEditor.svelte` is now encoded. | — |
 | V1.2.3 | Encode when building JavaScript/JSON | PASS | Responses use `res.json`; no dynamic script construction found. | — |
 | V1.2.4 | Parameterized queries | PASS | All `pool.query` calls use `$n` placeholders. Dynamic identifiers come from fixed whitelists: `lookups.service.js` `LOOKUP_CONFIGS`, `projectsApi.js` `MILESTONE_RESOLVED_COLUMNS`, constant column names in `workflow.service.js`. Dynamic `SET`/`WHERE` builders only append fixed fragments. | — |
 | V1.2.5 | OS command injection | PASS | No `child_process`, `exec`, `spawn` in `backend/src`. | — |
-| V1.3.1 | Sanitize WYSIWYG HTML with a known library | FAIL | `sanitize-html` is used only in `backend/src/controllers/policy.controller.js`. Rich-text editor output (`RichTextEditor.svelte`, briefings, deliverables, meeting-note summaries) is stored and rendered raw. | Sanitize on write in the backend and on render in the frontend |
+| V1.3.1 | Sanitize WYSIWYG HTML with a known library | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. DOMPurify is applied wherever stored or LLM-generated HTML is rendered or parsed. Backend write-time sanitization still covers policies only (`policy.controller.js`). | Optional: also sanitize on write in the backend |
 | V1.3.2 | No `eval` / dynamic code execution | PASS | No `eval(` or `new Function(` in `backend/src` or `frontend/src`. | — |
-| V1.5.1 | Restrictive XML parser config | PARTIAL | No direct XML parsing. `.docx` goes through `mammoth` → `@xmldom/xmldom`, which doesn't resolve external entities, but the installed version has 14 advisories (DoS, injection). | Update `mammoth` / `@xmldom/xmldom` |
+| V1.5.1 | Restrictive XML parser config | PASS | No direct XML parsing. `.docx` goes through `mammoth` → `@xmldom/xmldom`, which does not resolve external entities. The xmldom advisories were cleared by `npm audit fix`. | — |
 
 ### V2 Validation and Business Logic
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V2.1.1 | Documented input validation rules | FAIL | No validation rules documented. `PRODUCTION_SECURITY.md` §5 lists them as not yet implemented. | Write the rules (max lengths, ranges, formats) |
+| V2.1.1 | Documented input validation rules | PARTIAL | Rules now documented in `docs/deployment/SECURITY_CONTROLS.md` §2 (general limits, uploads, and every project field). Other endpoints are not yet covered. | Extend rules and schemas to quotes, conditions and meeting notes |
 | V2.2.1 | Validate input used for business/security decisions | PARTIAL | Ad hoc checks only (required fields, column whitelists). `express-validator` is installed but never used. No length or range checks. | Add schema validation (zod or express-validator) on decision-driving inputs |
 | V2.2.2 | Validation at a trusted service layer | PARTIAL | Some server-side checks exist per controller; most validation is in the UI. | As above |
 | V2.3.1 | Business flows enforced in sequence | VERIFY | Multi-step flows exist (quotes, stage workflow). Server-side order enforcement not reviewed. | Review `workflow.service.js` and quote state transitions |
@@ -57,9 +63,9 @@ Evidence paths are relative to the repo root.
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
 | V3.2.1 | Content not rendered in the wrong context | PASS | API returns JSON with `X-Content-Type-Options: nosniff` (helmet, confirmed live). Uploads are held in memory and never served. | — |
-| V3.2.2 | Text displayed as text, not HTML | FAIL | `{@html}` is used for content that is plain text or markdown (`md(...)`, `renderMarkdown(analysis.full_report)`). | See V1.2.1 |
-| V3.3.1 | Cookies `Secure`, with `__Host-`/`__Secure-` prefix | FAIL | Auth cookies are the Supabase defaults (`sb-<ref>-auth-token`), no prefix. The browser client writes them via `document.cookie` and adds `Secure` only if the library passes it (`frontend/src/lib/supabase.js:33-44`). Cookies are also JS-readable. | Set cookie options explicitly; consider a prefix and HttpOnly via server-side session handling |
-| V3.4.1 | HSTS (≥1 year) on all responses | PARTIAL | Backend sends `max-age=31536000; includeSubDomains` (helmet, confirmed live). **Frontend sends no HSTS header** (confirmed live on `trpdashboard.co.uk`). | Enable HSTS in `hooks.server.js` or at Cloudflare |
+| V3.2.2 | Text displayed as text, not HTML | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. Markdown is escaped before formatting, and all `{@html}` content is sanitized. | — |
+| V3.3.1 | Cookies `Secure`, with `__Host-`/`__Secure-` prefix | PARTIAL | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. The browser cookie writer now adds `Secure` on HTTPS (`frontend/src/lib/supabase.js`). The cookie names still lack a `__Host-`/`__Secure-` prefix (renaming would sign everyone out and must match on the server client), and the cookies remain JS-readable. | Decide on the prefix and a server-only session cookie |
+| V3.4.1 | HSTS (≥1 year) on all responses | PARTIAL | Backend sends HSTS (1 year, includeSubDomains) on all responses (confirmed live). The frontend now sets it on pages in `frontend/src/hooks.server.js` (confirmed on a locally served build). **But static files (`/_app/*.js`, `.css`) and the 303 redirects from the auth guard bypass that hook and carry no HSTS or nosniff** (confirmed on the local build). On the live site only the Cloudflare edge can cover those. | Enable HSTS in Cloudflare (SSL/TLS → Edge Certificates), which adds it to every response including static files and redirects |
 | V3.4.2 | CORS origin is fixed or allowlisted | PASS | Allowlist in `backend/src/server.js:37-61`. | — |
 | V3.5.1 | Anti-forgery for requests not protected by preflight | N/A | API doesn't use cookie auth and relies on preflight; see V3.5.2. | — |
 | V3.5.2 | Preflight can't be bypassed | PASS | Every API call needs the `Authorization: Bearer` header, which is not CORS-safelisted. | — |
@@ -69,15 +75,15 @@ Evidence paths are relative to the repo root.
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V4.1.1 | `Content-Type` matches body, with charset | PARTIAL | Backend JSON: `application/json; charset=utf-8` (live). Frontend HTML: `Content-Type: text/html` with no charset. | Add `; charset=utf-8` at the frontend |
+| V4.1.1 | `Content-Type` matches body, with charset | PARTIAL | Backend JSON includes `charset=utf-8` (live). Frontend HTML pages now include it (hook, confirmed on a local build). Static CSS/JS/text files are served as `text/css`, `text/javascript`, `text/plain` with no charset (confirmed locally). Low practical impact: the HTML declares its own charset. | Optional: serve static files through a small custom server that adds the charset |
 | V4.4.1 | WSS for WebSockets | N/A | No WebSocket usage in the app code. | — |
 
 ### V5 File Handling
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V5.2.1 | File size limits | PARTIAL | Limits of 20–50 MB on all upload routes **except** `backend/src/routes/stage1Review.routes.js:10`, which has none. Files are buffered in memory. `multer` ≤ 2.2.0 has DoS and size-limit-bypass advisories. | Add `limits`; update multer |
-| V5.2.2 | Extension matches content | PARTIAL | `fileFilter` extension allowlists on about half the routes. Others (meeting notes, consultation, public comments, conditions, quotes, policy updates, voice, stage1) accept any extension. `parseFile` decides type by extension only; no magic-byte check. | Shared upload filter with extension + magic-byte checks |
+| V5.2.1 | File size limits | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. Every upload route now has a size limit (`backend/src/middleware/upload.js`; stage1 review gained a 20 MB limit) and `multer` is updated (advisories cleared). | — |
+| V5.2.2 | Extension matches content | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. Shared upload middleware checks the extension allowlist and the file signature (PDF, DOCX, DOC, text, audio) on all 17 upload routes plus the workflow routes. | — |
 | V5.3.1 | Uploaded files not executable from a public folder | PASS | Memory storage only; no Supabase Storage or disk persistence of uploads. | — |
 | V5.3.2 | No user filenames in file paths | PASS | `originalname` is stored only as DB metadata. The one file-path write that interpolates a value (`appealbaseDeepRead.service.js:118`) is reachable only from CLI scripts, not routes. | — |
 
@@ -85,7 +91,7 @@ Evidence paths are relative to the repo root.
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V6.1.1 | Documented anti-automation / brute-force controls | FAIL | Not documented. `PRODUCTION_SECURITY.md` quotes limits (100 / 20 / 10 per 15 min, 2 MB body) that no longer match the code (1000 / 40 / 20, 10 MB). | Document actual controls, including Supabase Auth's own limits |
+| V6.1.1 | Documented anti-automation / brute-force controls | PARTIAL | Documented in `SECURITY_CONTROLS.md` §3 with the real limits (the old doc quoted wrong numbers). Supabase Auth's own login limits are not yet confirmed. | Confirm Supabase Auth rate limits and record them |
 | V6.2.1 | Password length ≥ 8 | VERIFY | Client enforces ≥ 8 only on the set-password page (`reset-password/+page.svelte:20`). The real policy is the Supabase Auth setting (default is 6). | Set minimum length (15 recommended) in Supabase |
 | V6.2.2 | Users can change their password | FAIL | No change-password UI; no `resetPasswordForEmail` call and no "forgot password" link. | Add forgot-password and change-password flows |
 | V6.2.3 | Change requires current + new password | N/A | No change feature yet. Required when V6.2.2 is built. | — |
@@ -114,10 +120,10 @@ Evidence paths are relative to the repo root.
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V8.1.1 | Documented authorization rules | FAIL | Roles (admin, surveyor, client, viewer) exist in code only. No document says who may access which functions or data. | Write an access matrix |
-| V8.2.1 | Function-level access limited to explicit permissions | FAIL | Only `/api/admin-console` is role-gated. All other API routes accept any authenticated user, including the default `viewer`. `/api/users` returns every profile to any authenticated user. | Gate by role at the router level |
-| V8.2.2 | Data-level access (IDOR/BOLA) | FAIL | Controllers take `projectId` from the URL with no membership check; only 8 of ~60 controllers reference `req.user`. The backend queries with the owner role (`DATABASE_URL`), so RLS doesn't apply. Mitigated today only by the admin-only UI and small user base. | Decide the project-access model, then enforce in a shared middleware |
-| V8.3.1 | Enforced at a trusted layer | PARTIAL | Admin-console API and UI page guard are server-side. The rest of the API trusts that the UI is admin-only. | See V8.2.1 |
+| V8.1.1 | Documented authorization rules | PASS | Access matrix and the plan for adding roles are written down in `SECURITY_CONTROLS.md` §1. | — |
+| V8.2.1 | Function-level access limited to explicit permissions | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. `authenticate` then `requireAdmin` is applied to `/api`, `/analyze`, `/save-site` and `/save-trp-edits` (`backend/src/routes/index.js`). A failed role lookup returns 503 instead of defaulting. Verified end-to-end (see Review log): 10 route families x 5 token states against the real router. | Replace with per-route roles before adding non-admin users |
+| V8.2.2 | Data-level access (IDOR/BOLA) | PARTIAL | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. Only admins can reach the API, and all admins may see all projects by design (documented). There is still no per-project ownership check, so this becomes a failure again if non-admin users are given API access. | Add a project-membership middleware before enabling signup or non-admin roles |
+| V8.3.1 | Enforced at a trusted layer | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. The API now enforces the admin requirement itself instead of relying on the UI guard. | — |
 
 ### V9 Self-contained Tokens
 
@@ -146,7 +152,7 @@ Evidence paths are relative to the repo root.
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V12.1.1 | Only TLS 1.2/1.3 | PASS | TLS 1.1 handshake refused on both live hosts. TLS 1.0 not tested separately; both sit behind Cloudflare. | — |
+| V12.1.1 | Only TLS 1.2/1.3 | PASS | TLS 1.0 and 1.1 are refused and TLS 1.2 is accepted on both live hosts. TLS 1.3 could not be tested from this machine (its Windows TLS stack does not offer it); Cloudflare enables it by default. | — |
 | V12.2.1 | TLS for all external-facing connections | PASS | HTTP redirects 301 to HTTPS on both hosts. | — |
 | V12.2.2 | Publicly trusted certificates | PASS | `curl` validated both certificates without `-k`. | — |
 
@@ -160,27 +166,55 @@ Evidence paths are relative to the repo root.
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V14.2.1 | No sensitive data in URLs | PARTIAL | Invite/recovery flows put a single-use `token_hash` in the query string (`auth/callback/+server.js`) and session tokens in the URL fragment (`auth/+layout.svelte:11-20`). The backend request logger records full URLs including query strings (`requestLogger.js`). No API call found passing secrets in the URL. | Prefer PKCE for email links; strip query strings in logs |
-| V14.3.1 | Authenticated data cleared on logout | PARTIAL | Auth cookies and in-memory stores are cleared. Map screenshots in `localStorage` (`screenshotManager.js`) are not, and no `Clear-Site-Data` header is sent. | Clear app storage in `signOut()` |
+| V14.2.1 | No sensitive data in URLs | PARTIAL | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. The backend request logger now records paths without query strings.  Invite/recovery flows put a single-use `token_hash` in the query string (`auth/callback/+server.js`) and session tokens in the URL fragment (`auth/+layout.svelte:11-20`). The backend request logger records full URLs including query strings (`requestLogger.js`). No API call found passing secrets in the URL. | Prefer PKCE for email links |
+| V14.3.1 | Authenticated data cleared on logout | PASS | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. Sign-out and session-expiry now clear the map screenshots held in localStorage (`clearAllStoredScreenshots`), in addition to the auth cookies and in-memory stores. | — |
 
 ### V15 Secure Coding and Architecture
 
 | ID | Requirement (short) | Status | Evidence | Action |
 |---|---|---|---|---|
-| V15.1.1 | Documented remediation timeframes for vulnerable components | FAIL | None. `PRODUCTION_SECURITY.md` says "no critical vulnerabilities, checked Jan 2026", which is now out of date. | Set a policy (e.g. high within 30 days) |
-| V15.2.1 | No components past those timeframes | FAIL | Backend: 13 advisories (8 high): multer, path-to-regexp, @xmldom/xmldom, lodash, image-size, ws, pptxgenjs, ag-grid-community. Frontend: 8 (1 critical `jspdf`, 4 high). | `npm audit fix`; plan the major bumps (`jspdf` 4.2.1, `pptxgenjs`) |
-| V15.3.1 | Return only required fields | PARTIAL | 145 `SELECT *` / `RETURNING *` sites; `/api/users` returns full profiles to any authenticated user; many controllers return `details: error.message`. | Select explicit columns on user- and project-facing endpoints |
+| V15.1.1 | Documented remediation timeframes for vulnerable components | PASS | Remediation timeframes (critical 7 days, high 30, moderate 90) and the exceptions process are documented in `SECURITY_CONTROLS.md` §4. | — |
+| V15.2.1 | No components past those timeframes | PARTIAL | Fixed on branch `security/asvs-l1-fixes`; confirm live after deploy. Frontend: 0 advisories (`jspdf` upgraded to 4.2.1; PDF generation smoke-tested). Backend: 13 → 3. The remaining three are two documented exceptions: `@anthropic-ai/sdk` (feature not used) and `pptxgenjs` → `image-size` (fix is a downgrade). | Review the exceptions by 2026-12-31 |
+| V15.3.1 | Return only required fields | PARTIAL | 145 `SELECT *` / `RETURNING *` sites; `/api/users` returns only names, avatars and roles; many controllers return `details: error.message`. | Select explicit columns on user- and project-facing endpoints |
 
 ## Observations outside Level 1
 
-Not scored above, but worth fixing:
+Not scored above.
 
+Fixed on the branch:
+- `errorHandler.js` no longer returns internal error text for 5xx responses in production; a middleware also strips `details` from 5xx JSON; blocked CORS origins now get a clean 403 instead of a 500.
+- `authenticate` no longer falls back to a role when the role lookup fails; it returns 503. A user with no role row gets no access.
+- `docs/deployment/PRODUCTION_SECURITY.md` was corrected (rate limits, body-size limit, dependency status, sanitization status).
+
+Still open:
 - `backend/src/db.js:12` sets `ssl: { rejectUnauthorized: false }`, which disables certificate validation on the database connection.
-- `backend/src/middleware/errorHandler.js` returns `err.message` to clients in production.
 - `rateLimiter.js` keys on an unverified JWT `sub`, so forged tokens each get a fresh bucket (and each still triggers a Supabase call). LLM endpoints share the general 1000 requests per 15 minutes; only `/analyze` is stricter.
-- `authenticate` falls back to the `viewer` role if the role lookup errors. Harmless today only because viewers aren't restricted anywhere.
 - `process.on('uncaughtException')` logs and keeps running.
-- `docs/deployment/PRODUCTION_SECURITY.md` is out of date: its rate limits, body-size limit and "no stack traces exposed" claims don't match the code.
+
+## Review log (2026-10-02, after the fixes)
+
+An independent re-check of the re-scored matrix: each upgraded row was tested against the real code rather than taken on trust. Results:
+
+**Tests run, all passing**
+- **Admin gate, end to end (52 checks):** the real `routes/index.js` router, mounted against a fake local Supabase and an unreachable database, so nothing real was contacted. For `/api/projects`, `/api/users`, `/api/lookups`, `/analyze/*`, `/save-site`, `/save-trp-edits`, `/api/admin-console/*`, `/api/llm-status`, `/api/voice/*` and `/api/meeting-notes/*`: no token gives 401, a viewer gives 403, a user with no role row gives 403, a failed role lookup gives 503, and an admin gets through the gate. A forged token gives 401 and an unknown route as a viewer still gives 403.
+- **Uploads through real multer (7 checks):** valid PDF/TXT accepted; a fake PDF, an `.exe` and a disallowed `.docx` get 400; a 2 MB file against a 1 MB limit gets 413; a request with no file passes through for the pasted-text path.
+- **Project validation (7 checks):** the real `ProjectDetailsTab` draft shape, ISO timestamps and numeric `area` from the database are accepted; oversized or missing fields and malformed JSON get 400. I also read all five frontend create/update call sites to confirm the payload types match the schema.
+- **Frontend:** `svelte-check` shows 0 new errors against the baseline, the production build passes, and headers were checked on a locally served build.
+- **Helpers:** `safeUrl`, `md()`, `sanitizeHtml` (in jsdom), upload signatures, error scrubbing and `requireAdmin` unit tests pass.
+
+**Found and fixed during the review**
+- 11 Leaflet popup calls rendered third-party dataset fields as HTML (V1.2.1). Now sanitized.
+
+**Downgraded during the review**
+- V3.4.1 and V4.1.1: PASS to PARTIAL. Static files and redirects don't get the headers (see the rows).
+
+**Re-checked and confirmed**
+- Every remaining `{@html}` outside `sanitizeHtml` is a renderer that escapes its input first (`renderReply`, `render`, `renderMarkdown`, `md`).
+- The remaining `innerHTML =` lines are static map legends, an empty string, or already sanitized.
+- Every route file that uses `upload.single` goes through the shared middleware; the only `multer(` left is the workflow router, which adds the shared content check.
+- `authLimiter` is defined but unused (documented).
+
+**Not tested** (needs a browser or the live deployment): the rich-text editors and email-copy flows after sanitization, PDF exports on `jspdf` 4 in a browser, voice dictation, and the live headers after deploy.
 
 ## Checklist: things only you can verify
 

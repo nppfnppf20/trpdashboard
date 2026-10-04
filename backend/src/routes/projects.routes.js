@@ -14,6 +14,8 @@ import {
 } from '../projectsApi.js';
 import * as projectsController from '../controllers/projects.controller.js';
 import { pool } from '../db.js';
+import { validateBody } from '../middleware/validate.js';
+import { createProjectSchema, updateProjectSchema, developmentTypeSchema } from '../validation/projects.schema.js';
 
 const router = express.Router();
 
@@ -26,7 +28,7 @@ router.put('/:projectId/information', projectsController.updateProjectInformatio
 router.patch('/:id/milestone-resolved', updateMilestoneResolved);
 
 // Development type
-router.patch('/:projectId/development-type', async (req, res) => {
+router.patch('/:projectId/development-type', validateBody(developmentTypeSchema), async (req, res) => {
   const { development_type } = req.body;
   try {
     const { rows } = await pool.query(
@@ -42,10 +44,10 @@ router.patch('/:projectId/development-type', async (req, res) => {
 });
 
 // Core project routes
-router.post('/', createProject);
+router.post('/', validateBody(createProjectSchema), createProject);
 router.get('/', getAllProjects);
 router.get('/:id', getProjectById);
-router.put('/:id', updateProject);
+router.put('/:id', validateBody(updateProjectSchema), updateProject);
 router.delete('/:id', deleteProject);
 
 export default router;

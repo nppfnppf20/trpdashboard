@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount } from 'svelte';
 
   /** @type {HTMLDivElement | null} */
@@ -136,7 +137,7 @@
       style: { color: '#0ea5e9', weight: 2, fillOpacity: 0.15 },
       onEachFeature: (/** @type {any} */ f, /** @type {any} */ layer) => {
         const n = f?.properties?.name || 'Conservation area';
-        layer.bindPopup(n);
+        layer.bindPopup(sanitizeHtml(n));
       }
     });
 
@@ -150,7 +151,7 @@
       onEachFeature: (/** @type {any} */ f, /** @type {any} */ layer) => {
         const name = f?.properties?.name || 'Listed building';
         const grade = f?.properties?.grade || '';
-        layer.bindPopup(`${name}<br><strong>Grade ${grade}</strong>`);
+        layer.bindPopup(sanitizeHtml(`${name}<br><strong>Grade ${grade}</strong>`));
       }
     });
 

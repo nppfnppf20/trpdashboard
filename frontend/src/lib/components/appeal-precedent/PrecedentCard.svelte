@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   import { createEventDispatcher } from 'svelte';
   import { levelChip, weightChip, fmtDate, scaleLabel, TREATMENT_NAME, EFFECT_NAME } from '$lib/utils/precedentDisplay.js';
 
@@ -26,7 +27,7 @@
       <div class="head">
         <span class="lpa">{record.lpa || 'Unknown LPA'}</span>
         <span class="tag tag-{outcomeTone}">{record.outcome}</span>
-        <span class="meta">{fmtDate(record.date)} · <a href={record.url} target="_blank" rel="noopener">{record.reference} on Appealbase</a></span>
+        <span class="meta">{fmtDate(record.date)} · <a href={safeUrl(record.url)} target="_blank" rel="noopener">{record.reference} on Appealbase</a></span>
       </div>
       <p class="scheme">{record.scheme_summary}</p>
       <div class="badges">

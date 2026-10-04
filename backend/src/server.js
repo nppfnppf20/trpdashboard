@@ -8,7 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import routes from './routes/index.js';
-import { errorHandler } from './middleware/errorHandler.js';
+import { errorHandler, scrubServerErrorDetails } from './middleware/errorHandler.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { log, LOG_FILE_PATH } from './utils/logger.js';
@@ -52,7 +52,9 @@ app.use(cors({
       callback(null, true);
     } else {
       console.warn(`CORS blocked request from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      const corsError = new Error('Not allowed by CORS');
+      corsError.isCorsError = true; // lets errorHandler answer 403 instead of 500
+      callback(corsError);
     }
   },
   credentials: true,
@@ -64,6 +66,9 @@ app.use(cors({
 // written to backend/logs/app.log for diagnosing intermittent issues after
 // the fact (see requestLogger.js for how to read it).
 app.use(requestLogger);
+
+// 2c. Strip raw exception text (`details`) from 5xx JSON responses in production
+app.use(scrubServerErrorDetails);
 
 // 3. Body parsing with size limits
 app.use(express.json({

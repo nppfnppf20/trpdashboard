@@ -1,5 +1,5 @@
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import {
   processComment,
   splitCommentBlock,
@@ -11,7 +11,7 @@ import {
 } from '../controllers/public_comments.controller.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = createUpload({ maxMB: 50, exts: ['pdf', 'docx', 'doc', 'txt', 'md'] });
 
 router.post('/projects/:projectId/split', upload.single('file'), splitCommentBlock);
 router.post('/projects/:projectId/process', upload.single('file'), processComment);

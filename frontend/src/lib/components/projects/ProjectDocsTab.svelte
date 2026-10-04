@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount } from 'svelte';
   import PopulateFromBriefingModal from '$lib/components/briefing-populate/PopulateFromBriefingModal.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
@@ -262,7 +263,7 @@
       }
 
       const [result, suggestResult] = await Promise.all(promises);
-      resultSummaryHtml = result.summary_html;
+      resultSummaryHtml = sanitizeHtml(result.summary_html);
       resultFileName = result.file_name || selectedFile?.name || '';
       showResult = true;
 
@@ -630,7 +631,7 @@
             </div>
             {#if expanded && !approved}
               <div class="suggestion-preview">
-                {@html s.suggested_content}
+                {@html sanitizeHtml(s.suggested_content)}
               </div>
             {/if}
           </div>
@@ -716,7 +717,7 @@
           {/if}
           {#if isExpanded(s.id)}
             <div class="summary-body">
-              {@html s.summary_html}
+              {@html sanitizeHtml(s.summary_html)}
             </div>
           {/if}
         </div>

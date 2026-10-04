@@ -1,6 +1,7 @@
 import PizZip from 'pizzip';
 import fileSaver from 'file-saver';
 import { sanitizeFilename, buildExportFilename } from './exportFilename.js';
+import { sanitizeHtml } from '../utils/sanitizeHtml.js';
 
 const { saveAs } = fileSaver;
 
@@ -102,7 +103,7 @@ export async function exportDeliverableToWord(deliverable, html, project = null)
  */
 function htmlToOOXML(html, styles = DEF_STYLES) {
   const div = document.createElement('div');
-  div.innerHTML = html;
+  div.innerHTML = sanitizeHtml(html);
 
   // If there are no element children the content is bare text nodes — wrap each line.
   if (div.children.length === 0) {

@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   import { suggestKeywords, searchSimilarSchemes } from '$lib/api/planit.js';
 
   export let project;
@@ -191,7 +192,7 @@
             {/if}
           </div>
           {#if r.url}
-            <a class="result-link" href={r.url} target="_blank" rel="noopener noreferrer">
+            <a class="result-link" href={safeUrl(r.url)} target="_blank" rel="noopener noreferrer">
               View on PlanIt <i class="las la-external-link-alt"></i>
             </a>
           {/if}

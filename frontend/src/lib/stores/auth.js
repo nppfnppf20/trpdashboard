@@ -7,6 +7,7 @@ import { writable, derived, get } from 'svelte/store';
 import { supabase, getUserRole, signOut as supabaseSignOut } from '$lib/supabase.js';
 import { syncMyProfile } from '$lib/api/userProfiles.js';
 import { goto } from '$app/navigation';
+import { clearAllStoredScreenshots } from '$lib/services/screenshotManager.js';
 
 // Core auth state
 export const user = writable(null);
@@ -63,6 +64,7 @@ export async function initAuth() {
       // If the user previously had a session, their session has expired
       // or they were signed out — redirect to login with a message
       if (hadSession || event === 'SIGNED_OUT') {
+        clearAllStoredScreenshots();
         loading.set(false);
         goto('/auth/login?expired=1');
         return;
@@ -91,6 +93,9 @@ export async function signOut() {
     session.set(null);
     user.set(null);
     userRole.set('viewer');
+
+    // Remove authenticated data cached in browser storage (ASVS V14.3.1)
+    clearAllStoredScreenshots();
   } finally {
     loading.set(false);
   }

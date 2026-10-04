@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { createEventDispatcher, onMount } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import SelectSurveyorModal from './SelectSurveyorModal.svelte';
@@ -134,7 +135,7 @@
     const firstH3 = children.find(n => n.nodeName === 'H3') ?? null;
     const insertHtml = (html, beforeNode) => {
       const tempDiv = doc.createElement('div');
-      tempDiv.innerHTML = html;
+      tempDiv.innerHTML = sanitizeHtml(html);
       while (tempDiv.firstChild) body.insertBefore(tempDiv.firstChild, beforeNode);
     };
 
@@ -193,7 +194,7 @@
   // Unwrap <strong>/<b> and bold inline styles so only headings paste as bold
   function stripInlineBold(html) {
     const tmp = document.createElement('div');
-    tmp.innerHTML = html;
+    tmp.innerHTML = sanitizeHtml(html);
     tmp.querySelectorAll('strong, b').forEach(el => {
       while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
       el.remove();
@@ -227,7 +228,7 @@
   // bullet / numbered item on its own line.
   function stripHtml(html) {
     const tmp = document.createElement('div');
-    tmp.innerHTML = html;
+    tmp.innerHTML = sanitizeHtml(html);
 
     const walk = (node, listType = null, index = 0) => {
       if (node.nodeType === Node.TEXT_NODE) return node.textContent.replace(/\s+/g, ' ');
@@ -258,7 +259,7 @@
   function fallbackCopyRichText(html) {
     const container = document.createElement('div');
     container.contentEditable = 'true';
-    container.innerHTML = html;
+    container.innerHTML = sanitizeHtml(html);
     container.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
     document.body.appendChild(container);
     const range = document.createRange();
@@ -280,7 +281,7 @@
     if (!richTextEditor) return;
     const plainText = stripHtml(richTextEditor.getHTML());
     const to = selectedSurveyors[0]?.contactEmail || '';
-    window.location.href = `mailto:${to}?subject=${encodeURIComponent(currentSubject || '')}&body=${encodeURIComponent(plainText.replace(/\n/g, '\r\n'))}`;
+    window.location.href = `mailto:${encodeURIComponent(to.trim())}?subject=${encodeURIComponent(currentSubject || '')}&body=${encodeURIComponent(plainText.replace(/\n/g, '\r\n'))}`;
   }
 
   async function handleSaveAsSent() {

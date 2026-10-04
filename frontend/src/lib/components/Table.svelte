@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   /** @type {Array} */
   export let data = [];
   /** @type {Array<{key: string, label: string, format?: Function}>} */
@@ -37,7 +38,7 @@
               {#each columns as column}
                 <td class={column.cellClass || ''}>
                   {#if column.format}
-                    {@html column.format(row[column.key], row)}
+                    {@html sanitizeHtml(column.format(row[column.key], row))}
                   {:else}
                     {row[column.key] || '-'}
                   {/if}

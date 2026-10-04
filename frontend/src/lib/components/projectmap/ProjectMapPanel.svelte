@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount } from 'svelte';
   import { getRenewables, getDataCentres, getProjects, getTRPCommercial, getTRPEnergy, getTRPResidential, getREPDSolar, getREPDWind, getREPDBattery } from '$lib/services/projectmap/projectMapApi.js';
 
@@ -261,7 +262,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       renewablesLayer.addLayer(marker);
     });
   }
@@ -306,7 +307,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       dataCentresLayer.addLayer(marker);
     });
   }
@@ -358,7 +359,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       projectsLayer.addLayer(marker);
     });
   }
@@ -396,7 +397,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       trpCommercialLayer.addLayer(marker);
     });
   }
@@ -434,7 +435,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       trpEnergyLayer.addLayer(marker);
     });
   }
@@ -472,7 +473,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       trpResidentialLayer.addLayer(marker);
     });
   }
@@ -530,7 +531,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       repdSolarLayer.addLayer(marker);
     });
   }
@@ -573,7 +574,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       repdWindLayer.addLayer(marker);
     });
   }
@@ -616,7 +617,7 @@
         </div>
       `;
 
-      marker.bindPopup(popupContent);
+      marker.bindPopup(sanitizeHtml(popupContent));
       repdBatteryLayer.addLayer(marker);
     });
   }

@@ -28,6 +28,24 @@ function getStorageKey() {
 }
 
 /**
+ * Remove every stored screenshot, across all sessions. Called on sign-out so
+ * map images of project sites don't stay readable in the browser afterwards.
+ */
+export function clearAllStoredScreenshots() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(STORAGE_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+    window.sessionStorage.removeItem('screenshot_session_id');
+  } catch (error) {
+    console.error('Error clearing screenshots:', error);
+  }
+}
+
+/**
  * Get all screenshots from localStorage
  */
 export function getScreenshots() {

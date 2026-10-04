@@ -1,5 +1,5 @@
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import {
   processConsultation,
   getConsultationData,
@@ -24,7 +24,7 @@ import {
 } from '../controllers/consultation.controller.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = createUpload({ maxMB: 50 });
 
 router.post('/projects/:projectId/process', upload.single('file'), processConsultation);
 router.get('/projects/:projectId', getConsultationData);

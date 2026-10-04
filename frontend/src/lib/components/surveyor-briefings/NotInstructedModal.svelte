@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { createEventDispatcher, onMount } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
 
@@ -61,7 +62,7 @@
 
   function stripHtml(html) {
     const tmp = document.createElement('div');
-    tmp.innerHTML = html;
+    tmp.innerHTML = sanitizeHtml(html);
     let text = tmp.textContent || tmp.innerText || '';
     text = text.replace(/\n\s*\n\s*\n/g, '\n\n');
     return text.trim();
@@ -70,7 +71,7 @@
   function fallbackCopyRichText(html) {
     const container = document.createElement('div');
     container.contentEditable = 'true';
-    container.innerHTML = html;
+    container.innerHTML = sanitizeHtml(html);
     container.style.position = 'fixed';
     container.style.left = '-9999px';
     container.style.top = '-9999px';

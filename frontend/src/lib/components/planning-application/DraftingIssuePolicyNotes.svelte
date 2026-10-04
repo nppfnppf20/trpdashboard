@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   // Parallel to PolicyTierNotes.svelte, deliberately not sharing code with it —
   // that component is wired to the planning-notes.js store (planning_applications
   // .issue_notes / policy_track_relevance), this one is prop-driven so it can sit
@@ -197,10 +198,11 @@
   // actually differs from what's already in the DOM, so our own save (which
   // reads this same HTML straight back out) never resets the live selection.
   function richTextContent(node, html) {
-    node.innerHTML = html;
+    node.innerHTML = sanitizeHtml(html);
     return {
       update(newHtml) {
-        if (node.innerHTML !== newHtml) node.innerHTML = newHtml;
+        const clean = sanitizeHtml(newHtml);
+        if (node.innerHTML !== clean) node.innerHTML = clean;
       }
     };
   }

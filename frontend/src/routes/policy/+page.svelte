@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount } from 'svelte';
   import {
     listPolicyItems,
@@ -394,14 +395,14 @@
             {:else}
               <!-- Summary -->
               {#if item.summary_html}
-                <div class="policy-summary md-body">{@html item.summary_html}</div>
+                <div class="policy-summary md-body">{@html sanitizeHtml(item.summary_html)}</div>
               {/if}
 
               <!-- Key points (documents only) -->
               {#if item.key_points}
                 <div class="policy-section">
                   <div class="policy-section-label">Key Points</div>
-                  <div class="policy-key-points md-body">{@html item.key_points}</div>
+                  <div class="policy-key-points md-body">{@html sanitizeHtml(item.key_points)}</div>
                 </div>
               {/if}
 
@@ -409,7 +410,7 @@
               {#if item.implications}
                 <div class="policy-section">
                   <div class="policy-section-label">Implications for our work</div>
-                  <div class="policy-implications md-body">{@html item.implications}</div>
+                  <div class="policy-implications md-body">{@html sanitizeHtml(item.implications)}</div>
                 </div>
               {/if}
             {/if}

@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   import { onMount } from 'svelte';
   import { getDataCentres, toggleDataCentreDismissed, getScraperFilterPrompts, updateScraperFilterPrompt, applyScraperFilter } from '$lib/services/projectmap/projectMapApi.js';
 
@@ -194,7 +195,7 @@
               <td class="cell-date">{formatDate(item.decided_date)}</td>
               <td class="cell-link">
                 {#if item.url}
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" class="link-button">
+                  <a href={safeUrl(item.url)} target="_blank" rel="noopener noreferrer" class="link-button">
                     <i class="las la-external-link-alt"></i>
                   </a>
                 {:else}

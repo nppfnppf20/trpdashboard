@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   export let conflict = null;
   export let onClose = () => {};
 
@@ -106,7 +107,7 @@
 
           {#if conflict.url}
             <div class="detail-section">
-              <a href={conflict.url} target="_blank" rel="noopener noreferrer" class="detail-link">
+              <a href={safeUrl(conflict.url)} target="_blank" rel="noopener noreferrer" class="detail-link">
                 <i class="las la-external-link-alt"></i>
                 View Full Details
               </a>

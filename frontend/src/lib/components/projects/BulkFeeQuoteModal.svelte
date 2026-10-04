@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { createEventDispatcher, tick } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { suggestFeeQuoteWorks, updateCondition, createConditionAdvancements } from '$lib/api/conditions.js';
@@ -239,7 +240,7 @@ ${worksHtml}
   // ── Copy / open in email (same mechanics as the briefings editor) ────────
   function stripHtml(html) {
     const tmp = document.createElement('div');
-    tmp.innerHTML = html;
+    tmp.innerHTML = sanitizeHtml(html);
     return (tmp.textContent || tmp.innerText || '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
   }
 
@@ -263,7 +264,7 @@ ${worksHtml}
 
   function fallbackCopyRichText(htmlContent) {
     const container = document.createElement('div');
-    container.innerHTML = htmlContent;
+    container.innerHTML = sanitizeHtml(htmlContent);
     container.style.position = 'fixed';
     container.style.left = '-9999px';
     document.body.appendChild(container);

@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   import { createEventDispatcher } from 'svelte';
   import { updateProjectInformation } from '$lib/api/projects.js';
 
@@ -741,7 +742,7 @@ SharePoint Link: ${project.sharepoint_link || '-'}`;
         {:else}
           <span class="value">
             {#if project.sharepoint_link}
-              <a href={project.sharepoint_link} target="_blank" rel="noopener noreferrer">
+              <a href={safeUrl(project.sharepoint_link)} target="_blank" rel="noopener noreferrer">
                 {project.sharepoint_link}
               </a>
             {:else}

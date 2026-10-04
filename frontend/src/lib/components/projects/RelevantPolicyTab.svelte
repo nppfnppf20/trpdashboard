@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount, createEventDispatcher } from 'svelte';
   import { getPolicies, createPolicy, updatePolicy, deletePolicy, getNationalPolicyPrecedents, extractPolicyWording, generatePlanRelevance } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments, updatePolicyDocument } from '$lib/api/policyDocuments.js';
@@ -679,10 +680,10 @@
                   <span class="template-devtype">{t.development_type || 'generic'}</span>
                   <span class="template-fields">{templateFieldCount(t)} field{templateFieldCount(t) === 1 ? '' : 's'}</span>
                 </summary>
-                {#if t.nppf_text}<div class="template-field"><strong>NPPF</strong>{@html t.nppf_text}</div>{/if}
-                {#if t.nppg_text}<div class="template-field"><strong>NPPG</strong>{@html t.nppg_text}</div>{/if}
-                {#if t.other_national_text}<div class="template-field"><strong>Other National Policy</strong>{@html t.other_national_text}</div>{/if}
-                {#if t.other_guidance_text}<div class="template-field"><strong>Other Guidance</strong>{@html t.other_guidance_text}</div>{/if}
+                {#if t.nppf_text}<div class="template-field"><strong>NPPF</strong>{@html sanitizeHtml(t.nppf_text)}</div>{/if}
+                {#if t.nppg_text}<div class="template-field"><strong>NPPG</strong>{@html sanitizeHtml(t.nppg_text)}</div>{/if}
+                {#if t.other_national_text}<div class="template-field"><strong>Other National Policy</strong>{@html sanitizeHtml(t.other_national_text)}</div>{/if}
+                {#if t.other_guidance_text}<div class="template-field"><strong>Other Guidance</strong>{@html sanitizeHtml(t.other_guidance_text)}</div>{/if}
               </details>
             {/each}
           </div>

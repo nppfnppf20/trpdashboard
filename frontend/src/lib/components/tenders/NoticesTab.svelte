@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   import { onMount } from 'svelte';
   import { listNotices, triggerSync, triggerClassify, updateNotice, getSyncRuns } from '$lib/api/tenders.js';
 
@@ -250,7 +251,7 @@
               </td>
               <td class="cell-link">
                 {#if item.notice_url}
-                  <a href={item.notice_url} target="_blank" rel="noopener noreferrer" class="link-button" title="Open on Find a Tender">
+                  <a href={safeUrl(item.notice_url)} target="_blank" rel="noopener noreferrer" class="link-button" title="Open on Find a Tender">
                     <i class="las la-external-link-alt"></i>
                   </a>
                 {:else}

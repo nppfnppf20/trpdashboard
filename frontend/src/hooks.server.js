@@ -1,8 +1,10 @@
 import { createServerClient } from '@supabase/ssr';
 import { redirect } from '@sveltejs/kit';
+import { sequence } from '@sveltejs/kit/hooks';
 import { env } from '$env/dynamic/public';
 
-export async function handle({ event, resolve }) {
+/** @type {import('@sveltejs/kit').Handle} */
+async function authHandle({ event, resolve }) {
   // Create Supabase client for server-side
   event.locals.supabase = createServerClient(
     env.PUBLIC_SUPABASE_URL,
@@ -67,3 +69,32 @@ export async function handle({ event, resolve }) {
 
   return resolve(event);
 }
+
+// Security headers for every page the frontend serves (ASVS V3.4.1, V4.1.1, V3.2.1).
+// The backend API sets its own via helmet; this covers the SvelteKit server.
+/** @type {import('@sveltejs/kit').Handle} */
+async function securityHeaders({ event, resolve }) {
+  const response = await resolve(event);
+
+  // Some responses (e.g. proxied fetch responses) have immutable headers; never let that break a request.
+  try {
+    response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+    // Not 'no-referrer': OpenStreetMap-style tile servers expect a referer.
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Microphone is used for voice dictation; nothing else needs camera/mic.
+    response.headers.set('Permissions-Policy', 'camera=(), microphone=(self)');
+
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.startsWith('text/html') && !/charset=/i.test(contentType)) {
+      response.headers.set('Content-Type', `${contentType}; charset=utf-8`);
+    }
+  } catch {
+    // headers are immutable on this response — skip
+  }
+
+  return response;
+}
+
+export const handle = sequence(securityHeaders, authHandle);

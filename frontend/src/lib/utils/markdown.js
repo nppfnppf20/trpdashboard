@@ -1,3 +1,15 @@
+// Escapes the text before any markdown is applied, so raw HTML typed (or
+// injected) into the source is shown literally instead of being rendered.
+/** @param {string} str */
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Lightweight markdown → HTML renderer for guiding briefs and prompt previews.
 // Handles the subset of markdown commonly found in planning briefs and prompts.
 export function md(text) {
@@ -26,7 +38,7 @@ export function md(text) {
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    const line = raw.trimEnd();
+    const line = escapeHtml(raw.trimEnd());
 
     if (/^#{4,}\s/.test(line)) {
       flushList();

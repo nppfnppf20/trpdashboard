@@ -37,7 +37,9 @@ export const supabase = createBrowserClient(
           if (options?.maxAge) cookie += `; Max-Age=${options.maxAge}`;
           if (options?.path) cookie += `; Path=${options.path}`;
           if (options?.domain) cookie += `; Domain=${options.domain}`;
-          if (options?.secure) cookie += '; Secure';
+          // The library's default options never set `secure`, so add it ourselves
+          // whenever the page is served over HTTPS (ASVS V3.3.1).
+          if (options?.secure || window.location.protocol === 'https:') cookie += '; Secure';
           if (options?.sameSite) cookie += `; SameSite=${options.sameSite}`;
           document.cookie = cookie;
         });

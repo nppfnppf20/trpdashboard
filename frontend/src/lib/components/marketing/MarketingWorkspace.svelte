@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import { onMount } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import {
@@ -278,21 +279,21 @@
         {#if prev.summary_html}
           <div class="preview-section">
             <div class="preview-label">Summary</div>
-            <div class="preview-html">{@html prev.summary_html}</div>
+            <div class="preview-html">{@html sanitizeHtml(prev.summary_html)}</div>
           </div>
         {/if}
 
         {#if prev.key_points}
           <div class="preview-section">
             <div class="preview-label">Key Points</div>
-            <div class="preview-html">{@html prev.key_points}</div>
+            <div class="preview-html">{@html sanitizeHtml(prev.key_points)}</div>
           </div>
         {/if}
 
         {#if prev.implications}
           <div class="preview-section">
             <div class="preview-label">Implications</div>
-            <div class="preview-html">{@html prev.implications}</div>
+            <div class="preview-html">{@html sanitizeHtml(prev.implications)}</div>
           </div>
         {/if}
 

@@ -1,5 +1,5 @@
 import express from 'express';
-import multer from 'multer';
+import { createUpload } from '../middleware/upload.js';
 import {
   feeQuoteWorks,
   extractConditionsFromDocument,
@@ -28,10 +28,7 @@ import {
 
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-});
+const upload = createUpload({ maxMB: 25 });
 
 router.get('/projects/:projectId', getConditionsData);
 router.post('/projects/:projectId/extract-from-document', upload.single('file'), extractConditionsFromDocument);

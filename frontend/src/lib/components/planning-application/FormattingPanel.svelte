@@ -1,4 +1,5 @@
 <script>
+  import { sanitizeHtml } from '$lib/utils/sanitizeHtml.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
 
@@ -18,7 +19,7 @@
 
   function normaliseHtml(rawHtml) {
     const div = document.createElement('div');
-    div.innerHTML = rawHtml;
+    div.innerHTML = sanitizeHtml(rawHtml);
 
     // If there are no element children the paste landed as bare text nodes.
     // Split on newlines and wrap each non-empty line in <p>.

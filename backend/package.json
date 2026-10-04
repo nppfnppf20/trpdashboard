@@ -17,8 +17,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
     "@supabase/supabase-js": "^2.90.1",
-    "ag-grid-community": "^30.2.1",
-    "ag-grid-svelte": "^0.3.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
@@ -32,7 +30,8 @@
     "pg": "^8.16.3",
     "pptxgenjs": "^4.0.1",
     "resend": "^6.12.3",
-    "sanitize-html": "^2.17.7"
+    "sanitize-html": "^2.17.7",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

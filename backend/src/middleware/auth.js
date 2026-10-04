@@ -39,9 +39,18 @@ export async function authenticate(req, res, next) {
       .eq('user_id', user.id)
       .single();
 
-    if (roleError) {
+    if (roleError && roleError.code !== 'PGRST116') {
+      // A real lookup failure (DB down, permissions, ...) is not the same as
+      // "this user has no role". Fail closed rather than guessing a role.
       console.error('Error fetching user role:', roleError);
-      // Default to viewer if no role found
+      return res.status(503).json({
+        error: 'Service Unavailable',
+        message: 'Could not verify account permissions. Please try again.'
+      });
+    }
+
+    if (roleError) {
+      // PGRST116 = no user_roles row. Least privilege: viewer (which requireAdmin rejects).
       user.role = 'viewer';
     } else {
       user.role = roleData?.role || 'viewer';

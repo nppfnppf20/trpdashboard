@@ -1,4 +1,5 @@
 <script>
+  import { safeUrl } from '$lib/utils/safeUrl.js';
   import { searchAppeals, retrieveAppeal } from '$lib/api/appealbase.js';
 
   const DECISION_OPTIONS = ['Allowed', 'Dismissed'];
@@ -288,7 +289,7 @@
             {fullTextByRef[r.reference] ? 'Hide full text' : 'View full text'}
           </button>
           {#if r.pins_url}
-            <a class="btn btn-secondary btn-sm" href={r.pins_url} target="_blank" rel="noopener noreferrer">
+            <a class="btn btn-secondary btn-sm" href={safeUrl(r.pins_url)} target="_blank" rel="noopener noreferrer">
               <i class="las la-external-link-alt"></i> View on PINS
             </a>
           {/if}
