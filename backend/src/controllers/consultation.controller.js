@@ -47,7 +47,7 @@ export async function processConsultation(req, res) {
       user_notes?.trim() || null
     );
 
-    res.json({ suggestion, source_file_name: fileName });
+    res.json({ suggestion, source_file_name: fileName, full_text: text.trim() });
   } catch (err) {
     console.error('consultation.processConsultation error:', err);
     res.status(500).json({ error: err.message });
@@ -69,17 +69,24 @@ export async function getConsultationData(req, res) {
       pool.query(
         `SELECT id, consultee_name, date_received, position, comments, action_required, conditions_suggested, status,
                 discipline, original_consultant, original_consultant_email,
-                source_file_name, sort_order, created_at, updated_at
-         FROM planning_applications.consultation_responses
-         WHERE project_id = $1
+                source_file_name, verbatim_text, sort_order, created_at, updated_at
+         FROM (
+           SELECT cr.*,
+                  lower(trim(consultee_name)) AS name_key,
+                  CASE lower(position)
+                    WHEN 'objection'           THEN 1
+                    WHEN 'conditional support' THEN 2
+                    WHEN 'support'             THEN 4
+                    WHEN 'no comment'          THEN 5
+                    ELSE                            3
+                  END AS pos_rank
+           FROM planning_applications.consultation_responses cr
+           WHERE project_id = $1
+         ) r
+         -- Keep each consultee's responses together: group placed by its best position
          ORDER BY
-           CASE lower(position)
-             WHEN 'objection'           THEN 1
-             WHEN 'conditional support' THEN 2
-             WHEN 'support'             THEN 4
-             WHEN 'no comment'          THEN 5
-             ELSE                            3
-           END ASC,
+           MIN(pos_rank) OVER (PARTITION BY name_key) ASC,
+           name_key ASC,
            date_received ASC NULLS LAST,
            created_at ASC`,
         [projectId]
@@ -223,14 +230,14 @@ export async function getConsultationData(req, res) {
 
 export async function createResponse(req, res) {
   const { projectId } = req.params;
-  const { consultee_name, date_received, position, comments, action_required, conditions_suggested, status, source_file_name, discipline, original_consultant, original_consultant_email } = req.body;
+  const { consultee_name, date_received, position, comments, action_required, conditions_suggested, status, source_file_name, discipline, original_consultant, original_consultant_email, verbatim_text } = req.body;
   if (!consultee_name?.trim()) return res.status(400).json({ error: 'consultee_name is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.consultation_responses
          (project_id, consultee_name, date_received, position, comments, action_required, conditions_suggested,
-          status, source_file_name, discipline, original_consultant, original_consultant_email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          status, source_file_name, discipline, original_consultant, original_consultant_email, verbatim_text)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         projectId,
@@ -245,6 +252,7 @@ export async function createResponse(req, res) {
         discipline?.trim() || null,
         original_consultant?.trim() || null,
         original_consultant_email?.trim() || null,
+        verbatim_text?.trim() || null,
       ]
     );
     res.status(201).json({ ...rows[0], advancements: [] });

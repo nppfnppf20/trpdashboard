@@ -32,9 +32,21 @@
   }
 
   function sortResponses(arr) {
+    // A consultee's responses stay together whatever their positions: each
+    // name group is placed by its best-priority response, then A–Z, and the
+    // group's own rows run by date.
+    const nameKey = (r) => (r.consultee_name || '').trim().toLowerCase();
+    const groupPriority = new Map();
+    for (const r of arr) {
+      const k = nameKey(r);
+      const p = positionPriority(r.position);
+      if (!groupPriority.has(k) || p < groupPriority.get(k)) groupPriority.set(k, p);
+    }
     return [...arr].sort((a, b) => {
-      const pd = positionPriority(a.position) - positionPriority(b.position);
+      const ka = nameKey(a), kb = nameKey(b);
+      const pd = groupPriority.get(ka) - groupPriority.get(kb);
       if (pd !== 0) return pd;
+      if (ka !== kb) return ka < kb ? -1 : 1;
       const da = a.date_received || '9999';
       const db_ = b.date_received || '9999';
       if (da !== db_) return da < db_ ? -1 : 1;
@@ -184,6 +196,7 @@
   let reviewForm = { consultee_name: '', date_received: '', position: '', comments: '', action_required: '', conditions_suggested: '', discipline: [], original_consultant: '', original_consultant_email: '' };
   let reviewSaving = false;
   let reviewSourceFile = null;
+  let reviewVerbatim = null;   // full original text, saved separately from the extracted fields
 
   // ── Inline editing ────────────────────────────────────────────────────────
   let editingId = null;
@@ -352,6 +365,7 @@
         userNotes: uploadUserNotes.trim() || null,
       });
       reviewSourceFile = result.source_file_name || null;
+      reviewVerbatim = result.full_text || null;
       reviewForm = {
         consultee_name:              result.suggestion.consultee_name || '',
         date_received:               result.suggestion.date_received  || '',
@@ -390,6 +404,7 @@
       const created = await createConsultationResponse(projectId, {
         consultee_name: consulteeName.trim(),
         comments: text,
+        verbatim_text: text,
         source_file_name: source_file_name || null,
       });
       responses = sortResponses([...responses, created]);
@@ -416,6 +431,7 @@
         original_consultant:       reviewForm.original_consultant?.trim() || null,
         original_consultant_email: reviewForm.original_consultant_email?.trim() || null,
         source_file_name:          reviewSourceFile,
+        verbatim_text:             reviewVerbatim,
       });
       responses = sortResponses([...responses, created]);
       showPanel = false;
@@ -1228,10 +1244,10 @@ ${sections.join('<br>')}`;
 
 <!-- ── Sub-tab navigation ────────────────────────────────────────────────── -->
 <div class="ct-subtabs">
-  <button class="ct-subtab" class:ct-subtab-active={subTab === 'statutory'} on:click={() => subTab = 'statutory'}>
+  <button class="btn" class:btn-primary={subTab === 'statutory'} class:btn-secondary={subTab !== 'statutory'} on:click={() => subTab = 'statutory'}>
     <i class="las la-landmark"></i> Statutory Consultees
   </button>
-  <button class="ct-subtab" class:ct-subtab-active={subTab === 'public'} on:click={() => subTab = 'public'}>
+  <button class="btn" class:btn-primary={subTab === 'public'} class:btn-secondary={subTab !== 'public'} on:click={() => subTab = 'public'}>
     <i class="las la-comments"></i> Public Comments
   </button>
 </div>
@@ -1820,28 +1836,6 @@ ${sections.join('<br>')}`;
     background: var(--color-slate-50);
     border-bottom: 1px solid var(--color-slate-200);
   }
-  .ct-subtab {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0.4375rem 0.875rem;
-    border-radius: var(--radius-pill);
-    background: var(--color-white);
-    border: 1px solid var(--color-slate-200);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--color-slate-600);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .ct-subtab i { font-size: 0.9rem; color: var(--color-slate-400); }
-  .ct-subtab:hover { background: var(--color-slate-100); }
-  .ct-subtab-active {
-    background: var(--color-primary-600);
-    border-color: var(--color-primary-600);
-    color: var(--color-white);
-  }
-  .ct-subtab-active i { color: var(--color-white); }
 
   /* ── Layout ─────────────────────────────────────────────────────────────── */
   .ct-tab {
@@ -2637,14 +2631,14 @@ ${sections.join('<br>')}`;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
     display: flex;
     flex-direction: column;
-    gap: 0;
-    overflow: hidden;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem 1.5rem;
+    overflow-y: auto;
   }
   .ct-panel-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.5rem 0;
   }
   .ct-panel-title {
     font-size: 1rem;

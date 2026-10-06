@@ -12,9 +12,13 @@
   // ── Mode config ───────────────────────────────────────────────────────────
   $: cfg = mode === 'statutory' ? {
     title:           'Batch Import: Statutory Consultees',
-    processItem:     (item) => item.type === 'text'
-                       ? processConsultationDoc(projectId, { text: item.text, fileName: item.label })
-                       : processConsultationDoc(projectId, { file: item.file }),
+    // Keep the full original text alongside the extracted fields
+    processItem:     async (item) => {
+                       const r = item.type === 'text'
+                         ? await processConsultationDoc(projectId, { text: item.text, fileName: item.label })
+                         : await processConsultationDoc(projectId, { file: item.file });
+                       return { ...r, suggestion: { ...r.suggestion, verbatim_text: r.full_text } };
+                     },
     saveRow:         (fields) => createConsultationResponse(projectId, fields),
     positionOptions: ['Objection', 'Conditional Support', 'Support', 'No Comment'],
     nameKey:         'consultee_name',
