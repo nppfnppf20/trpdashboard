@@ -3,7 +3,7 @@
  * plus chat over the ticked decisions. Runs live in memory only; nothing is saved.
  */
 
-import { suggestContext, listSources, startRun, getRun, cancelRun, viewRun, userRecordRefs } from '../services/appealPrecedent.service.js';
+import { loadSaved, saveSaved, suggestContext, listSources, TRACKER_GROUPS, startRun, getRun, cancelRun, viewRun, userRecordRefs } from '../services/appealPrecedent.service.js';
 import { chatAboutPrecedents } from '../services/appealPrecedentChat.service.js';
 
 function fail(res, err, fallback) {
@@ -21,12 +21,46 @@ export async function sources(req, res) {
   }
 }
 
+export async function getSaved(req, res) {
+  try {
+    res.json({ saved: await loadSaved(Number(req.params.projectId)) });
+  } catch (err) {
+    fail(res, err, 'Failed to load the saved results');
+  }
+}
+
+export async function putSaved(req, res) {
+  try {
+    res.json(await saveSaved(Number(req.params.projectId), req.user?.id, req.body));
+  } catch (err) {
+    fail(res, err, 'Failed to save the results');
+  }
+}
+
+/** Chat over the saved results, for when the live run is gone (page reloaded or server restarted). */
+export async function savedChat(req, res) {
+  try {
+    const projectId = Number(req.params.projectId);
+    const saved = await loadSaved(projectId);
+    if (!saved) return res.status(404).json({ error: 'No saved results for this project.' });
+    const { refs, messages } = req.body ?? {};
+    const known = new Set(saved.records.map(r => String(r.reference)));
+    const allowed = (refs ?? []).filter(r => known.has(String(r)));
+    const c = saved.context ?? {};
+    const context = { project: { name: req.body?.projectName ?? 'the project', scheme: c.scheme, lpa: c.lpa, setting: c.setting } };
+    res.json(await chatAboutPrecedents({ refs: allowed, messages, context, issues: saved.issues }));
+  } catch (err) {
+    fail(res, err, 'Chat request failed');
+  }
+}
+
 export async function suggest(req, res) {
   try {
     const picked = req.body?.sources;
     const clean = ids => (Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite).slice(0, 25) : []);
     const mode = ['notes', 'transcript', 'both'].includes(picked?.mode) ? picked.mode : 'notes';
-    res.json(await suggestContext(Number(req.params.projectId), picked ? { document_ids: clean(picked.document_ids), meeting_ids: clean(picked.meeting_ids), mode } : null));
+    const trackers = Array.isArray(picked?.trackers) ? picked.trackers.filter(t => TRACKER_GROUPS.includes(t)) : [];
+    res.json(await suggestContext(Number(req.params.projectId), picked ? { document_ids: clean(picked.document_ids), meeting_ids: clean(picked.meeting_ids), trackers, mode } : null));
   } catch (err) {
     fail(res, err, 'Failed to read the project');
   }

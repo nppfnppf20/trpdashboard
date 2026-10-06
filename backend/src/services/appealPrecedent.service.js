@@ -61,9 +61,13 @@ function num(v) {
 /** Meeting notes and project documents the user can pick to draft the setup from. */
 export const listSources = listPickerSources;
 
+// The project's trackers the user can tick; their items are the main basis for the drafted issues list.
+export const TRACKER_GROUPS = ['consultation', 'conditions', 'issues_tracker'];
+
 /**
  * Draft the scheme, setting, scale, issues and instructions from the project, optionally from chosen meeting notes
- * and documents. sources: { document_ids?: number[], meeting_ids?: number[], mode?: 'notes'|'transcript'|'both' }.
+ * and documents and ticked trackers. sources: { document_ids?, meeting_ids?, trackers?: ('consultation'|'conditions'|'issues_tracker')[],
+ * mode?: 'notes'|'transcript'|'both' }.
  */
 export async function suggestContext(projectId, sources = null) {
   const { rows } = await pool.query('SELECT * FROM projects WHERE id = $1', [projectId]);
@@ -80,17 +84,18 @@ export async function suggestContext(projectId, sources = null) {
     .join('. ');
   const scale = { mw: num(p.project_mw), units: num(p.project_units), hectares: num(p.project_area) ?? (/ha/i.test(p.area ?? '') ? num(p.area) : null) };
 
-  // Chosen notes and documents are the main source; the project's own records fill in around them.
-  const picked = !!(sources?.document_ids?.length || sources?.meeting_ids?.length);
-  const { blocks } = await assembleContext(projectId, { project_details: true, groups: picked ? ['key_issues'] : ['key_issues', 'planning_history', 'policies'] });
+  // The ticked trackers drive the issues list; chosen notes and documents add context around them.
+  const trackers = (sources?.trackers ?? []).filter(t => TRACKER_GROUPS.includes(t));
+  const picked = !!(sources?.document_ids?.length || sources?.meeting_ids?.length || trackers.length);
+  const { blocks } = await assembleContext(projectId, { project_details: true, groups: picked ? trackers : ['planning_history', 'policies'] });
   const chosen = picked
     ? (await assembleSourceTexts(projectId, { documentIds: sources.document_ids, meetingIds: sources.meeting_ids, mode: sources.mode })).blocks
     : [];
   const totalCap = picked ? 130000 : 70000;
   let used = 0;
   const sourceText = [
+    ...blocks.map(b => ({ label: b.label, text: b.text, cap: picked ? 30000 : 20000 })),
     ...chosen.map(b => ({ label: b.label, text: b.text, cap: 40000 })),
-    ...blocks.map(b => ({ label: b.label, text: b.text, cap: picked ? 8000 : 20000 })),
   ]
     .map(b => `### ${b.label}\n${b.text.slice(0, b.cap)}`)
     .filter(t => (used += t.length) < totalCap)
@@ -103,7 +108,7 @@ export async function suggestContext(projectId, sources = null) {
     try {
       const out = parseJSON(
         await callClaude(
-          'You help a planning consultant prepare a search of planning appeal decisions for a live project. From the project information, return ONLY JSON: {"scheme": "<max 20 words: what is proposed, e.g. ground-mounted solar farm, residential development of N dwellings>", "scale": {"mw": <number or null>, "dwellings": <number or null>, "hectares": <number or null>}, "instructions": "<one or two sentences on what kind of precedents would help most, based on what the client or team said they are worried about or expect to argue; empty string if the sources do not say>", "issues": [{"label": "<short issue name in the language inspectors use in appeal decisions, e.g. Character and appearance, Heritage assets, Flood risk>", "weight": <1-5>}]}. Give 5 to 8 issues most likely to decide an appeal for this kind of scheme in this setting, weight 5 for the single most important, 1 for minor; prefer issues the sources actually raise. Scale must be stated in the sources, never estimated; use null when not stated. Never invent facts.',
+          'You help a planning consultant prepare a search of planning appeal decisions for a live project. From the project information, return ONLY JSON: {"scheme": "<max 20 words: what is proposed, e.g. ground-mounted solar farm, residential development of N dwellings>", "scale": {"mw": <number or null>, "dwellings": <number or null>, "hectares": <number or null>}, "instructions": "<one or two sentences on what kind of precedents would help most, based on what the client or team said they are worried about or expect to argue; empty string if the sources do not say>", "issues": [{"label": "<short issue name in the language inspectors use in appeal decisions, e.g. Character and appearance, Heritage assets, Flood risk>", "weight": <1-5>}]}. Give 5 to 8 issues most likely to decide an appeal for this kind of scheme in this setting, weight 5 for the single most important, 1 for minor; when the sources include a tracker (Consultation, Conditions or Project Tracker), base the issues mainly on the matters listed in it, merging similar items and using the risk levels or seriousness to set weights; otherwise prefer issues the sources actually raise. Scale must be stated in the sources, never estimated; use null when not stated. Never invent facts.',
           `PROJECT: ${p.project_name}\nLPA: ${lpa || 'unknown'}\nDevelopment type: ${devTypes || 'unknown'}\nDescription: ${p.development_description || 'none'}\nSetting: ${setting || 'none'}\n\n${sourceText}`,
           picked ? MODEL_SONNET : MODEL_FAST,
           1500
@@ -125,7 +130,7 @@ export async function suggestContext(projectId, sources = null) {
     issues,
     instructions,
     hasSources: !!sourceText.trim(),
-    usedSources: { meetings: sources?.meeting_ids?.length ?? 0, documents: sources?.document_ids?.length ?? 0, mode: picked ? sources.mode ?? 'notes' : null },
+    usedSources: { trackers: trackers.length, meetings: sources?.meeting_ids?.length ?? 0, documents: sources?.document_ids?.length ?? 0, mode: picked ? sources.mode ?? 'notes' : null },
   };
 }
 
@@ -617,4 +622,36 @@ export function viewRun(run, since = 0) {
     records: run.records,
     summary: run.summary ?? '',
   };
+}
+
+// ── Saved results (latest per project) ────────────────────────────────────────
+// Only our own analysis is stored: records (summaries, findings, short verified quotes, Appealbase link), the setup form,
+// ticked references and chat. Decision full text is never part of a record, so it is never saved.
+const SAVED_RECORD_CAP = 60;
+
+export async function loadSaved(projectId) {
+  const { rows } = await pool.query('SELECT data, updated_at FROM appeal_precedent_saved WHERE project_id = $1', [projectId]);
+  return rows[0] ? { ...rows[0].data, savedAt: rows[0].updated_at } : null;
+}
+
+export async function saveSaved(projectId, userId, body = {}) {
+  const records = (Array.isArray(body.records) ? body.records : []).filter(r => r && /^\d{5,10}$/.test(String(r.reference))).slice(0, SAVED_RECORD_CAP);
+  if (!records.length) {
+    await pool.query('DELETE FROM appeal_precedent_saved WHERE project_id = $1', [projectId]);
+    return { saved: false };
+  }
+  const data = {
+    records,
+    issues: Array.isArray(body.issues) ? body.issues.slice(0, 20) : [],
+    context: body.context && typeof body.context === 'object' ? body.context : {},
+    selected: (Array.isArray(body.selected) ? body.selected : []).map(String).slice(0, SAVED_RECORD_CAP),
+    messages: (Array.isArray(body.messages) ? body.messages : []).slice(-60),
+    draftedFrom: String(body.draftedFrom ?? '').slice(0, 300),
+  };
+  await pool.query(
+    `INSERT INTO appeal_precedent_saved (project_id, data, updated_by, updated_at) VALUES ($1, $2, $3, now())
+     ON CONFLICT (project_id) DO UPDATE SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+    [projectId, data, userId ?? null]
+  );
+  return { saved: true };
 }

@@ -3,16 +3,18 @@
   // the ones you tick. The search runs in the background on the server; results live in memory only (nothing is saved).
   import { onMount, onDestroy } from 'svelte';
   import { getOrCreateSession, mergeRecords } from '$lib/stores/appealPrecedent.js';
-  import { suggestPrecedentContext, startPrecedentRun, getPrecedentRun, cancelPrecedentRun } from '$lib/api/appealPrecedent.js';
+  import { suggestPrecedentContext, getSavedPrecedents, savePrecedents, startPrecedentRun, getPrecedentRun, cancelPrecedentRun } from '$lib/api/appealPrecedent.js';
   import AppealSetup from '$lib/components/appeal-precedent/AppealSetup.svelte';
   import AppealProgress from '$lib/components/appeal-precedent/AppealProgress.svelte';
   import PrecedentCard from '$lib/components/appeal-precedent/PrecedentCard.svelte';
   import PrecedentChat from '$lib/components/appeal-precedent/PrecedentChat.svelte';
+  import { exportAppealPrecedentPdf } from '$lib/services/appealPrecedentPdfExport.js';
   import AppealSourcePicker from '$lib/components/appeal-precedent/AppealSourcePicker.svelte';
 
   export let project;
 
   const POLL_MS = 3000;
+  const SAVE_DELAY_MS = 3000;
 
   let s = getOrCreateSession(project?.id);
   let lastProjectId = project?.id;
@@ -21,14 +23,22 @@
   let outcomeFilter = 'all';
   let pickerOpen = false;
   let timer = null;
+  let saveTimer = null;
+  let lastSaved = '';
+  let saveError = '';
 
   // Switching to a different project while the tab stays mounted.
   $: if (project?.id !== lastProjectId) {
     lastProjectId = project?.id;
     stopPolling();
+    flushSave();
     s = getOrCreateSession(project?.id);
     if (s.phase === 'running') startPolling();
+    restoreSaved();
   }
+
+  // Autosave: whenever there are results, save them shortly after anything changes (records, ticks, chat, setup).
+  $: if (s.savedChecked && s.records.length) scheduleSave();
 
   $: issueLabels = Object.fromEntries((s.runIssues ?? []).map(i => [i.id, i.label]));
   $: shown = s.records.filter(r => outcomeFilter === 'all' || r.outcome === outcomeFilter);
@@ -37,9 +47,70 @@
 
   onMount(() => {
     if (s.phase === 'running') startPolling();
-    else if (!s.suggested && s.phase === 'setup') suggest();
+    restoreSaved();
   });
-  onDestroy(stopPolling);
+  onDestroy(() => {
+    stopPolling();
+    flushSave();
+  });
+
+  // ── Saved results ───────────────────────────────────────────────────────────
+  const savePayload = () => ({
+    records: s.records,
+    issues: chatIssues,
+    context: s.context,
+    selected: s.selected,
+    messages: s.messages,
+    draftedFrom: s.draftedFrom
+  });
+
+  async function restoreSaved() {
+    const sess = s;
+    if (sess.savedChecked) return;
+    sess.savedChecked = true;
+    if (sess.records.length || sess.phase !== 'setup') return; // this session already has its own results
+    try {
+      const saved = await getSavedPrecedents(project.id);
+      if (!saved?.records?.length || sess.records.length) return;
+      sess.records = saved.records;
+      sess.baseRecords = saved.records;
+      sess.selected = saved.selected ?? [];
+      sess.messages = saved.messages ?? [];
+      sess.runIssues = saved.issues ?? [];
+      sess.draftedFrom = saved.draftedFrom ?? '';
+      sess.context = { ...sess.context, ...(saved.context ?? {}) };
+      sess.restoredAt = saved.savedAt;
+      sess.status = 'done';
+      sess.phase = 'results';
+      lastSaved = JSON.stringify(savePayload());
+    } catch (e) {
+      sess.savedChecked = false; // couldn't read the save: don't autosave over it, and look again next time
+      sess.error = e.message;
+    } finally {
+      if (sess === s) s = s;
+    }
+  }
+
+  // Not reset on every change: during a run the page changes every few seconds, so a resetting timer would never fire.
+  function scheduleSave() {
+    if (!saveTimer) saveTimer = setTimeout(flushSave, SAVE_DELAY_MS);
+  }
+
+  async function flushSave() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    if (!s.savedChecked || !s.records.length || !project?.id) return;
+    const payload = JSON.stringify(savePayload());
+    if (payload === lastSaved) return;
+    lastSaved = payload;
+    try {
+      await savePrecedents(project.id, JSON.parse(payload));
+      saveError = '';
+    } catch (e) {
+      lastSaved = '';
+      saveError = e.message;
+    }
+  }
 
   // ── Setup ───────────────────────────────────────────────────────────────────
   // `sources` ({ document_ids, meeting_ids, mode }) means the user picked notes/documents to draft from: that is an
@@ -60,8 +131,8 @@
       if (replace && out.instructions) c.instructions = out.instructions;
       if (replace) {
         const u = out.usedSources ?? {};
-        const parts = [u.meetings && `${u.meetings} meeting note${u.meetings === 1 ? '' : 's'}`, u.documents && `${u.documents} document${u.documents === 1 ? '' : 's'}`].filter(Boolean);
-        s.draftedFrom = `${parts.join(' and ')} (${{ notes: 'notes', transcript: 'full transcript', both: 'notes and full transcript' }[u.mode] ?? 'notes'})`;
+        const parts = [u.trackers && `${u.trackers} tracker${u.trackers === 1 ? '' : 's'}`, u.meetings && `${u.meetings} meeting note${u.meetings === 1 ? '' : 's'}`, u.documents && `${u.documents} document${u.documents === 1 ? '' : 's'}`].filter(Boolean);
+        s.draftedFrom = `${parts.join(', ')} (${{ notes: 'notes', transcript: 'full transcript', both: 'notes and full transcript' }[u.mode] ?? 'notes'})`;
       }
       s.suggested = true;
     } catch (e) {
@@ -176,6 +247,13 @@
     s = s;
   }
 
+  function exportPdf() {
+    exportAppealPrecedentPdf(project, s.records, {
+      issues: chatIssues,
+      context: { scheme: s.context.scheme, lpa: s.context.lpa, setting: s.context.setting }
+    });
+  }
+
   function searchAgain() {
     s.keepResults = true;
     s.phase = 'setup';
@@ -193,8 +271,12 @@
     s.progress = [];
     s.error = '';
     s.keepResults = false;
+    s.restoredAt = null;
     s.phase = 'setup';
     s = s;
+    clearTimeout(saveTimer);
+    lastSaved = '';
+    savePrecedents(project.id, { records: [] }).catch(e => (saveError = e.message)); // clears the saved copy
   }
 </script>
 
@@ -203,7 +285,10 @@
     <h2 class="tab-title">Appeal Precedent</h2>
     <span class="construction-pill"><i class="las la-hard-hat"></i> Under Construction</span>
   </div>
-  <p class="beta-note">Results are not saved. Reloading the page clears them.</p>
+  <p class="beta-note">
+    Results are saved to this project automatically{#if s.restoredAt}. Restored from {new Date(s.restoredAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{/if}.
+    {#if saveError}<span class="save-error">Could not save: {saveError}</span>{/if}
+  </p>
 
   {#if s.phase === 'setup'}
     <AppealSetup
@@ -215,11 +300,11 @@
       error={s.error}
       hasResults={s.records.length > 0}
       draftedFrom={s.draftedFrom}
-      on:suggest={() => suggest()}
       on:pick={() => (pickerOpen = true)}
       on:run={run}
     />
   {:else}
+    {#if !(s.restoredAt && !s.runId)}
     <AppealProgress
       stats={s.stats}
       progress={s.progress}
@@ -230,6 +315,7 @@
       {cancelling}
       on:cancel={cancel}
     />
+    {/if}
     {#if s.error}<p class="msg msg-error">{s.error}</p>{/if}
 
     {#if s.records.length}
@@ -243,6 +329,7 @@
             </div>
             <span class="count">{s.selected.length} of {s.records.length} ticked</span>
             {#if s.phase === 'results'}
+              <button class="btn btn-secondary btn-sm" on:click={exportPdf}><i class="las la-file-pdf"></i> Export PDF</button>
               <button class="btn btn-secondary btn-sm" on:click={searchAgain}>Search again and add results</button>
               <button class="btn btn-ghost btn-sm" on:click={newSearch}>New search</button>
             {/if}
@@ -254,7 +341,7 @@
 
         {#if s.phase === 'results'}
           <div class="chat-col">
-            <PrecedentChat runId={s.runId} records={selectedRecords} issues={chatIssues} bind:messages={s.messages} />
+            <PrecedentChat runId={s.runId} projectId={project.id} projectName={project.project_name} records={selectedRecords} issues={chatIssues} bind:messages={s.messages} />
           </div>
         {/if}
       </div>
@@ -305,6 +392,10 @@
     margin: calc(var(--space-2) * -1) 0 0;
     font-size: 0.78125rem;
     color: var(--color-slate-500);
+  }
+
+  .save-error {
+    color: var(--color-badge-danger-fg);
   }
 
   .msg-error {

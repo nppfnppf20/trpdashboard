@@ -72,8 +72,30 @@
     selections = updated;
   }
 
+  // Several responses can share one consultee name, so the date is part of
+  // the label wherever a response is named in a message.
   function responseLabel(r) {
-    return r.consultee_name;
+    const d = formatDate(r.date_received);
+    return d ? `${r.consultee_name} (${d})` : r.consultee_name;
+  }
+
+  function formatDate(d) {
+    if (!d) return '';
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // Same colours as the position pills in the tracker table
+  function positionClass(pos) {
+    const p = (pos || '').toLowerCase();
+    if (p.includes('objection')) return 'badge-danger';
+    if (p.includes('conditional')) return 'badge-warning';
+    if (p.includes('support')) return 'badge-success';
+    if (p.includes('no comment') || p.includes('no objection')) return 'badge-neutral';
+    return 'badge-purple';
+  }
+
+  function toTitleCase(str) {
+    return String(str).toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   }
 
   function toggle(id) {
@@ -276,9 +298,12 @@
               <div class="adv-cond-row" class:checked={sel?.checked}>
                 <label class="adv-cond-check">
                   <input type="checkbox" checked={sel?.checked} on:change={() => toggle(r.id)} />
-                  <span class="adv-cond-label">{responseLabel(r)}</span>
+                  <span class="adv-cond-label">{r.consultee_name}</span>
+                  {#if r.date_received}
+                    <span class="adv-cond-date">{formatDate(r.date_received)}</span>
+                  {/if}
                   {#if r.position}
-                    <span class="adv-cond-type">{r.position}</span>
+                    <span class="badge adv-cond-pos {positionClass(r.position)}">{toTitleCase(r.position)}</span>
                   {/if}
                 </label>
                 {#if sel?.checked}
@@ -431,16 +456,21 @@
   }
   .select-all-btn:hover { color: var(--color-slate-800); background: var(--color-slate-100); }
 
-  .adv-cond-type {
+  .adv-cond-date {
+    font-size: 0.78rem;
+    color: var(--color-slate-500);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  /* Colours come from the shared badge classes; size is the original small pill */
+  .adv-cond-pos {
     font-size: 0.64rem;
     font-weight: 700;
-    border-radius: 999px;
+    line-height: 1.4;
     padding: 1px 7px;
     flex-shrink: 0;
     white-space: nowrap;
     margin-left: auto;
-    color: var(--color-teal-600);
-    background: var(--color-sky-100);
   }
 
   /* Response tick list */

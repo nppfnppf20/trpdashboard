@@ -201,6 +201,8 @@
   // ── Inline editing ────────────────────────────────────────────────────────
   let editingId = null;
   let editForm = {};
+  let editSaving = false;
+  let editError = null;
 
   // ── Expand/collapse comments ──────────────────────────────────────────────
   let expandedIds = new Set();
@@ -442,7 +444,7 @@
     }
   }
 
-  // ── Inline edit ───────────────────────────────────────────────────────────
+  // ── Edit modal ───────────────────────────────────────────────────────────
 
   function startEdit(r) {
     editingId = r.id;
@@ -479,9 +481,12 @@
   }
 
   async function saveEdit(id) {
+    if (!editForm.consultee_name?.trim()) { editError = 'Consultee name is required.'; return; }
+    editSaving = true;
+    editError = null;
     try {
       const updated = await updateConsultationResponse(id, {
-        consultee_name:            editForm.consultee_name || null,
+        consultee_name:            editForm.consultee_name.trim(),
         date_received:             editForm.date_received  || null,
         position:                  editForm.position       || null,
         comments:                  editForm.comments       || null,
@@ -493,10 +498,20 @@
         original_consultant_email: editForm.original_consultant_email  || null,
       });
       responses = sortResponses(responses.map(r => r.id === id ? { ...r, ...updated } : r));
-      editingId = null;
+      editSaving = false;
+      closeEdit();
     } catch (err) {
-      alert(err.message);
+      editError = err.message;
+      editSaving = false;
     }
+  }
+
+  function closeEdit() {
+    if (editSaving) return;
+    editingId = null;
+    pickerOpen = null;
+    pickerSearch = '';
+    editError = null;
   }
 
   // ── Status inline update ──────────────────────────────────────────────────
@@ -1493,6 +1508,130 @@ ${sections.join('<br>')}`;
   on:close={() => { showDirectKeyDateModal = false; editingDirectKeyDate = null; }}
 />
 
+<!-- ── Edit response modal ───────────────────────────────────────────────── -->
+{#if editingId !== null}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="ct-overlay" on:click|self={closeEdit}>
+    <div class="ct-panel">
+      <div class="ct-panel-header">
+        <h3 class="ct-panel-title">Edit Consultation Response</h3>
+        <button class="btn btn-icon btn-ghost" on:click={closeEdit}><i class="las la-times"></i></button>
+      </div>
+
+      <div class="ct-review-form">
+        <div class="ct-field-row">
+          <div class="ct-field ct-field-grow">
+            <label class="ct-label">Consultee <span class="ct-required">*</span></label>
+            <input type="text" class="form-input" bind:value={editForm.consultee_name} placeholder="e.g. Natural England" />
+          </div>
+          <div class="ct-field ct-field-date">
+            <label class="ct-label">Date Received</label>
+            <input type="date" class="form-input" bind:value={editForm.date_received} />
+          </div>
+        </div>
+        <div class="ct-field-row">
+          <div class="ct-field ct-field-grow">
+            <label class="ct-label">Position</label>
+            <select class="form-input" bind:value={editForm.position}>
+              <option value="">Select position</option>
+              <option>Objection</option>
+              <option>Conditional Support</option>
+              <option>Support</option>
+              <option>No Comment</option>
+            </select>
+          </div>
+          <div class="ct-field ct-field-grow">
+            <label class="ct-label">Status</label>
+            <select class="form-input" bind:value={editForm.status}>
+              {#each STATUS_OPTIONS as s}<option value={s}>{s}</option>{/each}
+            </select>
+          </div>
+        </div>
+        <div class="ct-field">
+          <label class="ct-label">Comments</label>
+          <textarea class="form-input ct-comments-textarea" bind:value={editForm.comments} rows="8"></textarea>
+        </div>
+        <div class="ct-field">
+          <label class="ct-label">Action Required <span class="ct-label-hint">(what needs to be provided to the council)</span></label>
+          <textarea class="form-input ct-comments-textarea" bind:value={editForm.action_required} rows="4" placeholder="- Further ecological survey&#10;- Written confirmation on drainage strategy"></textarea>
+        </div>
+        <div class="ct-field">
+          <label class="ct-label">Conditions Suggested <span class="ct-label-hint">(proposed conditions, applied after approval)</span></label>
+          <textarea class="form-input ct-comments-textarea" bind:value={editForm.conditions_suggested} rows="4" placeholder="- Condition requiring a surface water drainage scheme&#10;- Condition restricting hours of construction"></textarea>
+        </div>
+        <div class="ct-field-row">
+          <div class="ct-field ct-field-grow">
+            <label class="ct-label">Discipline</label>
+            <MultiSelectDropdown
+              options={DISCIPLINE_OPTIONS}
+              bind:selected={editForm.discipline}
+              placeholder="Select disciplines…"
+            />
+          </div>
+          <div class="ct-field ct-field-grow">
+            <label class="ct-label">Original Consultant</label>
+            <div class="ct-consultant-row">
+              <input type="text" class="form-input" bind:value={editForm.original_consultant} placeholder="Name / organisation" />
+              {#if availableConsultants.length}
+                <button class="btn btn-secondary btn-sm ct-pick-btn" type="button" on:click={() => openPicker('edit')} title="Pick from project consultants">
+                  <i class="las la-address-book"></i>
+                </button>
+              {/if}
+            </div>
+            {#if !availableConsultants.length}
+              <p class="ct-no-consultants">No consultants assigned to this project yet. Add them in Survey Management.</p>
+            {/if}
+          </div>
+          <div class="ct-field ct-field-grow">
+            <label class="ct-label">Email</label>
+            <input type="email" class="form-input" bind:value={editForm.original_consultant_email} placeholder="consultant@email.com" />
+          </div>
+        </div>
+
+        {#if pickerOpen === 'edit'}
+          <div class="ct-picker">
+            <input class="form-input ct-picker-search" bind:value={pickerSearch} placeholder="Search by name or discipline…" autofocus />
+            <div class="ct-picker-list">
+              {#if filteredConsultants}
+                {#each filteredConsultants as c (c.id)}
+                  <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'edit')}>
+                    <span class="ct-picker-org">{c.organisation}</span>
+                    <span class="ct-picker-disc">{c.discipline || ''}</span>
+                    {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
+                  </button>
+                {:else}
+                  <p class="ct-picker-empty">No matches</p>
+                {/each}
+              {:else}
+                {#each Object.entries(consultantsByDiscipline) as [disc, group]}
+                  <p class="ct-picker-group">{disc}</p>
+                  {#each group as c (c.id)}
+                    <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'edit')}>
+                      <span class="ct-picker-org">{c.organisation}</span>
+                      {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
+                    </button>
+                  {/each}
+                {/each}
+              {/if}
+            </div>
+            <button class="btn btn-ghost btn-sm ct-picker-close" type="button" on:click={() => pickerOpen = null}>Close</button>
+          </div>
+        {/if}
+      </div>
+
+      {#if editError}<div class="ct-error">{editError}</div>{/if}
+
+      <div class="ct-review-footer">
+        <button class="btn btn-secondary btn-sm" on:click={closeEdit} disabled={editSaving}>Cancel</button>
+        <button class="btn btn-primary" on:click={() => saveEdit(editingId)} disabled={editSaving}>
+          {editSaving ? 'Saving…' : 'Save Changes'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <!-- ── Statutory consultees content ──────────────────────────────────────── -->
 <div class="ct-tab" class:ct-fullscreen={isFullscreen}>
 
@@ -1565,112 +1704,81 @@ ${sections.join('<br>')}`;
         </thead>
         <tbody>
           {#each responses as r (r.id)}
-            {@const editing = editingId === r.id}
-            <tr class="ct-row" class:ct-row-editing={editing} class:ct-row-closed={r.status === 'Closed Out'}>
+            <tr class="ct-row" class:ct-row-closed={r.status === 'Closed Out'}>
 
               <!-- Consultee -->
               <td class="ct-td ct-td-consultee">
-                {#if editing}
-                  <input type="text" class="form-input ct-cell-input" bind:value={editForm.consultee_name} />
-                {:else}
-                  <span class="ct-consultee-name">{r.consultee_name}</span>
-                  {#if r.source_file_name}
-                    <span class="ct-source-file" title={r.source_file_name}><i class="las la-file-alt"></i></span>
-                  {/if}
+                <span class="ct-consultee-name">{r.consultee_name}</span>
+                {#if r.source_file_name}
+                  <span class="ct-source-file" title={r.source_file_name}><i class="las la-file-alt"></i></span>
                 {/if}
               </td>
 
               <!-- Date -->
               <td class="ct-td ct-td-date">
-                {#if editing}
-                  <input type="date" class="form-input ct-cell-input" bind:value={editForm.date_received} />
-                {:else}
-                  {r.date_received ? formatDate(r.date_received) : '—'}
-                {/if}
+                {r.date_received ? formatDate(r.date_received) : '—'}
               </td>
 
               <!-- Position -->
               <td class="ct-td ct-td-pos">
-                {#if editing}
-                  <select class="form-input ct-cell-input" bind:value={editForm.position}>
-                    <option value="">Select position</option>
-                    <option>Objection</option>
-                    <option>Conditional Support</option>
-                    <option>Support</option>
-                    <option>No Comment</option>
-                  </select>
+                {#if r.position}
+                  <span class="badge ct-pos-badge {positionClass(r.position)}">{toTitleCase(r.position)}</span>
                 {:else}
-                  {#if r.position}
-                    <span class="badge ct-pos-badge {positionClass(r.position)}">{toTitleCase(r.position)}</span>
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
-                  {/if}
+                  <span class="ct-cell-muted">—</span>
                 {/if}
               </td>
 
               <!-- Comments -->
               <td class="ct-td ct-td-comments">
-                {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.comments} rows="4"></textarea>
-                {:else}
-                  {#if r.comments}
-                    {@const expanded = expandedIds.has(r.id)}
-                    {@const needsTrunc = r.comments.length > 280}
-                    <p class="ct-comments-text">
-                      {expanded || !needsTrunc ? r.comments : r.comments.slice(0, 280) + '…'}
-                    </p>
-                    {#if needsTrunc}
-                      <button class="ct-expand-btn" on:click={() => toggleExpand(r.id)}>
-                        {expanded ? 'Show less' : 'Show more'}
-                      </button>
-                    {/if}
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
+                {#if r.comments}
+                  {@const expanded = expandedIds.has(r.id)}
+                  {@const needsTrunc = r.comments.length > 280}
+                  <p class="ct-comments-text">
+                    {expanded || !needsTrunc ? r.comments : r.comments.slice(0, 280) + '…'}
+                  </p>
+                  {#if needsTrunc}
+                    <button class="ct-expand-btn" on:click={() => toggleExpand(r.id)}>
+                      {expanded ? 'Show less' : 'Show more'}
+                    </button>
                   {/if}
+                {:else}
+                  <span class="ct-cell-muted">—</span>
                 {/if}
               </td>
 
               <!-- Action Required -->
               <td class="ct-td ct-td-action-required">
-                {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.action_required} rows="4" placeholder="Further information…"></textarea>
-                {:else}
-                  {#if r.action_required}
-                    {@const expanded = expandedIds.has('ar' + r.id)}
-                    {@const needsTrunc = r.action_required.length > 280}
-                    <p class="ct-comments-text">
-                      {expanded || !needsTrunc ? r.action_required : r.action_required.slice(0, 280) + '…'}
-                    </p>
-                    {#if needsTrunc}
-                      <button class="ct-expand-btn" on:click={() => toggleExpand('ar' + r.id)}>
-                        {expanded ? 'Show less' : 'Show more'}
-                      </button>
-                    {/if}
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
+                {#if r.action_required}
+                  {@const expanded = expandedIds.has('ar' + r.id)}
+                  {@const needsTrunc = r.action_required.length > 280}
+                  <p class="ct-comments-text">
+                    {expanded || !needsTrunc ? r.action_required : r.action_required.slice(0, 280) + '…'}
+                  </p>
+                  {#if needsTrunc}
+                    <button class="ct-expand-btn" on:click={() => toggleExpand('ar' + r.id)}>
+                      {expanded ? 'Show less' : 'Show more'}
+                    </button>
                   {/if}
+                {:else}
+                  <span class="ct-cell-muted">—</span>
                 {/if}
               </td>
 
               <!-- Conditions Suggested -->
               <td class="ct-td ct-td-conditions">
-                {#if editing}
-                  <textarea class="form-input ct-cell-input" bind:value={editForm.conditions_suggested} rows="4" placeholder="Condition requiring…"></textarea>
-                {:else}
-                  {#if r.conditions_suggested}
-                    {@const expanded = expandedIds.has('cs' + r.id)}
-                    {@const needsTrunc = r.conditions_suggested.length > 280}
-                    <p class="ct-comments-text">
-                      {expanded || !needsTrunc ? r.conditions_suggested : r.conditions_suggested.slice(0, 280) + '…'}
-                    </p>
-                    {#if needsTrunc}
-                      <button class="ct-expand-btn" on:click={() => toggleExpand('cs' + r.id)}>
-                        {expanded ? 'Show less' : 'Show more'}
-                      </button>
-                    {/if}
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
+                {#if r.conditions_suggested}
+                  {@const expanded = expandedIds.has('cs' + r.id)}
+                  {@const needsTrunc = r.conditions_suggested.length > 280}
+                  <p class="ct-comments-text">
+                    {expanded || !needsTrunc ? r.conditions_suggested : r.conditions_suggested.slice(0, 280) + '…'}
+                  </p>
+                  {#if needsTrunc}
+                    <button class="ct-expand-btn" on:click={() => toggleExpand('cs' + r.id)}>
+                      {expanded ? 'Show less' : 'Show more'}
+                    </button>
                   {/if}
+                {:else}
+                  <span class="ct-cell-muted">—</span>
                 {/if}
               </td>
 
@@ -1697,10 +1805,8 @@ ${sections.join('<br>')}`;
                   class="form-input ct-status-select"
                   class:ct-status-inprogress={!r.status || r.status === 'In Progress'}
                   class:ct-status-closed={r.status === 'Closed Out'}
-                  value={editing ? editForm.status : (r.status || 'In Progress')}
-                  on:change={e => editing
-                    ? (editForm.status = e.target.value)
-                    : updateStatus(r, e.target.value)}
+                  value={r.status || 'In Progress'}
+                  on:change={e => updateStatus(r, e.target.value)}
                 >
                   {#each STATUS_OPTIONS as s}<option value={s}>{s}</option>{/each}
                 </select>
@@ -1708,102 +1814,39 @@ ${sections.join('<br>')}`;
 
               <!-- Discipline -->
               <td class="ct-td ct-td-discipline">
-                {#if editing}
-                  <div class="ct-disc-cell">
-                    <MultiSelectDropdown
-                      options={DISCIPLINE_OPTIONS}
-                      bind:selected={editForm.discipline}
-                      placeholder="Select…"
-                    />
+                {#if r.discipline}
+                  <div class="ct-disc-badges">
+                    {#each parseDisciplines(r.discipline) as d}
+                      <span class="ct-discipline-badge">{d}</span>
+                    {/each}
                   </div>
                 {:else}
-                  {#if r.discipline}
-                    <div class="ct-disc-badges">
-                      {#each parseDisciplines(r.discipline) as d}
-                        <span class="ct-discipline-badge">{d}</span>
-                      {/each}
-                    </div>
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
-                  {/if}
+                  <span class="ct-cell-muted">—</span>
                 {/if}
               </td>
 
               <!-- Original Consultant -->
-              <td class="ct-td ct-td-consultant" class:ct-td-has-picker={editing && pickerOpen === 'edit'}>
-                {#if editing}
-                  <div class="ct-cell-consultant-edit">
-                    <div class="ct-consultant-row">
-                      <input type="text" class="form-input ct-cell-input" bind:value={editForm.original_consultant} placeholder="Name / org" />
-                      {#if availableConsultants.length}
-                        <button class="btn btn-secondary btn-sm ct-pick-btn" type="button" on:click={() => openPicker('edit')} title="Pick from project consultants">
-                          <i class="las la-address-book"></i>
-                        </button>
-                      {/if}
-                    </div>
-                    {#if !availableConsultants.length}
-                      <p class="ct-no-consultants">No consultants assigned to this project yet. Add them in Survey Management.</p>
-                    {/if}
-                    <input type="email" class="form-input ct-cell-input" bind:value={editForm.original_consultant_email} placeholder="email" style="margin-top:4px" />
-                    {#if pickerOpen === 'edit'}
-                      <div class="ct-picker ct-picker-cell">
-                        <input class="form-input ct-picker-search" bind:value={pickerSearch} placeholder="Search…" autofocus />
-                        <div class="ct-picker-list">
-                          {#if filteredConsultants}
-                            {#each filteredConsultants as c (c.id)}
-                              <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'edit')}>
-                                <span class="ct-picker-org">{c.organisation}</span>
-                                <span class="ct-picker-disc">{c.discipline || ''}</span>
-                                {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
-                              </button>
-                            {:else}
-                              <p class="ct-picker-empty">No matches</p>
-                            {/each}
-                          {:else}
-                            {#each Object.entries(consultantsByDiscipline) as [disc, group]}
-                              <p class="ct-picker-group">{disc}</p>
-                              {#each group as c (c.id)}
-                                <button class="ct-picker-item" type="button" on:click={() => pickConsultant(c, 'edit')}>
-                                  <span class="ct-picker-org">{c.organisation}</span>
-                                  {#if c.contact_email}<span class="ct-picker-email">{c.contact_email}</span>{/if}
-                                </button>
-                              {/each}
-                            {/each}
-                          {/if}
-                        </div>
-                        <button class="btn btn-ghost btn-sm ct-picker-close" type="button" on:click={() => pickerOpen = null}>Close</button>
-                      </div>
-                    {/if}
-                  </div>
-                {:else}
-                  {#if r.original_consultant}
-                    <span class="ct-orig-consultant-name">{r.original_consultant}</span>
-                    {#if r.original_consultant_email}
-                      <a class="ct-consultant-email" href="mailto:{r.original_consultant_email}">{r.original_consultant_email}</a>
-                    {/if}
-                  {:else}
-                    <span class="ct-cell-muted">—</span>
+              <td class="ct-td ct-td-consultant">
+                {#if r.original_consultant}
+                  <span class="ct-orig-consultant-name">{r.original_consultant}</span>
+                  {#if r.original_consultant_email}
+                    <a class="ct-consultant-email" href="mailto:{r.original_consultant_email}">{r.original_consultant_email}</a>
                   {/if}
+                {:else}
+                  <span class="ct-cell-muted">—</span>
                 {/if}
               </td>
 
               <!-- Actions -->
               <td class="ct-td ct-td-actions">
-                {#if editing}
-                  <div class="ct-row-btns">
-                    <button class="btn btn-icon btn-primary" on:click={() => saveEdit(r.id)} title="Save"><i class="las la-check"></i></button>
-                    <button class="btn btn-icon btn-ghost" on:click={() => { editingId = null; pickerOpen = null; }} title="Cancel"><i class="las la-times"></i></button>
-                  </div>
-                {:else}
-                  <div class="ct-row-btns">
-                    <button class="btn btn-icon btn-ghost" on:click={() => startEdit(r)} title="Edit"><i class="las la-pen"></i></button>
-                    <button class="btn btn-icon btn-ghost" on:click={() => openEmailCompose(r)} title="Email consultant for review"
-                      class:ct-btn-emailed={r.last_emailed_consultant_at}>
-                      <i class="las la-envelope"></i>
-                    </button>
-                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeResponse(r.id)} title="Delete"><i class="las la-trash"></i></button>
-                  </div>
-                {/if}
+                <div class="ct-row-btns">
+                  <button class="btn btn-icon btn-ghost" on:click={() => startEdit(r)} title="Edit"><i class="las la-pen"></i></button>
+                  <button class="btn btn-icon btn-ghost" on:click={() => openEmailCompose(r)} title="Email consultant for review"
+                    class:ct-btn-emailed={r.last_emailed_consultant_at}>
+                    <i class="las la-envelope"></i>
+                  </button>
+                  <button class="btn btn-icon btn-danger-ghost" on:click={() => removeResponse(r.id)} title="Delete"><i class="las la-trash"></i></button>
+                </div>
               </td>
 
             </tr>
@@ -2580,9 +2623,6 @@ ${sections.join('<br>')}`;
   }
   .ct-required { color: var(--color-red-500); }
 
-  /* ── Inline cell editing ─────────────────────────────────────────────────── */
-  .ct-row-editing { background: var(--color-primary-50); }
-  .ct-row-editing td { vertical-align: top; }
 
   .ct-cell-input {
     font-size: 0.78rem;

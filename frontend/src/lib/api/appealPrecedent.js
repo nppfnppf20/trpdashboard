@@ -11,6 +11,16 @@ async function json(res, fallback) {
 const post = (url, body) =>
   authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
 
+/** The latest saved results for the project, or null. */
+export async function getSavedPrecedents(projectId) {
+  return (await json(await authFetch(`/api/appeal-precedent/projects/${projectId}/saved`), 'Could not load the saved results')).saved;
+}
+
+/** Save the current results (records, setup, ticks, chat). An empty record list clears the save. */
+export async function savePrecedents(projectId, state) {
+  return json(await authFetch(`/api/appeal-precedent/projects/${projectId}/saved`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) }), 'Could not save the results');
+}
+
 /** Meeting notes and project documents that can be picked to draft the setup from. */
 export async function getPrecedentSources(projectId) {
   return json(await authFetch(`/api/appeal-precedent/projects/${projectId}/sources`), 'Could not load the notes and documents');
@@ -39,6 +49,11 @@ export async function cancelPrecedentRun(runId, since = 0) {
 }
 
 /** Ask a question about the ticked decisions. Returns { reply, citations, contextTokens, usage }. */
-export async function askAboutPrecedents(runId, { refs, messages }) {
-  return json(await post(`/api/appeal-precedent/runs/${runId}/chat`, { refs, messages }), 'Chat request failed');
+export async function askAboutPrecedents(runId, { refs, messages, projectId, projectName }) {
+  if (runId) {
+    const res = await post(`/api/appeal-precedent/runs/${runId}/chat`, { refs, messages });
+    if (res.status !== 404) return json(res, 'Chat request failed');
+  }
+  // No live run (results were restored from the save, or the server restarted): answer from the saved results.
+  return json(await post(`/api/appeal-precedent/projects/${projectId}/saved/chat`, { refs, messages, projectName }), 'Chat request failed');
 }

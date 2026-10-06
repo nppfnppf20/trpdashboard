@@ -24,23 +24,21 @@
 </script>
 
 <div class="setup">
-  <p class="intro">
-    Optional: describe what you're looking for, draft it from your meeting notes and documents, or just press
-    <strong>Find precedents</strong> and the search will work out the issues itself. Anything you enter here steers the search.
-  </p>
-
   <div class="card section">
     <div class="section-head">
       <h3>The scheme</h3>
       <div class="head-actions">
         <button class="btn btn-secondary btn-sm" on:click={() => dispatch('pick')} disabled={suggesting}>
-          <i class="las la-file-alt"></i> Choose notes and documents
-        </button>
-        <button class="btn btn-secondary btn-sm" on:click={() => dispatch('suggest')} disabled={suggesting}>
-          {suggesting ? 'Reading...' : 'Fill in from project'}
+          <i class="las la-file-alt"></i> {suggesting ? 'Reading...' : 'Fill from notes and documents'}
         </button>
       </div>
     </div>
+    {#if suggesting}
+      <div class="filling" role="status" aria-live="polite">
+        <span class="filling-label">Filling...</span>
+        <div class="filling-track"><div class="filling-bar"></div></div>
+      </div>
+    {/if}
     {#if draftedFrom}<p class="hint">Drafted from {draftedFrom}.</p>{/if}
     {#if suggestError}<p class="msg msg-error">{suggestError}</p>{/if}
 
@@ -93,7 +91,7 @@
       {/each}
       <p class="hint">Higher-weighted issues count more when ranking. The search favours decisions that actually decided them.</p>
     {:else}
-      <p class="hint">No issues entered. The search will work out the issues most likely to decide an appeal for this kind of scheme. Use "Fill in from project" to get suggestions you can edit.</p>
+      <p class="hint">No issues entered. The search will work out the issues most likely to decide an appeal for this kind of scheme. Use "Fill from notes and documents" to get suggestions you can edit.</p>
     {/if}
   </div>
 
@@ -141,13 +139,6 @@
     max-width: 820px;
   }
 
-  .intro {
-    margin: 0;
-    font-size: 0.875rem;
-    color: var(--color-slate-600);
-    line-height: 1.5;
-  }
-
   .section {
     padding: var(--space-4);
     display: flex;
@@ -161,6 +152,42 @@
     justify-content: space-between;
     gap: var(--space-3);
     flex-wrap: wrap;
+  }
+
+  .filling {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .filling-label {
+    font-size: 0.78125rem;
+    font-weight: 600;
+    color: var(--color-violet-600);
+  }
+
+  .filling-track {
+    height: 5px;
+    background: var(--color-slate-200);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .filling-bar {
+    height: 100%;
+    width: 35%;
+    background: var(--color-violet-600);
+    border-radius: 999px;
+    animation: filling-slide 1.2s ease-in-out infinite;
+  }
+
+  @keyframes filling-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(300%);
+    }
   }
 
   .head-actions {

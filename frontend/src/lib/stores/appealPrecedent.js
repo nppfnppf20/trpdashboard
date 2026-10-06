@@ -1,11 +1,13 @@
-// Per-project, in-memory session for the Appeal Precedent tab. Nothing is saved: sessions live only while the page
-// is open, so switching tabs doesn't lose a running search or its results, and a reload starts fresh.
+// Per-project, in-memory session for the Appeal Precedent tab. It keeps a running search and its results alive while
+// switching tabs; the tab also autosaves the results to the server (see AppealPrecedentTab) so a reload can restore them.
 // The tab mutates the returned object directly (same reference every time), so state survives the tab unmounting.
 
 const sessions = new Map(); // projectId -> session
 
 export function newSession() {
   return {
+    savedChecked: false, // the project's saved results have been looked up (and restored if there were any)
+    restoredAt: null, // when the restored save was last written, if this session started from one
     suggested: false, // the optional "read the project" step has run (or been skipped)
     suggesting: false,
     suggestError: '',

@@ -15,6 +15,11 @@
     { value: 'transcript', label: 'Full transcript', hint: 'The full transcript or document text; summaries not used' },
     { value: 'both', label: 'Both', hint: 'Summaries plus the full text' }
   ];
+  const TRACKERS = [
+    { key: 'consultation', label: 'Consultation Tracker', hint: 'Consultee responses and their comments' },
+    { key: 'conditions', label: 'Conditions Tracker', hint: 'Conditions and their status' },
+    { key: 'issues_tracker', label: 'Project Tracker', hint: 'Issues logged against project stages' }
+  ];
   const PER_SOURCE_CAP = 40000; // the server reads at most this many characters of each source
   const TOTAL_CAP = 130000; // and about this many in total
 
@@ -24,6 +29,7 @@
   let documents = [];
   let pickedMeetings = new Set();
   let pickedDocs = new Set();
+  let pickedTrackers = new Set();
   let mode = 'notes';
   let loadedFor = null;
 
@@ -40,6 +46,7 @@
       documents = out.documents ?? [];
       pickedMeetings = new Set();
       pickedDocs = new Set();
+      pickedTrackers = new Set();
     } catch (e) {
       error = e.message;
     } finally {
@@ -65,6 +72,7 @@
     return next;
   }
 
+  $: nothingTicked = pickedMeetings.size + pickedDocs.size + pickedTrackers.size === 0;
   $: chosen = [...meetings.filter(m => pickedMeetings.has(m.id)), ...documents.filter(d => pickedDocs.has(d.id))];
   $: usedChars = chosen.reduce((n, i) => n + Math.min(sizeOf(i), PER_SOURCE_CAP), 0);
   $: pct = Math.min(100, Math.round((usedChars / TOTAL_CAP) * 100));
@@ -77,7 +85,7 @@
   }
 
   function draft() {
-    dispatch('draft', { document_ids: [...pickedDocs], meeting_ids: [...pickedMeetings], mode });
+    dispatch('draft', { document_ids: [...pickedDocs], meeting_ids: [...pickedMeetings], trackers: [...pickedTrackers], mode });
   }
 </script>
 
@@ -109,29 +117,32 @@
           <p class="asp-error">{error}</p>
         {:else}
           <div class="asp-block">
-            <span class="asp-label">Meeting notes</span>
-            {#if meetings.length === 0}
-              <p class="asp-empty">No meeting notes for this project yet.</p>
-            {:else}
-              <div class="asp-list">
-                {#each meetings as m (m.id)}
-                  <label class="asp-item" class:asp-item--checked={pickedMeetings.has(m.id)} class:asp-item--empty={isEmpty(m)}>
-                    <input type="checkbox" checked={pickedMeetings.has(m.id)} on:change={() => (pickedMeetings = toggle(pickedMeetings, m.id))} />
-                    <span class="asp-name">{m.title || `Meeting note ${m.id}`}</span>
-                    <span class="asp-meta">{isEmpty(m) ? 'nothing in this mode' : fmtSize(sizeOf(m))} · {fmtDate(m.date)}</span>
-                  </label>
-                {/each}
-              </div>
-            {/if}
+            <span class="asp-label">Trackers (the issues list is drafted mainly from these)</span>
+            <div class="asp-list">
+              {#each TRACKERS as t (t.key)}
+                <label class="asp-item" class:asp-item--checked={pickedTrackers.has(t.key)}>
+                  <input type="checkbox" checked={pickedTrackers.has(t.key)} on:change={() => (pickedTrackers = toggle(pickedTrackers, t.key))} />
+                  <span class="asp-name">{t.label}</span>
+                  <span class="asp-meta">{t.hint}</span>
+                </label>
+              {/each}
+            </div>
           </div>
 
           <div class="asp-block">
-            <span class="asp-label">Project documents</span>
-            {#if documents.length === 0}
-              <p class="asp-empty">No project documents yet.</p>
+            <span class="asp-label">Notes and Docs</span>
+            {#if meetings.length + documents.length === 0}
+              <p class="asp-empty">No notes or documents for this project yet.</p>
             {:else}
               <div class="asp-list">
-                {#each documents as d (d.id)}
+                {#each meetings as m (`m${m.id}`)}
+                  <label class="asp-item" class:asp-item--checked={pickedMeetings.has(m.id)} class:asp-item--empty={isEmpty(m)}>
+                    <input type="checkbox" checked={pickedMeetings.has(m.id)} on:change={() => (pickedMeetings = toggle(pickedMeetings, m.id))} />
+                    <span class="asp-name">{m.title || `Meeting note ${m.id}`}<span class="asp-type">Meeting note</span></span>
+                    <span class="asp-meta">{isEmpty(m) ? 'nothing in this mode' : fmtSize(sizeOf(m))} · {fmtDate(m.date)}</span>
+                  </label>
+                {/each}
+                {#each documents as d (`d${d.id}`)}
                   <label class="asp-item" class:asp-item--checked={pickedDocs.has(d.id)} class:asp-item--empty={isEmpty(d)}>
                     <input type="checkbox" checked={pickedDocs.has(d.id)} on:change={() => (pickedDocs = toggle(pickedDocs, d.id))} />
                     <span class="asp-name">{d.title}<span class="asp-type">{d.doc_type_label}</span></span>
@@ -149,17 +160,18 @@
               {#if truncated}<span class="asp-hint">Very long sources are read up to {fmtSize(PER_SOURCE_CAP)} each.</span>{/if}
               {#if overCap}<span class="asp-warn">Too much selected. The later sources will be cut short.</span>{/if}
             </div>
-          {:else if meetings.length + documents.length > 0}
-            <span class="asp-hint">Nothing ticked: choose at least one note or document to draft from.</span>
+          {/if}
+          {#if nothingTicked}
+            <span class="asp-hint">Nothing ticked: choose at least one tracker, note or document to draft from.</span>
           {/if}
 
-          <p class="asp-hint">Drafting replaces the scheme, setting, issues and instructions in the form, using these sources together with the project's key issues. Scale is only filled where it's empty.</p>
+          <p class="asp-hint">Drafting replaces the scheme, setting, issues and instructions in the form, using what you tick here. Scale is only filled where it's empty.</p>
         {/if}
       </div>
 
       <div class="asp-footer">
         <button class="btn btn-secondary" on:click={close}>Cancel</button>
-        <button class="btn btn-primary" on:click={draft} disabled={loading || chosen.length === 0}><i class="las la-magic"></i> Draft setup</button>
+        <button class="btn btn-primary" on:click={draft} disabled={loading || nothingTicked}><i class="las la-magic"></i> Draft setup</button>
       </div>
     </div>
   </div>

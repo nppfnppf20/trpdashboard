@@ -4,6 +4,8 @@
   import { escapeHtml } from '$lib/utils/chatMarkdown.js';
 
   export let runId;
+  export let projectId;
+  export let projectName = '';
   export let records = []; // ticked records
   export let issues = []; // [{ label, weight }]
   export let messages = []; // bound to the session: { role, content, citations? }
@@ -58,6 +60,8 @@
     scroll();
     try {
       const out = await askAboutPrecedents(runId, {
+        projectId,
+        projectName,
         refs: records.map(r => r.reference),
         messages: messages.map(m => ({ role: m.role, content: m.content }))
       });
