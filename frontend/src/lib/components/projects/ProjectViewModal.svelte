@@ -22,7 +22,8 @@
   import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
-  import { extractPoliciesFromDocument } from '$lib/api/lpaAnalysis.js';
+  import { extractPoliciesFromDocument, getPolicies } from '$lib/api/lpaAnalysis.js';
+  import { exportPolicyPdf } from '$lib/services/policyPdfExport.js';
   import { getPolicyDocuments, createPolicyDocument } from '$lib/api/policyDocuments.js';
 
   export let isOpen = false;
@@ -38,6 +39,20 @@
   // Tab state
   let activeTab = 'site_boundary';
   let policyFormOpen = false;
+  let exportingPolicy = false;
+
+  // Fetches fresh copies so the PDF reflects what's saved, whatever the child components currently show.
+  async function exportPolicy() {
+    exportingPolicy = true;
+    try {
+      const [policies, docs] = await Promise.all([getPolicies(projectData.id), getPolicyDocuments(projectData.id)]);
+      exportPolicyPdf(projectData, policies, docs);
+    } catch (err) {
+      alert(`Could not export policy PDF: ${err.message}`);
+    } finally {
+      exportingPolicy = false;
+    }
+  }
 
   const trackerLabels = {
     consultation_tracker: 'Consultation Tracker',
@@ -1218,9 +1233,14 @@
               <div class="split-card">
                 <div class="split-card-label split-card-label--with-action">
                   <span>Policy</span>
-                  <button class="btn-extract-policy" on:click={openExtractModal}>
-                    <i class="las la-file-import"></i> Extract from Document
-                  </button>
+                  <div class="policy-header-actions">
+                    <button class="btn-extract-policy" on:click={openExtractModal}>
+                      <i class="las la-file-import"></i> Extract from Document
+                    </button>
+                    <button class="btn-extract-policy" on:click={exportPolicy} disabled={exportingPolicy}>
+                      <i class="las la-file-pdf"></i> {exportingPolicy ? 'Exporting…' : 'Export to PDF'}
+                    </button>
+                  </div>
                 </div>
                 <div class="split-card-body split-card-body--scroll">
                   {#if !policyFormOpen}
@@ -2138,6 +2158,8 @@
     flex-shrink: 0;
   }
   .btn-extract-policy:hover { background: var(--color-purple-50); }
+  .btn-extract-policy:disabled { opacity: 0.6; cursor: default; }
+  .policy-header-actions { display: flex; gap: 0.5rem; }
 
   /* Extract from Document modal */
   .extract-backdrop {
