@@ -4,11 +4,12 @@
  */
 
 import express from 'express';
-import { suggest, create, status, cancel, chat } from '../controllers/appealPrecedent.controller.js';
+import { sources, suggest, create, status, cancel, chat } from '../controllers/appealPrecedent.controller.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
+router.get('/projects/:projectId/sources', sources);
 router.post('/projects/:projectId/suggest', analysisLimiter, suggest);
 router.post('/runs', analysisLimiter, create);
 router.get('/runs/:runId', status);

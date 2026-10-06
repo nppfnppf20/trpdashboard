@@ -8,6 +8,7 @@
   export let starting = false;
   export let error = '';
   export let hasResults = false;
+  export let draftedFrom = '';
 
   const dispatch = createEventDispatcher();
 
@@ -24,17 +25,23 @@
 
 <div class="setup">
   <p class="intro">
-    Optional: describe what you're looking for, or just press <strong>Find precedents</strong> and the search will work out the
-    issues itself. Anything you enter here steers the search.
+    Optional: describe what you're looking for, draft it from your meeting notes and documents, or just press
+    <strong>Find precedents</strong> and the search will work out the issues itself. Anything you enter here steers the search.
   </p>
 
   <div class="card section">
     <div class="section-head">
       <h3>The scheme</h3>
-      <button class="btn btn-secondary btn-sm" on:click={() => dispatch('suggest')} disabled={suggesting}>
-        {suggesting ? 'Reading project...' : 'Fill in from project'}
-      </button>
+      <div class="head-actions">
+        <button class="btn btn-secondary btn-sm" on:click={() => dispatch('pick')} disabled={suggesting}>
+          <i class="las la-file-alt"></i> Choose notes and documents
+        </button>
+        <button class="btn btn-secondary btn-sm" on:click={() => dispatch('suggest')} disabled={suggesting}>
+          {suggesting ? 'Reading...' : 'Fill in from project'}
+        </button>
+      </div>
     </div>
+    {#if draftedFrom}<p class="hint">Drafted from {draftedFrom}.</p>{/if}
     {#if suggestError}<p class="msg msg-error">{suggestError}</p>{/if}
 
     <label class="form-label" for="ap-scheme">What is proposed</label>
@@ -153,6 +160,13 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .head-actions {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
   }
 
   h3 {

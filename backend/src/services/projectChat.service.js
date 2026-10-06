@@ -716,3 +716,70 @@ export async function assembleContext(projectId, sources = {}) {
     ],
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Source picker helpers (used by the Appeal Precedent tab to draft its setup from chosen notes and documents)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Meeting notes and project documents for a picker, with the size of the notes/summary version and of the full
+ * transcript version, so the UI can show a context meter for each mode.
+ */
+export async function listPickerSources(projectId) {
+  const [docs, meetings] = await Promise.all([fetchDocuments(projectId), fetchMeetings(projectId)]);
+  const noSummaries = new Map();
+  const noActions = new Map();
+  return {
+    meetings: meetings.transcripts
+      .map(m => ({
+        id: m.id,
+        title: m.title,
+        date: m.meeting_date,
+        summary_chars: serializeMeeting({ ...m, transcript_text: '' }, meetings.summariesByTranscript, meetings.actionsByTranscript).length,
+        transcript_chars: serializeMeeting({ ...m }, noSummaries, noActions).length,
+        has_transcript: !!m.transcript_text?.trim(),
+      }))
+      .reverse(), // newest first
+    documents: docs
+      .map(d => ({
+        id: d.id,
+        title: d.title,
+        doc_type_label: DOC_TYPE_LABELS[d.doc_type] ?? d.doc_type ?? 'Other',
+        date: d.created_at,
+        summary_chars: serializeDocument({ ...d, transcript_text: '' }).length,
+        transcript_chars: serializeDocument({ ...d, summary_html: '' }).length,
+        has_transcript: !!d.transcript_text?.trim(),
+      }))
+      .reverse(),
+  };
+}
+
+/**
+ * Text blocks for the chosen meeting notes and documents.
+ * mode: 'notes' (summary, actions and notes only), 'transcript' (full text only) or 'both'.
+ * @returns {Promise<{ blocks: {label: string, text: string}[] }>}
+ */
+export async function assembleSourceTexts(projectId, { documentIds = [], meetingIds = [], mode = 'notes' } = {}) {
+  const docIds = documentIds.map(Number).filter(Number.isFinite);
+  const mtgIds = meetingIds.map(Number).filter(Number.isFinite);
+  const blocks = [];
+  if (mtgIds.length) {
+    const meetings = await fetchMeetings(projectId);
+    for (const m of meetings.transcripts.filter(m => mtgIds.includes(m.id))) {
+      const source = mode === 'notes' ? { ...m, transcript_text: '' } : m;
+      const text =
+        mode === 'transcript'
+          ? serializeMeeting(source, new Map(), new Map())
+          : serializeMeeting(source, meetings.summariesByTranscript, meetings.actionsByTranscript);
+      blocks.push({ label: `Meeting note: ${m.title}`, text });
+    }
+  }
+  if (docIds.length) {
+    const docs = await fetchDocuments(projectId);
+    for (const d of docs.filter(d => docIds.includes(d.id))) {
+      const source = mode === 'notes' ? { ...d, transcript_text: '' } : mode === 'transcript' ? { ...d, summary_html: '' } : d;
+      blocks.push({ label: `Project document: ${d.title}`, text: serializeDocument(source) });
+    }
+  }
+  return { blocks };
+}

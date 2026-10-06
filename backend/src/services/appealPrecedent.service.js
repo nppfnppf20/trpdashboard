@@ -20,7 +20,7 @@ import { developmentProposed } from './appealbaseScoring.js';
 import { makeFinder } from './appealbaseQuotes.js';
 import { processEntries } from './appealbaseBalance.js';
 import { putText } from './appealbaseTextStore.js';
-import { assembleContext } from './projectChat.service.js';
+import { assembleContext, listPickerSources, assembleSourceTexts } from './projectChat.service.js';
 import { client as anthropic, callClaude, parseJSON, MODEL_SONNET, MODEL_FAST } from './llm.shared.js';
 
 // ── Limits and prices ────────────────────────────────────────────────────────
@@ -58,7 +58,14 @@ function num(v) {
 }
 
 // ── Suggest context from the project (optional setup step) ───────────────────
-export async function suggestContext(projectId) {
+/** Meeting notes and project documents the user can pick to draft the setup from. */
+export const listSources = listPickerSources;
+
+/**
+ * Draft the scheme, setting, scale, issues and instructions from the project, optionally from chosen meeting notes
+ * and documents. sources: { document_ids?: number[], meeting_ids?: number[], mode?: 'notes'|'transcript'|'both' }.
+ */
+export async function suggestContext(projectId, sources = null) {
   const { rows } = await pool.query('SELECT * FROM projects WHERE id = $1', [projectId]);
   const p = rows[0];
   if (!p) {
@@ -73,32 +80,53 @@ export async function suggestContext(projectId) {
     .join('. ');
   const scale = { mw: num(p.project_mw), units: num(p.project_units), hectares: num(p.project_area) ?? (/ha/i.test(p.area ?? '') ? num(p.area) : null) };
 
-  const { blocks } = await assembleContext(projectId, { project_details: true, groups: ['key_issues', 'planning_history', 'policies'] });
+  // Chosen notes and documents are the main source; the project's own records fill in around them.
+  const picked = !!(sources?.document_ids?.length || sources?.meeting_ids?.length);
+  const { blocks } = await assembleContext(projectId, { project_details: true, groups: picked ? ['key_issues'] : ['key_issues', 'planning_history', 'policies'] });
+  const chosen = picked
+    ? (await assembleSourceTexts(projectId, { documentIds: sources.document_ids, meetingIds: sources.meeting_ids, mode: sources.mode })).blocks
+    : [];
+  const totalCap = picked ? 130000 : 70000;
   let used = 0;
-  const sourceText = blocks
-    .map(b => `### ${b.label}\n${b.text.slice(0, 20000)}`)
-    .filter(t => (used += t.length) < 70000)
+  const sourceText = [
+    ...chosen.map(b => ({ label: b.label, text: b.text, cap: 40000 })),
+    ...blocks.map(b => ({ label: b.label, text: b.text, cap: picked ? 8000 : 20000 })),
+  ]
+    .map(b => `### ${b.label}\n${b.text.slice(0, b.cap)}`)
+    .filter(t => (used += t.length) < totalCap)
     .join('\n\n');
 
   let scheme = [devTypes, p.development_description].filter(Boolean).join(' - ').slice(0, 300);
   let issues = [];
+  let instructions = '';
   if (sourceText.trim() || scheme) {
     try {
       const out = parseJSON(
         await callClaude(
-          'You help a planning consultant prepare a search of planning appeal decisions for a live project. From the project information, return ONLY JSON: {"scheme": "<max 20 words: what is proposed, e.g. ground-mounted solar farm, residential development of N dwellings>", "issues": [{"label": "<short issue name in the language inspectors use in appeal decisions, e.g. Character and appearance, Heritage assets, Flood risk>", "weight": <1-5>}]}. Give 5 to 8 issues most likely to decide an appeal for this kind of scheme in this setting, weight 5 for the single most important, 1 for minor. Only include issues the information supports. Never invent facts.',
+          'You help a planning consultant prepare a search of planning appeal decisions for a live project. From the project information, return ONLY JSON: {"scheme": "<max 20 words: what is proposed, e.g. ground-mounted solar farm, residential development of N dwellings>", "scale": {"mw": <number or null>, "dwellings": <number or null>, "hectares": <number or null>}, "instructions": "<one or two sentences on what kind of precedents would help most, based on what the client or team said they are worried about or expect to argue; empty string if the sources do not say>", "issues": [{"label": "<short issue name in the language inspectors use in appeal decisions, e.g. Character and appearance, Heritage assets, Flood risk>", "weight": <1-5>}]}. Give 5 to 8 issues most likely to decide an appeal for this kind of scheme in this setting, weight 5 for the single most important, 1 for minor; prefer issues the sources actually raise. Scale must be stated in the sources, never estimated; use null when not stated. Never invent facts.',
           `PROJECT: ${p.project_name}\nLPA: ${lpa || 'unknown'}\nDevelopment type: ${devTypes || 'unknown'}\nDescription: ${p.development_description || 'none'}\nSetting: ${setting || 'none'}\n\n${sourceText}`,
-          MODEL_FAST,
-          1200
+          picked ? MODEL_SONNET : MODEL_FAST,
+          1500
         )
       );
       if (out.scheme) scheme = String(out.scheme);
+      if (out.instructions) instructions = String(out.instructions).slice(0, 600);
+      scale.mw ??= num(out.scale?.mw);
+      scale.units ??= num(out.scale?.dwellings);
+      scale.hectares ??= num(out.scale?.hectares);
       issues = (out.issues ?? []).slice(0, 10).map(i => ({ label: String(i.label).slice(0, 60), weight: Math.min(5, Math.max(1, Number(i.weight) || 3)) }));
     } catch (e) {
       console.warn('[appealPrecedent] issue suggestion failed:', e.message);
     }
   }
-  return { project: { name: p.project_name, scheme, lpa, setting }, scale, issues, hasSources: !!sourceText.trim() };
+  return {
+    project: { name: p.project_name, scheme, lpa, setting },
+    scale,
+    issues,
+    instructions,
+    hasSources: !!sourceText.trim(),
+    usedSources: { meetings: sources?.meeting_ids?.length ?? 0, documents: sources?.document_ids?.length ?? 0, mode: picked ? sources.mode ?? 'notes' : null },
+  };
 }
 
 // ── Run engine ───────────────────────────────────────────────────────────────

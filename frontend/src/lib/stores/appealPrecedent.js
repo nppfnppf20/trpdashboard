@@ -9,6 +9,7 @@ export function newSession() {
     suggested: false, // the optional "read the project" step has run (or been skipped)
     suggesting: false,
     suggestError: '',
+    draftedFrom: '', // e.g. "2 meeting notes and 1 document (Notes)" when the setup was drafted from picked sources
     context: {
       scheme: '',
       setting: '',

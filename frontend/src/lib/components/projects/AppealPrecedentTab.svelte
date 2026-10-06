@@ -8,6 +8,7 @@
   import AppealProgress from '$lib/components/appeal-precedent/AppealProgress.svelte';
   import PrecedentCard from '$lib/components/appeal-precedent/PrecedentCard.svelte';
   import PrecedentChat from '$lib/components/appeal-precedent/PrecedentChat.svelte';
+  import AppealSourcePicker from '$lib/components/appeal-precedent/AppealSourcePicker.svelte';
 
   export let project;
 
@@ -18,6 +19,7 @@
   let starting = false;
   let cancelling = false;
   let outcomeFilter = 'all';
+  let pickerOpen = false;
   let timer = null;
 
   // Switching to a different project while the tab stays mounted.
@@ -40,18 +42,27 @@
   onDestroy(stopPolling);
 
   // ── Setup ───────────────────────────────────────────────────────────────────
-  async function suggest() {
+  // `sources` ({ document_ids, meeting_ids, mode }) means the user picked notes/documents to draft from: that is an
+  // explicit action, so the scheme, setting, issues and instructions are replaced. Without it, only empty fields fill.
+  async function suggest(sources = null) {
     s.suggesting = true;
     s.suggestError = '';
     s = s;
     try {
-      const out = await suggestPrecedentContext(project.id);
+      const out = await suggestPrecedentContext(project.id, sources);
       const c = s.context;
-      if (!c.scheme.trim()) c.scheme = out.project.scheme ?? '';
-      if (!c.setting.trim()) c.setting = out.project.setting ?? '';
+      const replace = !!sources;
+      if (replace ? out.project.scheme : !c.scheme.trim()) c.scheme = out.project.scheme ?? '';
+      if (replace ? out.project.setting : !c.setting.trim()) c.setting = out.project.setting ?? '';
       c.lpa = out.project.lpa || c.lpa;
       for (const k of ['mw', 'units', 'hectares']) if (c.scale[k] === '' || c.scale[k] == null) c.scale[k] = out.scale?.[k] ?? '';
-      if (!c.issues.length) c.issues = (out.issues ?? []).map(i => ({ ...i, include: true }));
+      if (replace ? out.issues?.length : !c.issues.length) c.issues = (out.issues ?? []).map(i => ({ ...i, include: true }));
+      if (replace && out.instructions) c.instructions = out.instructions;
+      if (replace) {
+        const u = out.usedSources ?? {};
+        const parts = [u.meetings && `${u.meetings} meeting note${u.meetings === 1 ? '' : 's'}`, u.documents && `${u.documents} document${u.documents === 1 ? '' : 's'}`].filter(Boolean);
+        s.draftedFrom = `${parts.join(' and ')} (${{ notes: 'notes', transcript: 'full transcript', both: 'notes and full transcript' }[u.mode] ?? 'notes'})`;
+      }
       s.suggested = true;
     } catch (e) {
       s.suggestError = e.message;
@@ -59,6 +70,11 @@
       s.suggesting = false;
       s = s;
     }
+  }
+
+  function onDraft(e) {
+    pickerOpen = false;
+    suggest(e.detail);
   }
 
   async function run() {
@@ -198,7 +214,9 @@
       {starting}
       error={s.error}
       hasResults={s.records.length > 0}
-      on:suggest={suggest}
+      draftedFrom={s.draftedFrom}
+      on:suggest={() => suggest()}
+      on:pick={() => (pickerOpen = true)}
       on:run={run}
     />
   {:else}
@@ -245,6 +263,8 @@
     {/if}
   {/if}
 </div>
+
+<AppealSourcePicker projectId={project?.id} open={pickerOpen} on:close={() => (pickerOpen = false)} on:draft={onDraft} />
 
 <style>
   .appeal-precedent-tab {

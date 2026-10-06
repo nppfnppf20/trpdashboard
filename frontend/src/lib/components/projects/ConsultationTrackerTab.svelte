@@ -91,6 +91,7 @@
   import {
     getConsultationData,
     processConsultationDoc,
+    extractConsultationText,
     createConsultationResponse,
     updateConsultationResponse,
     deleteConsultationResponse,
@@ -363,6 +364,36 @@
         original_consultant_email:   '',
       };
       panelStep = 'review';
+    } catch (err) {
+      uploadError = err.message;
+      panelStep = 'input';
+    }
+  }
+
+  // Save Verbatim — skips the LLM: the text (extracted from the file if one
+  // was uploaded) goes straight into the response's comments.
+  async function saveVerbatim() {
+    if (uploadInputTab === 'upload' && !uploadFile) { uploadError = 'Please select a file to upload.'; return; }
+    if (uploadInputTab === 'paste' && !uploadPasteText.trim()) { uploadError = 'Please paste the consultation response text.'; return; }
+
+    const defaultName = uploadInputTab === 'upload' ? uploadFile.name.replace(/\.[^.]+$/, '') : '';
+    const consulteeName = prompt('Consultee name:', defaultName);
+    if (!consulteeName?.trim()) return;
+
+    panelStep = 'processing';
+    uploadError = null;
+    try {
+      const { text, source_file_name } = await extractConsultationText(projectId, {
+        file: uploadInputTab === 'upload' ? uploadFile : null,
+        text: uploadInputTab === 'paste' ? uploadPasteText : null,
+      });
+      const created = await createConsultationResponse(projectId, {
+        consultee_name: consulteeName.trim(),
+        comments: text,
+        source_file_name: source_file_name || null,
+      });
+      responses = sortResponses([...responses, created]);
+      showPanel = false;
     } catch (err) {
       uploadError = err.message;
       panelStep = 'input';
@@ -1018,6 +1049,9 @@ ${sections.join('<br>')}`;
 
         <button class="btn btn-primary ct-process-btn" on:click={submitProcess}>
           <i class="las la-magic"></i> Extract Consultation Details
+        </button>
+        <button class="btn btn-secondary ct-process-btn" on:click={saveVerbatim} title="Save the text as-is, no AI extraction">
+          <i class="las la-save"></i> Save Verbatim
         </button>
 
       {:else if panelStep === 'processing'}

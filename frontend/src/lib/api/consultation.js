@@ -21,6 +21,23 @@ export async function processConsultationDoc(projectId, { file, text, fileName, 
   return res.json(); // { suggestion: { consultee_name, date_received, position, comments }, source_file_name }
 }
 
+// Text extraction only (no AI) — for saving a response verbatim.
+export async function extractConsultationText(projectId, { file, text }) {
+  const formData = new FormData();
+  if (file) formData.append('file', file);
+  else formData.append('text', text);
+  formData.append('verbatim', 'true');
+  const res = await authFetch(`/api/consultation/projects/${projectId}/process`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to read consultation document');
+  }
+  return res.json(); // { text, source_file_name }
+}
+
 export async function getConsultationData(projectId) {
   const res = await authFetch(`/api/consultation/projects/${projectId}`);
   if (!res.ok) throw new Error('Failed to fetch consultation data');

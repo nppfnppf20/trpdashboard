@@ -11,9 +11,17 @@ async function json(res, fallback) {
 const post = (url, body) =>
   authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
 
-/** Read the project and suggest the scheme, scale and key issues (optional setup step). */
-export async function suggestPrecedentContext(projectId) {
-  return json(await post(`/api/appeal-precedent/projects/${projectId}/suggest`), 'Could not read the project');
+/** Meeting notes and project documents that can be picked to draft the setup from. */
+export async function getPrecedentSources(projectId) {
+  return json(await authFetch(`/api/appeal-precedent/projects/${projectId}/sources`), 'Could not load the notes and documents');
+}
+
+/**
+ * Read the project and suggest the scheme, scale, key issues and instructions (optional setup step).
+ * `sources` ({ document_ids, meeting_ids, mode }) drafts from chosen notes and documents as well.
+ */
+export async function suggestPrecedentContext(projectId, sources = null) {
+  return json(await post(`/api/appeal-precedent/projects/${projectId}/suggest`, sources ? { sources } : {}), 'Could not read the project');
 }
 
 /** Start a background search. Returns { runId }. */

@@ -35,6 +35,11 @@ export async function processConsultation(req, res) {
       return res.status(400).json({ error: 'No file or text provided' });
     }
 
+    // Verbatim mode: text extraction only, no LLM — caller saves the text as-is.
+    if (req.body.verbatim === 'true') {
+      return res.json({ text: text.trim(), source_file_name: fileName });
+    }
+
     const suggestion = await processConsultationResponse(
       text,
       fileName,
