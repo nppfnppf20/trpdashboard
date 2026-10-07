@@ -23,7 +23,7 @@ PROJECT: ${context?.project?.name ?? 'the project'}. Scheme: ${context?.project?
 KEY ISSUES: ${issueLine}.
 
 RULES
-- Answer the question directly and concisely in plain prose, using short paragraphs or bullet points. Name decisions by LPA and reference. Distinguish clearly between decisions.
+- Answer the question directly and concisely in plain prose, using short paragraphs or bullet points. Name decisions by LPA and reference. Distinguish clearly between decisions. Aim for under 500 words and no more than about 20 citations; cite the strongest support for each point rather than every detail.
 - Every factual claim about a decision must be supported by a citation. Mark it in the answer with [n] and list it in "citations".
 - Quotes: one short contiguous span, under 250 characters, copied exactly from the cited decision's text, no ellipsis joins and no paraphrase. If you cannot quote support for a claim, do not make the claim.
 - If the decisions do not contain the answer, say so plainly. Never infer a conclusion the text does not state.
@@ -31,6 +31,31 @@ RULES
 
 Return ONLY a JSON object, no other text:
 {"answer": "<your answer, with [1] [2] markers>", "citations": [{"n": 1, "ref": "<7-digit reference>", "para": "<paragraph number or empty>", "quote": "<exact span>"}]}`;
+}
+
+/** Pull the answer text and any fully-formed citation objects out of a reply that is not valid JSON. */
+function salvage(raw) {
+  const start = raw.indexOf('"answer"');
+  let answer = raw;
+  if (start >= 0) {
+    const open = raw.indexOf('"', raw.indexOf(':', start) + 1);
+    let end = open + 1;
+    while (end < raw.length && !(raw[end] === '"' && raw[end - 1] !== '\\')) end++;
+    try {
+      answer = JSON.parse(raw.slice(open, end) + '"');
+    } catch {
+      answer = raw.slice(open + 1, end).replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    }
+  }
+  const citations = [];
+  for (const m of raw.slice(start >= 0 ? start : 0).matchAll(/\{\s*"n"\s*:\s*\d+[^{}]*\}/g)) {
+    try {
+      citations.push(JSON.parse(m[0]));
+    } catch {
+      // incomplete citation: skip it
+    }
+  }
+  return { answer, citations };
 }
 
 /**
@@ -60,7 +85,7 @@ export async function chatAboutPrecedents({ refs, messages, context, issues }) {
 
   const resp = await anthropic.messages.create({
     model: MODEL_SONNET,
-    max_tokens: 3000,
+    max_tokens: 8000,
     system: [
       { type: 'text', text: instructions(context, issues) },
       { type: 'text', text: `DECISIONS\n\n${decisionsBlock}`, cache_control: { type: 'ephemeral' } },
@@ -76,7 +101,9 @@ export async function chatAboutPrecedents({ refs, messages, context, issues }) {
     answer = String(j.answer ?? '');
     citations = Array.isArray(j.citations) ? j.citations : [];
   } catch {
-    // Not valid JSON: show the text as is, with no citations.
+    // Not valid JSON, usually because the reply was cut off. Recover the answer text and any complete citations.
+    ({ answer, citations } = salvage(raw));
+    if (resp.stop_reason === 'max_tokens') answer += '\n\n(The reply was cut off because it was very long, so some citations may be missing. Ask a narrower question for a shorter answer.)';
   }
 
   const finders = Object.fromEntries(loaded.map(d => [d.ref, makeFinder(d.text)]));

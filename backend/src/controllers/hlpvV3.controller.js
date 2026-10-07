@@ -7,10 +7,10 @@
  */
 
 import { pool } from '../db.js';
-import { resolvePrimaryNoteHtml } from '../services/briefingSelection.service.js';
+import { resolvePrimaryNoteHtml, resolveBriefingNotesSelection, resolveBriefingTranscriptsSelection } from '../services/briefingSelection.service.js';
 import { MODEL_SONNET, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 
-const HLPV_V3_SYSTEM_PROMPT = `You are a specialist planning consultant preparing a High-Level Planning View (HLPV) for a proposed development in England. This is an early-stage, desk-based preliminary appraisal, not a submission document — your entries must be proportionate, cautious, and draw only from the material provided. Write in the third person in clear, professional UK planning language. This document is client-facing: never reference the briefing transcript, the drafting issue notes, or any internal documents in your output — present all information as established fact as if you are the author of the appraisal.${ANTI_AI_SLOP_BLOCK}`;
+const HLPV_V3_SYSTEM_PROMPT = `You are a specialist planning consultant preparing a High-Level Planning View (HLPV) for a proposed development in England. This is an early-stage, desk-based preliminary appraisal, not a submission document — your entries must be proportionate, cautious, and draw only from the material provided. Write in the third person in clear, professional UK planning language, as the planning consultant giving a client your initial view. State findings directly with the certainty the information supports ("it appears", "is likely to"); never attribute findings to a team, review, assessment or any other party. This document is client-facing: never reference the briefing transcript, the drafting issue notes, or any internal documents in your output.${ANTI_AI_SLOP_BLOCK}`;
 
 // User prompt template — stored in admin_console.llm_prompts (key: hlpv_v3); this is the fallback
 export const DEFAULT_HLPV_V3_TEMPLATE = `## Role and Purpose
@@ -23,7 +23,7 @@ Its purpose is to:
 - describe the site and proposal;
 - identify the applicable planning context;
 - identify the principal apparent planning constraints and opportunities;
-- record the project team's preliminary observations;
+- set out the preliminary planning observations;
 - identify any apparent spatial or design implications;
 - identify matters requiring further assessment or specialist input;
 - provide a concise overall view of the site's apparent planning potential.
@@ -267,7 +267,7 @@ Every project-specific observation, judgement, recommendation or conclusion must
 - the Other Project Documents;
 - or another supplied source that expressly contains that information.
 
-The purpose of the exercise is to polish and organise the project team's supplied information.
+The purpose of the exercise is to polish and organise the supplied project information.
 
 It is not to independently complete the planning analysis.
 
@@ -365,6 +365,8 @@ You must not:
 - turn an initial observation into a technical conclusion;
 - add a conventional recommendation merely because it would normally be expected.
 
+The transcript is a conversation between members of the project team. Where it says the team "thought", "felt", "assessed" or "agreed" something, keep the view but drop the attribution (see Voice and Attribution).
+
 Example:
 
 Informal source wording:
@@ -405,6 +407,22 @@ Preserve the level of certainty in the supplied information.
 
 Use definite language only for established facts.
 
+## Voice and Attribution
+
+This note is one planner giving an initial view to a client. State the findings directly, as the planner's own view. Do not report on who reached them or how.
+
+Never refer to "the project team", "the assessment team", "the team", "our review", "the review undertaken", or to anything being "identified", "assessed", "considered", "concluded" or "noted" by anyone. Do not describe the review process. Do not use "was assessed as", "was considered" or "was identified as".
+
+State each finding with the certainty it carries:
+- "Heritage appears to be a low risk" — not "Heritage was assessed as low risk"
+- "The site is predicted to include Grade I land, which appears to be the principal constraint" — not "The project team identified Grade I land as the highest-risk constraint"
+- "The western public right of way may run close to the site boundary" — not "The project team noted the public right of way may run close to the boundary"
+- "The principal constraints appear manageable with appropriate survey work and design response" — not "The project team's assessment is that the principal constraints are manageable"
+
+The certainty rules still apply in full. Convert attribution into the matching hedge ("appears", "is understood to", "may", "is likely to"), never into a firmer verb. If the source is tentative, the output stays tentative. Do not label a matter low, medium or high risk unless a level was supplied.
+
+Use the third person. Do not use "we" or "I"; use constructions such as "it appears" and "it is understood".
+
 ### Confirmed Facts
 
 Suitable language includes:
@@ -437,7 +455,7 @@ A sentence remains unsupported even if it begins with "may", "appears" or "likel
 
 ### Conclusions About Site Potential
 
-Use only conclusions supplied by the project team.
+Use only conclusions supplied in the project information.
 
 Potential formulations include:
 - "The site appears to have potential for the proposed development."
@@ -491,7 +509,7 @@ Do not materially change the scope of the issue.
 
 Use the order provided in the Drafting Issue Notes.
 
-Where no order is supplied, follow any sequence indicated in the Project Briefing Transcript, place the issues identified by the project team as most important first, or otherwise group related topics logically.
+Where no order is supplied, follow any sequence indicated in the Project Briefing Transcript, place the issues identified as most important first, or otherwise group related topics logically.
 
 Do not independently determine that an issue is the principal constraint unless the supplied information supports that conclusion.
 
@@ -499,7 +517,7 @@ Do not independently determine that an issue is the principal constraint unless 
 
 Where several notes relate to one broader matter, consolidate them where this improves readability. For example, notes about landscape character, visual receptors, public rights of way, and mitigation planting may be combined under "Landscape and Visual" where the supplied information treats them as one broader issue.
 
-Where the supplied notes clearly distinguish separate issues, retain separate rows. For example, Built Heritage and Archaeology may be separate where the project team has addressed them independently.
+Where the supplied notes clearly distinguish separate issues, retain separate rows. For example, Built Heritage and Archaeology may be separate where the supplied information addresses them independently.
 
 ### Content of Each Issue
 
@@ -636,7 +654,7 @@ Identify site details, proposal details, local planning authority, policy contex
 
 Step 2: Separate Facts from Judgement
 
-Distinguish between confirmed facts, apparent desktop observations, tentative planning views, firm project team conclusions, recommendations, and matters requiring confirmation.
+Distinguish between confirmed facts, apparent desktop observations, tentative planning views, firm conclusions, recommendations, and matters requiring confirmation.
 
 Step 3: Establish the Issue Schedule
 
@@ -644,7 +662,7 @@ Identify which issue rows are required and their correct order. Do not use the i
 
 Step 4: Identify the Overall Preliminary View
 
-Locate the supplied project team conclusion concerning site potential, apparent showstoppers, principal constraints, likely developable area, and the need for further work. Do not manufacture an overall conclusion where none has been supplied.
+Locate the supplied conclusion concerning site potential, apparent showstoppers, principal constraints, likely developable area, and the need for further work. Do not manufacture an overall conclusion where none has been supplied.
 
 Step 5: Map Information to the Required Structure
 
@@ -690,7 +708,9 @@ Do not invent the site name.
 
 ### Introductory Paragraphs
 
-Provide a concise introduction explaining that the site has been considered at an initial planning level, that the note summarises the main apparent planning constraints and opportunities, the proposed development type where supplied, the purpose of identifying the likely matters requiring further consideration, and any expressly supplied limitation, such as the need for a site visit or specialist work.
+Provide a concise introduction explaining what the note covers and why: an initial planning view of the site, the main apparent planning constraints and opportunities, the proposed development type where supplied, the likely matters requiring further consideration, and any expressly supplied limitation, such as the need for a site visit or specialist work.
+
+Do not describe how the review was carried out or by whom (for example "a desk-based review undertaken by the project team"). Previewing the immediate priorities is fine in one sentence; list them in full only once, in the closing section.
 
 Do not use generic disclaimers.
 
@@ -776,6 +796,8 @@ Do not derive new recommendations from the issue assessment.
 Where appropriate, include a short professional closing paragraph. It may state that the note provides the requested initial planning view, that further work will be required if the project progresses, and that the identified matters should inform the next stage of site assessment or design.
 
 Only include a future-work statement where supported by the supplied information.
+
+Write priorities as the planner's own recommendations, for example "The immediate priorities are…", not "The priorities identified by the project team are…".
 
 Where letter correspondence details and a sign-off are supplied, include the supplied sign-off.
 
@@ -1010,11 +1032,41 @@ export async function generateHlpvV3(req, res) {
     // ── 2. Briefing note ─ explicit id, else most recent transcript (no starting-docs
     // selection layer — kept simple, unlike Stage 1 Review's extra selection tier) ────────
     // Any note counts (Briefing Note or project Meeting Note).
-    const briefingText = await resolvePrimaryNoteHtml(projectId, { noteRef: briefing_note_id });
-    if (!briefingText?.trim()) {
-      return res.status(400).json({ error: 'No notes found for this project. Please add a meeting note first.' });
+    // Notes ticked in the Sources modal (slot 'briefing_notes') win when no explicit id is
+    // given; 'briefing_source_mode' picks summaries / full transcripts / both. Nothing
+    // ticked → the original behaviour (latest note's summary).
+    let briefingPlain = '';
+    if (briefing_note_id == null) {
+      const { rows: slotRows } = await pool.query(
+        `SELECT sd.slot_slug, sd.content_text
+         FROM appeals.pa_draft_starting_docs sd
+         JOIN planning_applications.draft_types dt ON dt.id = sd.draft_type_id
+         WHERE sd.project_id = $1 AND dt.slug = $2
+           AND sd.slot_slug IN ('briefing_notes', 'briefing_source_mode')`,
+        [projectId, promptKey]
+      );
+      const slots = Object.fromEntries(slotRows.map(r => [r.slot_slug, r.content_text]));
+      const mode = ['notes', 'transcript', 'both'].includes(slots.briefing_source_mode?.trim())
+        ? slots.briefing_source_mode.trim()
+        : 'notes';
+      const summaries = mode !== 'transcript'
+        ? await resolveBriefingNotesSelection(projectId, slots.briefing_notes)
+        : '';
+      const transcripts = mode !== 'notes'
+        ? await resolveBriefingTranscriptsSelection(projectId, slots.briefing_notes)
+        : '';
+      briefingPlain = [
+        summaries && (mode === 'both' ? `## Meeting note summaries\n\n${summaries}` : summaries),
+        transcripts && (mode === 'both' ? `## Full transcripts\n\n${transcripts}` : transcripts),
+      ].filter(Boolean).join('\n\n====\n\n');
     }
-    const briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!briefingPlain.trim()) {
+      const briefingText = await resolvePrimaryNoteHtml(projectId, { noteRef: briefing_note_id });
+      if (!briefingText?.trim()) {
+        return res.status(400).json({ error: 'No notes found for this project. Please add a meeting note first.' });
+      }
+      briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
 
     // ── 3. Site and Proposal Information ─ real project fields ────────────────────
     const lpaArr = project.local_planning_authority;

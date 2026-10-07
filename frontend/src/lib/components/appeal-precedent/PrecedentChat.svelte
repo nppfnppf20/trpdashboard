@@ -16,14 +16,16 @@
 
   let input = '';
   let sending = false;
+  let progress = ''; // e.g. "Reading batch 2 of 3..." while a batched question runs
   let error = '';
   let openCitations = new Set();
   let listEl;
 
   $: contextTokens = Math.round(records.reduce((n, r) => n + (r.chars ?? 0), 0) / 4);
   $: pct = Math.min(100, Math.round((contextTokens / BUDGET_TOKENS) * 100));
-  $: tooMany = records.length > MAX_DECISIONS;
-  $: overBudget = contextTokens > BUDGET_TOKENS;
+  $: batches = planBatches(records);
+  $: batched = batches.length > 1;
+  $: tooBig = records.some(r => (r.chars ?? 0) / 4 > BUDGET_TOKENS); // one decision alone can't fit
   $: meterTone = pct >= 85 ? 'high' : pct >= 60 ? 'mid' : 'low';
   $: primary = [...issues].sort((a, b) => b.weight - a.weight)[0]?.label;
   $: starters = [
@@ -32,7 +34,37 @@
     'Which of these is closest to our scheme, and why?',
     'What arguments would the Council be likely to make, based on these decisions?'
   ];
-  $: canAsk = !disabledReason && records.length > 0 && !tooMany && !overBudget && !sending;
+  $: canAsk = !disabledReason && records.length > 0 && !tooBig && !sending;
+
+  // Split the ticked decisions into groups that each fit the context window (and the decision-count limit). The question
+  // is asked of each group in turn and the answers are shown together, so ticking a lot just takes longer.
+  function planBatches(recs) {
+    const maxChars = BUDGET_TOKENS * 4 * 0.95; // a little headroom under the server limit
+    const out = [];
+    let cur = [];
+    let chars = 0;
+    for (const r of recs) {
+      const c = r.chars ?? 0;
+      if (cur.length && (cur.length >= MAX_DECISIONS || chars + c > maxChars)) {
+        out.push(cur);
+        cur = [];
+        chars = 0;
+      }
+      cur.push(r);
+      chars += c;
+    }
+    if (cur.length) out.push(cur);
+    return out;
+  }
+
+  // Number citations continuously across batches so [1] in part 2 doesn't clash with [1] in part 1.
+  function shiftCitations(reply, citations, offset) {
+    if (!offset) return { reply, citations };
+    return {
+      reply: reply.replace(/\[(\d+)\]/g, (m, n) => (citations.some(c => c.n === Number(n)) ? `[${Number(n) + offset}]` : m)),
+      citations: citations.map(c => ({ ...c, n: c.n + offset }))
+    };
+  }
 
   function render(text, citations = []) {
     const known = new Set(citations.map(c => c.n));
@@ -58,20 +90,34 @@
     messages = [...messages, { role: 'user', content: q }];
     sending = true;
     scroll();
+    const history = messages.map(m => ({ role: m.role, content: m.content }));
+    const parts = [];
+    let citations = [];
     try {
-      const out = await askAboutPrecedents(runId, {
-        projectId,
-        projectName,
-        refs: records.map(r => r.reference),
-        messages: messages.map(m => ({ role: m.role, content: m.content }))
-      });
-      messages = [...messages, { role: 'assistant', content: out.reply, citations: out.citations ?? [] }];
+      for (let i = 0; i < batches.length; i++) {
+        progress = batched ? `Reading batch ${i + 1} of ${batches.length}...` : '';
+        const out = await askAboutPrecedents(runId, { projectId, projectName, refs: batches[i].map(r => r.reference), messages: history });
+        const shifted = shiftCitations(out.reply, out.citations ?? [], citations.length);
+        citations = [...citations, ...shifted.citations];
+        parts.push(batched ? `**Batch ${i + 1} of ${batches.length}: ${batches[i].map(r => r.lpa || r.reference).join(', ')}**
+
+${shifted.reply}` : shifted.reply);
+      }
     } catch (e) {
-      error = e.message;
+      error = parts.length ? `${e.message} Showing the ${parts.length} of ${batches.length} batches that finished.` : e.message;
     } finally {
+      if (parts.length) messages = [...messages, { role: 'assistant', content: parts.join('\n\n'), citations }];
+      progress = '';
       sending = false;
       scroll();
     }
+  }
+
+  function newChat() {
+    messages = [];
+    error = '';
+    input = '';
+    openCitations = new Set();
   }
 
   function scroll() {
@@ -88,14 +134,21 @@
 
 <div class="card chat">
   <div class="chat-head">
-    <h3>Ask about the ticked decisions</h3>
+    <div class="title-row">
+      <h3>Ask about the ticked decisions</h3>
+      {#if messages.length}
+        <button class="btn btn-ghost btn-sm" on:click={newChat} disabled={sending} title="Clear this conversation and start again">New chat</button>
+      {/if}
+    </div>
     <p class="sub">{records.length} ticked. Answers come only from the full text of these decisions, with a verified quote for every claim.</p>
     <div class="meter" title="Share of the context window the ticked decisions take up">
       <div class="meter-label">~{pct}% of context window used</div>
       <div class="meter-track"><div class="meter-fill {meterTone}" style="width:{pct}%"></div></div>
     </div>
-    {#if tooMany}<p class="warn">Tick {MAX_DECISIONS} or fewer decisions.</p>{/if}
-    {#if overBudget}<p class="warn">These decisions are too long to read together. Untick some to make room.</p>{/if}
+    {#if batched}
+      <p class="hint">Appeals will be read in {batches.length} batches. It might take a little longer.</p>
+    {/if}
+    {#if tooBig}<p class="warn">One of the ticked decisions is too long to read on its own. Untick it.</p>{/if}
   </div>
 
   <div class="list" bind:this={listEl}>
@@ -147,7 +200,7 @@
       </div>
     {/each}
 
-    {#if sending}<div class="msg assistant"><div class="bubble typing">Reading the decisions...</div></div>{/if}
+    {#if sending}<div class="msg assistant"><div class="bubble typing">{progress || 'Reading the decisions...'}</div></div>{/if}
   </div>
 
   {#if error}<p class="warn err">{error}</p>{/if}
@@ -368,5 +421,12 @@
 
   .composer textarea {
     resize: none;
+  }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
 </style>

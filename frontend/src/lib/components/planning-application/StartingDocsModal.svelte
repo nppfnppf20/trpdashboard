@@ -81,6 +81,14 @@
   let meetingNotes = [];
   let selectedNoteIds = new Set();
   let primaryNoteKey = null; // 'doc:12' | 'meeting:7' | null — fills {{PROJECT_BRIEF}}
+  // HLPV v3 only: which text of the ticked notes is sent — summaries, full transcripts, or both.
+  const SOURCE_MODES = [
+    { value: 'notes',      label: 'Notes',           hint: 'Meeting note summaries only' },
+    { value: 'transcript', label: 'Full transcript', hint: 'Full transcripts of the ticked notes' },
+    { value: 'both',       label: 'Both',            hint: 'Summaries and full transcripts together' },
+  ];
+  let sourceMode = 'notes';
+  $: hasSourceMode = typeSlug === 'hlpv_v3';
   let briefingNotesSaving = false;
   let briefingUploading = false;
   let briefingFileInput;
@@ -170,6 +178,8 @@
       // (bare document_summaries ids) and the current format
       // ([{type, id}]), so selections saved before meeting notes were
       // selectable here still load correctly.
+      const savedMode = rows.find(r => r.slot_slug === 'briefing_source_mode')?.content_text?.trim();
+      sourceMode = SOURCE_MODES.some(m => m.value === savedMode) ? savedMode : 'notes';
       const sel = rows.find(r => r.slot_slug === 'briefing_notes');
       if (sel?.content_text) {
         try {
@@ -234,6 +244,19 @@
       }
     } catch (err) {
       console.error('Failed to save briefing note selection:', err);
+    } finally {
+      briefingNotesSaving = false;
+    }
+  }
+
+  async function setSourceMode(value) {
+    if (value === sourceMode) return;
+    sourceMode = value;
+    briefingNotesSaving = true;
+    try {
+      await upsertStartingDocText(project.id, rawTypeId, 'briefing_source_mode', value);
+    } catch (err) {
+      console.error('Failed to save source mode:', err);
     } finally {
       briefingNotesSaving = false;
     }
@@ -356,12 +379,18 @@
 
   // Context % — all injected content, out of 200 000 chars
   $: docsChars = Object.values(slotState).reduce((acc, st) => acc + (st.content_text?.length ?? 0), 0);
+  const noteChars = (n, mode) => {
+    const summary = n.summary_chars ?? 0;
+    const transcript = n.transcript_chars ?? summary;
+    return mode === 'transcript' ? transcript : mode === 'both' ? summary + transcript : summary;
+  };
+  $: activeMode = hasSourceMode ? sourceMode : 'notes';
   $: briefingNotesChars = briefingNotes
     .filter(n => selectedNoteIds.has(`doc:${n.id}`))
-    .reduce((acc, n) => acc + (n.summary_chars ?? 0), 0)
+    .reduce((acc, n) => acc + noteChars(n, activeMode), 0)
     + meetingNotes
     .filter(n => selectedNoteIds.has(`meeting:${n.id}`))
-    .reduce((acc, n) => acc + (n.summary_chars ?? 0), 0);
+    .reduce((acc, n) => acc + noteChars(n, activeMode), 0);
   // The primary note is sent twice (once as {{PROJECT_BRIEF}}, once in the pool).
   $: primaryNoteChars = primaryNoteKey
     ? ([...briefingNotes.map(n => ({ k: `doc:${n.id}`, n })), ...meetingNotes.map(n => ({ k: `meeting:${n.id}`, n }))]
@@ -437,6 +466,19 @@
             <p class="sd-briefing-empty">No briefing notes or meeting notes yet, paste or upload a briefing note using the buttons above, or record a meeting note on the project's Meeting Notes page.</p>
           {:else}
             <p class="sd-briefing-desc">These feed <code>{'{{BRIEFING_NOTES}}'}</code> &mdash; the project's briefing-note context that most prompts have specific instructions built around. Tick any notes below (Briefing or Meeting &mdash; they're treated alike). Optionally mark one ticked note as <strong>Primary</strong>: it fills <code>{'{{PROJECT_BRIEF}}'}</code>, the confirmed-facts source. If none is marked, that variable is empty.</p>
+
+            {#if hasSourceMode}
+              <div class="sd-mode-row">
+                <span class="sd-briefing-group-label">Send</span>
+                {#each SOURCE_MODES as m (m.value)}
+                  <label class="sd-mode" class:sd-mode--active={sourceMode === m.value} title={m.hint}>
+                    <input type="radio" name="sd-source-mode" value={m.value} checked={sourceMode === m.value}
+                      on:change={() => setSourceMode(m.value)} disabled={briefingNotesSaving} />
+                    {m.label}
+                  </label>
+                {/each}
+              </div>
+            {/if}
 
             {#if briefingNotes.length > 0}
               <p class="sd-briefing-group-label">Briefing Notes</p>
@@ -960,6 +1002,16 @@
     border-color: var(--color-primary-500);
     color: var(--color-primary-700);
   }
+
+  .sd-mode-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin: 0.5rem 0; }
+  .sd-mode {
+    display: flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.75rem;
+    border: 1px solid var(--color-slate-200); border-radius: var(--radius-pill);
+    background: var(--color-slate-50); font-size: 0.8rem; font-weight: 500;
+    color: var(--color-slate-600); cursor: pointer;
+  }
+  .sd-mode--active { background: var(--color-primary-50); border-color: var(--color-primary-500); color: var(--color-primary-700); }
+  .sd-mode input { accent-color: var(--color-primary-600); margin: 0; }
 
   .sd-grid {
     display: grid;

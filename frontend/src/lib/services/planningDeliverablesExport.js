@@ -46,12 +46,17 @@ const CS_STYLES     = { h1: 'Heading1', h2: 'Heading1', h3: 'Heading3', h4: 'Hea
 const DEF_STYLES    = { h1: 'Heading1', h2: 'Heading2', h3: 'Heading3', h4: 'Heading4', p: 'Normal', ul: 'ListBullet', ol: 'ListNumber' };
 const LETTER_STYLES = { h1: 'Heading1', h2: 'Heading2', h3: 'Heading3', h4: 'Heading3', p: 'Normal', ul: 'Bullet1', ol: 'Bullet1' };
 
+// basicdocument.docx has no ListBullet/ListNumber styles (Word would silently drop
+// the bullet), but does define a bulleted Bullet1.
+const BASIC_STYLES  = { ...DEF_STYLES, ul: 'Bullet1', ol: 'Bullet1' };
+
 const CS_FAMILY     = new Set([CS_TEMPLATE, SOC_TEMPLATE, SOCG_TEMPLATE]);
 const LETTER_FAMILY = new Set(['/letter.docx']);
 
 function getStyleMap(templatePath) {
   if (CS_FAMILY.has(templatePath))     return CS_STYLES;
   if (LETTER_FAMILY.has(templatePath)) return LETTER_STYLES;
+  if (templatePath === '/basicdocument.docx') return BASIC_STYLES;
   return DEF_STYLES;
 }
 
@@ -151,7 +156,7 @@ function elementToOOXML(el, styles = DEF_STYLES) {
       if (el.classList.contains('trp-appraisal-table')) {
         return appraisalTableToOOXML(el);
       }
-      return generalTableToOOXML(el);
+      return generalTableToOOXML(el, styles);
     default:
       return el.textContent.trim()
         ? paragraph(styles.p, `<w:r><w:t xml:space="preserve">${escapeXml(el.textContent)}</w:t></w:r>`)
@@ -181,7 +186,7 @@ function hexToOoxml(hex) {
   return (h.length === 3 ? h.split('').map(c => c + c).join('') : h).toUpperCase();
 }
 
-function generalTableToOOXML(tableEl) {
+function generalTableToOOXML(tableEl, styles = DEF_STYLES) {
   const rows = Array.from(tableEl.querySelectorAll('tr'));
   if (!rows.length) return '';
 
@@ -206,14 +211,11 @@ function generalTableToOOXML(tableEl) {
     const cells = Array.from(tr.querySelectorAll('th, td'));
     const isHeader = cells.some(c => c.tagName.toLowerCase() === 'th');
     const cellsXml = cells.map(cell => {
-      const text = escapeXml(cell.textContent.trim());
       const isHeaderCell = isHeader || cell.tagName.toLowerCase() === 'th';
       const { bg, color, bold } = parseCellStyle(cell);
-      const boldTag = (isHeaderCell || bold) ? '<w:b/>' : '';
-      const colorTag = color ? `<w:color w:val="${hexToOoxml(color)}"/>` : '';
-      const runs = `<w:r><w:rPr>${boldTag}<w:sz w:val="18"/><w:szCs w:val="18"/>${colorTag}</w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      const fmt = { bold: isHeaderCell || bold, color: color ? hexToOoxml(color) : null, size: 22 };
       const shdTag = bg ? `<w:shd w:val="clear" w:color="auto" w:fill="${hexToOoxml(bg)}"/>` : '';
-      return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/>${shdTag}</w:tcPr><w:p>${runs}</w:p></w:tc>`;
+      return `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/>${shdTag}</w:tcPr>${cellContentToOOXML(cell, styles, fmt)}</w:tc>`;
     }).join('');
     const trPr = isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
     return `<w:tr>${trPr}${cellsXml}</w:tr>`;
@@ -283,32 +285,98 @@ function stripLeadingNumber(el) {
   if (firstText) firstText.nodeValue = firstText.nodeValue.replace(/^\d+(\.\d+)*\.?\s+/, '');
 }
 
-function inlineRuns(el) {
+function inlineRuns(el, base = {}) {
+  return inlineRunsFromNodes(el.childNodes, base);
+}
+
+// `base` carries run formatting inherited from the context (e.g. a table cell):
+// { bold, italic, underline, highlight, color: 'RRGGBB', size: half-points }.
+// Nested inline elements (<strong><em>…</em></strong>) accumulate formatting.
+function inlineRunsFromNodes(nodes, base = {}) {
   let xml = '';
-  el.childNodes.forEach(node => {
+  nodes.forEach(node => {
     if (node.nodeType === Node.TEXT_NODE) {
-      if (node.textContent) {
-        xml += `<w:r><w:t xml:space="preserve">${escapeXml(node.textContent)}</w:t></w:r>`;
-      }
+      if (node.textContent) xml += run(node.textContent, base);
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const tag = node.tagName.toLowerCase();
-      const text = escapeXml(node.textContent);
-      if (tag === 'strong' || tag === 'b') {
-        xml += `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+      if (tag === 'br') {
+        xml += '<w:r><w:br/></w:r>';
+      } else if (tag === 'strong' || tag === 'b') {
+        xml += inlineRunsFromNodes(node.childNodes, { ...base, bold: true });
       } else if (tag === 'em' || tag === 'i') {
-        xml += `<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+        xml += inlineRunsFromNodes(node.childNodes, { ...base, italic: true });
       } else if (tag === 'u') {
-        xml += `<w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+        xml += inlineRunsFromNodes(node.childNodes, { ...base, underline: true });
       } else if (tag === 'span' && node.classList.contains('draft-placeholder')) {
         // "[...]" placeholder markers (see highlightPlaceholders) — Word's
         // highlighter-pen run property, so it looks the same as on screen.
-        xml += `<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r>`;
+        xml += inlineRunsFromNodes(node.childNodes, { ...base, highlight: true });
       } else {
-        xml += `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+        xml += inlineRunsFromNodes(node.childNodes, base);
       }
     }
   });
   return xml;
+}
+
+function run(text, fmt = {}) {
+  // Element order follows the OOXML schema: b, i, color, sz, highlight, u.
+  const rPr =
+    (fmt.bold ? '<w:b/>' : '') +
+    (fmt.italic ? '<w:i/>' : '') +
+    (fmt.color ? `<w:color w:val="${fmt.color}"/>` : '') +
+    (fmt.size ? `<w:sz w:val="${fmt.size}"/><w:szCs w:val="${fmt.size}"/>` : '') +
+    (fmt.highlight ? '<w:highlight w:val="yellow"/>' : '') +
+    (fmt.underline ? '<w:u w:val="single"/>' : '');
+  return `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+}
+
+// Table-cell contents as real paragraphs: <p>/<h*>/<div> become paragraphs,
+// <ul>/<ol> become bullet/numbered paragraphs (nested lists included), and
+// loose inline content / <br> are grouped into a paragraph. Replaces the old
+// `cell.textContent`, which collapsed the whole cell into one flat run.
+function cellContentToOOXML(cell, styles, fmt) {
+  let xml = '';
+  let pending = [];
+
+  const flush = () => {
+    const runs = inlineRunsFromNodes(pending, fmt);
+    pending = [];
+    if (runs.replace(/<[^>]+>/g, '').trim()) xml += `<w:p>${runs}</w:p>`;
+  };
+
+  const addList = (listEl, styleId) => {
+    Array.from(listEl.children).forEach(li => {
+      if (li.tagName.toLowerCase() !== 'li') return;
+      const own = Array.from(li.childNodes).filter(n => !(n.nodeType === Node.ELEMENT_NODE && /^(ul|ol)$/i.test(n.tagName)));
+      // Tiptap wraps li content in a <p>; unwrap so we get one paragraph per item.
+      const inline = own.flatMap(n => (n.nodeType === Node.ELEMENT_NODE && /^p$/i.test(n.tagName)) ? Array.from(n.childNodes) : [n]);
+      xml += paragraph(styleId, inlineRunsFromNodes(inline, fmt));
+      Array.from(li.children).forEach(child => {
+        const t = child.tagName.toLowerCase();
+        if (t === 'ul') addList(child, styles.ul);
+        else if (t === 'ol') addList(child, styles.ol);
+      });
+    });
+  };
+
+  cell.childNodes.forEach(node => {
+    if (node.nodeType !== Node.ELEMENT_NODE) { pending.push(node); return; }
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'ul' || tag === 'ol') {
+      flush();
+      addList(node, tag === 'ul' ? styles.ul : styles.ol);
+    } else if (/^(p|div|h[1-6]|blockquote)$/.test(tag)) {
+      flush();
+      const runs = inlineRuns(node, fmt);
+      if (runs.replace(/<[^>]+>/g, '').trim()) xml += `<w:p>${runs}</w:p>`;
+    } else {
+      pending.push(node);
+    }
+  });
+  flush();
+
+  return xml || '<w:p/>'; // a table cell must contain at least one paragraph
 }
 
 function escapeXml(text) {
