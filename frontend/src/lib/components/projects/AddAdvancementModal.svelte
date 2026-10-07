@@ -181,14 +181,19 @@
           requirement_ids: i.requirement_ids,
         })),
       });
+      // Build a fresh object rather than mutating `selections[...]` in place:
+      // Svelte 5's legacy-mode compiler turns an in-place mutation into an
+      // invalidation that references the template's each-variable (`c`),
+      // which isn't in scope here -> "c is not defined".
       let newlyTicked = 0;
+      const next = { ...selections };
       for (const s of suggestions) {
-        const current = selections[s.condition_id];
+        const current = next[s.condition_id];
         if (!current || (current.checked && current.summary.trim())) continue;
         if (!current.checked) newlyTicked++;
-        selections[s.condition_id] = { ...current, checked: true, summary: s.summary };
+        next[s.condition_id] = { ...current, checked: true, summary: s.summary };
       }
-      selections = { ...selections };
+      selections = next;
       autoTickedCount = newlyTicked;
       skippedLabels = suggestMode
         ? []
@@ -224,6 +229,7 @@
       close();
       checkForQuoteStatusSuggestions(items, capturedFullText); // fire-and-forget
     } catch (err) {
+      console.error('AddAdvancementModal save failed:', err);
       error = err.message;
       saving = false;
     }

@@ -181,14 +181,18 @@
         full_text: fullText,
         items: items.map(i => ({ issue_id: i.issue_id, user_summary: i.summary || null })),
       });
+      // Fresh object, not an in-place mutation: Svelte 5's legacy-mode compiler
+      // would otherwise reference the template's each-variable (`iss`) out of
+      // scope -> "iss is not defined".
       let newlyTicked = 0;
+      const next = { ...selections };
       for (const s of suggestions) {
-        const current = selections[s.issue_id];
+        const current = next[s.issue_id];
         if (!current || (current.checked && current.summary.trim())) continue;
         if (!current.checked) newlyTicked++;
-        selections[s.issue_id] = { ...current, checked: true, summary: s.summary };
+        next[s.issue_id] = { ...current, checked: true, summary: s.summary };
       }
-      selections = { ...selections };
+      selections = next;
       autoTickedCount = newlyTicked;
       skippedLabels = suggestMode
         ? []
