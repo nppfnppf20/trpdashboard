@@ -28,8 +28,9 @@
   const underConstructionItems = [
     { href: '/appeal-search', label: 'Appeal Precedent Search', icon: 'la-gavel' },
     { href: '/tenders', label: 'Tenders', icon: 'la-landmark' },
-    { href: '/marketing', label: 'Marketing', icon: 'la-bullhorn' },
-    { href: '/socioeconomics', label: 'Socioeconomics', icon: 'la-chart-bar' }
+    { href: '/marketing', label: 'Marketing', icon: 'la-bullhorn' }
+    // Temporarily hidden — re-add to bring back:
+    // { href: '/socioeconomics', label: 'Socioeconomics', icon: 'la-chart-bar' }
   ];
   let underConstructionOpen = false;
   // Keep the folder open when you're on one of its pages.
@@ -73,12 +74,13 @@
   const betaItems = [
     { label: 'Similar Schemes', icon: 'la-search', tab: 'similar_schemes' },
     { label: 'Appeal Precedent', icon: 'la-gavel', tab: 'appeal_precedent' },
-    { label: 'LPA Decision Analysis', icon: 'la-balance-scale', tab: 'lpa_decision_analysis' },
-    { label: 'Conflict Check', icon: 'la-exclamation-triangle', tab: 'conflict' },
-    { label: 'HLPV', icon: 'la-sun', tab: 'hlpv' },
-    { label: 'Project Docs', icon: 'la-folder-open', tab: 'project_docs' },
-    { label: 'Stages', icon: 'la-layer-group', tab: 'stages' },
-    { label: 'Completeness', icon: 'la-check-circle', tab: 'completeness' }
+    { label: 'LPA Decision Analysis', icon: 'la-balance-scale', tab: 'lpa_decision_analysis' }
+    // Temporarily hidden from the menu — re-add to bring them back:
+    // { label: 'Conflict Check', icon: 'la-exclamation-triangle', tab: 'conflict' },
+    // { label: 'HLPV', icon: 'la-sun', tab: 'hlpv' },
+    // { label: 'Project Docs', icon: 'la-folder-open', tab: 'project_docs' },
+    // { label: 'Stages', icon: 'la-layer-group', tab: 'stages' },
+    // { label: 'Completeness', icon: 'la-check-circle', tab: 'completeness' }
   ];
   let betaOpen = false;
 

@@ -34,7 +34,7 @@ Return ONLY a JSON object, no other text:
 }
 
 /** Pull the answer text and any fully-formed citation objects out of a reply that is not valid JSON. */
-function salvage(raw) {
+export function salvage(raw) {
   const start = raw.indexOf('"answer"');
   let answer = raw;
   if (start >= 0) {

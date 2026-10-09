@@ -7,6 +7,9 @@
 
   export let projectId;
   export let open = false;
+  export let title = 'Draft the setup from your notes';
+  export let note = "Drafting replaces the scheme, setting, issues and instructions in the form, using what you tick here. Scale is only filled where it's empty.";
+  export let buttonLabel = 'Draft setup';
 
   const dispatch = createEventDispatcher();
 
@@ -93,7 +96,7 @@
   <div class="asp-overlay" on:click|self={close} on:keydown={e => e.key === 'Escape' && close()} role="dialog" aria-modal="true" tabindex="-1">
     <div class="asp-modal">
       <div class="asp-header">
-        <span class="asp-title"><i class="las la-magic"></i> Draft the setup from your notes</span>
+        <span class="asp-title"><i class="las la-magic"></i> {title}</span>
         <button class="asp-close" on:click={close} aria-label="Close"><i class="las la-times"></i></button>
       </div>
 
@@ -165,13 +168,13 @@
             <span class="asp-hint">Nothing ticked: choose at least one tracker, note or document to draft from.</span>
           {/if}
 
-          <p class="asp-hint">Drafting replaces the scheme, setting, issues and instructions in the form, using what you tick here. Scale is only filled where it's empty.</p>
+          <p class="asp-hint">{note}</p>
         {/if}
       </div>
 
       <div class="asp-footer">
         <button class="btn btn-secondary" on:click={close}>Cancel</button>
-        <button class="btn btn-primary" on:click={draft} disabled={loading || nothingTicked}><i class="las la-magic"></i> Draft setup</button>
+        <button class="btn btn-primary" on:click={draft} disabled={loading || nothingTicked}><i class="las la-magic"></i> {buttonLabel}</button>
       </div>
     </div>
   </div>
