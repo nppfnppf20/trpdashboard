@@ -872,7 +872,6 @@
   {projectId}
   {issues}
   preselectedIssueId={actionPreselectId}
-  defaultStageInstanceId={lastUsedStageInstanceId}
   initialMode={addActionInitialMode}
   on:done={handleActionsDone}
   on:close={() => { showAddAction = false; actionPreselectId = null; addActionInitialMode = 'manual'; }}

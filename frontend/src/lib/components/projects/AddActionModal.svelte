@@ -7,7 +7,6 @@
   } from '$lib/api/progressTracker.js';
   import { suggestQuoteWorkStatus } from '$lib/api/quoteActions.js';
   import { updateQuoteWorkStatus } from '$lib/api/quotes.js';
-  import { getStageBoard, createCustomStage } from '$lib/services/workflowApi.js';
   import AdvancementEntryFields from './AdvancementEntryFields.svelte';
   import VoiceDictationButton from './VoiceDictationButton.svelte';
   import DateSuggestionPopup from './DateSuggestionPopup.svelte';
@@ -18,7 +17,6 @@
   export let projectId;
   export let issues = [];
   export let preselectedIssueId = null;   // open with one issue already ticked
-  export let defaultStageInstanceId = null;
   export let initialMode = 'manual';      // 'manual' | 'meeting-notes' — which tab the modal opens on
   export let initialProposals = null;          // meeting-notes mode: proposals already drafted (in parallel with the summary) for preselectedTranscriptId — skips the LLM call. null = draft on demand
   export let preselectedTranscriptId = null;   // meeting-notes mode: skip picking a note, draft from this one straight away
@@ -33,40 +31,6 @@
   let pendingSuggestions = []; // [{ key, label, kind: 'date' | 'status', suggestion }]
 
   let mode = 'manual';   // 'manual' | 'meeting-notes'
-
-  // ── Shared: stage picker (project-wide, tags new actions) ──────────────────
-  let stages = [];
-  let stageInstanceId = null;
-  let newStageName = '';
-  let showAddStage = false;
-  let addingStage = false;
-
-  async function loadStages() {
-    try {
-      const board = await getStageBoard(projectId);
-      stages = board.stages || [];
-    } catch (err) {
-      console.error('Failed to load stages:', err);
-    }
-  }
-
-  async function handleAddStage() {
-    const trimmed = newStageName.trim();
-    if (!trimmed) { showAddStage = false; return; }
-    addingStage = true;
-    try {
-      const board = await createCustomStage(projectId, { name: trimmed });
-      stages = board.stages || [];
-      const created = stages.find(s => s.stage_name === trimmed) || stages[stages.length - 1];
-      if (created) stageInstanceId = created.instance_id;
-      newStageName = '';
-      showAddStage = false;
-    } catch (err) {
-      console.error('Failed to add stage:', err);
-    } finally {
-      addingStage = false;
-    }
-  }
 
   // ── Manual mode: type/paste + generate summary (mirrors AddAdvancementModal) ─
   let actionDate = '';
@@ -89,7 +53,6 @@
     skippedLabels = [];
     autoTickedCount = 0;
     lastGeneratedText = null;
-    stageInstanceId = defaultStageInstanceId;
     selections = {};
     for (const iss of issues) {
       // Default the "relevant quote" tag: auto-select when the issue has
@@ -102,7 +65,6 @@
         quoteId: linked.length === 1 ? linked[0].quote_id : null,
       };
     }
-    loadStages();
     seeded = true;
     if (initialMode === 'meeting-notes') enterMeetingNotesMode();
   }
@@ -220,7 +182,6 @@
         action_date: actionDate,
         full_text: fullText.trim() || null,
         source_type: 'note',
-        stage_instance_id: stageInstanceId || null,
         items,
       });
       dispatch('done', { rows });
@@ -446,7 +407,6 @@
     draftError = null;
     try {
       const result = await commitDraftedActions(projectId, {
-        stage_instance_id: stageInstanceId || null,
         accepted: accepted.map(p => {
           if (p.kind === 'new_issue') return { kind: 'new_issue', client_key: p._key, title: p.title, discipline: p.discipline, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
           if (p.kind === 'new_sub_issue') return { kind: 'new_sub_issue', issue_id: p.issue_id, parent_client_key: p.parent_key ?? null, sub_issue_title: p.sub_issue_title, summary: p.summary, action_date: p.action_date, source_note_id: p.source_note_id };
@@ -493,7 +453,7 @@
         <button class="adv-close-btn" on:click={close}>&times;</button>
       </div>
 
-      <!-- Manual/Draft tabs and the stage picker only apply when adding an
+      <!-- Manual/Draft tabs only apply when adding an
            advancement directly in the tracker, not when opened from a note. -->
       {#if !fromNote}
       <div class="mode-tabs">
@@ -503,29 +463,6 @@
         <button class="mode-tab" class:active={mode === 'meeting-notes'} on:click={enterMeetingNotesMode}>
           <i class="las la-magic"></i> Draft from Meeting Notes
         </button>
-      </div>
-
-      <!-- Stage picker — shared across both modes, tags new actions -->
-      <div class="stage-bar">
-        <span class="stage-label">Stage</span>
-        <select class="stage-select" bind:value={stageInstanceId}>
-          <option value={null}>No stage</option>
-          {#each stages as s (s.instance_id)}
-            <option value={s.instance_id}>{s.stage_name}</option>
-          {/each}
-        </select>
-        {#if showAddStage}
-          <input
-            class="stage-new-input"
-            placeholder="New stage name"
-            bind:value={newStageName}
-            on:keydown={e => { if (e.key === 'Enter') handleAddStage(); if (e.key === 'Escape') { showAddStage = false; newStageName = ''; } }}
-          />
-          <button class="btn-cancel stage-add-btn" disabled={addingStage} on:click={handleAddStage}>{addingStage ? 'Adding…' : 'Add'}</button>
-          <button class="btn-cancel stage-add-btn" on:click={() => { showAddStage = false; newStageName = ''; }}>Cancel</button>
-        {:else}
-          <button class="stage-add-toggle" on:click={() => showAddStage = true}><i class="las la-plus"></i> New stage</button>
-        {/if}
       </div>
 
       {/if}
@@ -839,47 +776,6 @@
     flex-shrink: 0;
   }
   .adv-close-btn:hover { color: var(--color-slate-800); }
-
-  .stage-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.6rem 1.5rem;
-    background: var(--color-slate-50);
-    border-bottom: 1px solid var(--color-slate-200);
-    flex-shrink: 0;
-    flex-wrap: wrap;
-  }
-  .stage-label { font-size: 0.78rem; font-weight: 600; color: var(--color-slate-600); }
-  .stage-select {
-    padding: 0.3rem 0.5rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-family: inherit;
-    background: white;
-  }
-  .stage-new-input {
-    padding: 0.3rem 0.5rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-family: inherit;
-  }
-  .stage-add-btn { padding: 0.3rem 0.6rem; font-size: 0.78rem; }
-  .stage-add-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: none;
-    border: none;
-    color: var(--color-primary-600);
-    font-size: 0.78rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .stage-add-toggle:hover { text-decoration: underline; }
 
   .adv-body {
     flex: 1;
