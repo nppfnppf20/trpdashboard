@@ -130,6 +130,20 @@ export async function uploadSchemeDocument(projectId, planitName, file) {
   return (await docJson(await authFetch(`${BASE}/projects/${projectId}/saved/documents`, { method: 'POST', body: form }), 'Upload failed')).document;
 }
 
+/** Add pasted text as a document on a saved scheme. The returned document carries the AI-suggested type. */
+export async function addSchemeText(projectId, planitName, { title, text }) {
+  return (
+    await docJson(
+      await authFetch(`${BASE}/projects/${projectId}/saved/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planit_name: planitName, title, text })
+      }),
+      'Could not add the text'
+    )
+  ).document;
+}
+
 /** Accept or change a document's type. */
 export async function setSchemeDocumentType(projectId, docId, docType) {
   return (
@@ -161,5 +175,20 @@ export async function askSchemeDocuments(projectId, { names, messages, sources }
       body: JSON.stringify({ names, messages, sources })
     }),
     'Chat request failed'
+  );
+}
+
+/**
+ * Compare how the ticked schemes' documents treat the chosen policies.
+ * @returns {Promise<{ schemes: Array, pattern: string[], policies: Array, contextTokens: number }>}
+ */
+export async function lensSchemeDocuments(projectId, { names, policy_ids, question }) {
+  return docJson(
+    await authFetch(`${BASE}/projects/${projectId}/saved/lens`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names, policy_ids, question })
+    }),
+    'Policy lens request failed'
   );
 }

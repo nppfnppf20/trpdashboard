@@ -36,6 +36,10 @@
   let find = '';
   let dragOver = false;
   let fileInput;
+  let addOpen = false;
+  let addMode = 'upload'; // 'upload' | 'paste'
+  let pasteTitle = '';
+  let pasteText = '';
   let viewer;
 
   $: activeDoc = docs.find(d => d.id === activeDocId) ?? docs[0] ?? null;
@@ -114,8 +118,20 @@
 
   function pick(files) {
     const list = Array.from(files ?? []);
-    if (list.length) dispatch('upload', list);
+    if (!list.length) return;
+    addOpen = false;
+    dispatch('upload', list);
   }
+
+  function submitPaste() {
+    if (!pasteText.trim()) return;
+    dispatch('pasteText', { title: pasteTitle.trim(), text: pasteText });
+    pasteText = '';
+    pasteTitle = '';
+    addOpen = false;
+  }
+
+  $: showAdd = addOpen || docs.length === 0;
 
   function onDrop(e) {
     e.preventDefault();
@@ -153,9 +169,43 @@
       </button>
     {/each}
     <span class="spacer"></span>
-    <button class="btn-add" on:click={() => fileInput.click()}><i class="las la-upload"></i> Add document</button>
-    <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt,.md" multiple hidden on:change={onBrowse} />
+    {#if docs.length}
+      <button class="btn btn-secondary btn-sm add-toggle" on:click={() => (addOpen = !addOpen)} aria-expanded={showAdd}>
+        <i class="las {addOpen ? 'la-times' : 'la-plus'}"></i> {addOpen ? 'Close' : 'Add document'}
+      </button>
+    {/if}
   </div>
+
+  {#if showAdd}
+    <div class="add-panel">
+      <div class="add-tabs">
+        <button class="add-tab" class:active={addMode === 'upload'} on:click={() => (addMode = 'upload')}><i class="las la-upload"></i> Upload</button>
+        <button class="add-tab" class:active={addMode === 'paste'} on:click={() => (addMode = 'paste')}><i class="las la-clipboard"></i> Paste Text</button>
+      </div>
+      {#if addMode === 'upload'}
+        <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+        <div
+          class="add-drop"
+          class:drag-over={dragOver}
+          role="button"
+          tabindex="0"
+          on:click={() => fileInput.click()}
+          on:keydown={e => e.key === 'Enter' && fileInput.click()}
+        >
+          <i class="las la-cloud-upload-alt add-drop-icon"></i>
+          <span>Drop files here or click to browse</span>
+          <span class="add-drop-hint">PDF, DOCX, TXT or MD. Decision notices, officer reports, consultee responses</span>
+        </div>
+        <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt,.md" multiple style="display:none" on:change={onBrowse} />
+      {:else}
+        <input class="form-input add-title" type="text" bind:value={pasteTitle} placeholder="Name (optional), e.g. Officer report" aria-label="Document name" />
+        <textarea class="form-input add-paste" bind:value={pasteText} placeholder="Paste the document text here…" rows="5"></textarea>
+        <button class="btn btn-primary btn-sm add-submit" on:click={submitPaste} disabled={!pasteText.trim()}>
+          <i class="las la-magic"></i> Add
+        </button>
+      {/if}
+    </div>
+  {/if}
 
   {#if uploading.length}
     <div class="notice"><span class="spinner"></span> Reading {uploading.join(', ')}…</div>
@@ -198,9 +248,7 @@
     </div>
   {:else}
     <div class="empty">
-      <i class="las la-cloud-upload-alt"></i>
-      <p><strong>No documents for this scheme yet.</strong></p>
-      <p>Drop decision notices, officer reports or consultee responses here (PDF, Word, .txt or .md), or use Add document. The text is saved to this scheme and the AI suggests what each one is.</p>
+      <p>No documents for this scheme yet. The text is saved to the scheme and the AI suggests what each one is.</p>
     </div>
   {/if}
 
@@ -223,8 +271,41 @@
   .tab.on { color: var(--color-purple-700); font-weight: 600; border-bottom-color: var(--color-purple-600); }
   .unconfirmed { margin-left: 0.35rem; display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; border-radius: 50%; background: var(--color-badge-warning-bg); color: var(--color-badge-warning-fg); font-size: 0.65rem; font-weight: 700; }
   .spacer { flex: 1; }
-  .btn-add { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border: 1px solid var(--color-slate-200); border-radius: 7px; background: var(--color-white); font: inherit; font-size: 0.75rem; font-weight: 600; color: var(--color-slate-700); cursor: pointer; white-space: nowrap; }
-  .btn-add:hover { border-color: var(--color-purple-600); color: var(--color-purple-700); }
+  .add-toggle { white-space: nowrap; }
+
+  .add-panel { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--color-slate-200); background: var(--color-slate-50); }
+  .add-tabs { display: flex; gap: 5px; }
+  .add-tab {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: var(--radius-pill);
+    border: 1px solid var(--color-slate-200); background: var(--color-white);
+    font-size: 0.6875rem; font-weight: 600; color: var(--color-slate-500);
+    cursor: pointer; font-family: inherit;
+  }
+  .add-tab:hover { background: var(--color-slate-50); }
+  .add-tab.active { border-color: var(--color-primary-200); background: var(--color-primary-50); color: var(--color-primary-700); }
+
+  .add-drop {
+    border: 2px dashed var(--color-primary-200);
+    border-radius: 6px;
+    padding: 0.65rem 0.75rem;
+    text-align: center;
+    cursor: pointer;
+    color: var(--color-slate-500);
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    background: var(--color-white);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .add-drop:hover, .add-drop.drag-over { background: var(--color-primary-50); border-color: var(--color-primary-500); }
+  .add-drop-icon { font-size: 1.15rem; color: var(--color-primary-200); }
+  .add-drop-hint { font-size: 9.5px; color: var(--color-slate-400); }
+  .add-title { font-size: 11px; }
+  .add-paste { font-size: 11px; resize: vertical; }
+  .add-submit { align-self: flex-start; }
 
   .suggest { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; padding: 0.55rem 1rem; background: var(--color-badge-warning-bg); color: var(--color-badge-warning-fg); font-size: 0.8rem; border-bottom: 1px solid var(--color-amber-200); }
   .btn-accept { padding: 0.2rem 0.7rem; border: 1px solid var(--color-badge-warning-fg); border-radius: 20px; background: var(--color-white); color: var(--color-badge-warning-fg); font: inherit; font-size: 0.75rem; font-weight: 600; cursor: pointer; }

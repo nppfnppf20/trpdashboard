@@ -1,6 +1,7 @@
 <script context="module">
   // Per-project workspace state, kept while you move between tabs (memory only, lost on page reload).
   const sessions = new Map();
+  const DEFAULT_LENS_QUESTION = 'How is each policy interpreted, and what weight is given to any harm or conflict with it?';
 
   function freshSession() {
     return {
@@ -8,7 +9,10 @@
       current: null,
       activeDocId: null,
       messages: [],
-      sources: { groups: ['policies'], meeting_ids: [], document_ids: [], mode: 'notes' }
+      sources: { project_details: true, groups: [], meeting_ids: [], policy_ids: [] },
+      policiesInit: false,
+      mode: 'workspace', // 'workspace' | 'lens'
+      lens: { policyIds: [], question: DEFAULT_LENS_QUESTION, result: null }
     };
   }
 
@@ -22,9 +26,11 @@
   // Saved schemes workspace: schemes on the left (tick to include in the chat), the selected scheme's documents in the
   // middle, and a chat over the ticked schemes' documents on the right.
   import { createEventDispatcher, onMount } from 'svelte';
-  import { getSchemeDocuments, uploadSchemeDocument, setSchemeDocumentType, deleteSchemeDocument } from '$lib/api/planit.js';
+  import { getSchemeDocuments, uploadSchemeDocument, addSchemeText, setSchemeDocumentType, deleteSchemeDocument } from '$lib/api/planit.js';
   import SchemeDocViewer from './SchemeDocViewer.svelte';
   import SchemeChat from './SchemeChat.svelte';
+  import PolicyLens from './PolicyLens.svelte';
+  import { getPolicies } from '$lib/api/lpaAnalysis.js';
 
   export let project;
   export let saved = []; // saved scheme snapshots
@@ -41,16 +47,37 @@
   let uploading = [];
   let uploadError = '';
   let highlight = null;
+  let policies = [];
 
   $: if (project?.id !== lastProjectId) {
     lastProjectId = project?.id;
     s = getSession(project?.id);
     documents = [];
+    policies = [];
     highlight = null;
     loadDocs();
+    loadPolicies();
   }
 
-  onMount(loadDocs);
+  onMount(() => {
+    loadDocs();
+    loadPolicies();
+  });
+
+  // The project's relevant policies, so they can be chosen one by one. Key policies are chosen by default for the chat.
+  async function loadPolicies() {
+    try {
+      const rows = await getPolicies(projectId);
+      policies = Array.isArray(rows) ? rows : [];
+      if (!s.policiesInit) {
+        s.sources.policy_ids = policies.filter(p => p.is_key_policy).map(p => p.id);
+        s.policiesInit = true;
+        s = s;
+      }
+    } catch {
+      policies = [];
+    }
+  }
 
   async function loadDocs() {
     loadingDocs = true;
@@ -125,6 +152,24 @@
     uploadError = errors.join(' ');
   }
 
+  async function onPasteText(e) {
+    const name = s.current;
+    const label = e.detail.title || 'Pasted text';
+    uploadError = '';
+    uploading = [...uploading, label];
+    try {
+      const doc = await addSchemeText(projectId, name, e.detail);
+      documents = [...documents, doc];
+      s.activeDocId = doc.id;
+      if (!ticked.includes(name)) s.ticked = [...ticked, name];
+    } catch (err) {
+      uploadError = `${label}: ${err.message}`;
+    } finally {
+      uploading = uploading.filter(f => f !== label);
+      s = s;
+    }
+  }
+
   async function onConfirm(e) {
     try {
       const doc = await setSchemeDocumentType(projectId, e.detail.doc.id, e.detail.type);
@@ -164,12 +209,18 @@
     const { doc, scheme, quote } = e.detail;
     s.current = scheme;
     s.activeDocId = doc;
+    s.mode = 'workspace';
     highlight = quote ? { docId: doc, quote } : null;
     s = s;
   }
 </script>
 
-<div class="workspace">
+<div class="mode-bar" role="tablist" aria-label="Workspace mode">
+  <button role="tab" aria-selected={s.mode === 'workspace'} class:on={s.mode === 'workspace'} on:click={() => { s.mode = 'workspace'; s = s; }}><i class="las la-comments"></i> Documents and chat</button>
+  <button role="tab" aria-selected={s.mode === 'lens'} class:on={s.mode === 'lens'} on:click={() => { s.mode = 'lens'; s = s; }}><i class="las la-balance-scale"></i> Policy lens</button>
+</div>
+
+<div class="workspace" class:lens-mode={s.mode === 'lens'}>
   <div class="panel list">
     <div class="p-head">Saved schemes <span class="count">{ticked.length} of {saved.length} ticked</span></div>
     <div class="items">
@@ -193,6 +244,11 @@
     <p class="p-foot">Tick the schemes you want the chat to read. Click one to view or add its documents.</p>
   </div>
 
+  {#if s.mode === 'lens'}
+    <div class="lens-col">
+      <PolicyLens {projectId} names={ticked} docs={documents} {saved} {policies} bind:lens={s.lens} on:cite={onCite} />
+    </div>
+  {:else}
   <div class="middle">
     {#if loadingDocs}
       <div class="panel centre"><span class="spinner"></span> Loading…</div>
@@ -208,6 +264,7 @@
         {uploading}
         {uploadError}
         on:upload={onUpload}
+        on:pasteText={onPasteText}
         on:confirm={onConfirm}
         on:removeDoc={onRemoveDoc}
         on:removeScheme={onRemoveScheme}
@@ -220,13 +277,18 @@
   </div>
 
   <div class="chat-col">
-    <SchemeChat {projectId} names={ticked} docs={documents} {schemeLabels} bind:messages={s.messages} bind:sources={s.sources} on:cite={onCite} />
+    <SchemeChat {projectId} names={ticked} docs={documents} {schemeLabels} {policies} bind:messages={s.messages} bind:sources={s.sources} on:cite={onCite} />
   </div>
+  {/if}
 </div>
 
 <style>
-  .workspace { display: grid; grid-template-columns: 300px minmax(0, 1fr) 420px; gap: 1rem; height: 76vh; min-height: 600px; }
-  .middle, .chat-col { min-width: 0; min-height: 0; }
+  .mode-bar { display: inline-flex; margin-bottom: 0.75rem; border: 1px solid var(--color-slate-200); border-radius: 8px; overflow: hidden; }
+  .mode-bar button { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.9rem; border: none; background: var(--color-white); font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--color-slate-600); cursor: pointer; }
+  .mode-bar button.on { background: var(--color-purple-600); color: var(--color-white); }
+  .workspace { display: grid; grid-template-columns: 300px minmax(0, 1fr) 420px; gap: 1rem; height: calc(76vh - 3rem); min-height: 560px; }
+  .workspace.lens-mode { grid-template-columns: 300px minmax(0, 1fr); }
+  .middle, .chat-col, .lens-col { min-width: 0; min-height: 0; }
   .panel { display: flex; flex-direction: column; min-height: 0; background: var(--color-white); border: 1px solid var(--color-slate-200); border-radius: 10px; }
   .panel.centre { align-items: center; justify-content: center; height: 100%; gap: 0.5rem; font-size: 0.85rem; color: var(--color-slate-500); flex-direction: row; }
   .panel.err { color: var(--color-red-800); }

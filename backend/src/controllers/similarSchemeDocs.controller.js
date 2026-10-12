@@ -68,23 +68,25 @@ export async function getDocumentText(req, res) {
 export async function uploadDocument(req, res) {
   const projectId = Number(req.params.projectId);
   const name = String(req.body?.planit_name ?? '').trim();
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  // Either an uploaded file, or text pasted into the box (sent as JSON with an optional title).
+  const pasted = typeof req.body?.text === 'string' ? req.body.text : '';
+  if (!req.file && !pasted.trim()) return res.status(400).json({ error: 'Upload a file or paste some text' });
   if (!name) return res.status(400).json({ error: 'planit_name is required' });
 
   try {
     const { rows: scheme } = await pool.query('SELECT 1 FROM similar_schemes_saved WHERE project_id = $1 AND planit_name = $2', [projectId, name]);
     if (!scheme.length) return res.status(404).json({ error: 'That scheme is not saved to this project' });
 
-    const { text, warning } = await parseFile(req.file.buffer, req.file.originalname);
+    const { text, warning } = req.file ? await parseFile(req.file.buffer, req.file.originalname) : { text: pasted, warning: null };
     const clean = String(text ?? '').replace(/\u0000/g, '').trim();
     if (clean.length < 50) {
-      return res.status(422).json({ error: warning || 'No readable text was found in this file. If it is a scan, run it through OCR first.' });
+      return res.status(422).json({ error: warning || 'No readable text was found. If this is a scan, run it through OCR first.' });
     }
     if (clean.length > MAX_STORED_CHARS) {
       return res.status(422).json({ error: `This document is too long to store (about ${Math.round(clean.length / 4000)}k tokens). Split it into parts and upload each.` });
     }
 
-    const filename = req.file.originalname.slice(0, 200);
+    const filename = (req.file ? req.file.originalname : String(req.body?.title ?? '').trim() || 'Pasted text').slice(0, 200);
     const docType = await suggestDocType(filename, clean);
     const { rows } = await pool.query(
       `INSERT INTO similar_scheme_documents (project_id, planit_name, filename, doc_type, extracted_text, char_count, parse_warning, uploaded_by)

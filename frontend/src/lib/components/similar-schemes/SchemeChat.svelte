@@ -1,28 +1,23 @@
 <script>
   // The right column of the saved-schemes workspace: ask questions of the ticked schemes' documents, framed by the
-  // project's own sources (policies, trackers, notes). Answers carry citations that open the passage in the viewer.
+  // project's own sources (chosen with the same Sources popover as the Overview Project Chat). Answers carry citations
+  // that open the passage in the viewer.
   import { createEventDispatcher } from 'svelte';
   import { askSchemeDocuments } from '$lib/api/planit.js';
   import { escapeHtml } from '$lib/utils/chatMarkdown.js';
-  import AppealSourcePicker from '$lib/components/appeal-precedent/AppealSourcePicker.svelte';
+  import SchemeSources from './SchemeSources.svelte';
 
   export let projectId;
   export let names = []; // ticked scheme names
   export let docs = []; // metadata of every uploaded document
   export let schemeLabels = {}; // name -> short description
+  export let policies = []; // the project's relevant policies, to choose from individually
   export let messages = []; // bound to the session: { role, content, citations? }
-  export let sources; // bound: { groups: string[], meeting_ids: number[], document_ids: number[], mode: string }
+  export let sources; // bound: { project_details, groups, meeting_ids, policy_ids }
 
   const dispatch = createEventDispatcher();
 
   const DOC_BUDGET_CHARS = 600000; // matches the server limit
-  const GROUP_OPTIONS = [
-    { key: 'policies', label: 'Relevant policies' },
-    { key: 'planning_history', label: 'Planning history' },
-    { key: 'consultation', label: 'Consultation Tracker' },
-    { key: 'conditions', label: 'Conditions Tracker' },
-    { key: 'issues_tracker', label: 'Project Tracker' }
-  ];
   const STARTERS = [
     'Across these, how is the key policy being interpreted?',
     'How did each weigh the harms against the benefits?',
@@ -32,30 +27,14 @@
   let input = '';
   let sending = false;
   let error = '';
-  let pickerOpen = false;
   let listEl;
+  let contextPct = 0;
 
   $: tickedDocs = docs.filter(d => names.includes(d.planit_name));
-  $: chars = tickedDocs.reduce((n, d) => n + d.char_count, 0);
-  $: pct = Math.min(100, Math.round((chars / DOC_BUDGET_CHARS) * 100));
-  $: tone = pct >= 85 ? 'high' : pct >= 60 ? 'mid' : 'low';
-  $: tooBig = chars > DOC_BUDGET_CHARS;
-  $: pickedCount = sources.meeting_ids.length + sources.document_ids.length;
+  $: docChars = tickedDocs.reduce((n, d) => n + d.char_count, 0);
+  $: tooBig = docChars > DOC_BUDGET_CHARS;
   $: canAsk = !sending && tickedDocs.length > 0 && !tooBig;
-
-  function toggleGroup(key) {
-    sources.groups = sources.groups.includes(key) ? sources.groups.filter(g => g !== key) : [...sources.groups, key];
-  }
-
-  function onPicked(e) {
-    pickerOpen = false;
-    const d = e.detail;
-    sources.meeting_ids = d.meeting_ids ?? [];
-    sources.document_ids = d.document_ids ?? [];
-    sources.mode = d.mode ?? 'notes';
-    // Trackers ticked in the picker are the same project groups as the chips.
-    sources.groups = [...new Set([...sources.groups, ...(d.trackers ?? [])])];
-  }
+  $: tone = contextPct >= 85 ? 'high' : contextPct >= 60 ? 'mid' : 'low';
 
   function render(text, citations = []) {
     const known = new Set(citations.map(c => c.n));
@@ -79,7 +58,7 @@
       const out = await askSchemeDocuments(projectId, {
         names,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
-        sources: { groups: sources.groups, meeting_ids: sources.meeting_ids, document_ids: sources.document_ids, mode: sources.mode }
+        sources: { project_details: sources.project_details, groups: sources.groups, meeting_ids: sources.meeting_ids, policy_ids: sources.policy_ids }
       });
       messages = [...messages, { role: 'assistant', content: out.reply, citations: out.citations ?? [], truncated: out.sourcesTruncated }];
     } catch (e) {
@@ -110,8 +89,11 @@
 
 <div class="chat">
   <div class="c-head">
-    <span>Ask the documents</span>
-    {#if messages.length}<button class="link" on:click={newChat}>New chat</button>{/if}
+    <span class="c-title"><i class="las la-comment-dots"></i> Ask the documents</span>
+    <div class="c-actions">
+      {#if messages.length}<button class="link" on:click={newChat}>New chat</button>{/if}
+      <SchemeSources {projectId} {policies} {docChars} bind:value={sources} bind:contextPct />
+    </div>
   </div>
 
   <div class="c-context">
@@ -119,17 +101,9 @@
       <strong>Reading:</strong>
       {#if names.length}{names.length} ticked scheme{names.length === 1 ? '' : 's'}, {tickedDocs.length} document{tickedDocs.length === 1 ? '' : 's'}{:else}no schemes ticked{/if}
     </div>
-    <div class="chips">
-      {#each GROUP_OPTIONS as g (g.key)}
-        <button class="chip" class:on={sources.groups.includes(g.key)} on:click={() => toggleGroup(g.key)}>{g.label}</button>
-      {/each}
-      <button class="chip" class:on={pickedCount > 0} on:click={() => (pickerOpen = true)}>
-        {pickedCount ? `${pickedCount} note${pickedCount === 1 ? '' : 's'}/document${pickedCount === 1 ? '' : 's'}` : '+ Notes and documents'}
-      </button>
-    </div>
     <div class="meter-row">
-      <div class="track"><div class="fill fill--{tone}" style="width:{pct}%"></div></div>
-      <span class="hint">{pct}% of the document budget</span>
+      <div class="track"><div class="fill fill--{tone}" style="width:{contextPct}%"></div></div>
+      <span class="hint">{contextPct}% of context</span>
     </div>
     {#if tooBig}<div class="warn">Too much text ticked to read together. Untick a scheme.</div>{/if}
   </div>
@@ -137,13 +111,13 @@
   <div class="c-list" bind:this={listEl}>
     {#if !messages.length}
       <div class="starters">
-        <p class="hint">Project details are always read. Tick schemes on the left, choose any project sources above, then ask.</p>
+        <p class="hint">Tick schemes on the left, choose project sources with the Sources button, then ask.</p>
         {#each STARTERS as s}
           <button class="starter" disabled={!canAsk} on:click={() => send(s)}>{s}</button>
         {/each}
       </div>
     {/if}
-    {#each messages as m, i}
+    {#each messages as m}
       {#if m.role === 'user'}
         <div class="bubble user">{m.content}</div>
       {:else}
@@ -177,24 +151,13 @@
   </div>
 </div>
 
-<AppealSourcePicker
-  {projectId}
-  open={pickerOpen}
-  title="Choose project sources for the chat"
-  note="Project details are always read. These are used to frame your questions, not as evidence about the precedent schemes."
-  buttonLabel="Use these sources"
-  on:close={() => (pickerOpen = false)}
-  on:draft={onPicked}
-/>
-
 <style>
   .chat { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--color-white); border: 1px solid var(--color-slate-200); border-radius: 10px; overflow: hidden; }
-  .c-head { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 0.9rem; border-bottom: 1px solid var(--color-slate-200); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-slate-500); }
-  .c-context { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.65rem 0.9rem; background: var(--color-slate-50); border-bottom: 1px solid var(--color-slate-200); }
+  .c-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--color-slate-200); }
+  .c-title { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; font-weight: 700; color: var(--color-slate-800); }
+  .c-actions { display: flex; align-items: center; gap: 0.75rem; }
+  .c-context { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.55rem 0.9rem; background: var(--color-slate-50); border-bottom: 1px solid var(--color-slate-200); }
   .reading { font-size: 0.78rem; color: var(--color-slate-600); }
-  .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-  .chip { padding: 0.15rem 0.65rem; border: 1px solid var(--color-slate-200); border-radius: 20px; background: var(--color-white); font: inherit; font-size: 0.73rem; color: var(--color-slate-600); cursor: pointer; }
-  .chip.on { background: var(--color-violet-100); border-color: var(--color-purple-600); color: var(--color-purple-700); font-weight: 600; }
   .meter-row { display: flex; align-items: center; gap: 0.6rem; }
   .track { flex: 1; height: 5px; background: var(--color-slate-200); border-radius: 999px; overflow: hidden; }
   .fill { height: 100%; transition: width 0.2s; }
@@ -222,7 +185,7 @@
   .cite-src { font-size: 0.72rem; font-weight: 600; color: var(--color-slate-600); }
   .cite-quote { font-size: 0.75rem; font-style: italic; color: var(--color-slate-600); border-left: 3px solid var(--color-violet-100); padding-left: 0.5rem; }
 
-  .link { background: none; border: none; padding: 0; font: inherit; font-size: 0.72rem; color: var(--color-purple-600); cursor: pointer; width: fit-content; text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .link { background: none; border: none; padding: 0; font: inherit; font-size: 0.72rem; color: var(--color-purple-600); cursor: pointer; width: fit-content; }
   .link:hover { text-decoration: underline; }
   .err { font-size: 0.78rem; padding: 0.4rem 0.7rem; border-radius: 6px; background: var(--color-badge-danger-bg); color: var(--color-badge-danger-fg); }
 

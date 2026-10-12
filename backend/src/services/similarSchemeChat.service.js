@@ -7,7 +7,7 @@
  */
 
 import { pool } from '../db.js';
-import { assembleContext, assembleSourceTexts } from './projectChat.service.js';
+import { assembleContext } from './projectChat.service.js';
 import { makeFinder } from './appealbaseQuotes.js';
 import { salvage } from './appealPrecedentChat.service.js';
 import { client as anthropic, parseJSON, MODEL_SONNET } from './llm.shared.js';
@@ -22,7 +22,7 @@ export const TYPE_LABELS = {
 };
 
 /** Project groups the chat may be given (all exist in projectChat.service). */
-export const CHAT_GROUPS = ['policies', 'policy_documents', 'planning_history', 'consultation', 'conditions', 'issues_tracker', 'key_issues'];
+export const CHAT_GROUPS = ['policies', 'policy_documents', 'planning_history', 'consultation', 'conditions', 'issues_tracker', 'key_issues', 'public_comments', 'surveyor'];
 
 const bad = (message, status = 400) => Object.assign(new Error(message), { status });
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -80,18 +80,16 @@ async function loadSources(projectId, sources = {}) {
   // Individually chosen policies replace the all-policies group.
   const groups = (Array.isArray(sources.groups) ? sources.groups : []).filter(g => CHAT_GROUPS.includes(g) && !(g === 'policies' && policyRows.length));
   const ids = a => (Array.isArray(a) ? a.map(Number).filter(Number.isFinite).slice(0, 25) : []);
-  const documentIds = ids(sources.document_ids);
   const meetingIds = ids(sources.meeting_ids);
-  const mode = ['notes', 'transcript', 'both'].includes(sources.mode) ? sources.mode : 'notes';
+  const projectDetails = sources.project_details !== false;
 
-  const { blocks: projectBlocks } = await assembleContext(projectId, { project_details: true, groups });
+  const { blocks: projectBlocks } = await assembleContext(projectId, { project_details: projectDetails, groups, meeting_ids: meetingIds });
   const blocks = policyRows.length ? [...projectBlocks, { label: 'Selected policies', text: policyText(policyRows) }] : projectBlocks;
-  const picked = documentIds.length || meetingIds.length ? (await assembleSourceTexts(projectId, { documentIds, meetingIds, mode })).blocks : [];
 
   let used = 0;
   let truncated = false;
   const kept = [];
-  for (const b of [...blocks, ...picked]) {
+  for (const b of blocks) {
     const room = CHAT_LIMITS.maxSourceChars - used;
     if (room <= 500) {
       truncated = true;
