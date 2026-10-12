@@ -217,16 +217,6 @@
         <i class="las {surveyorManagementItem.icon}"></i>
         <span>{surveyorManagementItem.label}</span>
       </button>
-      <button
-        class="nav-item workspace-item"
-        class:active={$mainView === 'planning'}
-        on:click={openWorkspacePlanningDeliverables}
-      >
-        <i class="las {planningDeliverablesItem.icon}"></i>
-        <span>{planningDeliverablesItem.label}</span>
-        <span class="beta-tag">Beta</span>
-      </button>
-
       {#each workspaceGroups as group}
         <div class="group-label">{group.label}</div>
         {#each group.items as item}
@@ -247,6 +237,14 @@
         <i class="las la-angle-down beta-caret {betaOpen ? 'open' : ''}"></i>
       </button>
       {#if betaOpen}
+        <button
+          class="nav-item workspace-item"
+          class:active={$mainView === 'planning'}
+          on:click={openWorkspacePlanningDeliverables}
+        >
+          <i class="las {planningDeliverablesItem.icon}"></i>
+          <span>{planningDeliverablesItem.label}</span>
+        </button>
         {#each betaItems as item}
           <button
             class="nav-item workspace-item"
@@ -405,17 +403,6 @@
 
   .nav-item.active i {
     color: var(--color-primary-600);
-  }
-
-  .beta-tag {
-    font-size: 0.5625rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: var(--color-amber-800);
-    background: var(--color-amber-100);
-    border-radius: 4px;
-    padding: 2px 5px;
-    text-transform: uppercase;
   }
 
   .beta-toggle {
