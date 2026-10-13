@@ -113,7 +113,7 @@ export async function processMeetingNote(req, res) {
         return null;
       });
 
-    const [{ meeting_title, meeting_date, attendees, summary_html, actions, completedActions, dateSuggestions }, draftedProposals] = await Promise.all([
+    const [{ meeting_title, meeting_date, attendees, summary_html, actions, actionUpdates, dateSuggestions }, draftedProposals] = await Promise.all([
       processMeetingTranscript(
         text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null, existingOpenActions
       ),
@@ -149,7 +149,7 @@ export async function processMeetingNote(req, res) {
         source_note_id: transcript.id,
         action_date: meeting_date || p.action_date,
       }));
-      res.status(201).json({ transcript, summary, suggestedActions: actions, completedActions, dateSuggestions, proposals });
+      res.status(201).json({ transcript, summary, suggestedActions: actions, actionUpdates, dateSuggestions, proposals });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -411,7 +411,8 @@ export async function getMeetingActions(req, res) {
     if (status) params.push(status);
 
     const { rows } = await pool.query(
-      `SELECT a.*, t.title AS meeting_title, t.meeting_date
+      `SELECT a.*, t.title AS meeting_title, t.meeting_date, COALESCE((SELECT json_agg(json_build_object('id', u.id, 'update_type', u.update_type, 'update_text', u.update_text, 'created_at', u.created_at) ORDER BY u.created_at)
+                   FROM planning_applications.meeting_action_updates u WHERE u.action_id = a.id), '[]'::json) AS updates
        FROM planning_applications.meeting_actions a
        LEFT JOIN planning_applications.meeting_transcripts t ON t.id = a.transcript_id
        WHERE a.project_id = $1${where}
@@ -430,14 +431,14 @@ export async function getMeetingActions(req, res) {
 
 export async function createMeetingAction(req, res) {
   const { projectId } = req.params;
-  const { action_text, owner, due_date, notes, transcript_id } = req.body;
+  const { action_text, owner, assigned_user_id, due_date, notes, transcript_id } = req.body;
   if (!action_text?.trim()) return res.status(400).json({ error: 'action_text is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.meeting_actions
-         (project_id, transcript_id, action_text, owner, due_date, notes)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [projectId, transcript_id || null, action_text.trim(), owner?.trim() || null, due_date || null, notes?.trim() || null]
+         (project_id, transcript_id, action_text, owner, assigned_user_id, due_date, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [projectId, transcript_id || null, action_text.trim(), owner?.trim() || null, assigned_user_id || null, due_date || null, notes?.trim() || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -448,7 +449,7 @@ export async function createMeetingAction(req, res) {
 
 export async function updateMeetingAction(req, res) {
   const { actionId } = req.params;
-  const { action_text, owner, due_date, notes, status, completed_via_transcript_id } = req.body;
+  const { action_text, owner, assigned_user_id, due_date, notes, status, completed_via_transcript_id } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE planning_applications.meeting_actions SET
@@ -456,6 +457,7 @@ export async function updateMeetingAction(req, res) {
          owner        = $3,
          due_date     = $4,
          notes        = $5,
+         assigned_user_id = $8,
          status       = COALESCE($6, status),
          completed_at = CASE
            WHEN $6 = 'complete' AND completed_at IS NULL THEN NOW()
@@ -465,7 +467,7 @@ export async function updateMeetingAction(req, res) {
          completed_via_transcript_id = COALESCE($7, completed_via_transcript_id),
          updated_at   = NOW()
        WHERE id = $1 RETURNING *`,
-      [actionId, action_text?.trim() || null, owner?.trim() || null, due_date || null, notes?.trim() || null, status || null, completed_via_transcript_id || null]
+      [actionId, action_text?.trim() || null, owner?.trim() || null, due_date || null, notes?.trim() || null, status || null, completed_via_transcript_id || null, assigned_user_id || null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
@@ -513,15 +515,26 @@ export async function processInternalMeetingNote(req, res) {
       return res.status(400).json({ error: 'No file or text provided' });
     }
 
+    // Open actions carried over from earlier meetings of the same type, so the
+    // LLM can report which this one closed or moved on.
+    const { rows: existingOpenActions } = await pool.query(
+      `SELECT a.id, a.action_text, a.owner
+         FROM planning_applications.meeting_actions a
+         JOIN planning_applications.meeting_transcripts t ON t.id = a.transcript_id
+        WHERE a.status = 'pending' AND t.project_id IS NULL AND t.meeting_type = $1
+        ORDER BY a.due_date NULLS LAST, a.created_at`,
+      [meeting_type]
+    );
+
     // Run summary + insights extraction in parallel
     const [summaryResult, extractedInsights] = await Promise.all([
       processMeetingTranscript(
-        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type, null
+        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type, null, existingOpenActions
       ),
       extractInsights(text, meeting_type),
     ]);
 
-    const { meeting_title, meeting_date, attendees, summary_html, actions } = summaryResult;
+    const { meeting_title, meeting_date, attendees, summary_html, actions, actionUpdates } = summaryResult;
 
     const title = meeting_title
       || (fileName ? fileName.replace(/\.[^.]+$/, '') : null)
@@ -550,6 +563,7 @@ export async function processInternalMeetingNote(req, res) {
         transcript,
         summary,
         suggestedActions: actions,
+        actionUpdates,
         extractedInsights,
       });
     } catch (err) {
@@ -603,7 +617,8 @@ export async function getMeetingNoteActions(req, res) {
   const { meetingId } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT a.*, t.title AS meeting_title, t.meeting_date
+      `SELECT a.*, t.title AS meeting_title, t.meeting_date, COALESCE((SELECT json_agg(json_build_object('id', u.id, 'update_type', u.update_type, 'update_text', u.update_text, 'created_at', u.created_at) ORDER BY u.created_at)
+                   FROM planning_applications.meeting_action_updates u WHERE u.action_id = a.id), '[]'::json) AS updates
        FROM planning_applications.meeting_actions a
        LEFT JOIN planning_applications.meeting_transcripts t ON t.id = a.transcript_id
        WHERE a.transcript_id = $1
@@ -664,19 +679,152 @@ export async function saveExtractedInsights(req, res) {
 }
 
 export async function createStandaloneAction(req, res) {
-  const { transcript_id, action_text, owner, due_date, notes } = req.body;
+  const { transcript_id, action_text, owner, assigned_user_id, due_date, notes } = req.body;
   if (!action_text?.trim()) return res.status(400).json({ error: 'action_text is required' });
   if (!transcript_id) return res.status(400).json({ error: 'transcript_id is required' });
   try {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.meeting_actions
-         (transcript_id, action_text, owner, due_date, notes)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [transcript_id, action_text.trim(), owner?.trim() || null, due_date || null, notes?.trim() || null]
+         (transcript_id, action_text, owner, assigned_user_id, due_date, notes)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [transcript_id, action_text.trim(), owner?.trim() || null, assigned_user_id || null, due_date || null, notes?.trim() || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('meetingNotes.createStandaloneAction error:', err);
     res.status(500).json({ error: 'Failed to create action' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save the actions confirmed in the review modal: new actions become
+// meeting_actions rows; updates on existing open actions are logged in
+// meeting_action_updates, and 'complete' ones also close the action.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function saveMeetingReviewActions(req, res) {
+  const { meetingId } = req.params;
+  const newActions = Array.isArray(req.body.newActions) ? req.body.newActions : [];
+  const updates = Array.isArray(req.body.updates) ? req.body.updates : [];
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: [transcript] } = await client.query(
+      `SELECT id, project_id FROM planning_applications.meeting_transcripts WHERE id = $1`,
+      [meetingId]
+    );
+    if (!transcript) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+
+    const created = [];
+    for (const a of newActions) {
+      if (!a.action_text?.trim()) continue;
+      const owner = a.owner?.trim() || null;
+      const { rows } = await client.query(
+        `INSERT INTO planning_applications.meeting_actions
+           (project_id, transcript_id, action_text, owner, assigned_user_id, due_date, notes)
+         VALUES ($1, $2, $3, $4,
+                 COALESCE($5, (SELECT id FROM public.user_profiles WHERE LOWER(display_name) = LOWER($4) LIMIT 1)),
+                 $6, $7)
+         RETURNING *`,
+        [transcript.project_id, transcript.id, a.action_text.trim(), owner, a.assigned_user_id || null, a.due_date || null, a.notes?.trim() || null]
+      );
+      created.push(rows[0]);
+    }
+
+    let updatesSaved = 0;
+    for (const u of updates) {
+      const text = u.update_text?.trim() || null;
+      if (u.status !== 'complete' && !(u.status === 'progress' && text)) continue;
+
+      const { rows: [action] } = await client.query(
+        `SELECT id FROM planning_applications.meeting_actions WHERE id = $1`,
+        [u.action_id]
+      );
+      if (!action) continue;
+
+      await client.query(
+        `INSERT INTO planning_applications.meeting_action_updates (action_id, transcript_id, update_type, update_text)
+         VALUES ($1, $2, $3, $4)`,
+        [action.id, transcript.id, u.status === 'complete' ? 'completed' : 'progress', text]
+      );
+      if (u.status === 'complete') {
+        await client.query(
+          `UPDATE planning_applications.meeting_actions
+              SET status = 'complete',
+                  completed_at = COALESCE(completed_at, NOW()),
+                  completed_via_transcript_id = $2,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [action.id, transcript.id]
+        );
+      }
+      updatesSaved++;
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ created, updatesSaved });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('meetingNotes.saveMeetingReviewActions error:', err);
+    res.status(500).json({ error: 'Failed to save actions' });
+  } finally {
+    client.release();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Log an update on a single action from the actions lists (progress note, or
+// resolving it). Separate from updateMeetingAction, which overwrites every
+// editable field and so isn't safe for a one-field change.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function addMeetingActionUpdate(req, res) {
+  const { actionId } = req.params;
+  const { update_type, update_text } = req.body;
+  const text = update_text?.trim() || null;
+  if (!['progress', 'completed'].includes(update_type)) {
+    return res.status(400).json({ error: "update_type must be 'progress' or 'completed'" });
+  }
+  if (update_type === 'progress' && !text) {
+    return res.status(400).json({ error: 'update_text is required for a progress update' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [action] } = await client.query(
+      `SELECT id FROM planning_applications.meeting_actions WHERE id = $1`,
+      [actionId]
+    );
+    if (!action) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const { rows: [update] } = await client.query(
+      `INSERT INTO planning_applications.meeting_action_updates (action_id, update_type, update_text)
+       VALUES ($1, $2, $3) RETURNING *`,
+      [action.id, update_type, text]
+    );
+    if (update_type === 'completed') {
+      await client.query(
+        `UPDATE planning_applications.meeting_actions
+            SET status = 'complete', completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
+          WHERE id = $1`,
+        [action.id]
+      );
+    }
+    await client.query('COMMIT');
+    res.status(201).json(update);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('meetingNotes.addMeetingActionUpdate error:', err);
+    res.status(500).json({ error: 'Failed to save update' });
+  } finally {
+    client.release();
   }
 }

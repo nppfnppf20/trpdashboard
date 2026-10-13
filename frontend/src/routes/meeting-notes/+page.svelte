@@ -4,6 +4,10 @@
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import SuggestedActionsEditor from '$lib/components/projects/SuggestedActionsEditor.svelte';
+  import MeetingActionsList from '$lib/components/projects/MeetingActionsList.svelte';
+  import ActionUpdatesEditor from '$lib/components/projects/ActionUpdatesEditor.svelte';
+  import { buildReviewBlocksHtml, syncReviewIntoSummary, toEditableActions, toEditableUpdates } from '$lib/utils/meetingActions.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { getProjects } from '$lib/api/projects.js';
   import {
@@ -13,7 +17,9 @@
     getAllMeetingNotes,
     getMeetingNotes,
     getMeetingTranscript,
+    getMeetingNoteActions,
     updateMeetingSummary,
+    saveMeetingReviewActions,
     updateMeetingNote,
     deleteMeetingNote,
     saveExtractedInsights,
@@ -100,6 +106,14 @@
   // Transcript expand state
   let expandedTranscripts = new Set();
   let transcriptData = {}; // { [noteId]: { loading, text, error } }
+
+  // Actions expand state — each card can show its meeting's saved actions
+  let expandedActions = new Set();
+  function toggleActions(noteId) {
+    expandedActions = expandedActions.has(noteId)
+      ? new Set([...expandedActions].filter(id => id !== noteId))
+      : new Set([...expandedActions, noteId]);
+  }
 
   async function toggleTranscript(noteId) {
     if (expandedTranscripts.has(noteId)) {
@@ -205,8 +219,8 @@
   // Actions aren't saved as structured data for now — just baked into the
   // summary as a plain bullet list at creation time. Proper action tracking
   // (editable, saveable, tied to the Issues Tracker) comes later.
-  function noteFromTranscript(transcript, summary, extra = {}, suggestedActions = null) {
-    const summaryHtml = (summary?.summary_html || '') + buildActionsHtml(suggestedActions);
+  function noteFromTranscript(transcript, summary, extra = {}, suggestedActions = null, actionUpdates = null) {
+    const summaryHtml = (summary?.summary_html || '') + buildReviewBlocksHtml(toEditableActions(suggestedActions), toEditableUpdates(actionUpdates));
     return {
       id: transcript.id,
       title: transcript.title,
@@ -216,6 +230,8 @@
       created_at: transcript.created_at,
       summary_id: summary?.id,
       summary_html: summaryHtml,
+      suggested_actions: suggestedActions || [],
+      action_updates: actionUpdates || [],
       pending_count: 0,
       complete_count: 0,
       ...extra
@@ -245,13 +261,13 @@
       const mine = result.projectNotes.find(pn => pn.project_id === selectedProject.id);
       newNote = noteFromTranscript(mine.transcript, mine.summary, {
         meeting_type: 'project', project_id: mine.project_id, project_name: mine.project_name
-      }, mine.suggestedActions);
+      }, mine.suggestedActions, mine.actionUpdates);
 
       const siblingCards = result.projectNotes
         .filter(pn => pn.project_id !== selectedProject.id)
         .map(pn => noteFromTranscript(pn.transcript, pn.summary, {
           meeting_type: 'project', project_id: pn.project_id, project_name: pn.project_name
-        }, pn.suggestedActions));
+        }, pn.suggestedActions, pn.actionUpdates));
       const combinedCard = result.combinedNote
         ? noteFromTranscript(result.combinedNote.transcript, result.combinedNote.summary, { meeting_type: 'multi_project' })
         : null;
@@ -279,7 +295,7 @@
       });
       newNote = noteFromTranscript(result.transcript, result.summary, {
         meeting_type: 'project', project_id: selectedProject.id, project_name: selectedProject.project_name
-      }, result.suggestedActions);
+      }, result.suggestedActions, result.actionUpdates);
     }
 
     notes = [newNote, ...notes];
@@ -311,16 +327,19 @@
 
       const newNote = noteFromTranscript(result.transcript, result.summary, {
         meeting_type: result.transcript.meeting_type
-      }, result.suggestedActions);
+      }, result.suggestedActions, result.actionUpdates);
 
       notes = [newNote, ...notes];
       resetUpload();
       loadStream();
 
-      // If the backend extracted policy updates / CPD topics, show the preview modal
-      if (result.extractedInsights?.length > 0) {
-        openInsightsPreview(result.transcript.id, meetingType, result.extractedInsights);
-      }
+      // Same review step as project notes: edit the summary and confirm the
+      // actions. The policy-update / CPD-topic preview waits until the editor
+      // closes so the two modals don't stack.
+      pendingInsights = result.extractedInsights?.length > 0
+        ? { transcriptId: result.transcript.id, meetingType, items: result.extractedInsights }
+        : null;
+      openNoteEditor(newNote, true);
     } catch (err) {
       uploadError = err.message;
     } finally {
@@ -379,6 +398,21 @@
     ? streamNotes
     : streamNotes.filter(n => n.meeting_type === streamTab);
 
+  // Quiet refresh for the open/done counts after an action is resolved —
+  // unlike loadStream it doesn't swap the list for a spinner, which would
+  // collapse the actions panel that was just clicked.
+  async function refreshStreamCounts() {
+    try {
+      const fresh = await getAllMeetingNotes();
+      const byId = new Map(fresh.map(n => [n.id, n]));
+      streamNotes = streamNotes.map(n => byId.has(n.id)
+        ? { ...n, pending_count: byId.get(n.id).pending_count, complete_count: byId.get(n.id).complete_count }
+        : n);
+    } catch (err) {
+      console.error('Failed to refresh note counts:', err);
+    }
+  }
+
   async function loadStream() {
     streamLoading = true;
     streamError = null;
@@ -400,35 +434,21 @@
   let editorNote = null;
   let editorIsNew = false;
   let editorInitialHtml = '';
+  let editorActions = [];
+  let editorActionsDirty = false;
+  let editorUpdates = [];
+  let editorUpdatesDirty = false;
+  let editorIncludeInSummary = true;
   let editorSaving = false;
   let editorSaved = false; // true once a project note has been saved — swaps footer to the Issues Tracker prompt
   let richTextEditor;
 
-  function escapeHtml(str) {
-    return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function isoToDisplay(iso) {
-    if (!iso) return '';
-    const [y, m, d] = iso.split('T')[0].split('-');
-    return d ? `${d}/${m}/${y}` : iso;
-  }
-
-  // Actions aren't structured/saveable data for now — just a plain bullet
-  // list appended to the summary text. Proper action tracking comes later.
-  function buildActionsHtml(suggestedActions) {
-    if (!suggestedActions?.length) return '';
-    const items = suggestedActions.map(a => {
-      const bits = [];
-      if (a.owner) bits.push(`Owner: ${escapeHtml(a.owner)}`);
-      if (a.due_date) bits.push(`Due: ${escapeHtml(isoToDisplay(a.due_date))}`);
-      const meta = bits.length ? ` (${bits.join(', ')})` : '';
-      return `<li>${escapeHtml(a.action_text)}${meta}</li>`;
-    }).join('');
-    return `<h3>Actions</h3><ul>${items}</ul>`;
-  }
-
   function openNoteEditor(note, isNew = false) {
+    editorActions = isNew ? toEditableActions(note.suggested_actions) : [];
+    editorActionsDirty = false;
+    editorUpdates = isNew ? toEditableUpdates(note.action_updates) : [];
+    editorUpdatesDirty = false;
+    editorIncludeInSummary = true;
     editorInitialHtml = note.summary_html || '';
     editorIsNew = isNew;
     editorSaved = false;
@@ -436,6 +456,8 @@
   }
 
   function closeNoteEditor() {
+    const hadInsights = pendingInsights;
+    pendingInsights = null;
     editorNote = null;
     editorIsNew = false;
     editorInitialHtml = '';
@@ -450,6 +472,7 @@
     } else {
       reviewTotal = 0;
     }
+    if (hadInsights) openInsightsPreview(hadInsights.transcriptId, hadInsights.meetingType, hadInsights.items);
   }
 
   function editorAddToTracker() {
@@ -461,8 +484,18 @@
     if (!editorNote) return;
     editorSaving = true;
     try {
-      const html = richTextEditor?.getHTML() ?? editorNote.summary_html;
+      let html = richTextEditor?.getHTML() ?? editorNote.summary_html;
+      if (editorActionsDirty || editorUpdatesDirty || !editorIncludeInSummary) {
+        html = syncReviewIntoSummary(html, editorActions, editorIncludeInSummary ? editorUpdates : []);
+      }
       const updated = await updateMeetingSummary(editorNote.id, html);
+      if (editorIsNew) {
+        await saveMeetingReviewActions(editorNote.id, {
+          newActions: editorActions,
+          updates: editorUpdates.filter(u => u.status !== 'none').map(u => ({ action_id: u.action_id, status: u.status, update_text: u.update_text }))
+        });
+        refreshStreamCounts(); // open/done badges on the cards reflect what was just saved
+      }
 
       const patch = { summary_html: updated.summary_html };
       notes = notes.map(n => n.id === editorNote.id ? { ...n, ...patch } : n);
@@ -506,6 +539,7 @@
   // Set after processInternalNote when extractedInsights are returned.
   // Shape: { transcriptId, meetingType, items: [...], selected: Set<number> }
   let insightsPreview = null;
+  let pendingInsights = null; // insights found on upload, shown once the note editor closes
   let insightsSaving = false;
 
   function openInsightsPreview(transcriptId, meetingType, items) {
@@ -872,6 +906,9 @@
               <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
                 <i class="las la-eye"></i> View
               </button>
+              <button class="btn btn-secondary btn-sm" on:click={() => toggleActions(note.id)} title="Actions from this meeting">
+                <i class="las la-tasks"></i> {expandedActions.has(note.id) ? 'Hide actions' : 'Actions'}
+              </button>
               <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)} title="Full transcript">
                 <i class="las la-file-alt"></i> {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
               </button>
@@ -883,6 +920,18 @@
               </button>
             </div>
             </div><!-- end stream-card-main -->
+
+          {#if expandedActions.has(note.id)}
+            <div class="stream-actions">
+              <MeetingActionsList
+                load={() => getMeetingNoteActions(note.id)}
+                loadKey={String(note.id)}
+                showCompleted
+                emptyText="No actions were saved for this meeting."
+                on:changed={refreshStreamCounts}
+              />
+            </div>
+          {/if}
 
           {#if expandedTranscripts.has(note.id)}
             <div class="mn-transcript stream-transcript">
@@ -1034,6 +1083,19 @@
             fullHeight={true}
           />
         </div>
+
+        {#if editorIsNew}
+          <div class="mn-editor-actions">
+            <h3 class="mn-editor-actions-title">Actions</h3>
+            <SuggestedActionsEditor bind:actions={editorActions} bind:dirty={editorActionsDirty} />
+            <h3 class="mn-editor-actions-title mn-editor-actions-title--spaced">Open actions mentioned in this meeting</h3>
+            <ActionUpdatesEditor bind:updates={editorUpdates} bind:dirty={editorUpdatesDirty} />
+            <label class="mn-editor-include">
+              <input type="checkbox" bind:checked={editorIncludeInSummary} />
+              Include completed actions and updates in the summary text
+            </label>
+          </div>
+        {/if}
 
         <div class="modal-footer">
           <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
@@ -1384,7 +1446,12 @@
     border-radius: 4px;
     padding: 0.75rem;
   }
+  .stream-actions { padding: 0.75rem 1rem; border-top: 1px solid var(--color-slate-200); }
   .mn-error-sm { color: var(--color-red-600); font-size: 0.8rem; }
+  .mn-editor-actions { padding: 0.75rem 1.5rem; border-top: 1px solid var(--color-slate-200); max-height: 45%; overflow-y: auto; flex-shrink: 0; }
+  .mn-editor-actions-title--spaced { margin-top: 1rem; }
+  .mn-editor-include { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-size: 0.8rem; color: var(--color-slate-700); }
+  .mn-editor-actions-title { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-slate-800); }
 
   /* ── Text helpers ──────────────────────────────────────────────────────────── */
   .mn-cell-muted { color: var(--color-slate-500); font-size: 0.8rem; }

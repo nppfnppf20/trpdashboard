@@ -5,6 +5,8 @@
   export let suggestion; // { date, title }
   export let onAccept;   // async () => boolean
   export let onDismiss = () => {};
+  export let onAccepted = () => {}; // fired once the date has actually been saved
+  export let dismissLabel = 'Not now';
 
   let status = 'pending'; // 'pending' | 'saving' | 'accepted' | 'error'
 
@@ -17,6 +19,7 @@
     status = 'saving';
     const ok = await onAccept?.();
     status = ok ? 'accepted' : 'error';
+    if (ok) onAccepted?.();
   }
 </script>
 
@@ -28,7 +31,7 @@
       {#if status === 'pending'}
         <div class="kdsc-actions">
           <button class="kdsc-btn kdsc-btn-accept" on:click={accept}>Add</button>
-          <button class="kdsc-btn kdsc-btn-dismiss" on:click={() => { status = 'dismissed'; onDismiss?.(); }}>Not now</button>
+          <button class="kdsc-btn kdsc-btn-dismiss" on:click={() => { status = 'dismissed'; onDismiss?.(); }}>{dismissLabel}</button>
         </div>
       {:else if status === 'saving'}
         <div class="kdsc-status"><span class="kdsc-spinner"></span> Saving…</div>

@@ -9,6 +9,8 @@ import {
   getAllMeetingNotes,
   getMeetingTranscript,
   getMeetingNoteActions,
+  saveMeetingReviewActions,
+  addMeetingActionUpdate,
   updateMeetingSummary,
   updateMeetingNote,
   deleteMeetingNote,
@@ -36,8 +38,10 @@ router.post('/projects/:projectId/actions', createMeetingAction);
 router.get('/projects/:projectId', getMeetingNotes);
 router.put('/actions/:actionId', updateMeetingAction);
 router.delete('/actions/:actionId', deleteMeetingAction);
+router.post('/actions/:actionId/updates', addMeetingActionUpdate);
 router.get('/:meetingId/transcript', getMeetingTranscript);
 router.get('/:meetingId/actions', getMeetingNoteActions);
+router.post('/:meetingId/review-actions', saveMeetingReviewActions);
 router.patch('/:meetingId/summary', updateMeetingSummary);
 router.patch('/:meetingId', updateMeetingNote);
 router.delete('/:meetingId', deleteMeetingNote);

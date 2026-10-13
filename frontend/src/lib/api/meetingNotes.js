@@ -208,3 +208,26 @@ export async function createStandaloneAction(transcriptId, { action_text, owner,
   if (!res.ok) throw new Error('Failed to create action');
   return res.json();
 }
+
+// Persist what was confirmed in the review modal: new actions become rows,
+// updates on existing open actions are logged (and 'complete' ones close them).
+export async function saveMeetingReviewActions(meetingId, { newActions, updates }) {
+  const res = await authFetch(`/api/meeting-notes/${meetingId}/review-actions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newActions, updates })
+  });
+  if (!res.ok) throw new Error('Failed to save actions');
+  return res.json();
+}
+
+// Log a progress note on an action, or resolve it (update_type 'completed').
+export async function addMeetingActionUpdate(actionId, { update_type, update_text = null }) {
+  const res = await authFetch(`/api/meeting-notes/actions/${actionId}/updates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ update_type, update_text })
+  });
+  if (!res.ok) throw new Error('Failed to save update');
+  return res.json();
+}

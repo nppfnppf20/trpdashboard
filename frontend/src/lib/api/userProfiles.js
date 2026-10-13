@@ -38,6 +38,23 @@ export async function getProjectsForUser(userId) {
 }
 
 /**
+ * Get every meeting action assigned to the given user, across all projects.
+ * @param {string} userId
+ * @param {string|null} status optional 'pending' | 'complete'
+ * @returns {Promise<Array<Object>>}
+ */
+export async function getActionsForUser(userId, status = null) {
+  const qs = status ? `?status=${status}` : '';
+  const response = await authFetch(`${API_BASE_URL}/${userId}/actions${qs}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch actions for user');
+  }
+
+  return response.json();
+}
+
+/**
  * Upsert the logged-in user's own profile row from their Supabase account.
  * Called once per session on login — safe to call repeatedly.
  * @returns {Promise<Object>}

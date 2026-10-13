@@ -20,6 +20,16 @@ export async function getProjectsForUser(req, res) {
   }
 }
 
+export async function getMeetingActionsForUser(req, res) {
+  try {
+    const actions = await userProfilesService.getMeetingActionsForUser(req.params.id, req.query.status || null);
+    res.json(actions);
+  } catch (error) {
+    console.error('Error fetching actions for user:', error);
+    res.status(500).json({ error: 'Failed to fetch actions for user', details: error.message });
+  }
+}
+
 export async function syncMyProfile(req, res) {
   try {
     const fallbackDisplayName = req.user.user_metadata?.full_name || req.user.email;

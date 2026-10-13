@@ -15,7 +15,7 @@ HTML summary here
 [{"action_text":"...","owner":null,"due_date":null,"notes":null}]
 </ACTIONS_JSON>
 <COMPLETED_ACTIONS_JSON>
-[{"id":123,"evidence":"..."}]
+[{"id":123,"status":"complete","update":"...","evidence":"..."}]
 </COMPLETED_ACTIONS_JSON>
 <DATE_SUGGESTIONS_JSON>
 [{"title":"...","date":"YYYY-MM-DD"}]
@@ -73,12 +73,14 @@ const PROMPT_COMPLETED_ACTIONS = `═══════════════�
 COMPLETED_ACTIONS_JSON
 ════════════════════════════════════════
 
-You may be given a numbered list of EXISTING OPEN ACTIONS carried over from previous meetings (id, text, owner). Review the transcript and identify ONLY the ones this transcript gives CLEAR evidence are now finished, resolved, or no longer needed.
+You may be given a numbered list of EXISTING OPEN ACTIONS carried over from previous meetings (id, text, owner). Review the transcript and report every one of them that this transcript actually speaks to.
 
-JSON array. Each item: {"id": <the existing action's id, as a number>, "evidence": "short quote or close paraphrase from the transcript showing it's done"}
-- Be conservative: an action being merely discussed, referenced, or chased up is NOT evidence it's complete. Only include it if the transcript clearly states or implies it has been finished, resolved, or is no longer needed.
+JSON array. Each item: {"id": <the existing action's id, as a number>, "status": "complete" or "progress", "update": "one short sentence", "evidence": "short quote or close paraphrase from the transcript"}
+- status "complete": the transcript CLEARLY states or implies the action is finished, resolved, or no longer needed. Be conservative — merely being discussed or chased is not completion.
+- status "progress": the action is still open but something specific happened or was said about it (a development, a blocker, a revised date, who is now doing it). The update sentence says what happened.
+- Do not report an action that is only mentioned in passing with nothing new to say.
 - Never invent an id — only use ids from the EXISTING OPEN ACTIONS list you were given.
-- If no existing open actions were provided, or none appear complete: []`;
+- If no existing open actions were provided, or none were spoken to: []`;
 
 const PROMPT_DATE_SUGGESTIONS = `════════════════════════════════════════
 DATE_SUGGESTIONS_JSON
@@ -335,14 +337,24 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
   }
 
   const completedRaw = extractTag(raw, 'COMPLETED_ACTIONS_JSON') || '[]';
-  let completedActions = [];
+  let actionUpdates = [];
   try {
     const parsed = JSON.parse(completedRaw);
     if (Array.isArray(parsed)) {
-      const validIds = new Set(existingOpenActions.map(a => a.id));
-      completedActions = parsed
-        .filter(item => validIds.has(Number(item.id)))
-        .map(item => ({ id: Number(item.id), evidence: item.evidence?.trim() || null }));
+      const openById = new Map(existingOpenActions.map(a => [a.id, a]));
+      actionUpdates = parsed
+        .filter(item => openById.has(Number(item.id)))
+        .map(item => {
+          const open = openById.get(Number(item.id));
+          return {
+            id: open.id,
+            action_text: open.action_text,
+            owner: open.owner || null,
+            status: item.status === 'complete' ? 'complete' : 'progress',
+            update: item.update?.trim() || null,
+            evidence: item.evidence?.trim() || null
+          };
+        });
     }
   } catch {
     console.warn('[meeting.service] Could not parse COMPLETED_ACTIONS_JSON, defaulting to []:', completedRaw.slice(0, 200));
@@ -372,7 +384,7 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
       due_date: a.due_date || null,
       notes: a.notes?.trim() || null
     })).filter(a => a.action_text),
-    completedActions,
+    actionUpdates,
     dateSuggestions
   };
 }

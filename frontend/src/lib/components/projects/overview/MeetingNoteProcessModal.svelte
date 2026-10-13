@@ -9,12 +9,15 @@
   import { onMount } from 'svelte';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
+  import SuggestedActionsEditor from '$lib/components/projects/SuggestedActionsEditor.svelte';
+  import ActionUpdatesEditor from '$lib/components/projects/ActionUpdatesEditor.svelte';
+  import { buildReviewBlocksHtml, syncReviewIntoSummary, toEditableActions, toEditableUpdates } from '$lib/utils/meetingActions.js';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
-  import { processMeetingNote, processMultiProjectNote, updateMeetingSummary, saveVerbatimMeetingNote } from '$lib/api/meetingNotes.js';
+  import { processMeetingNote, processMultiProjectNote, updateMeetingSummary, saveMeetingReviewActions, saveVerbatimMeetingNote } from '$lib/api/meetingNotes.js';
   import { getProjects } from '$lib/api/projects.js';
   import { createProgrammeEvent } from '$lib/api/quotes.js';
-  import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
+  import { bumpKeyDatesVersion, bumpActionsVersion } from '$lib/stores/keyDates.js';
 
   export let project;
   export let initialFile = null;
@@ -48,6 +51,11 @@
   let multiCreateCombined = true;
   let reviewOtherProjectNames = []; // set when this note came from a multi-project upload
   let reviewCombinedCreated = false; // set when a combined note was also created
+  let reviewActions = [];        // editable rows from the AI's suggestedActions
+  let reviewActionsDirty = false;
+  let reviewUpdates = [];        // existing open actions this meeting spoke to
+  let reviewUpdatesDirty = false;
+  let reviewIncludeInSummary = true; // write completions + updates into the summary text too
 
   $: otherProjectOptions = allProjects
     .filter(p => p.id !== projectId)
@@ -88,6 +96,13 @@
   let reviewSaved = false;
   let reviewError = null;
   let reviewDateSuggestions = [];
+  // Key dates must each be added or skipped before the note can be saved, so a
+  // suggestion can't be silently lost once the review step closes.
+  let decidedDates = new Set();
+  $: undecidedDates = reviewDateSuggestions.filter(d => !decidedDates.has(d._key)).length;
+  function markDateDecided(key) {
+    decidedDates = new Set([...decidedDates, key]);
+  }
   let reviewProposals = null; // tracker proposals drafted in parallel with the summary; null = draft on demand
 
   async function submitUpload() {
@@ -98,7 +113,7 @@
     processing = true;
     error = null;
     try {
-      let transcript, summaryHtml, dateSuggestions, otherProjectNames = [], combinedCreated = false, proposals = null;
+      let transcript, summaryHtml, dateSuggestions, otherProjectNames = [], combinedCreated = false, proposals = null, suggestedActions = [], actionUpdates = [];
 
       if (multiProject) {
         const result = await processMultiProjectNote({
@@ -120,6 +135,7 @@
         otherProjectNames = result.projectNotes.filter(pn => pn.project_id !== projectId).map(pn => pn.project_name);
         combinedCreated = !!result.combinedNote;
         dateSuggestions = []; // multi-project path doesn't extract date suggestions
+        suggestedActions = mine.suggestedActions || [];
       } else {
         const result = await processMeetingNote(projectId, {
           file: inputTab === 'upload' ? uploadFile : null,
@@ -135,6 +151,8 @@
         summaryHtml = result.summary?.summary_html || '';
         dateSuggestions = result.dateSuggestions || [];
         proposals = result.proposals ?? null;
+        suggestedActions = result.suggestedActions || [];
+        actionUpdates = result.actionUpdates || [];
       }
 
       reviewTranscript = {
@@ -143,7 +161,13 @@
         meeting_date: transcript.meeting_date,
         attendees_text: transcript.attendees_text,
       };
-      reviewSummaryHtml = summaryHtml;
+      reviewActions = toEditableActions(suggestedActions);
+      reviewActionsDirty = false;
+      reviewUpdates = toEditableUpdates(actionUpdates);
+      reviewUpdatesDirty = false;
+      reviewIncludeInSummary = true;
+      reviewSummaryHtml = summaryHtml + buildReviewBlocksHtml(reviewActions, reviewUpdates);
+      decidedDates = new Set();
       reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
       reviewOtherProjectNames = otherProjectNames;
       reviewCombinedCreated = combinedCreated;
@@ -184,6 +208,10 @@
         meeting_date: result.transcript.meeting_date,
         attendees_text: result.transcript.attendees_text,
       };
+      reviewActions = [];
+      reviewActionsDirty = false;
+      reviewUpdates = [];
+      reviewUpdatesDirty = false;
       reviewSummaryHtml = result.summary?.summary_html || '';
       reviewDateSuggestions = [];
       reviewOtherProjectNames = [];
@@ -203,8 +231,16 @@
     reviewSaving = true;
     reviewError = null;
     try {
-      const html = reviewEditor?.getHTML() ?? reviewSummaryHtml;
+      let html = reviewEditor?.getHTML() ?? reviewSummaryHtml;
+      if (reviewActionsDirty || reviewUpdatesDirty || !reviewIncludeInSummary) {
+        html = syncReviewIntoSummary(html, reviewActions, reviewIncludeInSummary ? reviewUpdates : []);
+      }
       const updated = await updateMeetingSummary(reviewTranscript.id, html);
+      await saveMeetingReviewActions(reviewTranscript.id, {
+        newActions: reviewActions,
+        updates: reviewUpdates.filter(u => u.status !== 'none').map(u => ({ action_id: u.action_id, status: u.status, update_text: u.update_text }))
+      });
+      bumpActionsVersion();
       reviewSaved = true;
       onSaved({ ...reviewTranscript, summary_html: updated.summary_html });
     } catch (err) {
@@ -389,15 +425,44 @@
     {:else if !reviewSaved}
       <!-- ── Review AI summary ── -->
       <div class="mnp-body mnp-review-body">
+          {#if reviewDateSuggestions.length}
+            <section class="mnp-date-suggestions">
+              <h3 class="mnp-review-section-title">Key dates spotted in this meeting</h3>
+              {#each reviewDateSuggestions as d (d._key)}
+                <KeyDateSuggestionCard
+                  suggestion={d}
+                  dismissLabel="Don't add"
+                  onAccept={() => acceptReviewDateSuggestion(d)}
+                  onAccepted={() => markDateDecided(d._key)}
+                  onDismiss={() => markDateDecided(d._key)}
+                />
+              {/each}
+              {#if undecidedDates > 0}
+                <p class="mnp-date-hint">Add or skip each key date before saving ({undecidedDates} left).</p>
+              {/if}
+            </section>
+          {/if}
         <section>
           <h3 class="mnp-review-section-title">Meeting Notes</h3>
           <RichTextEditor bind:this={reviewEditor} content={reviewSummaryHtml} placeholder="Meeting summary…" fullHeight={false} />
         </section>
+        <section>
+          <h3 class="mnp-review-section-title">Actions</h3>
+          <SuggestedActionsEditor bind:actions={reviewActions} bind:dirty={reviewActionsDirty} />
+        </section>
+        <section>
+          <h3 class="mnp-review-section-title">Open actions mentioned in this meeting</h3>
+          <ActionUpdatesEditor bind:updates={reviewUpdates} bind:dirty={reviewUpdatesDirty} />
+        </section>
+        <label class="mnp-review-include">
+          <input type="checkbox" bind:checked={reviewIncludeInSummary} />
+          Include completed actions and updates in the summary text
+        </label>
         {#if reviewError}<p class="mnp-error-sm">{reviewError}</p>{/if}
       </div>
       <div class="mnp-footer">
         <button class="btn btn-secondary btn-sm" on:click={handleClose} disabled={reviewSaving}>Close without saving</button>
-        <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving}>
+        <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving || undecidedDates > 0} title={undecidedDates > 0 ? 'Add or skip each suggested key date first' : ''}>
           {#if reviewSaving}<span class="mnp-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
         </button>
       </div>
@@ -420,13 +485,6 @@
             <button class="btn btn-ghost btn-sm" on:click={onClose}>No, done</button>
           </div>
         </div>
-        {#if reviewDateSuggestions.length}
-          <div class="mnp-date-suggestions">
-            {#each reviewDateSuggestions as d (d._key)}
-              <KeyDateSuggestionCard suggestion={d} onAccept={() => acceptReviewDateSuggestion(d)} />
-            {/each}
-          </div>
-        {/if}
       </div>
     {/if}
   </div>
@@ -479,6 +537,8 @@
 
   .mnp-body { padding: 1.25rem 1.5rem; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 0.6rem; }
   .mnp-review-body { gap: 1.25rem; }
+  .mnp-review-include { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--color-slate-700); }
+  .mnp-date-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
   .mnp-review-section-title { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-slate-800); }
 
   .mnp-footer {

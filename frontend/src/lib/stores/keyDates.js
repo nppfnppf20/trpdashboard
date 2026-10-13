@@ -16,3 +16,11 @@ export const keyDatesVersion = writable(0);
 export function bumpKeyDatesVersion() {
   keyDatesVersion.update(n => n + 1);
 }
+
+// Same idea for the Overview widget's Actions tab: bumped whenever meeting
+// actions are saved or changed elsewhere so the tab refetches.
+export const actionsVersion = writable(0);
+
+export function bumpActionsVersion() {
+  actionsVersion.update(n => n + 1);
+}

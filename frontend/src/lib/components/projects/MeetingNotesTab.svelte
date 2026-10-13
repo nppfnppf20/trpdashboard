@@ -4,6 +4,9 @@
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
   import { buildExportFilename } from '$lib/services/exportFilename.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
+  import SuggestedActionsEditor from '$lib/components/projects/SuggestedActionsEditor.svelte';
+  import ActionUpdatesEditor from '$lib/components/projects/ActionUpdatesEditor.svelte';
+  import { buildReviewBlocksHtml, syncReviewIntoSummary, toEditableActions, toEditableUpdates } from '$lib/utils/meetingActions.js';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
@@ -12,7 +15,7 @@
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import { getProjects } from '$lib/api/projects.js';
   import { createProgrammeEvent } from '$lib/api/quotes.js';
-  import { bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
+  import { bumpKeyDatesVersion, bumpActionsVersion } from '$lib/stores/keyDates.js';
   import {
     consumePendingMeetingUploadFile,
     consumePendingMeetingUploadText
@@ -28,6 +31,7 @@
     deleteMeetingNote,
     updateMeetingNote,
     updateMeetingSummary,
+    saveMeetingReviewActions,
     processMeetingNote,
     processMultiProjectNote,
     saveVerbatimMeetingNote
@@ -50,10 +54,20 @@
   let reviewTranscript = null; // { id, title, meeting_date, attendees_text }
   let reviewSummaryHtml = '';
   let reviewEditor;            // bind:this on RichTextEditor
+  let reviewActions = [];      // editable rows from the AI's suggestedActions
+  let reviewActionsDirty = false; // true once a row is edited — save then rewrites the summary's Actions block
+  let reviewUpdates = [];      // existing open actions the meeting spoke to (complete / progress / none)
+  let reviewUpdatesDirty = false;
+  let reviewIncludeInSummary = true; // write completions + updates into the summary text too
   let reviewSaving = false;
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
   let reviewError = null;
-  let reviewDateSuggestions = []; // dates spotted in the transcript, offered alongside the Issues Tracker prompt
+  let reviewDateSuggestions = []; // dates spotted in the transcript — each must be added or skipped before Save
+  let decidedDates = new Set();
+  $: undecidedDates = reviewDateSuggestions.filter(d => !decidedDates.has(d._key)).length;
+  function markDateDecided(key) {
+    decidedDates = new Set([...decidedDates, key]);
+  }
   let reviewOtherProjectNames = []; // set when this note came from a multi-project upload
   let reviewCombinedCreated = false; // set when a combined note was also created
   let reviewProposals = null;  // tracker proposals drafted in parallel with the summary; null = not available, draft on demand
@@ -361,7 +375,7 @@
     uploadProcessing = true;
     uploadError = null;
     try {
-      let newNote, dateSuggestions, otherProjectNames = [], combinedCreated = false, proposals = null;
+      let newNote, dateSuggestions, otherProjectNames = [], combinedCreated = false, proposals = null, suggestedActions = [], actionUpdates = [];
 
       if (isMultiProject) {
         const result = await processMultiProjectNote({
@@ -388,6 +402,8 @@
           summary_id: mine.summary?.id,
           summary_html: mine.summary?.summary_html
         };
+        suggestedActions = mine.suggestedActions || [];
+        actionUpdates = mine.actionUpdates || [];
         otherProjectNames = result.projectNotes.filter(pn => pn.project_id !== projectId).map(pn => pn.project_name);
         combinedCreated = !!result.combinedNote;
         dateSuggestions = []; // multi-project path doesn't extract date suggestions
@@ -414,6 +430,8 @@
         };
         dateSuggestions = result.dateSuggestions || [];
         proposals = result.proposals ?? null;
+        suggestedActions = result.suggestedActions || [];
+        actionUpdates = result.actionUpdates || [];
       }
 
       notes = [newNote, ...notes];
@@ -422,10 +440,16 @@
       // Open the review modal — nothing beyond the transcript + raw summary
       // is committed until Save is pressed there.
       reviewTranscript = newNote;
-      reviewSummaryHtml = newNote.summary_html || '';
+      reviewActions = toEditableActions(suggestedActions);
+      reviewActionsDirty = false;
+      reviewUpdates = toEditableUpdates(actionUpdates);
+      reviewUpdatesDirty = false;
+      reviewIncludeInSummary = true;
+      reviewSummaryHtml = (newNote.summary_html || '') + buildReviewBlocksHtml(reviewActions, reviewUpdates);
       reviewSaving = false;
       reviewSaved = false;
       reviewError = null;
+      decidedDates = new Set();
       reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
       reviewOtherProjectNames = otherProjectNames;
       reviewCombinedCreated = combinedCreated;
@@ -473,6 +497,10 @@
       showUploadPanel = false;
 
       reviewTranscript = newNote;
+      reviewActions = [];
+      reviewActionsDirty = false;
+      reviewUpdates = [];
+      reviewUpdatesDirty = false;
       reviewSummaryHtml = newNote.summary_html || '';
       reviewSaving = false;
       reviewSaved = false;
@@ -495,8 +523,16 @@
     reviewSaving = true;
     reviewError = null;
     try {
-      const html = reviewEditor?.getHTML() ?? reviewSummaryHtml;
+      let html = reviewEditor?.getHTML() ?? reviewSummaryHtml;
+      if (reviewActionsDirty || reviewUpdatesDirty || !reviewIncludeInSummary) {
+        html = syncReviewIntoSummary(html, reviewActions, reviewIncludeInSummary ? reviewUpdates : []);
+      }
       const updated = await updateMeetingSummary(reviewTranscript.id, html);
+      await saveMeetingReviewActions(reviewTranscript.id, {
+        newActions: reviewActions,
+        updates: reviewUpdates.filter(u => u.status !== 'none').map(u => ({ action_id: u.action_id, status: u.status, update_text: u.update_text }))
+      });
+      bumpActionsVersion();
       notes = notes.map(n => n.id === reviewTranscript.id ? { ...n, summary_html: updated.summary_html } : n);
 
       reviewSaved = true;
@@ -512,6 +548,10 @@
     reviewOpen = false;
     reviewTranscript = null;
     reviewSummaryHtml = '';
+    reviewActions = [];
+    reviewActionsDirty = false;
+    reviewUpdates = [];
+    reviewUpdatesDirty = false;
     reviewSaved = false;
     reviewError = null;
     reviewDateSuggestions = [];
@@ -893,6 +933,23 @@
       {#if !reviewSaved}
         <!-- Body — scrolls: just the summary editor -->
         <div class="mn-editor-body mn-review-body">
+          {#if reviewDateSuggestions.length}
+            <section class="mn-date-suggestions">
+              <h3 class="mn-review-section-title">Key dates spotted in this meeting</h3>
+              {#each reviewDateSuggestions as d (d._key)}
+                <KeyDateSuggestionCard
+                  suggestion={d}
+                  dismissLabel="Don't add"
+                  onAccept={() => acceptReviewDateSuggestion(d)}
+                  onAccepted={() => markDateDecided(d._key)}
+                  onDismiss={() => markDateDecided(d._key)}
+                />
+              {/each}
+              {#if undecidedDates > 0}
+                <p class="mn-date-hint">Add or skip each key date before saving ({undecidedDates} left).</p>
+              {/if}
+            </section>
+          {/if}
           <section class="mn-review-section">
             <h3 class="mn-review-section-title">Meeting Notes</h3>
             <RichTextEditor
@@ -903,12 +960,27 @@
             />
           </section>
 
+          <section class="mn-review-section">
+            <h3 class="mn-review-section-title">Actions</h3>
+            <SuggestedActionsEditor bind:actions={reviewActions} bind:dirty={reviewActionsDirty} />
+          </section>
+
+          <section class="mn-review-section">
+            <h3 class="mn-review-section-title">Open actions mentioned in this meeting</h3>
+            <ActionUpdatesEditor bind:updates={reviewUpdates} bind:dirty={reviewUpdatesDirty} />
+          </section>
+
+          <label class="mn-review-include">
+            <input type="checkbox" bind:checked={reviewIncludeInSummary} />
+            Include completed actions and updates in the summary text
+          </label>
+
           {#if reviewError}<p class="mn-error-sm" style="padding:0 0.25rem">{reviewError}</p>{/if}
         </div>
 
         <div class="modal-footer">
           <button class="btn btn-secondary btn-sm" on:click={closeReview} disabled={reviewSaving}>Close without saving</button>
-          <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving}>
+          <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving || undecidedDates > 0} title={undecidedDates > 0 ? 'Add or skip each suggested key date first' : ''}>
             {#if reviewSaving}<span class="mn-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
           </button>
         </div>
@@ -931,13 +1003,6 @@
             </div>
           </div>
 
-          {#if reviewDateSuggestions.length}
-            <div class="mn-date-suggestions">
-              {#each reviewDateSuggestions as d (d._key)}
-                <KeyDateSuggestionCard suggestion={d} onAccept={() => acceptReviewDateSuggestion(d)} />
-              {/each}
-            </div>
-          {/if}
         </div>
       {/if}
 
@@ -1418,6 +1483,7 @@
     color: var(--color-teal-600);
   }
   .mn-date-suggestions { display: flex; flex-direction: column; gap: 0.5rem; }
+  .mn-date-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
   .mn-issues-prompt-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
   .mn-error-sm { color: var(--color-red-600); font-size: 0.8rem; margin: 0.25rem 0 0; }
   .mn-loading {
@@ -1482,6 +1548,7 @@
     gap: 1.25rem;
     padding: 1.25rem 1.5rem;
   }
+  .mn-review-include { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--color-slate-700); }
   .mn-review-section-title {
     margin: 0 0 0.5rem;
     font-size: 0.85rem;

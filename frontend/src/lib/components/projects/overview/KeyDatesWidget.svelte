@@ -1,5 +1,8 @@
 <script>
   import ProgrammeTab from '$lib/components/projects/ProgrammeTab.svelte';
+  import ActionsModal from './ActionsModal.svelte';
+  import MeetingActionsList from '$lib/components/projects/MeetingActionsList.svelte';
+  import { getMeetingActions } from '$lib/api/meetingNotes.js';
   import ViewDateModal from '$lib/components/admin-console/ViewDateModal.svelte';
   import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
   import { getConditionsData, updateConditionKeyDate, deleteConditionKeyDate } from '$lib/api/conditions.js';
@@ -7,7 +10,7 @@
   import { getConsultationData, updateConsultationKeyDate, deleteConsultationKeyDate } from '$lib/api/consultation.js';
   import { getProgrammeEvents, updateProgrammeEvent, deleteProgrammeEvent } from '$lib/api/quotes.js';
   import { updateProjectMilestoneResolved } from '$lib/api/projects.js';
-  import { keyDatesVersion, bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
+  import { keyDatesVersion, actionsVersion, bumpKeyDatesVersion } from '$lib/stores/keyDates.js';
   import { debounce } from '$lib/utils/debounce.js';
 
   // Sourced from the project's own fixed date fields (already loaded with
@@ -28,7 +31,19 @@
   $: merged = Array.isArray(projects) && projects.length > 0;
   $: projectList = merged ? projects : (project ? [project] : []);
 
+  // Two tabs: outstanding meeting Actions (default) and Key Dates.
+  let tab = 'actions';
+  $: actionsLoadKey = projectList.map(p => p.id).sort((a, b) => a - b).join(',') + ':' + $actionsVersion;
+  async function loadActions() {
+    const perProject = await Promise.all(projectList.map(async proj => {
+      const rows = await getMeetingActions(proj.id, 'pending');
+      return rows.map(r => ({ ...r, project_name: proj.project_name }));
+    }));
+    return perProject.flat();
+  }
+
   let showProgrammeModal = false;
+  let showActionsModal = false;
   let trackerKeyDates = []; // [{ date, title, source?, _project }] merged from conditions/issues/consultation/programme events
 
   // Per-project cache so re-ticking an already-seen project in the merged
@@ -216,16 +231,35 @@
 
 <div class="widget">
   <div class="widget-head">
-    <div class="widget-title">
-      <i class="las la-calendar-alt"></i>
-      Key Dates
+    <div class="kd-tabs" role="tablist">
+      <button type="button" role="tab" class="btn btn-sm" class:btn-secondary={tab === 'actions'} class:btn-ghost={tab !== 'actions'} aria-selected={tab === 'actions'} on:click={() => (tab = 'actions')}>
+        <i class="las la-tasks"></i> Actions
+      </button>
+      <button type="button" role="tab" class="btn btn-sm" class:btn-secondary={tab === 'dates'} class:btn-ghost={tab !== 'dates'} aria-selected={tab === 'dates'} on:click={() => (tab = 'dates')}>
+        <i class="las la-calendar-alt"></i> Key Dates
+      </button>
     </div>
-    {#if !merged}
+    {#if tab === 'actions'}
+      <button class="widget-expand" on:click={() => (showActionsModal = true)}>
+        Open <i class="las la-angle-right"></i>
+      </button>
+    {:else if !merged}
       <button class="widget-expand" on:click={openProgramme}>
         Programme <i class="las la-angle-right"></i>
       </button>
     {/if}
   </div>
+  {#if tab === 'actions'}
+    <div class="widget-body kd-body">
+      <MeetingActionsList
+        load={loadActions}
+        loadKey={actionsLoadKey}
+        showProject={merged}
+        showMeeting
+        emptyText="No outstanding actions."
+      />
+    </div>
+  {:else}
   <div class="widget-body kd-body">
     {#if !dates.length}
       <div class="kd-state">No upcoming dates.</div>
@@ -241,7 +275,12 @@
       {/each}
     {/if}
   </div>
+  {/if}
 </div>
+
+{#if showActionsModal}
+  <ActionsModal projects={projectList} onClose={() => (showActionsModal = false)} />
+{/if}
 
 {#if showProgrammeModal}
   <div class="pgm-backdrop" on:click|self={() => showProgrammeModal = false} role="presentation">
@@ -270,6 +309,7 @@
 />
 
 <style>
+  .kd-tabs { display: flex; gap: 0.35rem; }
   .kd-body { display: flex; flex-direction: column; gap: 9px; }
   .kd-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.5rem 0; }
   .kd-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; }

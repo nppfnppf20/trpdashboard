@@ -33,6 +33,25 @@ export async function getProjectsForUser(userId) {
   return result.rows;
 }
 
+// Cross-project "my actions" — meeting actions assigned to this account.
+export async function getMeetingActionsForUser(userId, status = null) {
+  const params = [userId];
+  if (status) params.push(status);
+  const result = await pool.query(
+    `SELECT a.*, t.title AS meeting_title, t.meeting_date, p.project_name
+     FROM planning_applications.meeting_actions a
+     LEFT JOIN planning_applications.meeting_transcripts t ON t.id = a.transcript_id
+     LEFT JOIN public.projects p ON p.id = a.project_id
+     WHERE a.assigned_user_id = $1${status ? ' AND a.status = $2' : ''}
+     ORDER BY
+       CASE WHEN a.due_date IS NULL THEN 1 ELSE 0 END,
+       a.due_date ASC,
+       a.created_at ASC`,
+    params
+  );
+  return result.rows;
+}
+
 // Prefers the name on file in admin_console.team_members (matched by login
 // email) over the Supabase-supplied fallback, since most accounts don't have
 // user_metadata.full_name set — without this, display_name silently falls
