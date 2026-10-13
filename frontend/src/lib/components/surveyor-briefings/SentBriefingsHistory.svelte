@@ -1,10 +1,32 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { deleteSentRequest } from '$lib/api/quoteRequests.js';
+  import { deleteSentRequest, updateSentRequestNotes } from '$lib/api/quoteRequests.js';
 
   export let sentRequests = [];
 
   const dispatch = createEventDispatcher();
+
+  // Notes autosave on blur; track the last-saved value per request so unchanged blurs don't hit the API
+  let savedNotes = {};
+  let savingId = null;
+  let failedId = null;
+
+  async function saveNotes(request, value) {
+    const saved = savedNotes[request.id] ?? request.notes ?? '';
+    if (value === saved) return;
+    savingId = request.id;
+    failedId = null;
+    try {
+      await updateSentRequestNotes(request.id, value);
+      savedNotes[request.id] = value;
+      request.notes = value.trim() ? value : null;
+    } catch (err) {
+      console.error('Error saving notes:', err);
+      failedId = request.id;
+    } finally {
+      savingId = null;
+    }
+  }
 
   function formatDate(dateString) {
     const date = new Date(dateString);
@@ -73,6 +95,7 @@
             <th>Contact</th>
             <th>Contact Email</th>
             <th>Discipline</th>
+            <th>Notes</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -101,6 +124,21 @@
                     {#if r?.discipline}<span class="discipline-tag">{r.discipline}</span>{:else}-{/if}
                   </div>
                 {/each}
+              </td>
+              <td class="notes-cell">
+                <textarea
+                  class="notes-input"
+                  class:failed={failedId === request.id}
+                  rows="2"
+                  placeholder="Add notes…"
+                  value={request.notes ?? ''}
+                  on:blur={(e) => saveNotes(request, e.currentTarget.value)}
+                ></textarea>
+                {#if savingId === request.id}
+                  <span class="notes-status">Saving…</span>
+                {:else if failedId === request.id}
+                  <span class="notes-status notes-error">Save failed</span>
+                {/if}
               </td>
               <td class="actions-cell">
                 <button
@@ -201,6 +239,42 @@
 
   .recipient-line a:hover {
     text-decoration: underline;
+  }
+
+  .notes-cell {
+    min-width: 220px;
+  }
+
+  .notes-input {
+    width: 100%;
+    resize: vertical;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.8125rem;
+    color: var(--color-slate-800);
+    background: var(--color-slate-50);
+  }
+
+  .notes-input:focus {
+    outline: none;
+    border-color: var(--color-primary-500);
+    box-shadow: var(--focus-ring-blue);
+    background: white;
+  }
+
+  .notes-input.failed {
+    border-color: var(--color-red-500);
+  }
+
+  .notes-status {
+    font-size: 0.75rem;
+    color: var(--color-slate-400);
+  }
+
+  .notes-error {
+    color: var(--color-red-600);
   }
 
   .discipline-tag {

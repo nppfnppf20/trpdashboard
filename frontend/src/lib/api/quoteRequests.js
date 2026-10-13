@@ -87,6 +87,25 @@ export async function saveSentRequest(projectId, data) {
 }
 
 /**
+ * Update the notes on a sent request
+ * @param {number} requestId - Sent request ID
+ * @param {string} notes - New notes text (blank clears them)
+ * @returns {Promise<{id: number, notes: string|null}>}
+ */
+export async function updateSentRequestNotes(requestId, notes) {
+  const response = await authFetch(`${API_BASE}/sent-requests/${requestId}/notes`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.details || error.error || 'Failed to update notes');
+  }
+  return response.json();
+}
+
+/**
  * Merge template with project and surveyor data
  * @param {number} templateId - Template ID
  * @param {string} projectId - Project UUID

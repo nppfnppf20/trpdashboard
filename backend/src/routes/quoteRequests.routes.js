@@ -13,6 +13,7 @@ router.post('/templates/:id/merge', quoteRequestsController.mergeTemplate);
 router.get('/projects/:projectId/sent-requests', quoteRequestsController.getSentRequestsForProject);
 router.post('/projects/:projectId/sent-requests', quoteRequestsController.createSentRequest);
 router.get('/sent-requests/:id', quoteRequestsController.getSentRequestById);
+router.patch('/sent-requests/:id/notes', quoteRequestsController.updateSentRequestNotes);
 router.delete('/sent-requests/:id', quoteRequestsController.deleteSentRequest);
 
 // Email sending

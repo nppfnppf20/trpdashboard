@@ -188,6 +188,31 @@ export async function deleteSentRequest(req, res) {
   }
 }
 
+export async function updateSentRequestNotes(req, res) {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body;
+
+    if (notes !== null && notes !== undefined && typeof notes !== 'string') {
+      return res.status(400).json({ error: 'notes must be a string' });
+    }
+
+    const result = await quoteRequestsService.updateSentRequestNotes(parseInt(id), notes);
+
+    if (!result) {
+      return res.status(404).json({ error: 'Sent request not found' });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating sent request notes:', error);
+    res.status(500).json({
+      error: 'Failed to update notes',
+      details: error.message
+    });
+  }
+}
+
 // Matches a person's name as written in the notes (full, first-name-only, surname-only, any
 // casing) to one contact of an organisation. Returns the contact id, or null if none or ambiguous.
 function matchContactByName(contacts, rawName) {

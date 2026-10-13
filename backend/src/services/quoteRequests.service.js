@@ -416,6 +416,20 @@ export async function deleteSentRequest(id) {
 }
 
 /**
+ * Update the free-text notes on a sent request
+ * @param {number} id - Sent request ID
+ * @param {string|null} notes - New notes (blank clears them)
+ * @returns {Promise<Object|undefined>} { id, notes } or undefined if not found
+ */
+export async function updateSentRequestNotes(id, notes) {
+  const result = await pool.query(
+    'UPDATE admin_console.sent_quote_requests SET notes = $1 WHERE id = $2 RETURNING id, notes',
+    [notes && notes.trim() ? notes : null, id]
+  );
+  return result.rows[0];
+}
+
+/**
  * Update a template
  * @param {number} id - Template ID
  * @param {Object} updates - { templateName, description, subjectLine, templateContent }
