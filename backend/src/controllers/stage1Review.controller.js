@@ -1418,20 +1418,96 @@ export async function generateStage1Review(req, res) {
     const briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
     // ── 3. Policies ───────────────────────────────────────────────────────────
-    const { rows: policyRows } = await pool.query(
-      `SELECT policy_reference, policy_name, policy_text, policy_type
-       FROM public.project_policies WHERE project_id = $1 ORDER BY policy_type, id`,
-      [projectId]
-    );
-    const formatPolicies = rows => rows.length
-      ? rows.map(p => {
-          const header = `${p.policy_reference}${p.policy_name ? `: ${p.policy_name}` : ''}`;
-          const text = p.policy_text?.trim() ? `\n${p.policy_text.trim()}` : '';
-          return header + text;
-        }).join('\n\n')
+    // Organised the same way as the Planning Assessment / Planning Policy sections
+    // (appeal.controller.js buildPolicyDocumentContext): by plan, with key-policy
+    // tagging, supporting context, and Development Plan (local + neighbourhood) vs
+    // emerging vs national separated. Supplementary / other guidance documents have
+    // no prompt slot of their own, so they follow the adopted policies in
+    // LOCAL_POLICIES under their own headings.
+    const [{ rows: policyRows }, { rows: planRows }] = await Promise.all([
+      pool.query(
+        `SELECT id, policy_reference, policy_name, policy_text, relevant_supporting_text,
+                policy_type, is_key_policy, plan_id
+         FROM public.project_policies WHERE project_id = $1
+         ORDER BY is_key_policy DESC, policy_type, id`,
+        [projectId]
+      ),
+      pool.query(
+        `SELECT id, section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance
+         FROM public.policy_documents WHERE project_id = $1 ORDER BY section, id`,
+        [projectId]
+      ),
+    ]);
+
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const planStatus = doc => {
+      if (!doc.year_adopted) return doc.section === 'adopted' ? '[STATUS OR DATE REQUIRED]' : 'emerging';
+      const month = doc.month_adopted ? `${MONTHS[doc.month_adopted - 1]} ` : '';
+      return `${doc.section === 'adopted' ? 'adopted' : 'emerging'} ${month}${doc.year_adopted}`;
+    };
+    const policyLines = p => {
+      const ref = p.policy_reference ? `Policy ${p.policy_reference}: ` : '';
+      const lines = [`▪ ${ref}${p.policy_name || ''}${p.is_key_policy ? ' [KEY POLICY]' : ''}`.trimEnd()];
+      if (p.policy_text?.trim()) lines.push(p.policy_text.trim());
+      if (p.relevant_supporting_text?.trim()) lines.push(`Supporting context: ${p.relevant_supporting_text.trim().slice(0, 400)}`);
+      return lines.join('\n');
+    };
+    // Groups policies under "### Plan name (status)" headings; policies not yet
+    // linked to a plan record go under a catch-all heading.
+    const formatByPlan = policies => {
+      if (!policies.length) return '';
+      const byPlan = new Map();
+      const unlinked = [];
+      for (const p of policies) {
+        if (p.plan_id && planRows.some(d => d.id === p.plan_id)) {
+          if (!byPlan.has(p.plan_id)) byPlan.set(p.plan_id, []);
+          byPlan.get(p.plan_id).push(p);
+        } else {
+          unlinked.push(p);
+        }
+      }
+      const blocks = [];
+      for (const [planId, ps] of byPlan) {
+        const doc = planRows.find(d => d.id === planId);
+        blocks.push(`### ${doc.plan_name} (${planStatus(doc)})\n${ps.map(policyLines).join('\n\n')}`);
+      }
+      if (unlinked.length) blocks.push(`### (Not yet linked to a specific plan)\n${unlinked.map(policyLines).join('\n\n')}`);
+      return blocks.join('\n\n');
+    };
+    const planSection = id => planRows.find(d => d.id === id)?.section;
+    const docBlock = d => {
+      const lines = [`▪ ${d.plan_name}${d.year_adopted ? ` (${planStatus(d)})` : ''}`];
+      if (d.summary?.trim()) lines.push(d.summary.trim());
+      if (d.relevance?.trim()) lines.push(`Relevance to project: ${d.relevance.trim()}`);
+      return lines.join('\n');
+    };
+
+    const emergingPolicyRows = policyRows.filter(p => p.policy_type !== 'national' && planSection(p.plan_id) === 'emerging');
+    const adoptedPolicyRows  = policyRows.filter(p => (p.policy_type === 'local' || p.policy_type === 'neighbourhood') && planSection(p.plan_id) !== 'emerging');
+    const guidancePolicyRows = policyRows.filter(p => p.policy_type !== 'national' && p.policy_type !== 'local' && p.policy_type !== 'neighbourhood' && planSection(p.plan_id) !== 'emerging');
+    const nationalPolicyRows = policyRows.filter(p => p.policy_type === 'national');
+
+    const supplementaryDocs = planRows.filter(d => d.section === 'supplementary');
+    const otherDocs         = planRows.filter(d => d.section === 'other');
+    const emergingDocs      = planRows.filter(d => d.section === 'emerging');
+
+    const localSections = [
+      formatByPlan(adoptedPolicyRows),
+      guidancePolicyRows.length ? `## Supplementary and other policy\n${formatByPlan(guidancePolicyRows)}` : '',
+      supplementaryDocs.length ? `## Supplementary Planning Documents\n${supplementaryDocs.map(docBlock).join('\n\n')}` : '',
+      otherDocs.length ? `## Other Policy and Guidance\n${otherDocs.map(docBlock).join('\n\n')}` : '',
+    ].filter(Boolean);
+    const localPolicies = localSections.length ? localSections.join('\n\n') : '(none recorded)';
+
+    const emergingSections = [
+      emergingDocs.length ? `## Emerging plans and documents\n${emergingDocs.map(docBlock).join('\n\n')}` : '',
+      formatByPlan(emergingPolicyRows),
+    ].filter(Boolean);
+    const emergingPolicies = emergingSections.length ? emergingSections.join('\n\n') : '(not provided)';
+
+    const nationalPolicies = nationalPolicyRows.length
+      ? nationalPolicyRows.map(policyLines).join('\n\n')
       : '(none recorded)';
-    const localPolicies    = formatPolicies(policyRows.filter(p => p.policy_type === 'local'));
-    const nationalPolicies = formatPolicies(policyRows.filter(p => p.policy_type === 'national'));
 
     // ── 3b. Drafting Issue Notes — same admin_console.drafting_issues table used by
     // Planning Statement v3 (project-scoped, visible in the same workspace's
@@ -1538,7 +1614,7 @@ export async function generateStage1Review(req, res) {
     const highLevelReview = startingDocs['high_level_planning_review']?.trim() || '(not provided)';
 
     // ── 7. Substitute variables ───────────────────────────────────────────────
-    // OTHER_PROJECT_DOCUMENTS / EMERGING_POLICIES / REPORTS_REQUIRED_FOR_APPLICATION /
+    // OTHER_PROJECT_DOCUMENTS / REPORTS_REQUIRED_FOR_APPLICATION /
     // ADDITIONAL_DRAFTING_INSTRUCTIONS have no backing data source anywhere in the
     // system today (see stage1_review_v3's master prompt, migration 137, for why each
     // is kept as a token rather than stripped — schema/UI gaps, not just missing data).
@@ -1553,7 +1629,7 @@ export async function generateStage1Review(req, res) {
       .replace(/\{\{NATIONAL_POLICIES\}\}/g, nationalPolicies)
       .replace(/\{\{DRAFTING_ISSUE_NOTES\}\}/g, draftingIssueNotes)
       .replace(/\{\{OTHER_PROJECT_DOCUMENTS\}\}/g, '(not provided)')
-      .replace(/\{\{EMERGING_POLICIES\}\}/g, '(not provided)')
+      .replace(/\{\{EMERGING_POLICIES\}\}/g, emergingPolicies)
       .replace(/\{\{REPORTS_REQUIRED_FOR_APPLICATION\}\}/g, '(not provided)')
       .replace(/\{\{ADDITIONAL_DRAFTING_INSTRUCTIONS\}\}/g, '(not provided)')
       .replace(/\{\{STYLE_GUIDE\}\}/g, styleTemplate?.style_text?.trim() || TONE_EXAMPLE_RAW || '(no house style example set for this document type)');

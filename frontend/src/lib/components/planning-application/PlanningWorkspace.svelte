@@ -38,6 +38,7 @@
   import SectionExampleModal from '$lib/components/planning-application/SectionExampleModal.svelte';
   import SuggestPromptModal from '$lib/components/planning-application/SuggestPromptModal.svelte';
   import RegenerateConfirmModal from '$lib/components/planning-application/RegenerateConfirmModal.svelte';
+  import NoSourcesWarningModal from '$lib/components/planning-application/NoSourcesWarningModal.svelte';
   import { actionPromptState, openActionPrompt, closeActionPrompt, saveActionPromptStore, resetActionPromptStore, setPromptText } from '$lib/stores/actionPrompts.js';
 
   const draftKeyState  = actionPromptState('draft_key_summaries');
@@ -535,12 +536,56 @@
   // Regenerate confirmation modal
   let regenPending = null; // { typeId, opts } | null
 
-  function requestGenerate(typeId, opts, hasDraft) {
+  // Cards with a Sources button need at least one source (a ticked briefing/meeting
+  // note, or a filled document slot) before generating. Checked fresh on each click
+  // so it reflects whatever was last saved in the Sources modal.
+  let noSourcesPending = null; // { type, opts, hasDraft } | null
+
+  async function hasAnySources(type) {
+    try {
+      const rows = type.tool === 'stage1'
+        ? await getStage1StartingDocs(project.id)
+        : await getStartingDocs(project.id, type.tool === 'appeal' ? parseInt(type.id.replace('appeal_', ''), 10) : type.id);
+      return rows.some(r => {
+        if (r.slot_slug === 'briefing_source_mode') return false;
+        if (r.slot_slug === 'briefing_notes') {
+          try { return JSON.parse(r.content_text || '[]').length > 0; } catch { return false; }
+        }
+        return !!r.content_text?.trim();
+      });
+    } catch (err) {
+      console.warn('[sources check] failed, skipping warning:', err);
+      return true; // can't tell, so don't block generation
+    }
+  }
+
+  async function requestGenerate(type, opts, hasDraft) {
+    const needsSources = type.tool === 'appeal' || type.tool === 'stage1' || type.tool === 'hlpv';
+    if (needsSources && !(await hasAnySources(type))) {
+      noSourcesPending = { type, opts, hasDraft };
+      return;
+    }
+    proceedGenerate(type.id, opts, hasDraft);
+  }
+
+  function proceedGenerate(typeId, opts, hasDraft) {
     if (hasDraft) {
       regenPending = { typeId, opts };
     } else {
       handleGenerate(typeId, opts);
     }
+  }
+
+  function noSourcesAddSources() {
+    const { type } = noSourcesPending;
+    noSourcesPending = null;
+    startingDocsType = { id: type.id, slug: type.slug, name: type.name, ...(type.tool === 'stage1' ? { tool: type.tool } : {}) };
+  }
+
+  function noSourcesGenerateAnyway() {
+    const { type, opts, hasDraft } = noSourcesPending;
+    noSourcesPending = null;
+    proceedGenerate(type.id, opts, hasDraft);
   }
 
   function confirmRegen() {
@@ -941,7 +986,7 @@
         <span class="draft-editor-title">{activeType?.name ?? 'Blank Document'}</span>
         <div class="draft-editor-actions">
           {#if $activeDraftTypeId !== 'blank'}
-          <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => requestGenerate($activeDraftTypeId, undefined, true)}>
+          <button class="draft-regen-btn" disabled={$draftGenerating === $activeDraftTypeId} on:click={() => requestGenerate(activeType ?? { id: $activeDraftTypeId }, undefined, true)}>
             {#if $draftGenerating === $activeDraftTypeId}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-sync"></i> Regenerate{/if}
           </button>
           {/if}
@@ -1125,7 +1170,7 @@
                       <i class="las la-file-import"></i> Sources
                     </button>
                   {/if}
-                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id || isComingSoon} on:click={() => requestGenerate(type.id, { developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || '' }, !!draft)}>
+                  <button class="draft-generate-btn" disabled={$draftGenerating === type.id || isComingSoon} on:click={() => requestGenerate(type, { developmentType: appealCardDevTypes[type.id] || null, provider: draftProviderByType[type.id] || '' }, !!draft)}>
                     {#if $draftGenerating === type.id}
                       <div class="mini-spinner"></div> Generating...
                     {:else}
@@ -1565,6 +1610,14 @@
 <!-- Regenerate confirmation modal -->
 {#if regenPending}
   <RegenerateConfirmModal on:close={() => regenPending = null} on:confirm={confirmRegen} />
+{/if}
+
+{#if noSourcesPending}
+  <NoSourcesWarningModal
+    on:close={() => noSourcesPending = null}
+    on:addSources={noSourcesAddSources}
+    on:generate={noSourcesGenerateAnyway}
+  />
 {/if}
 
 <PromptEditModal

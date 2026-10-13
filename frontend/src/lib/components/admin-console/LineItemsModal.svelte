@@ -77,10 +77,22 @@
       handleClose();
     }
   }
+
+  // Re-parents the backdrop to <body>. Surveyor Management wraps its pages in a
+  // `zoom: 0.87` container, which also scales position:fixed descendants, so the
+  // 100vw/100vh backdrop would stop short of the screen edges (leaving white strips).
+  function portal(node) {
+    document.body.appendChild(node);
+    return {
+      destroy() {
+        node.remove();
+      }
+    };
+  }
 </script>
 
 {#if show}
-  <div class="modal-backdrop" on:click={handleBackdropClick} role="presentation">
+  <div class="modal-backdrop" use:portal on:click={handleBackdropClick} role="presentation">
     <div class="modal-content" class:wide={comparing} on:click|stopPropagation role="dialog" aria-modal="true">
       <div class="modal-header">
         <div>
