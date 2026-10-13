@@ -180,7 +180,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    /* Above the Surveyor Management modal (z-index 2000), which this opens on top of */
+    z-index: 2100;
     backdrop-filter: blur(2px);
   }
 

@@ -90,7 +90,7 @@
           {:else if sentError}
             <p class="sm-state sm-state-error">{sentError}</p>
           {:else}
-            <SentBriefingsHistory {sentRequests} on:deleted={handleSentDeleted} />
+            <SentBriefingsHistory {sentRequests} maxHeight="none" on:deleted={handleSentDeleted} />
           {/if}
         </div>
       {/if}

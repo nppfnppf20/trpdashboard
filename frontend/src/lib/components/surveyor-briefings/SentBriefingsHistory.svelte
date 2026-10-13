@@ -3,6 +3,9 @@
   import { deleteSentRequest, updateSentRequestNotes } from '$lib/api/quoteRequests.js';
 
   export let sentRequests = [];
+  // Cap on the table's own scroll height. The full page keeps it short so the Master
+  // Templates section below stays reachable; the modal has nothing below, so it passes 'none'.
+  export let maxHeight = '420px';
 
   const dispatch = createEventDispatcher();
 
@@ -86,7 +89,7 @@
       <p>No quote requests sent yet</p>
     </div>
   {:else}
-    <div class="table-wrapper">
+    <div class="table-wrapper" style="max-height: {maxHeight}">
       <table class="data-table">
         <thead>
           <tr>
