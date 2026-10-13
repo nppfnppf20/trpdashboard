@@ -96,8 +96,8 @@
   let reviewSaved = false;
   let reviewError = null;
   let reviewDateSuggestions = [];
-  // Key dates must each be added or skipped before the note can be saved, so a
-  // suggestion can't be silently lost once the review step closes.
+  // Tracks which suggested key dates have been added or skipped, so the review
+  // step can remind the user about any left undecided (it doesn't block Save).
   let decidedDates = new Set();
   $: undecidedDates = reviewDateSuggestions.filter(d => !decidedDates.has(d._key)).length;
   function markDateDecided(key) {
@@ -438,7 +438,7 @@
                 />
               {/each}
               {#if undecidedDates > 0}
-                <p class="mnp-date-hint">Add or skip each key date before saving ({undecidedDates} left).</p>
+                <p class="mnp-date-hint">{undecidedDates} not added or skipped yet — saving the note won't add them.</p>
               {/if}
             </section>
           {/if}
@@ -461,8 +461,11 @@
         {#if reviewError}<p class="mnp-error-sm">{reviewError}</p>{/if}
       </div>
       <div class="mnp-footer">
+        {#if undecidedDates > 0}
+          <span class="mnp-save-hint"><i class="las la-info-circle"></i> {undecidedDates} key date{undecidedDates > 1 ? 's' : ''} above not added or skipped yet</span>
+        {/if}
         <button class="btn btn-secondary btn-sm" on:click={handleClose} disabled={reviewSaving}>Close without saving</button>
-        <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving || undecidedDates > 0} title={undecidedDates > 0 ? 'Add or skip each suggested key date first' : ''}>
+        <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving}>
           {#if reviewSaving}<span class="mnp-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
         </button>
       </div>
@@ -538,6 +541,7 @@
   .mnp-body { padding: 1.25rem 1.5rem; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 0.6rem; }
   .mnp-review-body { gap: 1.25rem; }
   .mnp-review-include { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--color-slate-700); }
+  .mnp-save-hint { display: flex; align-items: center; gap: 0.3rem; margin-right: auto; font-size: 0.8rem; color: var(--color-amber-800); }
   .mnp-date-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
   .mnp-review-section-title { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-slate-800); }
 

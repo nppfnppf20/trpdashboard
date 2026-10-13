@@ -62,7 +62,7 @@
   let reviewSaving = false;
   let reviewSaved = false;     // true once Save has committed — swaps footer to the Issues Tracker prompt
   let reviewError = null;
-  let reviewDateSuggestions = []; // dates spotted in the transcript — each must be added or skipped before Save
+  let reviewDateSuggestions = []; // dates spotted in the transcript — reminder shown if any are left undecided
   let decidedDates = new Set();
   $: undecidedDates = reviewDateSuggestions.filter(d => !decidedDates.has(d._key)).length;
   function markDateDecided(key) {
@@ -946,7 +946,7 @@
                 />
               {/each}
               {#if undecidedDates > 0}
-                <p class="mn-date-hint">Add or skip each key date before saving ({undecidedDates} left).</p>
+                <p class="mn-date-hint">{undecidedDates} not added or skipped yet — saving the note won't add them.</p>
               {/if}
             </section>
           {/if}
@@ -979,8 +979,11 @@
         </div>
 
         <div class="modal-footer">
+          {#if undecidedDates > 0}
+            <span class="mn-save-hint"><i class="las la-info-circle"></i> {undecidedDates} key date{undecidedDates > 1 ? 's' : ''} above not added or skipped yet</span>
+          {/if}
           <button class="btn btn-secondary btn-sm" on:click={closeReview} disabled={reviewSaving}>Close without saving</button>
-          <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving || undecidedDates > 0} title={undecidedDates > 0 ? 'Add or skip each suggested key date first' : ''}>
+          <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving}>
             {#if reviewSaving}<span class="mn-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
           </button>
         </div>
@@ -1483,6 +1486,7 @@
     color: var(--color-teal-600);
   }
   .mn-date-suggestions { display: flex; flex-direction: column; gap: 0.5rem; }
+  .mn-save-hint { display: flex; align-items: center; gap: 0.3rem; margin-right: auto; font-size: 0.8rem; color: var(--color-amber-800); }
   .mn-date-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
   .mn-issues-prompt-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
   .mn-error-sm { color: var(--color-red-600); font-size: 0.8rem; margin: 0.25rem 0 0; }
