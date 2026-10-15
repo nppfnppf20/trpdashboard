@@ -10,6 +10,7 @@
   import AppealPrecedentTab from '$lib/components/projects/AppealPrecedentTab.svelte';
   import RelevantPolicyTab from '$lib/components/projects/RelevantPolicyTab.svelte';
   import LpaDecisionAnalysisTab from '$lib/components/projects/LpaDecisionAnalysisTab.svelte';
+  import WorkbookTab from '$lib/components/projects/WorkbookTab.svelte';
   import ProjectDocsTab from '$lib/components/projects/ProjectDocsTab.svelte';
   import PlanningHistoryTab from '$lib/components/projects/PlanningHistoryTab.svelte';
   import RelevantDocumentsSection from '$lib/components/projects/RelevantDocumentsSection.svelte';
@@ -75,6 +76,7 @@
     similar_schemes: 'Similar Schemes',
     appeal_precedent: 'Appeal Precedent',
     lpa_decision_analysis: 'LPA Decision Analysis',
+    project_workbook: 'Project Workbook',
     conflict: 'Nearby Renewables Check',
     hlpv: 'Renewables HLPV Analysis',
     project_docs: 'Project Docs',
@@ -1266,6 +1268,10 @@
             </div>
           {:else if activeTab === 'lpa_decision_analysis'}
             <LpaDecisionAnalysisTab project={projectData} />
+          {:else if activeTab === 'project_workbook'}
+            <div class="ct-scroll-wrap">
+              <WorkbookTab project={projectData} />
+            </div>
           {:else if activeTab === 'project_docs'}
             <ProjectDocsTab project={projectData} />
           {:else if activeTab === 'project_chat'}
