@@ -8,17 +8,8 @@
 
   export let projectId;
 
-  // Order and names of the seven planning stages. Keys match the stage_key check in migration 190.
-  const STAGES = [
-    { key: 'appraisal',           num: '1(a)', name: 'Detailed appraisal' },
-    { key: 'pre_app',             num: '2',    name: 'Pre-application discussions' },
-    { key: 'eia_screening',       num: '3',    name: 'EIA screening' },
-    { key: 'surveys',             num: '4(a)', name: 'Specialist surveys and reports' },
-    { key: 'public_engagement',   num: '5',    name: 'Public engagement' },
-    { key: 'prepare_application', num: '6',    name: 'Prepare planning application' },
-    { key: 'post_submission',     num: '7',    name: 'Post-submission' }
-  ];
-  const STATUS_LABEL = { not_started: 'Not started', in_progress: 'In progress', complete: 'Complete', na: 'Not applicable' };
+  import { PLANNING_STAGES as STAGES, STAGE_STATUS_LABEL as STATUS_LABEL } from '$lib/utils/planningStages.js';
+
   const STATUS_OPTIONS = ['not_started', 'in_progress', 'complete', 'na'];
 
   let root;

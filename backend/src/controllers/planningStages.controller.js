@@ -44,6 +44,26 @@ function setStage(db, projectId, key, status, userId) {
   );
 }
 
+// One entry per project for the global projects table: { project_id, applicable, stages: { <key>: status } }.
+// Only stages that have a row are listed; the client treats a missing key as not started.
+export async function getPlanningStagesOverview(req, res) {
+  try {
+    const [{ rows: projects }, { rows: stages }] = await Promise.all([
+      pool.query('SELECT id, planning_stages_applicable AS applicable FROM public.projects'),
+      pool.query('SELECT project_id, stage_key, status FROM public.project_planning_stages'),
+    ]);
+    const byProject = new Map(projects.map(p => [p.id, { project_id: p.id, applicable: p.applicable, stages: {} }]));
+    for (const s of stages) {
+      const entry = byProject.get(s.project_id);
+      if (entry) entry.stages[s.stage_key] = s.status;
+    }
+    res.json([...byProject.values()]);
+  } catch (err) {
+    console.error('getPlanningStagesOverview failed:', err);
+    res.status(500).json({ error: 'Failed to load the planning stages' });
+  }
+}
+
 export async function getPlanningStages(req, res) {
   const projectId = projectIdOf(req, res);
   if (projectId === null) return;

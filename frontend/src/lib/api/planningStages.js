@@ -11,7 +11,12 @@ async function json(res, fallback) {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
-// All three resolve with the whole state: { applicable, stages: [{ key, status, changed_at }] } (seven stages, in order)
+// Every project's stages for the global table: [{ project_id, applicable, stages: { <key>: status } }] (a missing key means not started)
+export async function getPlanningStagesOverview() {
+  return json(await authFetch('/api/planning-stages/overview'), 'Failed to load the planning stages');
+}
+
+// The three below resolve with the whole state: { applicable, stages: [{ key, status, changed_at }] } (seven stages, in order)
 export async function getPlanningStages(projectId) {
   return json(await authFetch(`/api/planning-stages/projects/${projectId}`), 'Failed to load the planning stages');
 }

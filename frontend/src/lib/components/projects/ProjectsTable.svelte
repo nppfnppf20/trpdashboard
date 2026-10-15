@@ -2,6 +2,8 @@
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { authFetch } from '$lib/api/client.js';
+  import { getPlanningStagesOverview } from '$lib/api/planningStages.js';
+  import ProjectStageTracker from './ProjectStageTracker.svelte';
   import {
     editModalOpen, createProjectModalOpen,
     openEditModal as openSharedEditModal
@@ -13,13 +15,15 @@
   let searchTerm = '';
   let sortColumn = 'created_at';
   let sortDirection = 'desc';
+  // 'stage' (planning stage squares, opens by default) or 'info' (all the project detail columns)
+  let view = 'stage';
 
   // Top scrollbar mirror
   let tableWrapper;
   let topScroller;
   let phantomWidth = 0;
 
-  $: if (tableWrapper && sortedProjects) {
+  $: if (tableWrapper && sortedProjects && view) {
     tick().then(() => {
       if (tableWrapper) phantomWidth = tableWrapper.scrollWidth;
     });
@@ -74,6 +78,22 @@
       error = err.message;
     } finally {
       loading = false;
+    }
+    fetchStages();
+  }
+
+  // Planning stage squares. If this fails (e.g. migration 190 not applied yet) the stage columns are
+  // left out so the rest of the table is unaffected.
+  let stageMap = new Map();
+  let stagesLoaded = false;
+  async function fetchStages() {
+    try {
+      const rows = await getPlanningStagesOverview();
+      stageMap = new Map(rows.map(r => [r.project_id, r]));
+      stagesLoaded = true;
+    } catch (err) {
+      console.error('Error fetching planning stages:', err);
+      stagesLoaded = false;
     }
   }
 
@@ -177,6 +197,11 @@
     </div>
   </div>
 
+  <div class="view-tabs" role="tablist">
+    <button class="view-tab" class:active={view === 'stage'} role="tab" aria-selected={view === 'stage'} on:click={() => (view = 'stage')}>Stage view</button>
+    <button class="view-tab" class:active={view === 'info'} role="tab" aria-selected={view === 'info'} on:click={() => (view = 'info')}>Information view</button>
+  </div>
+
   {#if loading}
     <div class="loading-state">
       <div class="spinner"></div>
@@ -196,6 +221,8 @@
         <button class="btn btn-primary" on:click={() => searchTerm = ''}>Clear search</button>
       {/if}
     </div>
+  {:else if view === 'stage'}
+    <ProjectStageTracker projects={sortedProjects} {stageMap} {stagesLoaded} />
   {:else}
     <div class="top-scroller" bind:this={topScroller} on:scroll={onTopScroll}>
       <div style="width: {phantomWidth}px; height: 1px;"></div>
@@ -434,6 +461,28 @@
     width: 250px;
     max-width: 250px;
   }
+
+  .view-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 2px solid var(--color-slate-200);
+    margin-bottom: 1rem;
+  }
+  .view-tab {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    padding: 0.5rem 1rem;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-slate-500);
+    cursor: pointer;
+  }
+  .view-tab:hover { color: var(--color-slate-800); }
+  .view-tab.active { color: var(--color-primary-600); border-bottom-color: var(--color-primary-600); }
+
 
   .project-count {
     font-size: 0.875rem;

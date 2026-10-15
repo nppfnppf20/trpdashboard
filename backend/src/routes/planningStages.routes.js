@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  getPlanningStagesOverview,
   getPlanningStages,
   updatePlanningStage,
   completeAndStartNext,
@@ -7,6 +8,9 @@ import {
 } from '../controllers/planningStages.controller.js';
 
 const router = express.Router();
+
+// Every project's stage statuses in one call, for the global projects table
+router.get('/overview', getPlanningStagesOverview);
 
 // All seven stages for a project, plus whether the strip is shown for it
 router.get('/projects/:projectId', getPlanningStages);
