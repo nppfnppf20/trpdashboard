@@ -220,7 +220,9 @@
 
   .app-main {
     flex: 1;
-    min-width: 0;
+    /* Content stops shrinking at this width; narrower windows scroll sideways
+       instead of squashing everything. */
+    min-width: 1100px;
     max-width: none;
     margin: 0;
   }

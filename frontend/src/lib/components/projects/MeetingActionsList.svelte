@@ -13,6 +13,7 @@
   export let showCompleted = false;   // include resolved actions, greyed out
   export let showMeeting = false;     // show which meeting an action came from
   export let emptyText = 'No actions.';
+  export let compact = false;         // narrow widget: smaller text, icon-only buttons
   /** @type {'open' | 'resolved' | 'all' | null} */
   export let statusFilter = null;     // 'open' | 'resolved' | 'all' — overrides showCompleted when set
   export let search = '';             // case-insensitive match on action text, owner and meeting
@@ -140,7 +141,7 @@
   }
 </script>
 
-<div class="mal">
+<div class="mal" class:mal--compact={compact}>
   {#if error}<p class="mal-error">{error}</p>{/if}
   {#if loading}
     <p class="mal-state">Loading…</p>
@@ -203,11 +204,11 @@
         {#if editingId !== a.id && fieldsId !== a.id}
           <div class="mal-buttons">
             {#if a.status !== 'complete'}
-              <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
-                <i class="las la-comment"></i> Update
+              <button class="btn btn-secondary btn-sm" title="Update" aria-label="Update" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
+                <i class="las la-comment"></i><span class="mal-btn-label"> Update</span>
               </button>
-              <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => submit(a, 'completed')}>
-                <i class="las la-check"></i> Resolve
+              <button class="btn btn-secondary btn-sm" title="Resolve" aria-label="Resolve" disabled={busyId === a.id} on:click={() => submit(a, 'completed')}>
+                <i class="las la-check"></i><span class="mal-btn-label"> Resolve</span>
               </button>
             {/if}
             <button class="btn btn-icon btn-ghost" title="Edit action" aria-label="Edit action" disabled={busyId === a.id} on:click={() => startFieldsEdit(a)}>
@@ -239,6 +240,12 @@
   .mal-update { font-size: 0.75rem; color: var(--color-slate-600); padding-left: 0.6rem; border-left: 2px solid var(--color-slate-200); }
   .mal-update-date { color: var(--color-slate-400); margin-right: 0.3rem; }
   .mal-edit { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.25rem; }
+  .mal--compact .mal-row { gap: 0.4rem; padding: 0.35rem 0.45rem; font-size: 0.72rem; }
+  .mal--compact .mal-text { font-size: 0.72rem; }
+  .mal--compact .mal-meta, .mal--compact .mal-update, .mal--compact .mal-notes { font-size: 0.65rem; }
+  .mal--compact .mal-btn-label { display: none; }
+  .mal--compact .mal-buttons { gap: 0.15rem; }
+  .mal--compact .mal-buttons :global(.btn) { padding: 0; width: 1.4rem; height: 1.4rem; min-width: 0; justify-content: center; font-size: 0.8rem; }
   .mal-notes { font-size: 0.72rem; color: var(--color-slate-500); }
   .mal-fields { display: flex; flex-direction: column; gap: 0.4rem; }
   .mal-fields-row { display: grid; grid-template-columns: 1fr 9.5rem; gap: 0.5rem; }

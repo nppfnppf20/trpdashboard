@@ -35,11 +35,6 @@
     padding: 1.25rem 1.75rem 0;
   }
 
-  @media (max-width: 1100px) {
-    .ov-grid {
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: none;
-      min-height: 0;
-    }
-  }
+  /* No narrow-window breakpoint: the app shell has a minimum content width,
+     so below that the page scrolls sideways rather than reflowing this grid. */
 </style>

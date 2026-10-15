@@ -256,6 +256,7 @@
         loadKey={actionsLoadKey}
         showProject={merged}
         showMeeting
+        compact
         emptyText="No outstanding actions."
       />
     </div>
