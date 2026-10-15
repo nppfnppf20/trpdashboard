@@ -4,13 +4,17 @@
   // closing it returns to where you were without a reload.
   import MeetingActionsList from '$lib/components/projects/MeetingActionsList.svelte';
   import { getMeetingActions } from '$lib/api/meetingNotes.js';
-  import { bumpActionsVersion } from '$lib/stores/keyDates.js';
+  import AddMeetingActionModal from './AddMeetingActionModal.svelte';
+  import { bumpActionsVersion, actionsVersion } from '$lib/stores/keyDates.js';
 
   export let projects = [];
   export let onClose = () => {};
 
+  let showAdd = false;
+
   $: merged = projects.length > 1;
-  $: loadKey = projects.map(p => p.id).sort((a, b) => a - b).join(',');
+  // actionsVersion in the key so the list reloads after an action is added.
+  $: loadKey = projects.map(p => p.id).sort((a, b) => a - b).join(',') + ':' + $actionsVersion;
 
   let statusFilter = 'open';
   let search = '';
@@ -29,9 +33,14 @@
   <div class="am-modal">
     <div class="am-header">
       <h2 class="am-title"><i class="las la-tasks"></i> Actions</h2>
-      <button class="btn btn-icon btn-ghost" on:click={onClose} title="Close" aria-label="Close">
-        <i class="las la-times"></i>
-      </button>
+      <div class="am-header-actions">
+        <button class="btn btn-primary btn-sm" on:click={() => (showAdd = true)}>
+          <i class="las la-plus"></i> Add action
+        </button>
+        <button class="btn btn-icon btn-ghost" on:click={onClose} title="Close" aria-label="Close">
+          <i class="las la-times"></i>
+        </button>
+      </div>
     </div>
 
     <div class="am-toolbar">
@@ -60,7 +69,12 @@
   </div>
 </div>
 
+{#if showAdd}
+  <AddMeetingActionModal {projects} onClose={() => (showAdd = false)} />
+{/if}
+
 <style>
+  .am-header-actions { display: flex; align-items: center; gap: 0.5rem; }
   .am-backdrop {
     position: fixed;
     inset: 0;

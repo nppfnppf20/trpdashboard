@@ -437,7 +437,9 @@ export async function createMeetingAction(req, res) {
     const { rows } = await pool.query(
       `INSERT INTO planning_applications.meeting_actions
          (project_id, transcript_id, action_text, owner, assigned_user_id, due_date, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+       VALUES ($1, $2, $3, $4,
+               COALESCE($5, (SELECT id FROM public.user_profiles WHERE LOWER(display_name) = LOWER($4) LIMIT 1)),
+               $6, $7) RETURNING *`,
       [projectId, transcript_id || null, action_text.trim(), owner?.trim() || null, assigned_user_id || null, due_date || null, notes?.trim() || null]
     );
     res.status(201).json(rows[0]);

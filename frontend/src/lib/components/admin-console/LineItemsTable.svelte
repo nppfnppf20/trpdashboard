@@ -115,11 +115,11 @@
   }
 
   .line-items-table th {
-    padding: 0.75rem;
+    padding: 0.6rem 0.65rem;
     text-align: left;
     font-weight: 600;
     color: var(--color-slate-500);
-    font-size: 0.875rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -133,8 +133,9 @@
   }
 
   .line-items-table td {
-    padding: 0.875rem 0.75rem;
+    padding: 0.65rem 0.65rem;
     color: var(--color-slate-800);
+    font-size: 0.8rem;
   }
 
   .item-name {
@@ -143,7 +144,7 @@
 
   .item-description {
     color: var(--color-slate-500);
-    font-size: 0.875rem;
+    font-size: 0.76rem;
   }
 
   .cost-column {
@@ -166,7 +167,7 @@
   }
 
   .total-row td {
-    padding: 1rem 0.75rem;
+    padding: 0.8rem 0.65rem;
     font-weight: 600;
   }
 
@@ -174,12 +175,12 @@
     text-align: right;
     color: var(--color-slate-500);
     text-transform: uppercase;
-    font-size: 0.875rem;
+    font-size: 0.72rem;
     letter-spacing: 0.05em;
   }
 
   .total-amount {
-    font-size: 1.125rem;
+    font-size: 1rem;
     color: var(--color-slate-900);
   }
 
@@ -199,9 +200,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    padding: 0.25rem 0.5rem;
+    padding: 0.2rem 0.45rem;
     border-radius: 4px;
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     font-weight: 500;
   }
 
@@ -232,7 +233,7 @@
   }
 
   .subtotal-row td {
-    padding: 0.75rem;
+    padding: 0.6rem 0.65rem;
     font-weight: 500;
   }
 
@@ -244,28 +245,28 @@
   /* Compact mode for side-by-side compare panes */
   .line-items-table.compact th {
     padding: 0.5rem 0.5rem;
-    font-size: 0.72rem;
+    font-size: 0.66rem;
   }
 
   .line-items-table.compact td {
-    padding: 0.55rem 0.5rem;
-    font-size: 0.8rem;
+    padding: 0.5rem 0.5rem;
+    font-size: 0.74rem;
     line-height: 1.45;
   }
 
   .line-items-table.compact .item-description {
-    font-size: 0.76rem;
+    font-size: 0.7rem;
   }
 
   .line-items-table.compact .total-row td {
-    padding: 0.7rem 0.5rem;
+    padding: 0.6rem 0.5rem;
   }
 
   .line-items-table.compact .total-amount {
-    font-size: 0.95rem;
+    font-size: 0.88rem;
   }
 
   .line-items-table.compact .total-label {
-    font-size: 0.72rem;
+    font-size: 0.66rem;
   }
 </style>

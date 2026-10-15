@@ -1,6 +1,7 @@
 <script>
   import ProgrammeTab from '$lib/components/projects/ProgrammeTab.svelte';
   import ActionsModal from './ActionsModal.svelte';
+  import AddMeetingActionModal from './AddMeetingActionModal.svelte';
   import MeetingActionsList from '$lib/components/projects/MeetingActionsList.svelte';
   import { getMeetingActions } from '$lib/api/meetingNotes.js';
   import ViewDateModal from '$lib/components/admin-console/ViewDateModal.svelte';
@@ -44,6 +45,7 @@
 
   let showProgrammeModal = false;
   let showActionsModal = false;
+  let showAddAction = false;
   let trackerKeyDates = []; // [{ date, title, source?, _project }] merged from conditions/issues/consultation/programme events
 
   // Per-project cache so re-ticking an already-seen project in the merged
@@ -240,9 +242,14 @@
       </button>
     </div>
     {#if tab === 'actions'}
-      <button class="widget-expand" on:click={() => (showActionsModal = true)}>
-        Open <i class="las la-angle-right"></i>
-      </button>
+      <div class="kd-head-actions">
+        <button class="widget-expand" on:click={() => (showAddAction = true)} title="Add an action manually">
+          <i class="las la-plus"></i> Add action
+        </button>
+        <button class="widget-expand" on:click={() => (showActionsModal = true)}>
+          Open <i class="las la-angle-right"></i>
+        </button>
+      </div>
     {:else if !merged}
       <button class="widget-expand" on:click={openProgramme}>
         Programme <i class="las la-angle-right"></i>
@@ -279,6 +286,10 @@
   {/if}
 </div>
 
+{#if showAddAction}
+  <AddMeetingActionModal projects={projectList} onClose={() => (showAddAction = false)} />
+{/if}
+
 {#if showActionsModal}
   <ActionsModal projects={projectList} onClose={() => (showActionsModal = false)} />
 {/if}
@@ -311,6 +322,7 @@
 
 <style>
   .kd-tabs { display: flex; gap: 0.35rem; }
+  .kd-head-actions { display: flex; align-items: center; gap: 0.5rem; }
   .kd-body { display: flex; flex-direction: column; gap: 9px; }
   .kd-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.5rem 0; }
   .kd-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; }

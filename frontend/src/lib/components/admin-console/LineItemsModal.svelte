@@ -189,8 +189,8 @@
     background: white;
     border-radius: 12px;
     box-shadow: var(--shadow-modal);
-    max-width: 800px;
-    width: 90%;
+    max-width: 1100px;
+    width: 95%;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
@@ -213,14 +213,14 @@
 
   .modal-header h2 {
     margin: 0;
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: var(--color-slate-800);
   }
 
   .modal-subtitle {
     margin: 0.25rem 0 0 0;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: var(--color-slate-500);
   }
 
