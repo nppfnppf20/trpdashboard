@@ -38,7 +38,7 @@
   ];
   $: parents = parentOptions(type, items, refs);
   $: hasParent = type === 'action' || type === 'issue';
-  $: colCount = 4 + (type !== 'decision' ? 4 : 1) + 1 + 1 + (hasParent ? 1 : 0) + 1;
+  $: colCount = 4 + (type !== 'decision' ? 4 : 1) + 1 + 1 + (hasParent ? 1 : 0) + 1 + 1;
 
   function statusClass(s) {
     return s === 'completed' ? 'badge-select-completed' : s === 'in progress' ? 'badge-select-client-review' : 'badge-select-pending';
@@ -82,7 +82,7 @@
 </div>
 
 <div class="table-wrapper wt-wrap">
-  <table class="wt-table" style="min-width: {type === 'action' ? 1500 : 1400}px">
+  <table class="wt-table" style="min-width: {type === 'action' ? 1600 : 1500}px">
     <thead>
       <tr>
         <th class="wt-ref-col">Ref</th>
@@ -96,6 +96,7 @@
         <th class="wt-w-gate">Gate ref</th>
         {#if hasParent}<th class="wt-w-parent">{type === 'action' ? 'Under risk' : 'Arising from'}</th>{/if}
         <th class="wt-w-links">Linked with</th>
+        <th class="wt-w-del">Delete</th>
       </tr>
     </thead>
     <tbody>
@@ -105,9 +106,10 @@
         {:else}
           {@const it = r.it}
           <tr class:wt-done={r.done}>
-            <td class="wt-ref-col">
-              <button class="wt-ref" on:click={() => onOpenLinks('item', it.id, '')} title="Open everything linked to {refs[it.id]}">{refs[it.id] || ''}</button>
-              <button class="wt-del" class:armed={armedId === it.id} on:click={() => arm(it.id)}>{armedId === it.id ? 'Sure?' : 'Delete'}</button>
+            <!-- the whole cell is the click target; the button inside keeps it reachable from the keyboard -->
+            <!-- svelte-ignore a11y-click-events-have-key-events, a11y-no-noninteractive-element-interactions -->
+            <td class="wt-ref-col wt-ref-click" on:click={() => onOpenLinks('item', it.id, '')} title="Open everything linked to {refs[it.id]}">
+              <button class="wt-ref" type="button">{refs[it.id] || ''}</button>
             </td>
             <td><textarea class="wt-cell" rows="1" use:autosize={it.subject} value={it.subject} on:change={e => text(it, 'subject', e)} aria-label="Subject"></textarea></td>
             <td><textarea class="wt-cell wt-left" rows="1" use:autosize={it.text} value={it.text} on:change={e => text(it, 'text', e)} aria-label={LABEL[type].text}></textarea></td>
@@ -158,6 +160,7 @@
                 <span class="wt-none">None</span>
               {/each}
             </td>
+            <td class="wt-del-cell"><button class="wt-del" class:armed={armedId === it.id} on:click={() => arm(it.id)}>{armedId === it.id ? 'Sure?' : 'Delete'}</button></td>
           </tr>
         {/if}
       {:else}
@@ -187,7 +190,10 @@
   .wt-table tr:hover td.wt-ref-col { background: var(--color-slate-50); }
   .wt-w-subject { width: 10rem; } .wt-w-text { width: 20rem; } .wt-w-date { width: 8.25rem; } .wt-w-owner { width: 6.75rem; }
   .wt-w-pri { width: 4.25rem; } .wt-w-status { width: 8rem; } .wt-w-update { width: 17rem; } .wt-w-gate { width: 5.75rem; }
-  .wt-w-parent { width: 11rem; } .wt-w-links { width: 12rem; }
+  .wt-w-parent { width: 11rem; } .wt-w-links { width: 12rem; } .wt-w-del { width: 5rem; }
+  .wt-ref-click { cursor: pointer; }
+  .wt-ref-click:hover .wt-ref { text-decoration-style: solid; }
+  .wt-del-cell { text-align: center; }
 
   .wt-ref { display: block; margin-inline: auto; background: none; border: none; padding: 0.375rem 0.125rem 0.125rem; cursor: pointer; font-family: 'Courier New', monospace; font-size: 0.8125rem; font-weight: 600; color: var(--color-primary-600); text-align: center; text-decoration: underline dotted; text-underline-offset: 3px; }
   .wt-ref:hover { text-decoration-style: solid; }

@@ -1,6 +1,7 @@
 <script>
   import { PLANNING_STAGES, STAGE_STATUS_LABEL } from '$lib/utils/planningStages.js';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
+  import { selectProject } from '$lib/stores/projectSelection.js';
 
   export let projects = [];
   export let stageMap = new Map();   // project id -> { applicable, stages: { <key>: status } }
@@ -9,6 +10,12 @@
 
   const statusOf = (project, key) => stageMap.get(project.id)?.stages[key] || 'not_started';
   const notApplicable = project => stageMap.get(project.id)?.applicable === false;
+  // Same as picking the project in the sidebar switcher: select it, then open its Overview.
+  function openOverview(id) {
+    selectProject(id);
+    openProjectModal(id, 'details');
+  }
+
   const subline = project => [project.client, (project.sectors || []).join(', ')].filter(Boolean).join(' · ');
 </script>
 
@@ -38,7 +45,7 @@
 
         {#each projects as project (project.id)}
           <div class="name-cell">
-            <button class="name-btn" on:click={() => openProjectModal(project.id)}>{project.project_name}</button>
+            <button class="name-btn" on:click={() => openOverview(project.id)}>{project.project_name}</button>
             {#if subline(project)}<small>{subline(project)}</small>{/if}
           </div>
           {#if notApplicable(project)}
@@ -47,7 +54,7 @@
             {#each PLANNING_STAGES as stage}
               {@const status = statusOf(project, stage.key)}
               <div class="cell">
-                <span class="sq {status}" title="Stage {stage.num} {stage.name}: {STAGE_STATUS_LABEL[status]}"></span>
+                <span class="sq mk {status}" title="Stage {stage.num} {stage.name}: {STAGE_STATUS_LABEL[status]}"></span>
               </div>
             {/each}
           {/if}
@@ -74,8 +81,8 @@
   .scroll { overflow-x: auto; }
   .grid {
     display: grid;
-    grid-template-columns: 220px repeat(7, minmax(112px, 1fr));
-    min-width: 1040px;
+    grid-template-columns: 220px repeat(7, minmax(92px, 1fr));
+    min-width: 864px;
     align-items: stretch;
   }
 
@@ -150,7 +157,9 @@
     background: var(--color-white);
     box-sizing: border-box;
   }
-  .legend .sq { width: 12px; height: 12px; border-radius: 3px; }
+  /* Pill markers: 52 by 20, fully rounded; the legend uses a smaller one. */
+  .sq.mk { width: 52px; height: 20px; border-radius: 10px; }
+  .legend .sq { width: 24px; height: 12px; border-radius: 6px; }
   .sq.complete { background: var(--color-emerald-100); border-color: var(--color-emerald-600); }
   .sq.in_progress { background: var(--color-primary-600); border-color: var(--color-primary-600); }
   .sq.na {

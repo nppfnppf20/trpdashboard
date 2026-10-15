@@ -57,16 +57,18 @@
           <th class="wg-w-score">1 to 5</th>
           <th class="wg-w-comment wg-left">Comments / evidence</th>
           <th class="wg-w-links">Linked with</th>
+          <th class="wg-w-del">Delete</th>
         </tr>
       </thead>
       <tbody>
         {#each sections as s (s.section)}
-          <tr class="wg-section"><td colspan="6">{s.section}. {s.title}<span class="wg-avg">avg {f1(avg(s.rows))}</span></td></tr>
+          <tr class="wg-section"><td colspan="7">{s.section}. {s.title}<span class="wg-avg">avg {f1(avg(s.rows))}</span></td></tr>
           {#each s.rows as g (g.id)}
             <tr>
-              <td class="wg-ref-col">
-                <button class="wg-ref" on:click={() => onOpenLinks('gate', g.id, '')} title="Open everything linked to {g.ref}">{g.ref}</button>
-                <button class="wg-del" class:armed={armedId === g.id} on:click={() => arm(g.id)}>{armedId === g.id ? 'Sure?' : 'Delete'}</button>
+              <!-- the whole cell is the click target; the button inside keeps it reachable from the keyboard -->
+              <!-- svelte-ignore a11y-click-events-have-key-events, a11y-no-noninteractive-element-interactions -->
+              <td class="wg-ref-col wg-ref-click" on:click={() => onOpenLinks('gate', g.id, '')} title="Open everything linked to {g.ref}">
+                <button class="wg-ref" type="button">{g.ref}</button>
               </td>
               <td class="wg-q">{g.question}</td>
               <td><input class="wg-cell" list="wb-owners" value={g.owner} on:change={e => text(g, 'owner', e)} aria-label="Responsible for {g.ref}"></td>
@@ -83,6 +85,7 @@
                   <span class="wg-none">None</span>
                 {/each}
               </td>
+              <td class="wg-del-cell"><button class="wg-del" class:armed={armedId === g.id} on:click={() => arm(g.id)}>{armedId === g.id ? 'Sure?' : 'Delete'}</button></td>
             </tr>
           {/each}
         {/each}
@@ -96,14 +99,17 @@
   .wg-bar { display: flex; align-items: center; margin-bottom: 0.625rem; }
   .wg-empty { padding: 2rem; text-align: center; color: var(--color-slate-500); }
   .wg-wrap { background: var(--color-white); }
-  .wg-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1000px; table-layout: fixed; font-size: var(--font-size-sm); color: var(--color-slate-700); }
+  .wg-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1080px; table-layout: fixed; font-size: var(--font-size-sm); color: var(--color-slate-700); }
   .wg-table th { text-align: center; padding: 0.6rem 0.5rem; font-size: 0.78rem; font-weight: 600; color: var(--color-slate-600); background: var(--color-slate-50); border-bottom: 2px solid var(--color-slate-200); }
   .wg-table td { padding: 0.25rem 0.375rem; vertical-align: middle; text-align: center; border-bottom: 1px solid var(--color-slate-200); }
   .wg-table tr:hover td { background: var(--color-slate-50); }
   .wg-ref-col { width: 5rem; position: sticky; left: 0; background: var(--color-white); border-right: 1px solid var(--color-slate-200); z-index: 1; }
   th.wg-ref-col { background: var(--color-slate-50); z-index: 2; }
   .wg-table tr:hover td.wg-ref-col { background: var(--color-slate-50); }
-  .wg-w-owner { width: 7.5rem; } .wg-w-score { width: 4.75rem; } .wg-w-comment { width: 24rem; } .wg-w-links { width: 13rem; }
+  .wg-w-owner { width: 7.5rem; } .wg-w-score { width: 4.75rem; } .wg-w-comment { width: 24rem; } .wg-w-links { width: 13rem; } .wg-w-del { width: 5rem; }
+  .wg-ref-click { cursor: pointer; }
+  .wg-ref-click:hover .wg-ref { text-decoration-style: solid; }
+  .wg-del-cell { text-align: center; }
   .wg-section td { background: var(--color-slate-50); font-weight: 600; padding: 0.5rem 0.75rem; text-align: left; }
   .wg-section:hover td { background: var(--color-slate-50); }
   .wg-avg { float: right; font-size: 0.75rem; font-weight: 500; color: var(--color-slate-500); }
