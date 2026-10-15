@@ -136,22 +136,24 @@
 
   function handleFileChange(e) {
     handOffFile(e.target.files?.[0]);
+    e.target.value = '';
   }
 </script>
 
 <div class="widget">
   <div class="widget-head">
-    <div class="widget-title">
+    <button class="widget-title-link" on:click={openManage} title="Open Surveyor Management">
       <i class="las la-user-tie"></i>
-      Surveyor Management
-    </div>
-    <button class="widget-expand" on:click={openManage}>
-      Manage <i class="las la-angle-right"></i>
+      Surveyor management
+      <i class="las la-angle-right widget-title-chev"></i>
+    </button>
+    <button class="widget-icon-btn" on:click={openManage} title="Open Surveyor Management" aria-label="Open Surveyor Management">
+      <i class="las la-expand-arrows-alt"></i>
     </button>
   </div>
   <div class="widget-body sv-body">
     {#if merged}
-      <select class="form-input sv-target-select" bind:value={targetProjectId}>
+      <select class="form-input sv-target-select" bind:value={targetProjectId} title="Which project a new quote is added to">
         {#each projectList as p (p.id)}
           <option value={p.id}>{p.project_name}</option>
         {/each}
@@ -168,7 +170,6 @@
         <i class="las la-magic"></i> Fee Quote Request
       </button>
     </div>
-
     {#if inputMode === 'upload'}
       <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
       <div
@@ -193,21 +194,20 @@
         <i class="las la-magic"></i> Process
       </button>
     {/if}
-
     {#if loading}
       <div class="sv-state">Loading…</div>
     {:else if error}
       <div class="sv-state sv-state-error">{error}</div>
     {:else if stats}
-      <div class="sv-stats">
-        <div><div class="sv-num">{stats.quotesSent}</div><div class="sv-label">Sent</div></div>
-        <div><div class="sv-num">{stats.quotesReceived}</div><div class="sv-label">Received</div></div>
-        <div><div class="sv-num">{stats.quotesInstructed}</div><div class="sv-label">Instructed</div></div>
+      <div class="sv-summary">
+        <b>{stats.quotesSent}</b> sent &middot; <b>{stats.quotesReceived}</b> received &middot; <b>{stats.quotesInstructed}</b> instructed
       </div>
-      <div class="sv-spend">£{stats.instructedSpend.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} instructed spend</div>
-      <div class="sv-badges">
-        <span class="badge badge-warning">{stats.worksOutstanding} outstanding</span>
-        <span class="badge badge-success">{stats.worksCompleted} completed</span>
+      <div class="sv-spend-row">
+        <span class="sv-spend">£{stats.instructedSpend.toLocaleString('en-GB', { maximumFractionDigits: 0 })} instructed</span>
+        <span class="sv-badges">
+          <span class="badge badge-warning">{stats.worksOutstanding} outstanding</span>
+          <span class="badge badge-success">{stats.worksCompleted} completed</span>
+        </span>
       </div>
     {/if}
   </div>
@@ -228,9 +228,9 @@
   .sv-target-select { font-size: 11px; padding: 0.35rem 0.5rem; }
   .sv-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.5rem 0; }
   .sv-state-error { color: var(--color-red-600); }
-  .sv-stats { display: flex; gap: 16px; }
-  .sv-num { font-size: 17px; font-weight: 700; color: var(--color-slate-900); }
-  .sv-label { font-size: 10px; color: var(--color-slate-400); }
+  .sv-summary { font-size: 12px; color: var(--color-slate-600); }
+  .sv-summary b { font-size: 15px; font-weight: 700; color: var(--color-slate-900); }
+  .sv-spend-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .sv-spend { font-size: 12px; font-weight: 600; color: var(--color-slate-700); }
   .sv-badges { display: flex; gap: 6px; }
 

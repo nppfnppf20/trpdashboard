@@ -130,6 +130,7 @@
   }
 
   function handleDrop(e) {
+    if (merged) return;
     e.preventDefault();
     dragOver = false;
     handOffFile(e.dataTransfer?.files?.[0]);
@@ -137,7 +138,13 @@
 
   function handleFileChange(e) {
     handOffFile(e.target.files?.[0]);
+    e.target.value = '';
   }
+
+  function openAll() {
+    if (merged) goto('/meeting-notes'); else openProjectModal(projectId, 'meeting_notes', 'details');
+  }
+
 
   function viewNotes(n) {
     editingNote = n;
@@ -191,12 +198,13 @@
 
 <div class="widget">
   <div class="widget-head">
-    <div class="widget-title">
+    <button class="widget-title-link" on:click={openAll} title={merged ? 'Open Meeting Notes' : 'View all meeting notes'}>
       <i class="las la-file-signature"></i>
-      Meeting Notes and Project Docs
-    </div>
-    <button class="widget-expand" on:click={() => merged ? goto('/meeting-notes') : openProjectModal(projectId, 'meeting_notes', 'details')}>
-      View all <i class="las la-angle-right"></i>
+      Meeting notes and docs
+      <i class="las la-angle-right widget-title-chev"></i>
+    </button>
+    <button class="widget-icon-btn" on:click={openAll} title={merged ? 'Open Meeting Notes' : 'Open all meeting notes'} aria-label="Open all meeting notes">
+      <i class="las la-expand-arrows-alt"></i>
     </button>
   </div>
   <div class="widget-body mnw-body">
@@ -263,17 +271,19 @@
       <div class="mnw-state mnw-state-error">{error}</div>
     {:else}
       {#each notes as n}
-        <div class="mnw-note">
-          <div class="mnw-note-title">
-            {n.title}
-            {#if merged}<span class="badge badge-neutral mnw-project-tag">{n._project?.project_name}</span>{/if}
+        <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
+        <div class="mnw-note" role="button" tabindex="0" on:click={() => viewNotes(n)} on:keydown={(e) => e.key === 'Enter' && viewNotes(n)}>
+          <div class="mnw-note-main">
+            <div class="mnw-note-title">
+              {n.title}
+              {#if merged}<span class="badge badge-neutral mnw-project-tag">{n._project?.project_name}</span>{/if}
+            </div>
+            <div class="mnw-note-date">{formatDate(n.meeting_date || n.created_at)}</div>
           </div>
-          <div class="mnw-note-date">{formatDate(n.meeting_date || n.created_at)}</div>
           <div class="mnw-note-btns">
-            <button class="mnw-note-btn" on:click={() => viewNotes(n)}><i class="las la-eye"></i> View Notes</button>
-            <button class="mnw-note-btn" on:click={() => viewTranscript(n)}><i class="las la-file-alt"></i> Transcript</button>
-            <button class="mnw-note-btn" on:click={() => downloadNote(n)}><i class="las la-download"></i> Download</button>
-            <button class="mnw-note-btn mnw-note-btn-danger" on:click={() => removeNote(n)} title="Delete this note" aria-label="Delete this note"><i class="las la-trash"></i></button>
+            <button class="mnw-note-btn" title="View transcript" aria-label="View transcript" on:click|stopPropagation={() => viewTranscript(n)}><i class="las la-file-alt"></i></button>
+            <button class="mnw-note-btn" title="Download notes" aria-label="Download notes" on:click|stopPropagation={() => downloadNote(n)}><i class="las la-download"></i></button>
+            <button class="mnw-note-btn mnw-note-btn-danger" title="Delete this note" aria-label="Delete this note" on:click|stopPropagation={() => removeNote(n)}><i class="las la-trash"></i></button>
           </div>
         </div>
       {/each}
@@ -325,7 +335,6 @@
     color: var(--color-slate-500);
   }
 
-
   .mnw-checkbox-row { display: flex; align-items: center; gap: 0.3rem; font-size: 11px; font-weight: 600; color: var(--color-slate-500); cursor: pointer; }
   .mnw-checkbox-row input[type="checkbox"] { width: 12px; height: 12px; accent-color: var(--color-primary-500); cursor: pointer; }
 
@@ -353,18 +362,29 @@
   .mnw-state { font-size: 0.8rem; color: var(--color-slate-400); text-align: center; padding: 0.25rem 0; }
   .mnw-state-error { color: var(--color-red-600); }
 
-  .mnw-note + .mnw-note { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--color-slate-100); }
+  .mnw-note {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 4px 4px; margin: 0 -4px; border-radius: 6px; cursor: pointer;
+  }
+  .mnw-note + .mnw-note { border-top: 1px solid var(--color-slate-100); }
+  .mnw-note:hover, .mnw-note:focus-visible { background: var(--color-slate-50); }
+  .mnw-note-main { min-width: 0; }
   .mnw-note-title { font-size: 12px; font-weight: 600; color: var(--color-slate-900); }
-  .mnw-note-date { font-size: 10px; color: var(--color-slate-400); margin-bottom: 4px; }
+  .mnw-note-date { font-size: 10px; color: var(--color-slate-400); }
 
-  .mnw-note-btns { display: flex; flex-wrap: wrap; gap: 5px; }
+  .mnw-note-btns { display: flex; gap: 2px; flex-shrink: 0; }
   .mnw-note-btn {
-    display: flex; align-items: center; gap: 3px;
-    padding: 2px 7px; border-radius: 5px;
-    border: 1px solid var(--color-slate-200); background: var(--color-white);
-    font-size: 0.625rem; font-weight: 600; color: var(--color-slate-600);
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 5px;
+    border: 0; background: none;
+    font-size: 0.9375rem; color: var(--color-slate-500);
     cursor: pointer; font-family: inherit;
   }
-  .mnw-note-btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
-  .mnw-note-btn-danger:hover { background: var(--color-red-50); color: var(--color-red-600); border-color: var(--color-red-200); }
+  .mnw-note-btn:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
+  .mnw-note-btn-danger:hover { background: var(--color-red-50); color: var(--color-red-600); }
+  /* Icons appear on hover or keyboard focus where there is a pointer; always visible on touch. */
+  @media (hover: hover) {
+    .mnw-note-btns { opacity: 0; transition: opacity 0.12s; }
+    .mnw-note:hover .mnw-note-btns, .mnw-note:focus-within .mnw-note-btns { opacity: 1; }
+  }
 </style>

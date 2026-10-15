@@ -649,9 +649,12 @@
     <div class="modal-container">
       <div class="modal-header">
         <div class="header-title">
-          <div class="modal-breadcrumb">{projectData?.project_name || 'Project Workspace'}</div>
+          <!-- On the Overview the project name is the title (it is already highlighted in the sidebar), so the breadcrumb and the word "Overview" are dropped -->
+          {#if activeTab !== 'details'}
+            <div class="modal-breadcrumb">{projectData?.project_name || 'Project Workspace'}</div>
+          {/if}
           <h2>
-            {tabLabels[activeTab] || 'Project Workspace'}
+            {activeTab === 'details' ? (projectData?.project_name || 'Project Workspace') : (tabLabels[activeTab] || 'Project Workspace')}
             {#if projectData?.status}<span class="status-badge status-{statusClass(projectData.status)}">{projectData.status}</span>{/if}
           </h2>
         </div>

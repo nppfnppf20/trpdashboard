@@ -1,4 +1,5 @@
 <script>
+  import AddMenu from './AddMenu.svelte';
   import {
     getConsultationData,
     createConsultationAdvancements,
@@ -584,10 +585,11 @@
 <div class="widget tr-widget">
   <div class="widget-head tr-head">
     <div>
-      <div class="widget-title">
+      <button class="widget-title-link" on:click={openFullTracker} disabled={merged} title="Open full {activeTrackerLabel}">
         <i class="las la-clipboard-list"></i>
         Trackers
-      </div>
+        {#if !merged}<i class="las la-angle-right widget-title-chev"></i>{/if}
+      </button>
       <div class="tr-pills">
         {#each pillOrder as type (type)}
           <button class="tab-pill" class:active={activeType === type} on:click={() => activeType = type}>
@@ -599,18 +601,19 @@
     {#if !merged}
       <div class="tr-head-actions">
         <button class="btn btn-primary btn-sm" on:click={() => openBulkAdd(null)} disabled={!activeRows.length}>
-          <i class="las la-history"></i> Add Advancement
+          <i class="las la-history"></i> Add advancement
         </button>
-        <button class="btn btn-secondary btn-sm" on:click={() => showMasterAdvancements = true} disabled={!activeRows.length}>
-          <i class="las la-stream"></i> All Advancements
-        </button>
-        <button class="btn btn-icon btn-secondary" title="Open full {activeTrackerLabel}" on:click={openFullTracker}>
+        <AddMenu variant="icon" icon="la-ellipsis-h" title="More" let:close>
+          <button class="am-item" disabled={!activeRows.length} on:click={() => { close(); showMasterAdvancements = true; }}>
+            <i class="las la-stream"></i> All advancements
+          </button>
+        </AddMenu>
+        <button class="widget-icon-btn" title="Open full {activeTrackerLabel}" aria-label="Open full {activeTrackerLabel}" on:click={openFullTracker}>
           <i class="las la-expand-arrows-alt"></i>
         </button>
       </div>
     {/if}
   </div>
-
   <div class="widget-body tr-body">
     {#if loading}
       <div class="tr-state"><div class="mini-spinner"></div> Loading…</div>
@@ -629,7 +632,7 @@
             {#if row.badgeLabel}<span class="badge {row.badgeClass}">{row.badgeLabel}</span>{/if}
           </div>
           {#if row.latest}
-            <button class="progress-cell" on:click={() => openTimelineFor(row)} title={merged ? 'Open in project' : 'View history'}>
+            <button class="progress-cell" on:click={() => openTimelineFor(row)} title="{row.latest.summary} ({merged ? 'open in project' : 'view history'})">
               <span class="progress-cell-date">{formatDate(row.latest.date)} &middot; {row.count} update{row.count !== 1 ? 's' : ''}</span>
               <span class="progress-cell-summary">{row.latest.summary}</span>
             </button>
@@ -730,6 +733,7 @@
 <style>
   .tr-widget { grid-row: span 2; }
   .tr-head { align-items: flex-start; }
+  .tr-head :global(.widget-title-link:disabled) { cursor: default; color: var(--color-slate-900); }
   .tr-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
   .tab-pill {
     font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
@@ -738,7 +742,8 @@
     border: none; cursor: pointer; font-family: inherit;
   }
   .tab-pill.active { background: var(--color-slate-900); color: var(--color-white); }
-  .tr-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex-shrink: 0; }
+  /* One row, expand icon last at the top right like the other widgets (no wrapping onto a second line). */
+  .tr-head-actions { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; flex-shrink: 0; margin-left: auto; }
 
   .tr-body { display: flex; flex-direction: column; gap: 0; padding-top: 6px; }
   .tr-state { padding: 1.5rem; text-align: center; color: var(--color-slate-400); font-size: 0.83rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }

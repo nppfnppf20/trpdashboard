@@ -20,19 +20,27 @@
   const globalNavItems = [
     { href: '/', label: 'Projects', icon: 'la-project-diagram' },
     { href: '/team', label: 'Team', icon: 'la-users' },
-    { href: '/policy', label: 'Policy & Industry Updates', icon: 'la-newspaper' },
+    { href: '/policy', label: 'Policy', icon: 'la-newspaper' },
     { href: '/meeting-notes', label: 'Meeting Notes', icon: 'la-file-signature' },
-    { href: '/webscraper', label: 'Web Scraper Data', icon: 'la-database' }
+    { href: '/webscraper', label: 'Scraper', icon: 'la-database' }
   ];
   // Global pages still being built, tucked into a collapsed folder.
   const underConstructionItems = [
-    { href: '/appeal-search', label: 'Appeal Precedent Search', icon: 'la-gavel' },
+    { href: '/appeal-search', label: 'Appeals', icon: 'la-gavel' },
     { href: '/tenders', label: 'Tenders', icon: 'la-landmark' },
     { href: '/marketing', label: 'Marketing', icon: 'la-bullhorn' }
     // Temporarily hidden — re-add to bring back:
     // { href: '/socioeconomics', label: 'Socioeconomics', icon: 'la-chart-bar' }
   ];
   let underConstructionOpen = false;
+  // With a project selected the project links are the focus, so the Global list folds into one row.
+  // It opens by hand, and stays open while you are on a global page.
+  let globalOpen = false;
+  $: onGlobalPage = $mainView === null && (
+    globalNavItems.some(i => $page.url.pathname === i.href || (i.href !== '/' && $page.url.pathname.startsWith(i.href))) ||
+    underConstructionItems.some(i => $page.url.pathname.startsWith(i.href))
+  );
+  $: showGlobal = !$hasSelectedProject || globalOpen || onGlobalPage;
   // Keep the folder open when you're on one of its pages.
   $: if ($mainView === null && underConstructionItems.some(i => $page.url.pathname.startsWith(i.href))) {
     underConstructionOpen = true;
@@ -153,8 +161,6 @@
   </div>
 
   <div class="nav-scroll">
-    <div class="section-label">Project Workspace</div>
-
     <div class="switcher-wrap">
       <button class="switcher" class:filled={$hasSelectedProject} on:click={toggleSwitcher}>
         <span class="switcher-left">
@@ -219,7 +225,7 @@
         <span>{surveyorManagementItem.label}</span>
       </button>
       {#each workspaceGroups as group}
-        <div class="group-label">{group.label}</div>
+        <div class="group-divider" role="separator" aria-label={group.label}></div>
         {#each group.items as item}
           <button
             class="nav-item workspace-item"
@@ -265,26 +271,36 @@
     {/if}
 
     <div class="divider"></div>
-    <div class="section-label">Global</div>
-    {#each globalNavItems as item}
-      <a href={item.href} class="nav-item" class:active={$mainView === null && ($page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href)))} on:click={goToGlobalPage}>
-        <i class="las {item.icon}"></i>
-        <span>{item.label}</span>
-      </a>
-    {/each}
-
-    <button class="beta-toggle" on:click={() => underConstructionOpen = !underConstructionOpen}>
-      <i class="las la-hard-hat"></i>
-      <span>Under Construction</span>
-      <i class="las la-angle-down beta-caret {underConstructionOpen ? 'open' : ''}"></i>
-    </button>
-    {#if underConstructionOpen}
-      {#each underConstructionItems as item}
-        <a href={item.href} class="nav-item" class:active={$mainView === null && $page.url.pathname.startsWith(item.href)} on:click={goToGlobalPage}>
+    {#if $hasSelectedProject}
+      <button class="beta-toggle" on:click={() => globalOpen = !globalOpen}>
+        <i class="las la-globe"></i>
+        <span>Global pages</span>
+        <i class="las la-angle-down beta-caret {showGlobal ? 'open' : ''}"></i>
+      </button>
+    {:else}
+      <div class="section-label">Global</div>
+    {/if}
+    {#if showGlobal}
+      {#each globalNavItems as item}
+        <a href={item.href} class="nav-item" class:active={$mainView === null && ($page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href)))} on:click={goToGlobalPage}>
           <i class="las {item.icon}"></i>
           <span>{item.label}</span>
         </a>
       {/each}
+
+      <button class="beta-toggle" on:click={() => underConstructionOpen = !underConstructionOpen}>
+        <i class="las la-hard-hat"></i>
+        <span>Under Construction</span>
+        <i class="las la-angle-down beta-caret {underConstructionOpen ? 'open' : ''}"></i>
+      </button>
+      {#if underConstructionOpen}
+        {#each underConstructionItems as item}
+          <a href={item.href} class="nav-item" class:active={$mainView === null && $page.url.pathname.startsWith(item.href)} on:click={goToGlobalPage}>
+            <i class="las {item.icon}"></i>
+            <span>{item.label}</span>
+          </a>
+        {/each}
+      {/if}
     {/if}
 
     <div class="divider"></div>
@@ -356,13 +372,11 @@
     padding: var(--space-3) var(--space-2) var(--space-2);
   }
 
-  .group-label {
-    font-size: 0.625rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: var(--color-slate-400);
-    text-transform: uppercase;
-    padding: var(--space-2) var(--space-2) var(--space-1);
+  /* A thin rule between the groups of project links (replaces the small group headings). */
+  .group-divider {
+    height: 1px;
+    background: var(--color-slate-100);
+    margin: var(--space-2) var(--space-2);
   }
 
   .nav-item {

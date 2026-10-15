@@ -288,35 +288,35 @@
 
 <div class="widget">
   <div class="widget-head">
-    <div class="widget-title">
+    <button class="widget-title-link" on:click={() => openProjectModal(projectId, 'project_chat', 'details')} title="Open Project Chat">
       <i class="las la-comment-dots"></i>
-      Project Chat
-    </div>
+      Project chat
+      <i class="las la-angle-right widget-title-chev"></i>
+    </button>
     <div class="cw-head-actions">
       <button
-        class="cw-sources-btn"
-        class:cw-sources-btn-active={sourcesOpen}
+        class="widget-icon-btn"
+        class:active={sourcesOpen}
         bind:this={sourcesBtn}
         on:click|stopPropagation={toggleSourcesPopover}
         title="Choose which sources the chat can read from"
+        aria-label="Chat sources"
       >
         <i class="las la-layer-group"></i>
-        Sources
         {#if sourcesLoaded}<span class="cw-sources-count">{selectedCount}</span>{/if}
       </button>
       <button
-        class="cw-sources-btn"
-        class:cw-sources-btn-active={toneOpen}
+        class="widget-icon-btn"
+        class:active={toneOpen}
         bind:this={toneBtn}
         on:click|stopPropagation={toggleTonePopover}
-        title="Pick the tone the assistant should use when it drafts an email"
+        title={selectedTone ? `Email tone: ${selectedTone.label}. Pick the tone the assistant uses when it drafts an email` : 'Pick the tone the assistant should use when it drafts an email'}
+        aria-label="Email tone"
       >
         <i class="las la-envelope"></i>
-        Email
-        {#if selectedTone}<span class="cw-sources-count cw-tone-count" title={selectedTone.label}>{selectedTone.label}</span>{/if}
       </button>
-      <button class="widget-expand" on:click={() => openProjectModal(projectId, 'project_chat', 'details')}>
-        Open <i class="las la-angle-right"></i>
+      <button class="widget-icon-btn" on:click={() => openProjectModal(projectId, 'project_chat', 'details')} title="Open Project Chat" aria-label="Open Project Chat">
+        <i class="las la-expand-arrows-alt"></i>
       </button>
     </div>
   </div>
@@ -540,21 +540,12 @@
 
   .cw-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-shrink: 0; }
 
-  .cw-sources-btn {
-    display: flex; align-items: center; gap: 4px;
-    padding: 3px 8px; border-radius: var(--radius-pill);
-    border: 1px solid var(--color-slate-200); background: var(--color-white);
-    font-size: 0.6875rem; font-weight: 600; color: var(--color-slate-600);
-    cursor: pointer; font-family: inherit;
-  }
-  .cw-sources-btn:hover { background: var(--color-slate-50); }
-  .cw-sources-btn-active { border-color: var(--color-primary-200); background: var(--color-primary-50); color: var(--color-primary-700); }
   .cw-sources-count {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 14px; height: 14px; padding: 0 4px; border-radius: var(--radius-pill);
     background: var(--color-slate-800); color: var(--color-white); font-size: 0.625rem; font-weight: 700;
   }
-  .cw-sources-btn-active .cw-sources-count { background: var(--color-primary-600); }
+  .widget-icon-btn.active .cw-sources-count { background: var(--color-primary-600); }
 
   .cw-input-row {
     display: flex; align-items: flex-end; gap: 6px;
@@ -660,12 +651,6 @@
   .cw-context-fill { height: 100%; border-radius: 3px; transition: width 0.2s ease, background 0.2s ease; }
 
   /* ── Email tone popover ── */
-  .cw-tone-count {
-    max-width: 90px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
   .cw-tone-popover { width: 260px; max-height: 320px; }
 

@@ -243,16 +243,16 @@
     </div>
     {#if tab === 'actions'}
       <div class="kd-head-actions">
-        <button class="widget-expand" on:click={() => (showAddAction = true)} title="Add an action manually">
-          <i class="las la-plus"></i> Add action
+        <button class="widget-icon-btn" on:click={() => (showAddAction = true)} title="Add an action manually" aria-label="Add action">
+          <i class="las la-plus"></i>
         </button>
-        <button class="widget-expand" on:click={() => (showActionsModal = true)}>
-          Open <i class="las la-angle-right"></i>
+        <button class="widget-icon-btn" on:click={() => (showActionsModal = true)} title="Open all actions" aria-label="Open all actions">
+          <i class="las la-expand-arrows-alt"></i>
         </button>
       </div>
     {:else if !merged}
-      <button class="widget-expand" on:click={openProgramme}>
-        Programme <i class="las la-angle-right"></i>
+      <button class="widget-icon-btn" on:click={openProgramme} title="Open the Programme" aria-label="Open the Programme">
+        <i class="las la-expand-arrows-alt"></i>
       </button>
     {/if}
   </div>
@@ -264,13 +264,13 @@
         showProject={merged}
         showMeeting
         compact
-        emptyText="No outstanding actions."
+        emptyText="No open actions."
       />
     </div>
   {:else}
   <div class="widget-body kd-body">
     {#if !dates.length}
-      <div class="kd-state">No upcoming dates.</div>
+      <div class="kd-state">No dates yet.</div>
     {:else}
       {#each dates as d}
         <div class="kd-row" class:kd-row-clickable={!!d.id} on:click={() => handleViewDate(d)}>
