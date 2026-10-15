@@ -535,7 +535,83 @@
   // Cards with a Sources button need at least one source (a ticked briefing/meeting
   // note, or a filled document slot) before generating. Checked fresh on each click
   // so it reflects whatever was last saved in the Sources modal.
-  let noSourcesPending = null; // { type, opts, hasDraft } | null
+  // warn: optional override { title, message, hint, addLabel, action: 'sources' | 'issues' } for
+  // warnings other than "no sources at all". sectionRun: set when the warning came from a
+  // single section's Generate button instead of the card's.
+  let noSourcesPending = null; // { type, opts, hasDraft, warn?, sectionRun? } | null
+
+  // Is a meeting note ticked in Sources for this document?
+  async function hasMeetingNote(type) {
+    try {
+      const rows = type.tool === 'stage1'
+        ? await getStage1StartingDocs(project.id)
+        : await getStartingDocs(project.id, type.tool === 'appeal' ? parseInt(type.id.replace('appeal_', ''), 10) : type.id);
+      const slot = rows.find(r => r.slot_slug === 'briefing_notes');
+      try { return JSON.parse(slot?.content_text || '[]').length > 0; } catch { return false; }
+    } catch (err) {
+      console.warn('[meeting note check] failed, skipping warning:', err);
+      return true; // can't tell, so don't block generation
+    }
+  }
+
+  // Has a Pre-application Letter been added in Sources? (Planning Statement main body only.)
+  async function hasPreAppLetter(type) {
+    try {
+      const rows = await getStartingDocs(project.id, parseInt(type.id.replace('appeal_', ''), 10));
+      return !!rows.find(r => r.slot_slug === 'pre_app_letter')?.content_text?.trim();
+    } catch (err) {
+      console.warn('[pre-app letter check] failed, skipping warning:', err);
+      return true; // can't tell, so don't block generation
+    }
+  }
+
+  // Whole-document warning: the main body can be written from a meeting note, a pre-application letter, or both.
+  const NO_NOTE_OR_LETTER_WARNING = {
+    title: 'No meeting note or pre-application letter',
+    message: 'The Planning Statement is written from your meeting note and/or a pre-application letter from the Council. Without either, most of it will be thin or left out.',
+    hint: 'Tick a meeting note or add a pre-application letter in Sources for a fuller draft.',
+    addLabel: 'Add Sources',
+    action: 'sources',
+  };
+
+  const NO_NOTE_WARNING = {
+    title: 'No meeting note selected',
+    message: 'The Planning Statement is written from your meeting note. Without one, most of it will be thin or left out.',
+    hint: 'Tick a meeting note in Sources for a fuller draft.',
+    addLabel: 'Add Sources',
+    action: 'sources',
+  };
+
+  // Soft warnings that apply on top of the "no sources at all" check. Returns null if none apply.
+  async function generateWarning(type) {
+    if (type.slug === 'stage1_review_v3') {
+      try {
+        if ((await getDraftingIssues(project.id)).length === 0) {
+          return {
+            title: 'No policy assessments added',
+            message: 'The Stage 1 Review is built issue by issue from your Policy Assessment. Without any, the issues are picked from your meeting note or review alone.',
+            hint: 'Add policy assessments for a more accurate appraisal.',
+            addLabel: 'Add Policy Assessment',
+            action: 'issues',
+          };
+        }
+      } catch (err) {
+        console.warn('[policy assessment check] failed, skipping warning:', err);
+      }
+      return null;
+    }
+    if (type.slug === 'planning_statement_v3' && !(await hasMeetingNote(type)) && !(await hasPreAppLetter(type))) return NO_NOTE_OR_LETTER_WARNING;
+    return null;
+  }
+
+  // A single section's Generate button. The Planning Assessment warns when no meeting note is ticked.
+  async function requestSectionGenerate(section, type, provider) {
+    if (section.slug === 'planning_assessment' && type.slug === 'planning_statement_v3' && !(await hasMeetingNote(type))) {
+      noSourcesPending = { type, warn: NO_NOTE_WARNING, sectionRun: { section, provider } };
+      return;
+    }
+    requestGenerateSection(section, type.id, provider);
+  }
 
   async function hasAnySources(type) {
     try {
@@ -561,6 +637,11 @@
       noSourcesPending = { type, opts, hasDraft };
       return;
     }
+    const warn = await generateWarning(type);
+    if (warn) {
+      noSourcesPending = { type, opts, hasDraft, warn };
+      return;
+    }
     proceedGenerate(type.id, opts, hasDraft);
   }
 
@@ -573,14 +654,22 @@
   }
 
   function noSourcesAddSources() {
-    const { type } = noSourcesPending;
+    const { type, warn } = noSourcesPending;
     noSourcesPending = null;
+    if (warn?.action === 'issues') {
+      draftingIssuesType = { id: type.id, slug: type.slug, name: type.name };
+      return;
+    }
     startingDocsType = { id: type.id, slug: type.slug, name: type.name, ...(type.tool === 'stage1' ? { tool: type.tool } : {}) };
   }
 
   function noSourcesGenerateAnyway() {
-    const { type, opts, hasDraft } = noSourcesPending;
+    const { type, opts, hasDraft, sectionRun } = noSourcesPending;
     noSourcesPending = null;
+    if (sectionRun) {
+      requestGenerateSection(sectionRun.section, type.id, sectionRun.provider);
+      return;
+    }
     proceedGenerate(type.id, opts, hasDraft);
   }
 
@@ -1148,14 +1237,76 @@
             {@const isComingSoon = type.slug === 'socio_economic_baseline'}
             <div class="card draft-type-card" class:draft-type-card--coming-soon={isComingSoon} class:draft-type-card--wide={type.slug === 'planning_statement_v3'}>
               <div class="draft-type-main">
-                <div class="draft-type-info">
-                  <span class="draft-type-name">
-                    {type.name}
-                    {#if isComingSoon}<span class="coming-soon-badge">Coming Soon</span>{:else}<span class="beta-badge">BETA</span>{/if}
-                  </span>
-                  {#if draft?.generated_at}
-                    <span class="draft-type-meta">Last generated {new Date(draft.generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  {/if}
+                <div class="draft-type-head">
+                  <div class="draft-type-info">
+                    <span class="draft-type-name">
+                      {type.name}
+                      {#if isComingSoon}<span class="coming-soon-badge">Coming Soon</span>{:else}<span class="beta-badge">BETA</span>{/if}
+                    </span>
+                    {#if draft?.generated_at}
+                      <span class="draft-type-meta">Last generated {new Date(draft.generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    {/if}
+                  </div>
+                  <div class="card-icons">
+                    <button class="card-icon-btn" disabled title="Coming soon" aria-label="How this works (coming soon)">
+                      <i class="las la-info"></i>
+                    </button>
+                  <!-- Settings cog — everything else (AI model, the generation prompt, sections)
+                       tucked behind one toggle so the card's primary actions aren't crowded out. -->
+                    <div class="draft-config-group" use:clickOutside={() => { if (configOpenTypeId === type.id) configOpenTypeId = null; }}>
+                    <button class="card-icon-btn" disabled={isComingSoon} title="Settings" aria-label="Settings" aria-expanded={configOpenTypeId === type.id} on:click={(e) => toggleConfig(e, type.id)}>
+                      <i class="las la-cog"></i>
+                    </button>
+                    {#if configOpenTypeId === type.id}
+                      <div class="draft-config-dropdown" style={configDropdownStyle}>
+                        {#if type.slug === 'hlpv_narrative'}
+                          <div class="draft-config-row">
+                            <span class="draft-config-label">Dev type</span>
+                            <select
+                              class="card-dev-type-select"
+                              value={appealCardDevTypes[type.id] ?? ''}
+                              on:change={(e) => { appealCardDevTypes[type.id] = e.target.value; appealCardDevTypes = appealCardDevTypes; }}
+                              title="Development type, selects which guiding brief to use"
+                            >
+                              <option value="">Dev type...</option>
+                              {#each DEV_TYPES as dt}
+                                <option value={dt}>{dt}</option>
+                              {/each}
+                            </select>
+                          </div>
+                        {/if}
+                        <div class="draft-config-row">
+                          <span class="draft-config-label">AI Model</span>
+                          <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft - Default uses the AI Providers admin setting">
+                            <option value="">Default</option>
+                            <option value="anthropic">Claude</option>
+                            <option value="openai">GPT-5.6</option>
+                          </select>
+                        </div>
+                        {#if type.slug === 'planning_statement_v3'}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionsModal(type.id); }}>
+                            <i class="las la-cog"></i> Configure sections
+                          </button>
+                        {:else if type.tool === 'appeal'}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openAppealPrompt(type.id); }}>
+                            <i class="las la-sliders-h"></i> Edit Prompt
+                          </button>
+                        {:else if type.tool === 'stage1' || type.tool === 'hlpv'}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openActionPrompt(type.slug); }}>
+                            <i class="las la-sliders-h"></i> Edit Prompt
+                          </button>
+                        {:else}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionsModal(type.id); }}>
+                            <i class="las la-sliders-h"></i> Edit Section Prompts
+                          </button>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                    <button class="card-icon-btn" disabled title="Coming soon" aria-label="Meeting guide (coming soon)">
+                      <i class="las la-book"></i>
+                    </button>
+                  </div>
                 </div>
                 <div class="draft-type-actions">
                   {#if draft}
@@ -1187,64 +1338,6 @@
                     {/if}
                   {/if}
 
-                  <!-- Config — everything else (LLM choice, dev type, version, Meeting
-                       Guide, the generation prompt itself) tucked behind one toggle so
-                       the card's primary actions above aren't crowded out. -->
-                  <div class="draft-config-group" use:clickOutside={() => { if (configOpenTypeId === type.id) configOpenTypeId = null; }}>
-                    <button class="draft-config-btn" disabled={isComingSoon} on:click={(e) => toggleConfig(e, type.id)}>
-                      <i class="las la-cog"></i> Config <i class="las la-angle-down"></i>
-                    </button>
-                    {#if configOpenTypeId === type.id}
-                      <div class="draft-config-dropdown" style={configDropdownStyle}>
-                        {#if type.slug === 'hlpv_narrative'}
-                          <div class="draft-config-row">
-                            <span class="draft-config-label">Dev type</span>
-                            <select
-                              class="card-dev-type-select"
-                              value={appealCardDevTypes[type.id] ?? ''}
-                              on:change={(e) => { appealCardDevTypes[type.id] = e.target.value; appealCardDevTypes = appealCardDevTypes; }}
-                              title="Development type, selects which guiding brief to use"
-                            >
-                              <option value="">Dev type...</option>
-                              {#each DEV_TYPES as dt}
-                                <option value={dt}>{dt}</option>
-                              {/each}
-                            </select>
-                          </div>
-                        {/if}
-                        <div class="draft-config-row">
-                          <span class="draft-config-label">AI Model</span>
-                          <select class="card-dev-type-select" bind:value={draftProviderByType[type.id]} title="AI model used to generate this draft - Default uses the AI Providers admin setting">
-                            <option value="">Default</option>
-                            <option value="anthropic">Claude</option>
-                            <option value="openai">GPT-5.6</option>
-                          </select>
-                        </div>
-                        {#if (type.tool === 'appeal' || type.tool === 'stage1' || type.tool === 'hlpv') && DRAFTING_ISSUES_SLUGS.includes(type.slug)}
-                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openMeetingGuide({ id: type.id, slug: type.slug, name: type.name }); }}>
-                            <i class="las la-clipboard-list"></i> Meeting Guide
-                          </button>
-                        {/if}
-                        {#if type.slug === 'planning_statement_v3'}
-                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionsModal(type.id); }}>
-                            <i class="las la-cog"></i> Configure sections
-                          </button>
-                        {:else if type.tool === 'appeal'}
-                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openAppealPrompt(type.id); }}>
-                            <i class="las la-sliders-h"></i> Edit Prompt
-                          </button>
-                        {:else if type.tool === 'stage1' || type.tool === 'hlpv'}
-                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openActionPrompt(type.slug); }}>
-                            <i class="las la-sliders-h"></i> Edit Prompt
-                          </button>
-                        {:else}
-                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionsModal(type.id); }}>
-                            <i class="las la-sliders-h"></i> Edit Section Prompts
-                          </button>
-                        {/if}
-                      </div>
-                    {/if}
-                  </div>
                 </div>
               </div>
 
@@ -1270,14 +1363,31 @@
                    two sections spliced into it (Planning Policy, Planning Assessment). -->
               <div class="ps-parts">
                 <div class="ps-part">
-                  <div class="ps-part-head">
-                    <span class="ps-part-name">Main body</span>
-                    <span class="ps-part-sub">Everything except the two sections beside it</span>
-                  </div>
-                  <div class="ps-part-actions">
-                    <button class="draft-setting-btn" title="View / edit the main body prompt" on:click={() => openAppealPrompt(type.id)}>
-                      <i class="las la-sliders-h"></i> Edit prompt
-                    </button>
+                  <div class="ps-part-top">
+                    <div class="ps-part-head">
+                      <span class="ps-part-name">Main body</span>
+                      <span class="ps-part-sub">Everything except the two sections beside it</span>
+                    </div>
+                    <div class="card-icons">
+                      <button class="card-icon-btn" disabled title="Coming soon" aria-label="How this works (coming soon)">
+                        <i class="las la-info"></i>
+                      </button>
+                      <div class="draft-config-group" use:clickOutside={() => { if (configOpenTypeId === `${type.id}-main`) configOpenTypeId = null; }}>
+                        <button class="card-icon-btn" title="Settings" aria-label="Settings" aria-expanded={configOpenTypeId === `${type.id}-main`} on:click={(e) => toggleConfig(e, `${type.id}-main`)}>
+                          <i class="las la-cog"></i>
+                        </button>
+                        {#if configOpenTypeId === `${type.id}-main`}
+                          <div class="draft-config-dropdown" style={configDropdownStyle}>
+                            <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openAppealPrompt(type.id); }}>
+                              <i class="las la-sliders-h"></i> Edit Prompt
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
+                      <button class="card-icon-btn" disabled title="Coming soon" aria-label="Meeting guide (coming soon)">
+                        <i class="las la-book"></i>
+                      </button>
+                    </div>
                   </div>
                   <span class="ps-part-note">Written when you press {draft ? 'Regenerate' : 'Generate'} above.</span>
                 </div>
@@ -1287,32 +1397,54 @@
                 {:else}
                   {#each typeSections as section (section.id)}
                     <div class="ps-part">
-                      <div class="ps-part-head">
-                        <span class="ps-part-name">{section.name}</span>
-                        <span class="ps-part-sub">{section.slug === 'planning_policy' ? 'Lists the policies. Does not assess them' : section.slug === 'planning_assessment' ? 'One subsection per issue' : (section.description || '')}</span>
+                      <div class="ps-part-top">
+                        <div class="ps-part-head">
+                          <span class="ps-part-name">{section.name}</span>
+                          <span class="ps-part-sub">{section.slug === 'planning_policy' ? 'Lists the policies. Does not assess them' : section.slug === 'planning_assessment' ? 'One subsection per issue' : (section.description || '')}</span>
+                        </div>
+                        <div class="card-icons">
+                          <button class="card-icon-btn" disabled title="Coming soon" aria-label="How this works (coming soon)">
+                            <i class="las la-info"></i>
+                          </button>
+                          <div class="draft-config-group" use:clickOutside={() => { if (configOpenTypeId === `${type.id}-${section.id}`) configOpenTypeId = null; }}>
+                            <button class="card-icon-btn" title="Settings" aria-label="Settings" aria-expanded={configOpenTypeId === `${type.id}-${section.id}`} on:click={(e) => toggleConfig(e, `${type.id}-${section.id}`)}>
+                              <i class="las la-cog"></i>
+                            </button>
+                            {#if configOpenTypeId === `${type.id}-${section.id}`}
+                              <div class="draft-config-dropdown" style={configDropdownStyle}>
+                                <div class="draft-config-row">
+                                  <span class="draft-config-label">AI Model</span>
+                                  <select
+                                    class="card-dev-type-select"
+                                    bind:value={sectionProviderById[section.id]}
+                                    title="AI model for this section - Default uses the card's AI Model setting"
+                                  >
+                                    <option value="">Default</option>
+                                    <option value="anthropic">Claude</option>
+                                    <option value="openai">GPT-5.6</option>
+                                  </select>
+                                </div>
+                                <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionPromptEdit(section, type.id); }}>
+                                  <i class="las la-sliders-h"></i> Edit Prompt
+                                </button>
+                              </div>
+                            {/if}
+                          </div>
+                          <button class="card-icon-btn" disabled title="Coming soon" aria-label="Meeting guide (coming soon)">
+                            <i class="las la-book"></i>
+                          </button>
+                        </div>
                       </div>
                       <div class="ps-part-actions">
-                        <button class="draft-setting-btn" title="View / edit this section's prompt" on:click={() => openSectionPromptEdit(section, type.id)}>
-                          <i class="las la-sliders-h"></i> Edit prompt
-                        </button>
                         <button
                           class="draft-generate-btn"
                           disabled={$sectionGenerating === section.id}
                           title="Generate this section only"
-                          on:click={() => requestGenerateSection(section, type.id, sectionProviderById[section.id] || draftProviderByType[type.id] || '')}
+                          on:click={() => requestSectionGenerate(section, type, sectionProviderById[section.id] || draftProviderByType[type.id] || '')}
                         >
                           {#if $sectionGenerating === section.id}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-magic"></i> Generate{/if}
                         </button>
                       </div>
-                      <select
-                        class="card-dev-type-select section-model-select"
-                        bind:value={sectionProviderById[section.id]}
-                        title="AI model for this section - Default uses the card's AI Model setting"
-                      >
-                        <option value="">Default model</option>
-                        <option value="anthropic">Claude</option>
-                        <option value="openai">GPT-5.6</option>
-                      </select>
                       {#if section.slug === 'planning_assessment' && $assessmentIssues.length > 0}
                         <button class="draft-sections-toggle" on:click={() => showAssessmentIssues = !showAssessmentIssues}>
                           Policy assessments ({$assessmentIssues.length})
@@ -1382,7 +1514,7 @@
                             class="section-generate-btn"
                             disabled={$sectionGenerating === section.id}
                             title="Generate entire section"
-                            on:click={() => requestGenerateSection(section, type.id, sectionProviderById[section.id] || draftProviderByType[type.id] || '')}
+                            on:click={() => requestSectionGenerate(section, type, sectionProviderById[section.id] || draftProviderByType[type.id] || '')}
                           >
                             {#if $sectionGenerating === section.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
                           </button>
@@ -1653,6 +1785,7 @@
 
 {#if noSourcesPending}
   <NoSourcesWarningModal
+    {...(noSourcesPending.warn ?? {})}
     on:close={() => noSourcesPending = null}
     on:addSources={noSourcesAddSources}
     on:generate={noSourcesGenerateAnyway}
@@ -2249,12 +2382,45 @@
     gap: 0.625rem;
   }
 
+  .draft-type-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
   .draft-type-info {
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
     min-width: 0;
   }
+
+  .card-icons {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  .card-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 5px;
+    font-size: 1rem;
+    color: var(--color-slate-500);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .card-icon-btn:hover:not(:disabled) { background: var(--color-slate-100); color: var(--color-slate-700); }
+  .card-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .draft-type-name { font-size: 0.9375rem; font-weight: 600; color: var(--color-slate-800); }
   .beta-badge { display: inline-block; margin-left: 6px; font-size: 0.65rem; font-weight: 700; color: var(--color-violet-600); background: var(--color-violet-100); border: 1px solid var(--color-violet-300); border-radius: 4px; padding: 1px 5px; vertical-align: middle; letter-spacing: 0.02em; }
@@ -2383,6 +2549,7 @@
     border-radius: 6px;
   }
   .ps-part--loading { flex-direction: row; align-items: center; color: var(--color-slate-500); font-size: 0.8125rem; }
+  .ps-part-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
   .ps-part-head { display: flex; flex-direction: column; gap: 0.125rem; }
   .ps-part-name { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); }
   .ps-part-sub { font-size: 0.75rem; color: var(--color-slate-500); }
@@ -2899,21 +3066,6 @@
   }
   .btn-from-issue-notes:hover { background: var(--color-emerald-100); border-color: var(--color-slate-400); }
 
-  .draft-config-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.3rem 0.625rem;
-    background: transparent;
-    border: 1px solid var(--color-slate-200);
-    border-radius: 5px;
-    font-size: 0.75rem;
-    color: var(--color-slate-500);
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .draft-config-btn:hover { background: var(--color-slate-100); color: var(--color-slate-700); }
 
   .draft-config-dropdown {
     /* top/left or top/right set inline per-open from the button's actual

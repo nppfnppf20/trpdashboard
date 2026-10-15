@@ -267,6 +267,7 @@ const STARTING_DOC_VARS = [
   { slug: 'committee_report',        variable: 'COMMITTEE_REPORT',        label: 'Committee Report' },
   { slug: 'committee_minutes',       variable: 'COMMITTEE_MINUTES',       label: 'Committee Minutes' },
   { slug: 'stage1_review',            variable: 'STAGE1_REVIEW',           label: 'Stage 1 Review' },
+  { slug: 'pre_app_letter',          variable: 'PRE_APPLICATION_LETTER',  label: 'Pre-application Letter' },
   { slug: 'other',                   variable: 'OTHER_DOCS',              label: 'Other Documents' },
   { slug: 'hlpv_data',               variable: 'HLPV_DATA',               label: 'HLPV Tool Data' },
   { slug: 'additional_designations', variable: 'ADDITIONAL_DESIGNATIONS', label: 'Additional Designations & Site Notes' },

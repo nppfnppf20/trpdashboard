@@ -1,22 +1,28 @@
 <script>
   import { createEventDispatcher } from 'svelte';
 
+  // Defaults are the original "no sources" warning; callers override them for other warnings.
+  export let title = 'Please add sources first';
+  export let message = "You need to add a source before generating, as there aren't any sources for this document yet.";
+  export let hint = 'The more information, the better.';
+  export let addLabel = 'Add Sources';
+
   const dispatch = createEventDispatcher();
 </script>
 
 <div class="modal-overlay" on:click|self={() => dispatch('close')} role="dialog" aria-modal="true">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title"><i class="las la-exclamation-triangle warn-icon"></i> Please add sources first</span>
+      <span class="modal-title"><i class="las la-exclamation-triangle warn-icon"></i> {title}</span>
     </div>
     <div class="modal-body">
-      <p class="warn-text">You need to add a source before generating, as there aren't any sources for this document yet.</p>
-      <p class="warn-text warn-text--hint">The more information, the better.</p>
+      <p class="warn-text">{message}</p>
+      {#if hint}<p class="warn-text warn-text--hint">{hint}</p>{/if}
     </div>
     <div class="modal-footer">
       <button class="modal-cancel" on:click={() => dispatch('generate')}>Generate anyway</button>
       <button class="modal-run" on:click={() => dispatch('addSources')}>
-        <i class="las la-file-import"></i> Add Sources
+        <i class="las la-file-import"></i> {addLabel}
       </button>
     </div>
   </div>

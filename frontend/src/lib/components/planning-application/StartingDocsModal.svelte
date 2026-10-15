@@ -46,6 +46,9 @@
       { slug: 'committee_report',   label: 'Committee Report',   variable: '{{COMMITTEE_REPORT}}' },
       { slug: 'committee_minutes',  label: 'Committee Minutes',  variable: '{{COMMITTEE_MINUTES}}' },
     ],
+    planning_statement_v3: [
+      { slug: 'pre_app_letter',     label: 'Pre-application Letter', variable: '{{PRE_APPLICATION_LETTER}}' },
+    ],
     hlpv_narrative: [
       { slug: 'hlpv_data',               label: 'HLPV Tool Data',                    variable: '{{HLPV_DATA}}' },
       { slug: 'additional_designations', label: 'Additional Designations & Site Notes', variable: '{{ADDITIONAL_DESIGNATIONS}}' },

@@ -367,6 +367,14 @@ async function substituteAppealPromptVariables(promptText, project, projectId) {
 // project_issue_tracks ("key issues") table — see draftingIssues.controller.js.
 const V3_SLUG = 'planning_statement_v3';
 
+// The Pre-application Letter feeds the Planning Statement's main body only. The Planning Policy and
+// Planning Assessment sections are closed to it, so it is left out of what they are given (otherwise
+// it would be appended to their prompts as an unreferenced "source document").
+function withoutPreAppLetter(startingDocs) {
+  const { pre_app_letter: _omitted, ...rest } = startingDocs ?? {};
+  return rest;
+}
+
 // Draft types whose prompts have the guiding brief (and style example) written
 // straight into the prompt text (migration 191). Once the {{GUIDING_BRIEF}} /
 // {{STYLE_GUIDE}} tokens are gone the admin brief must not be fetched again, or
@@ -863,7 +871,7 @@ export async function generateDraftFromPaNotes(req, res) {
             policyContext: await buildPolicyDocumentContext(projectId),
             projectName: project.project_name,
             projectBrief,
-            startingDocs,
+            startingDocs: withoutPreAppLetter(startingDocs),
             briefingNotes,
             provider,
           })
@@ -878,7 +886,7 @@ export async function generateDraftFromPaNotes(req, res) {
             allIssueTypes,
             guidingBrief: sectionGuidingBrief,
             projectBrief,
-            startingDocs,
+            startingDocs: withoutPreAppLetter(startingDocs),
             briefingNotes: assessmentSummaries || briefingNotes,
             briefingSourceMode,
             transcriptNotes,
@@ -1066,7 +1074,7 @@ export async function generateSectionFromPaNotes(req, res) {
             policyContext: await buildPolicyDocumentContext(projectId),
             projectName: project.project_name,
             projectBrief: context.projectBrief,
-            startingDocs: context.startingDocs,
+            startingDocs: withoutPreAppLetter(context.startingDocs),
             briefingNotes: context.briefingNotes,
             provider,
           })
@@ -1081,7 +1089,7 @@ export async function generateSectionFromPaNotes(req, res) {
             allIssueTypes: context.allIssueTypes,
             guidingBrief: null,
             projectBrief: context.projectBrief,
-            startingDocs: context.startingDocs,
+            startingDocs: withoutPreAppLetter(context.startingDocs),
             briefingNotes: context.assessmentSummaries || context.briefingNotes,
             briefingSourceMode: context.briefingSourceMode,
             transcriptNotes: context.transcriptNotes,

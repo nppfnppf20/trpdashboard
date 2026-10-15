@@ -23,10 +23,6 @@
       guideError = err.message;
     }
   }
-
-  function handlePrint() {
-    window.print();
-  }
 </script>
 
 {#if show}
@@ -43,9 +39,6 @@
           </div>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary" on:click={handlePrint}>
-            <i class="las la-print"></i> Print
-          </button>
           <button class="close-btn" on:click={onClose}>
             <i class="las la-times"></i>
           </button>
@@ -188,11 +181,5 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-  }
-
-  @media print {
-    :global(.overlay) { position: static; background: none; }
-    :global(.modal) { box-shadow: none; max-height: none; }
-    :global(.header-actions) { display: none; }
   }
 </style>

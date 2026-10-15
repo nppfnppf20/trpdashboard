@@ -1407,12 +1407,22 @@ export async function generateStage1Review(req, res) {
       }
     }
 
+    // A meeting note is not required if a High Level Planning Review has been added instead.
     if (!briefingText?.trim()) {
-      return res.status(400).json({ error: 'No meeting note selected. Tick a note in Sources before generating.' });
+      const { rows: reviewRows } = await pool.query(
+        `SELECT content_text FROM planning_applications.stage1_starting_docs
+         WHERE project_id = $1 AND slot_slug = 'high_level_planning_review'`,
+        [projectId]
+      );
+      if (!reviewRows[0]?.content_text?.trim()) {
+        return res.status(400).json({ error: 'Add a meeting note or a High Level Planning Review in Sources before generating.' });
+      }
     }
 
-    // Strip HTML tags — keep full text, no character cap
-    const briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    // Strip HTML tags — keep full text, no character cap. "(not provided)" is handled by the prompt.
+    const briefingPlain = briefingText?.trim()
+      ? briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      : '(not provided)';
 
     // ── 3. Policies ───────────────────────────────────────────────────────────
     // Organised the same way as the Planning Assessment / Planning Policy sections

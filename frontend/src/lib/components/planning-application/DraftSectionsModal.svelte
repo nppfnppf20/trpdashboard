@@ -102,6 +102,7 @@
     COMMITTEE_REPORT:         { label: 'Committee Report',              source: 'appeals.pa_draft_starting_docs, slot: committee_report', programmatic: true },
     COMMITTEE_MINUTES:        { label: 'Committee Minutes',             source: 'appeals.pa_draft_starting_docs, slot: committee_minutes', programmatic: true },
     STAGE1_REVIEW:            { label: 'Stage 1 Review',                source: 'appeals.pa_draft_starting_docs, slot: stage1_review', programmatic: true },
+    PRE_APPLICATION_LETTER:   { label: 'Pre-application Letter',        source: 'appeals.pa_draft_starting_docs, slot: pre_app_letter (Planning Statement main body only)', programmatic: true },
     OTHER_DOCS:               { label: 'Other Documents',               source: 'appeals.pa_draft_starting_docs, slot: other', programmatic: true },
     HLPV_DATA:                { label: 'HLPV Tool Data',                source: 'appeals.pa_draft_starting_docs, slot: hlpv_data', programmatic: true },
     ADDITIONAL_DESIGNATIONS:  { label: 'Additional Designations & Site Notes', source: 'appeals.pa_draft_starting_docs, slot: additional_designations', programmatic: true },
