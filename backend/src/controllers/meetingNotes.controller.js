@@ -457,7 +457,7 @@ export async function updateMeetingAction(req, res) {
          owner        = $3,
          due_date     = $4,
          notes        = $5,
-         assigned_user_id = $8,
+         assigned_user_id = COALESCE($8, (SELECT id FROM public.user_profiles WHERE LOWER(display_name) = LOWER($3) LIMIT 1)),
          status       = COALESCE($6, status),
          completed_at = CASE
            WHEN $6 = 'complete' AND completed_at IS NULL THEN NOW()

@@ -11,7 +11,8 @@
  *
  * Usage:
  *   node scripts/action-triage-search.js <projectId> [--model <id>] [--price in,out] [--limit 20]
- *        [--max-sources 20] [--repeat 2] [--no-cache] [--run]
+ *        [--max-sources 20] [--repeat 2] [--no-cache] [--needs-file path.json] [--run]
+ * --needs-file reuses a saved needs list (or saves one on first use) so prompt changes can be compared on identical needs.
  * Without --run it only builds the source pool and prints sizes and a cost estimate (no API calls).
  * `--run` spends Anthropic tokens. `--repeat 2` runs the cascade twice back to back so the second
  * run shows the prompt-cache saving (the cache lasts ~5 minutes).
@@ -153,7 +154,7 @@ fully_answers depends on the need's type:
 - fact: true if what is stated here is enough for someone to write the task's output, even when the information is spread across several passages of the document and not set out as a tidy list. Do not require it to be complete or consolidated. Put anything still absent in "missing".
 If the document only partly helps, set found true, fully_answers false, and say in "missing" what is still absent.
 
-For each found need give "answer" (a short plain statement) and "quote": text copied EXACTLY, character for character, from the document that supports it (max 300 characters, no ellipsis, no paraphrase). Choose the single most informative passage as the quote.
+For each found need give "answer" (a short plain statement) and "quotes": passages copied EXACTLY, character for character, from the document (each max 300 characters, no ellipsis, no paraphrase). For contact and document needs give one quote. For fact needs give up to 3 quotes that together support every part of your answer; if the answer draws on several passages, quote each one. Do not claim anything in "answer" that the quotes do not show.
 
 SOURCE: ${s.name}
 -----
@@ -161,7 +162,7 @@ ${s.text}
 -----
 
 `;
-    const tail = `Respond with ONLY a JSON object: {"results": [{"key": string, "found": boolean, "fully_answers": boolean, "answer": string|null, "quote": string|null, "missing": string|null}]}.
+    const tail = `Respond with ONLY a JSON object: {"results": [{"key": string, "found": boolean, "fully_answers": boolean, "answer": string|null, "quotes": string[], "missing": string|null}]}.
 
 Needs (the task each belongs to is given for context):
 ${JSON.stringify(open.map(n => ({ key: n.key, need: n.need, type: n.type, task: actionsById.get(n.actionId).action_text })))}`;
@@ -178,18 +179,23 @@ ${JSON.stringify(open.map(n => ({ key: n.key, need: n.need, type: n.type, task: 
     }
     for (const r of res.results || []) {
       const n = state.get(r.key);
-      if (!n || n.status === 'found' || !r.found || !r.quote) continue;
-      const check = checkVerbatim(r.quote, s.text);
-      if (!check.verified) { n.partial = n.partial || { source: s.name, answer: r.answer, quote: r.quote, why: 'quote did not check out against the source' }; continue; }
-      const contactOk = n.type !== 'contact' || EMAIL_RE.test(r.quote) || PHONE_RE.test(r.quote);
+      const claimed = (r.quotes || []).filter(Boolean).slice(0, 3);
+      if (!n || n.status === 'found' || !r.found || !claimed.length) continue;
+      const good = claimed.filter(q => checkVerbatim(q, s.text).verified);
+      const dropped = claimed.length - good.length;
+      if (!good.length) {
+        n.partial = n.partial || { source: s.name, answer: r.answer, quotes: claimed, why: 'none of the quotes checked out against the source' };
+        continue;
+      }
+      const contactOk = n.type !== 'contact' || good.some(q => EMAIL_RE.test(q) || PHONE_RE.test(q));
       if (r.fully_answers && contactOk) {
-        Object.assign(n, { status: 'found', source: s.name, quote: r.quote, answer: r.answer, partial: null });
+        Object.assign(n, { status: 'found', source: s.name, quotes: good, droppedQuotes: dropped, answer: r.answer, partial: null });
       } else if (!n.partial) {
         n.partial = {
           source: s.name,
           answer: r.answer,
-          quote: r.quote,
-          why: !contactOk ? 'contact need but the quote has no email or phone' : r.missing || 'model said it only partly answers',
+          quotes: good,
+          why: !contactOk ? 'contact need but the quotes have no email or phone' : r.missing || 'model said it only partly answers',
         };
       }
     }
@@ -221,9 +227,20 @@ if (!RUN) {
 
 const actionsById = new Map(actions.map(a => [a.id, a]));
 const needsUsage = newUsage();
-console.log(`\nListing needs…`);
-const needs = await listNeeds(actions, needsUsage);
-console.log(`${needs.length} needs across ${new Set(needs.map(n => n.actionId)).size} actions (judgement-flagged actions skipped). Needs listing: $${costOf(needsUsage).toFixed(3)}`);
+const needsFile = flag('needs-file');
+let needs;
+if (needsFile && fs.existsSync(needsFile)) {
+  needs = JSON.parse(fs.readFileSync(needsFile, 'utf8'));
+  console.log(`\nLoaded ${needs.length} needs from ${needsFile} (reusing them so runs are comparable).`);
+} else {
+  console.log(`\nListing needs…`);
+  needs = await listNeeds(actions, needsUsage);
+  console.log(`${needs.length} needs across ${new Set(needs.map(n => n.actionId)).size} actions (judgement-flagged actions skipped). Needs listing: $${costOf(needsUsage).toFixed(3)}`);
+  if (needsFile) {
+    fs.writeFileSync(needsFile, JSON.stringify(needs, null, 2));
+    console.log(`Saved needs to ${needsFile}; pass the same --needs-file next time to reuse them.`);
+  }
+}
 
 const runs = [];
 for (let r = 1; r <= REPEAT; r++) {
@@ -235,7 +252,10 @@ const last = runs[runs.length - 1];
 console.log('\n══ RESULTS (last run) ══');
 for (const n of last.results) {
   console.log(`\n#${n.actionId} [${n.type}] ${n.need} — ${n.status.toUpperCase()}${n.status !== 'found' && n.partial ? ' (partial)' : ''}`);
-  if (n.status === 'found') console.log(`   ${n.answer}  [${n.source}]\n   "${n.quote.slice(0, 160)}${n.quote.length > 160 ? '…' : ''}"`);
+  if (n.status === 'found') {
+    console.log(`   ${n.answer}  [${n.source}]${n.droppedQuotes ? `  (${n.droppedQuotes} quote(s) dropped as unverified)` : ''}`);
+    n.quotes.forEach(q => console.log(`   "${q.slice(0, 160)}${q.length > 160 ? '…' : ''}"`));
+  }
   else if (n.partial) console.log(`   partial: ${n.partial.answer}  [${n.partial.source}]\n   still missing/why: ${n.partial.why}`);
 }
 

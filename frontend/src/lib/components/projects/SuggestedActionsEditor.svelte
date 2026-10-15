@@ -5,6 +5,9 @@
   // rewrite the summary's Actions block on save.
   export let actions = [];
   export let dirty = false;
+  // Number of rows with no owner — bound by the parent to disable Save until 0.
+  export let missingOwner = 0;
+  $: missingOwner = actions.filter(a => !(a.owner || '').trim()).length;
 
   let nextKey = 1000;
 
@@ -45,6 +48,9 @@
   <button type="button" class="btn btn-secondary btn-sm sae-add" on:click={addRow}>
     <i class="las la-plus"></i> Add action
   </button>
+  {#if missingOwner > 0}
+    <p class="sae-warn"><i class="las la-exclamation-circle"></i> Assign an owner to {missingOwner === 1 ? '1 action' : `${missingOwner} actions`} (or remove {missingOwner === 1 ? 'it' : 'them'}) before saving.</p>
+  {/if}
   {#if dirty}
     <p class="sae-hint">Saving will update the Actions list in the summary text to match.</p>
   {/if}
@@ -62,4 +68,5 @@
   .sae-empty { margin: 0; font-size: 0.85rem; color: var(--color-slate-500); }
   .sae-add { align-self: flex-start; }
   .sae-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
+  .sae-warn { margin: 0; font-size: 0.75rem; color: var(--color-amber-800); }
 </style>

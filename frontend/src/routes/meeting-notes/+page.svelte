@@ -436,6 +436,7 @@
   let editorInitialHtml = '';
   let editorActions = [];
   let editorActionsDirty = false;
+  let editorMissingOwner = 0;
   let editorUpdates = [];
   let editorUpdatesDirty = false;
   let editorIncludeInSummary = true;
@@ -1087,7 +1088,7 @@
         {#if editorIsNew}
           <div class="mn-editor-actions">
             <h3 class="mn-editor-actions-title">Actions</h3>
-            <SuggestedActionsEditor bind:actions={editorActions} bind:dirty={editorActionsDirty} />
+            <SuggestedActionsEditor bind:actions={editorActions} bind:dirty={editorActionsDirty} bind:missingOwner={editorMissingOwner} />
             <h3 class="mn-editor-actions-title mn-editor-actions-title--spaced">Open actions mentioned in this meeting</h3>
             <ActionUpdatesEditor bind:updates={editorUpdates} bind:dirty={editorUpdatesDirty} />
             <label class="mn-editor-include">
@@ -1101,7 +1102,7 @@
           <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
             Close
           </button>
-          <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving}>
+          <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving || editorMissingOwner > 0} title={editorMissingOwner > 0 ? 'Assign an owner to every action before saving' : ''}>
             {#if editorSaving}
               <span class="mn-spinner"></span> Saving…
             {:else}

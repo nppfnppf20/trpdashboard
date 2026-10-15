@@ -4,7 +4,8 @@
   // meeting, one project, or several projects merged. Changing `loadKey`
   // reloads; `dispatch('changed')` tells the parent counts may be stale.
   import { createEventDispatcher } from 'svelte';
-  import { addMeetingActionUpdate } from '$lib/api/meetingNotes.js';
+  import { addMeetingActionUpdate, updateMeetingAction } from '$lib/api/meetingNotes.js';
+  import OwnerInput from '$lib/components/shared/OwnerInput.svelte';
 
   export let load;
   export let loadKey = '';
@@ -53,8 +54,48 @@
   let busyId = null;
 
   function startUpdate(a) {
+    fieldsId = null;
     editingId = a.id;
     draft = '';
+  }
+
+  // Edit the action's own fields (text, owner, due date, notes) — works on
+  // resolved actions too. The PUT overwrites owner/due/notes, so all are sent.
+  let fieldsId = null;
+  let fields = { action_text: '', owner: '', due_date: '', notes: '' };
+
+  function startFieldsEdit(a) {
+    editingId = null;
+    fieldsId = a.id;
+    fields = {
+      action_text: a.action_text || '',
+      owner: a.owner || '',
+      due_date: a.due_date ? a.due_date.slice(0, 10) : '',
+      notes: a.notes || ''
+    };
+  }
+
+  $: fieldsInvalid = !fields.action_text.trim() || !fields.owner.trim();
+
+  async function saveFields(a) {
+    if (fieldsInvalid) return;
+    busyId = a.id;
+    error = null;
+    try {
+      await updateMeetingAction(a.id, {
+        action_text: fields.action_text,
+        owner: fields.owner,
+        due_date: fields.due_date || null,
+        notes: fields.notes
+      });
+      fieldsId = null;
+      await reload();
+      dispatch('changed');
+    } catch (err) {
+      error = err.message;
+    } finally {
+      busyId = null;
+    }
   }
 
   async function submit(a, update_type, update_text = null) {
@@ -92,6 +133,21 @@
     {#each visible as a (a.id)}
       <div class="mal-row" class:mal-row--done={a.status === 'complete'}>
         <div class="mal-main">
+          {#if fieldsId === a.id}
+            <div class="mal-fields">
+              <input class="form-input" type="text" placeholder="Action…" bind:value={fields.action_text} />
+              <div class="mal-fields-row">
+                <OwnerInput bind:value={fields.owner} />
+                <input class="form-input" type="date" bind:value={fields.due_date} />
+              </div>
+              <input class="form-input" type="text" placeholder="Notes (optional)" bind:value={fields.notes} />
+              {#if !fields.owner.trim()}<p class="mal-warn">An owner is required.</p>{/if}
+              <div class="mal-edit">
+                <button class="btn btn-primary btn-sm" disabled={fieldsInvalid || busyId === a.id} on:click={() => saveFields(a)}>Save</button>
+                <button class="btn btn-ghost btn-sm" on:click={() => (fieldsId = null)}>Cancel</button>
+              </div>
+            </div>
+          {:else}
           <div class="mal-line">
             {#if a.status === 'complete'}<i class="las la-check-circle mal-tick"></i>{/if}
             <span class="mal-text">{a.action_text}</span>
@@ -102,6 +158,8 @@
             {#if showMeeting && a.meeting_title}<span>from {a.meeting_title}</span>{/if}
             {#if showProject && a.project_name}<span class="badge badge-neutral">{a.project_name}</span>{/if}
           </div>
+          {#if a.notes}<div class="mal-notes">{a.notes}</div>{/if}
+          {/if}
           {#each a.updates || [] as u}
             <div class="mal-update">
               <span class="mal-update-date">{formatDate(u.created_at)}</span>
@@ -125,14 +183,19 @@
           {/if}
         </div>
 
-        {#if a.status !== 'complete' && editingId !== a.id}
+        {#if editingId !== a.id && fieldsId !== a.id}
           <div class="mal-buttons">
-            <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
-              <i class="las la-comment"></i> Update
+            <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => startFieldsEdit(a)}>
+              <i class="las la-pen"></i> Edit
             </button>
-            <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => submit(a, 'completed')}>
-              <i class="las la-check"></i> Resolve
-            </button>
+            {#if a.status !== 'complete'}
+              <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
+                <i class="las la-comment"></i> Update
+              </button>
+              <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => submit(a, 'completed')}>
+                <i class="las la-check"></i> Resolve
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -156,5 +219,9 @@
   .mal-update { font-size: 0.75rem; color: var(--color-slate-600); padding-left: 0.6rem; border-left: 2px solid var(--color-slate-200); }
   .mal-update-date { color: var(--color-slate-400); margin-right: 0.3rem; }
   .mal-edit { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.25rem; }
+  .mal-notes { font-size: 0.72rem; color: var(--color-slate-500); }
+  .mal-fields { display: flex; flex-direction: column; gap: 0.4rem; }
+  .mal-fields-row { display: grid; grid-template-columns: 1fr 9.5rem; gap: 0.5rem; }
+  .mal-warn { margin: 0; font-size: 0.75rem; color: var(--color-amber-800); }
   .mal-buttons { display: flex; gap: 0.35rem; flex-shrink: 0; }
 </style>

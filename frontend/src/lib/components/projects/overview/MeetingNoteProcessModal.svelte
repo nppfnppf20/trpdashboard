@@ -53,7 +53,8 @@
   let reviewCombinedCreated = false; // set when a combined note was also created
   let reviewActions = [];        // editable rows from the AI's suggestedActions
   let reviewActionsDirty = false;
-  let reviewUpdates = [];        // existing open actions this meeting spoke to
+  let reviewMissingOwner = 0;
+  let reviewUpdates = [];      // existing open actions this meeting spoke to
   let reviewUpdatesDirty = false;
   let reviewIncludeInSummary = true; // write completions + updates into the summary text too
 
@@ -448,7 +449,7 @@
         </section>
         <section>
           <h3 class="mnp-review-section-title">Actions</h3>
-          <SuggestedActionsEditor bind:actions={reviewActions} bind:dirty={reviewActionsDirty} />
+          <SuggestedActionsEditor bind:actions={reviewActions} bind:dirty={reviewActionsDirty} bind:missingOwner={reviewMissingOwner} />
         </section>
         <section>
           <h3 class="mnp-review-section-title">Open actions mentioned in this meeting</h3>
@@ -465,7 +466,7 @@
           <span class="mnp-save-hint"><i class="las la-info-circle"></i> {undecidedDates} key date{undecidedDates > 1 ? 's' : ''} above not added or skipped yet</span>
         {/if}
         <button class="btn btn-secondary btn-sm" on:click={handleClose} disabled={reviewSaving}>Close without saving</button>
-        <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving}>
+        <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving || reviewMissingOwner > 0} title={reviewMissingOwner > 0 ? 'Assign an owner to every action before saving' : ''}>
           {#if reviewSaving}<span class="mnp-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
         </button>
       </div>

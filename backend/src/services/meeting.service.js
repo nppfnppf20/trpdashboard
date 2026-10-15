@@ -67,6 +67,8 @@ JSON array. Each item: {"action_text":"verb-led description","owner":null,"due_d
 - owner: name of person responsible, or null
 - due_date: YYYY-MM-DD or null
 - notes: brief context or null
+- Only extract actions that are explicitly agreed, assigned, or committed to in the source. Do not invent actions from general advice, recommendations, or background information.
+- The source may not be a meeting at all (e.g. a pre-application letter, report, or decision notice). For such documents, return [] unless a specific commitment or instruction to a named party is clearly stated.
 - If no actions: []`;
 
 const PROMPT_COMPLETED_ACTIONS = `════════════════════════════════════════

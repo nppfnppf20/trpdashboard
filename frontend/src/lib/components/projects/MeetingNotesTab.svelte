@@ -55,6 +55,7 @@
   let reviewSummaryHtml = '';
   let reviewEditor;            // bind:this on RichTextEditor
   let reviewActions = [];      // editable rows from the AI's suggestedActions
+  let reviewMissingOwner = 0;
   let reviewActionsDirty = false; // true once a row is edited — save then rewrites the summary's Actions block
   let reviewUpdates = [];      // existing open actions the meeting spoke to (complete / progress / none)
   let reviewUpdatesDirty = false;
@@ -962,7 +963,7 @@
 
           <section class="mn-review-section">
             <h3 class="mn-review-section-title">Actions</h3>
-            <SuggestedActionsEditor bind:actions={reviewActions} bind:dirty={reviewActionsDirty} />
+            <SuggestedActionsEditor bind:actions={reviewActions} bind:dirty={reviewActionsDirty} bind:missingOwner={reviewMissingOwner} />
           </section>
 
           <section class="mn-review-section">
@@ -983,7 +984,7 @@
             <span class="mn-save-hint"><i class="las la-info-circle"></i> {undecidedDates} key date{undecidedDates > 1 ? 's' : ''} above not added or skipped yet</span>
           {/if}
           <button class="btn btn-secondary btn-sm" on:click={closeReview} disabled={reviewSaving}>Close without saving</button>
-          <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving}>
+          <button class="btn btn-primary" on:click={saveReview} disabled={reviewSaving || reviewMissingOwner > 0} title={reviewMissingOwner > 0 ? 'Assign an owner to every action before saving' : ''}>
             {#if reviewSaving}<span class="mn-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
           </button>
         </div>
