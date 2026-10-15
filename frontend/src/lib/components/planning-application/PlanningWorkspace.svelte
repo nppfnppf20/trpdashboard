@@ -128,31 +128,20 @@
 
   let draftEditor;
 
-  // Planning Statement v3 and Stage 1 Review v3 are the ones we actually use
-  // day to day — their older versions stay out of the main card list by
-  // default, tucked behind a small picker on the v3 card instead of
-  // cluttering the list with multiple versions of the same document. Purely
-  // a display filter — nothing about how any version actually works changes
-  // here.
-  const LEGACY_PLANNING_STATEMENT_SLUGS = ['planning_statement', 'planning_statement_v2'];
-  const LEGACY_PLANNING_STATEMENT_LABELS = {
-    planning_statement:    'Original',
-    planning_statement_v2: 'v2',
-  };
-  let visibleLegacyPlanningStatementSlug = '';
+  // Planning Statement v1/v2 and the original HLPV narrative are retired:
+  // they only read a fixed "briefing transcript" document and can't use
+  // selected meeting notes, so they never appear as cards. Purely a display
+  // filter — nothing about how any version actually works changes here.
+  const RETIRED_DRAFT_SLUGS = ['planning_statement', 'planning_statement_v2', 'hlpv_narrative'];
 
+  // Stage 1 Review's older versions stay out of the main card list by
+  // default, tucked behind a small picker on the v3 card.
   const LEGACY_STAGE1_SLUGS = ['stage1_review', 'stage1_review_v2'];
   const LEGACY_STAGE1_LABELS = {
     stage1_review:    'Original',
     stage1_review_v2: 'v2',
   };
   let visibleLegacyStage1Slug = '';
-
-  const LEGACY_HLPV_SLUGS = ['hlpv_narrative'];
-  const LEGACY_HLPV_LABELS = {
-    hlpv_narrative: 'Original',
-  };
-  let visibleLegacyHlpvSlug = '';
 
   // Draft types not in this list keep their relative order and are appended
   // after all of these — Array.prototype.sort is stable, so this is purely
@@ -170,14 +159,11 @@
   // of a live draft-type card.
   const COMING_SOON_SLUGS = [];
 
-  $: legacyPlanningStatementTypes = ($draftTypes ?? []).filter(t => LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug));
   $: legacyStage1Types = ($draftTypes ?? []).filter(t => LEGACY_STAGE1_SLUGS.includes(t.slug));
-  $: legacyHlpvTypes = ($draftTypes ?? []).filter(t => LEGACY_HLPV_SLUGS.includes(t.slug));
   $: visibleDraftTypes = ($draftTypes ?? [])
     .filter(t =>
-      (!LEGACY_PLANNING_STATEMENT_SLUGS.includes(t.slug) || t.slug === visibleLegacyPlanningStatementSlug) &&
+      !RETIRED_DRAFT_SLUGS.includes(t.slug) &&
       (!LEGACY_STAGE1_SLUGS.includes(t.slug) || t.slug === visibleLegacyStage1Slug) &&
-      (!LEGACY_HLPV_SLUGS.includes(t.slug) || t.slug === visibleLegacyHlpvSlug) &&
       !COMING_SOON_SLUGS.includes(t.slug)
     )
     .sort((a, b) => {
@@ -1248,33 +1234,13 @@
                             <i class="las la-sliders-h"></i> Edit Section Prompts
                           </button>
                         {/if}
-                        {#if type.slug === 'planning_statement_v3' && legacyPlanningStatementTypes.length}
-                          <div class="draft-config-row">
-                            <span class="draft-config-label">Version</span>
-                            <select class="card-dev-type-select" bind:value={visibleLegacyPlanningStatementSlug} title="Show an older Planning Statement version as its own card">
-                              <option value="">v3 only</option>
-                              {#each legacyPlanningStatementTypes as t (t.id)}
-                                <option value={t.slug}>{LEGACY_PLANNING_STATEMENT_LABELS[t.slug] ?? t.name}</option>
-                              {/each}
-                            </select>
-                          </div>
-                        {:else if type.slug === 'stage1_review_v3' && legacyStage1Types.length}
+                        {#if type.slug === 'stage1_review_v3' && legacyStage1Types.length}
                           <div class="draft-config-row">
                             <span class="draft-config-label">Version</span>
                             <select class="card-dev-type-select" bind:value={visibleLegacyStage1Slug} title="Show an older Stage 1 Review version as its own card">
                               <option value="">v3 only</option>
                               {#each legacyStage1Types as t (t.id)}
                                 <option value={t.slug}>{LEGACY_STAGE1_LABELS[t.slug] ?? t.name}</option>
-                              {/each}
-                            </select>
-                          </div>
-                        {:else if type.slug === 'hlpv_v3' && legacyHlpvTypes.length}
-                          <div class="draft-config-row">
-                            <span class="draft-config-label">Version</span>
-                            <select class="card-dev-type-select" bind:value={visibleLegacyHlpvSlug} title="Show an older HLPV version as its own card">
-                              <option value="">v3 only</option>
-                              {#each legacyHlpvTypes as t (t.id)}
-                                <option value={t.slug}>{LEGACY_HLPV_LABELS[t.slug] ?? t.name}</option>
                               {/each}
                             </select>
                           </div>

@@ -19,6 +19,7 @@
   let error = null;
   let openKey = null;    // stage whose popover is open
   let confirmHide = false;
+  let expanded = false;  // full flow of seven pills, opened from the summary
 
   let loadedFor = null;
   $: if (projectId && projectId !== loadedFor) { loadedFor = projectId; load(); }
@@ -56,6 +57,19 @@
   }
   $: view = buildView(state);
 
+  // Short summary for the header: first stage in progress (+N more), and how many are complete.
+  function buildSummary(v) {
+    const active = v.filter(s => s.status === 'in_progress');
+    const counted = v.filter(s => s.status !== 'na');
+    const done = counted.filter(s => s.status === 'complete').length;
+    const allDone = counted.length > 0 && done === counted.length;
+    const name = active.length
+      ? active[0].name + (active.length > 1 ? ` +${active.length - 1} more` : '')
+      : allDone ? 'All stages complete' : 'Not started';
+    return { name, count: `${done} of ${counted.length} complete` };
+  }
+  $: summary = buildSummary(view);
+
   function togglePopover(key) { confirmHide = false; openKey = openKey === key ? null : key; error = null; }
   function closeAll() { openKey = null; confirmHide = false; }
   function onWindowClick(e) { if (root && !root.contains(e.target)) closeAll(); }
@@ -72,6 +86,18 @@
         <button class="link-btn" disabled={saving} on:click={() => run(() => setPlanningStagesApplicable(projectId, true))}>Show stages</button>
       </div>
     {:else}
+      <button class="summary" aria-expanded={expanded} on:click={() => { expanded = !expanded; if (!expanded) closeAll(); }}>
+        <span class="sumblock">
+          <span class="segs">
+            {#each view as stage (stage.key)}<i class={stage.status} title="Stage {stage.num} {stage.name}: {STATUS_LABEL[stage.status]}"></i>{/each}
+          </span>
+          <span class="sum-name">{summary.name}</span>
+          <span class="sum-count">{summary.count}</span>
+        </span>
+        <span class="sum-toggle">{expanded ? 'Hide' : 'Details'}</span>
+      </button>
+      {#if expanded}
+      <div class="panel">
       <div class="tray">
         {#each view as stage, i (stage.key)}
           {@const status = stage.status}
@@ -133,12 +159,56 @@
           {/if}
         </div>
       </div>
+      </div>
+      {/if}
     {/if}
   </div>
 {/if}
 
 <style>
-  .stage-strip { flex: 1 1 420px; min-width: 0; margin: 0 1.25rem; }
+  .stage-strip { flex: 0 1 auto; min-width: 0; margin: 0 1.25rem 0 auto; }
+
+  .summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    color: var(--color-slate-900);
+  }
+  .sumblock { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; line-height: 1.25; }
+  .segs { display: inline-flex; gap: 3px; }
+  .segs i {
+    display: block;
+    width: 26px;
+    height: 9px;
+    border-radius: 2px;
+    background: var(--color-white);
+    box-shadow: inset 0 0 0 1px var(--color-slate-300);
+  }
+  .segs i.complete { background: var(--color-emerald-100); box-shadow: inset 0 0 0 1px var(--color-emerald-600); }
+  .segs i.in_progress { background: var(--color-primary-600); box-shadow: none; }
+  .segs i.na { background: repeating-linear-gradient(135deg, var(--color-slate-100) 0 2px, var(--color-slate-300) 2px 3px); box-shadow: none; }
+  .sum-name { font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+  .sum-count { font-size: 0.6875rem; color: var(--color-slate-500); }
+  .sum-toggle { font-size: 0.75rem; color: var(--color-primary-600); text-decoration: underline; }
+
+  /* Full flow, dropped below the header when Details is open (the header is position: relative). */
+  .panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 20;
+    background: var(--color-white);
+    border-bottom: 1px solid var(--color-slate-200);
+    box-shadow: var(--shadow-dropdown);
+    padding: 0.75rem 2rem 1rem;
+  }
 
   .tray {
     display: flex;

@@ -198,8 +198,8 @@ Rows to complete:
 ↑ YOUR INSTRUCTIONS (editable above — self-contained: no {{GUIDING_BRIEF}}, no {{STYLE_GUIDE}})
 ━━━ Dynamic tokens substituted wherever they appear in your instructions ━━━
 
-{{BRIEFING_NOTES}} — explicit briefing_note_id, or most recent briefing_transcript
-  document_summary for the project
+{{BRIEFING_NOTES}} — the meeting notes ticked in Sources (summaries, full transcripts,
+  or both per the source mode); no fallback if none are ticked
 {{DRAFTING_ISSUE_NOTES}} — this project's admin_console.drafting_issues rows (same
   mechanism as Stage 1 Review v3 / Planning Statement): label, discipline, linked
   policies, policy tier notes, argument for/against, summary, specialist report

@@ -1388,7 +1388,8 @@ export async function generateStage1Review(req, res) {
     const project = projectRows[0];
 
     // ── 2. Briefing note — full text, no truncation ───────────────────────────
-    // Priority: explicit briefing_note_id → starting docs selection → most recent transcript
+    // Priority: explicit briefing_note_id → starting docs selection. No fallback:
+    // if neither is set the request is rejected rather than guessing a note.
     let briefingText = null;
     if (briefing_note_id) {
       briefingText = await resolvePrimaryNoteHtml(projectId, { noteRef: briefing_note_id, latestFallback: false });
@@ -1404,14 +1405,10 @@ export async function generateStage1Review(req, res) {
         const resolved = await resolveBriefingNotesSelection(projectId, selectionJson);
         if (resolved) briefingText = resolved;
       }
-      // Fall back to most recent note of either kind
-      if (!briefingText) {
-        briefingText = await resolvePrimaryNoteHtml(projectId);
-      }
     }
 
     if (!briefingText?.trim()) {
-      return res.status(400).json({ error: 'No notes found for this project. Please add a meeting note first.' });
+      return res.status(400).json({ error: 'No meeting note selected. Tick a note in Sources before generating.' });
     }
 
     // Strip HTML tags — keep full text, no character cap
@@ -1757,7 +1754,7 @@ export async function getStage1Context(req, res) {
   try {
     const [projectRows, projectBrief] = await Promise.all([
       pool.query(`SELECT development_type FROM public.projects WHERE id = $1`, [projectId]),
-      resolvePrimaryNoteHtml(projectId)
+      resolvePrimaryNoteHtml(projectId, { latestFallback: false })
     ]);
     const developmentType = projectRows.rows[0]?.development_type ?? null;
     const guidingBrief = await getGuidingBrief('stage1_review', developmentType);

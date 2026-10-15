@@ -1029,12 +1029,11 @@ export async function generateHlpvV3(req, res) {
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
     const project = projectRows[0];
 
-    // ── 2. Briefing note ─ explicit id, else most recent transcript (no starting-docs
-    // selection layer — kept simple, unlike Stage 1 Review's extra selection tier) ────────
+    // ── 2. Briefing note ─ explicit id, else the notes ticked in the Sources modal ────────
     // Any note counts (Briefing Note or project Meeting Note).
-    // Notes ticked in the Sources modal (slot 'briefing_notes') win when no explicit id is
-    // given; 'briefing_source_mode' picks summaries / full transcripts / both. Nothing
-    // ticked → the original behaviour (latest note's summary).
+    // Notes ticked in the Sources modal (slot 'briefing_notes') are used when no explicit id
+    // is given; 'briefing_source_mode' picks summaries / full transcripts / both. Nothing
+    // ticked and no explicit id → rejected; there is no fallback to the latest note.
     let briefingPlain = '';
     if (briefing_note_id == null) {
       const { rows: slotRows } = await pool.query(
@@ -1061,9 +1060,11 @@ export async function generateHlpvV3(req, res) {
       ].filter(Boolean).join('\n\n====\n\n');
     }
     if (!briefingPlain.trim()) {
-      const briefingText = await resolvePrimaryNoteHtml(projectId, { noteRef: briefing_note_id });
+      const briefingText = briefing_note_id != null
+        ? await resolvePrimaryNoteHtml(projectId, { noteRef: briefing_note_id, latestFallback: false })
+        : null;
       if (!briefingText?.trim()) {
-        return res.status(400).json({ error: 'No notes found for this project. Please add a meeting note first.' });
+        return res.status(400).json({ error: 'No meeting note selected. Tick a note in Sources before generating.' });
       }
       briefingPlain = briefingText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     }

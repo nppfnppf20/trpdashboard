@@ -367,6 +367,17 @@ async function substituteAppealPromptVariables(promptText, project, projectId) {
 // project_issue_tracks ("key issues") table — see draftingIssues.controller.js.
 const V3_SLUG = 'planning_statement_v3';
 
+// Draft types whose prompts have the guiding brief (and style example) written
+// straight into the prompt text (migration 191). Once the {{GUIDING_BRIEF}} /
+// {{STYLE_GUIDE}} tokens are gone the admin brief must not be fetched again, or
+// its style example would be auto-appended a second time. Until the migration
+// has run the tokens are still present, so the brief is fetched as before.
+const INLINED_BRIEF_SLUGS = ['statement_of_case', 'statement_of_common_ground', 'pre_application_request'];
+function promptIsSelfContained(draftType) {
+  return INLINED_BRIEF_SLUGS.includes(draftType.slug)
+    && !/\{\{(GUIDING_BRIEF|STYLE_GUIDE)\}\}/.test(draftType.generation_prompt ?? '');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Planning Policy section context — organised by plan/policy-document
 // hierarchy (public.policy_documents + public.project_policies.plan_id),
@@ -697,7 +708,7 @@ export async function generateDraftFromPaNotes(req, res) {
     // 131-133), so fetching one here would only risk the style example
     // being auto-appended a second time by generateAppealDraftFromPrompt.
     const [guidingBrief, { rows: startingDocRows }] = await Promise.all([
-      draftType.slug === V3_SLUG
+      (draftType.slug === V3_SLUG || promptIsSelfContained(draftType))
         ? null
         : getGuidingBrief(GUIDING_BRIEF_SLUG_ALIAS[draftType.slug] || draftType.slug, bodyDevType ?? project.development_type),
       pool.query(
