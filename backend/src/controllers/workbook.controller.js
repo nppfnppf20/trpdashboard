@@ -375,26 +375,16 @@ export async function getNote(req, res) {
   }
 }
 
-export async function createNote(req, res) {
-  const projectId = pid(req, res); if (projectId == null) return;
+// Read an uploaded file into plain text and hand it back, without saving anything. The text goes into the Add
+// advancement box so it can be checked and edited before it is used.
+export async function parseNoteFile(req, res) {
   try {
-    let body = str(req.body?.text);
-    let fileName = null;
-    if (req.file) {
-      ({ text: body } = await parseFile(req.file.buffer, req.file.originalname));
-      fileName = req.file.originalname;
-    }
-    body = body.trim();
-    if (!body) return res.status(400).json({ error: 'Paste some text or choose a file' });
-    const title = str(req.body?.title).trim() || (fileName ? fileName.replace(/\.[^.]+$/, '') : 'Meeting notes');
-    const { rows: [row] } = await pool.query(
-      `INSERT INTO public.workbook_notes (project_id, title, note_date, source, body, created_by)
-       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6) RETURNING ${NOTE_SELECT}, body`,
-      [projectId, title, isoDate(req.body?.date), str(req.body?.source).trim() || 'Meeting notes', body, req.user?.id ?? null]
-    );
-    res.status(201).json(row);
+    if (!req.file) return res.status(400).json({ error: 'Choose a file' });
+    const { text } = await parseFile(req.file.buffer, req.file.originalname);
+    if (!String(text || '').trim()) return res.status(422).json({ error: 'No text could be read from that file' });
+    res.json({ text: String(text), file_name: req.file.originalname });
   } catch (err) {
-    console.error('workbook.createNote error:', err);
+    console.error('workbook.parseNoteFile error:', err);
     res.status(500).json({ error: err.message });
   }
 }
@@ -466,7 +456,7 @@ export async function suggestAdvancement(req, res) {
       const parentOk = parent && ((n.type === 'action' && parent.type === 'risk') || (n.type === 'issue' && (parent.type === 'action' || parent.type === 'risk')));
       newRows.push({
         type: n.type, subject: str(n.subject).trim(), text: str(n.text || n.subject).trim(), owner: str(n.owner).trim(),
-        priority: [1, 2, 3].includes(n.priority) ? n.priority : 2,
+        priority: null,   // never taken from the model: the reviewer chooses it
         target: dateOk(n.target, n.target_basis) ? n.target : '', target_basis: dateOk(n.target, n.target_basis) ? str(n.target_basis).trim() : '',
         gate_refs: refList(n.gate_refs).filter(r => gateByRef.has(r)), parent_id: parentOk ? parent.id : null,
         reason: str(n.reason), quote: str(n.quote),
@@ -496,8 +486,11 @@ export async function suggestAdvancement(req, res) {
 // Apply the ticked proposals in one transaction. Ops come from the client but every id is re-checked against the project.
 export async function applyAdvancement(req, res) {
   const projectId = pid(req, res); if (projectId == null) return;
-  const { ops, date, source, summary, note_id } = req.body || {};
+  const { ops, date, source, summary, note_id, save_note, note_text, note_title } = req.body || {};
   if (!Array.isArray(ops) || !ops.length) return res.status(400).json({ error: 'Nothing to apply' });
+  // Every new risk, action or issue needs a priority chosen by the person applying. Decisions have none.
+  const noPriority = ops.filter(op => op.op === 'new_item' && op.data && op.data.type !== 'decision' && ![1, 2, 3].includes(Number(op.data.priority)));
+  if (noPriority.length) return res.status(400).json({ error: `Choose a priority for ${noPriority.length === 1 ? 'the new row' : 'each new row'}, or remove it.` });
   const when = isoDate(date) || new Date().toISOString().slice(0, 10);
   const src = str(source).trim() || 'Meeting notes';
   const mark = stamp(when);
@@ -564,14 +557,24 @@ export async function applyAdvancement(req, res) {
         applied++;
       }
     }
-    const noteRef = intOrNull(note_id);
+    let noteRef = intOrNull(note_id);
+    // "Keep a copy of these notes": the note is only stored now, once the changes are applied, so a note you paste
+    // just to try the suggestions is never saved.
+    if (!noteRef && save_note && str(note_text).trim()) {
+      const { rows: [n] } = await client.query(
+        `INSERT INTO public.workbook_notes (project_id, title, note_date, source, body, created_by)
+         VALUES ($1, $2, $3::date, $4, $5, $6) RETURNING id`,
+        [projectId, str(note_title).trim().slice(0, 200) || `${src} ${when}`, when, src, str(note_text).slice(0, 200000), userId]
+      );
+      noteRef = n.id;
+    }
     await client.query(
       `INSERT INTO public.workbook_advancements (project_id, note_id, advancement_date, source, summary, applied_count, created_by)
        VALUES ($1, (SELECT id FROM public.workbook_notes WHERE id = $2 AND project_id = $1), $3::date, $4, $5, $6, $7)`,
       [projectId, noteRef, when, src, str(summary).slice(0, 2000), applied, userId]
     );
     await client.query('COMMIT');
-    res.json({ applied, ...(await loadWorkbook(pool, projectId)) });
+    res.json({ applied, note_id: noteRef, ...(await loadWorkbook(pool, projectId)) });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('workbook.applyAdvancement error:', err);

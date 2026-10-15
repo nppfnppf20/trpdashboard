@@ -5,6 +5,7 @@
   import ProjectStagesBoard from '$lib/components/workflow/ProjectStagesBoard.svelte';
   import ProjectOverviewTab from '$lib/components/projects/overview/ProjectOverviewTab.svelte';
   import ProjectDetailsTab from '$lib/components/projects/ProjectDetailsTab.svelte';
+  import PlanningStageStrip from '$lib/components/projects/PlanningStageStrip.svelte';
   import SiteBoundaryMap from '$lib/components/projects/SiteBoundaryMap.svelte';
   import SimilarSchemesTab from '$lib/components/projects/SimilarSchemesTab.svelte';
   import AppealPrecedentTab from '$lib/components/projects/AppealPrecedentTab.svelte';
@@ -654,6 +655,9 @@
             {#if projectData?.status}<span class="status-badge status-{statusClass(projectData.status)}">{projectData.status}</span>{/if}
           </h2>
         </div>
+        {#if activeTab === 'details' && projectData}
+          <PlanningStageStrip projectId={projectData.id} />
+        {/if}
         {#if activeTab !== 'details'}
           <button class="modal-close-btn" on:click={handleClose} title="Back to Overview" aria-label="Back to Overview">&times;</button>
         {/if}

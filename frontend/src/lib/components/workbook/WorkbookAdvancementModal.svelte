@@ -5,27 +5,37 @@
   // Quote. The suggested values are editable before applying, including a gate question's 1 to 5 score and any
   // date: the AI never proposes a score, but you can set one here. Nothing is saved until Apply.
   import { onMount } from 'svelte';
-  import { listWorkbookNotes, getWorkbookNote, suggestWorkbookAdvancement, applyWorkbookAdvancement } from '$lib/api/workbook.js';
+  import { listWorkbookNotes, getWorkbookNote, deleteWorkbookNote, parseWorkbookFile, suggestWorkbookAdvancement, applyWorkbookAdvancement } from '$lib/api/workbook.js';
   import { SOURCES, STATUSES, today, fmtLong, fmtShort } from './workbookUtils.js';
 
   export let projectId;
   export let gate = [];
   export let items = [];
   export let refs = {};
-  export let initialNote = null;      // a saved note to start from: { id, title, note_date, source, body }
   export let onClose = () => {};
   export let onApplied = () => {};    // (workbook) - the refreshed { gate, items }
 
   let savedNotes = [];
-  let noteId = initialNote?.id ?? null;
-  let noteText = initialNote?.body ?? '';
-  let date = initialNote?.note_date ?? today();
-  let source = initialNote?.source ?? 'Meeting notes';
+  let noteId = null;          // set when the text came from a saved note
+  let noteText = '';
+  let date = today();
+  let source = 'Meeting notes';
+  let mode = 'paste';         // 'paste' | 'upload'
+  let fileName = '';
+  let parsing = false;
+  let dragOver = false;
+  let fileInput;
+  let keepCopy = true;        // keep a copy of the notes on the workbook (stored when Apply is clicked)
+  let noteTitle = '';
+  let savedOpen = false;
+  let armedNoteId = null;
   let drafting = false;
   let applying = false;
   let error = null;
   let summary = '';
   let proposals = null;     // null = not drafted yet
+  let showMissing = false;  // highlight new rows that still have no priority
+  let priorityWarning = null;  // names of the new rows that still need one, shown in a popup
 
   onMount(async () => {
     try { savedNotes = (await listWorkbookNotes(projectId)).notes; } catch { /* the picker is optional */ }
@@ -37,6 +47,54 @@
     try {
       const n = await getWorkbookNote(id);
       noteId = n.id; noteText = n.body; date = n.note_date; source = n.source;
+      proposals = null;
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  // Reading a file only fills the box below so it can be checked and edited. Nothing is saved.
+  async function pickFile(file) {
+    if (!file) return;
+    parsing = true;
+    error = null;
+    try {
+      const res = await parseWorkbookFile(projectId, file);
+      noteText = res.text;
+      fileName = res.file_name;
+      noteId = null;
+      proposals = null;
+      if (!noteTitle.trim()) noteTitle = res.file_name.replace(/\.[^.]+$/, '');
+    } catch (err) {
+      error = err.message;
+    } finally {
+      parsing = false;
+    }
+  }
+  function onDrop(e) {
+    e.preventDefault();
+    dragOver = false;
+    mode = 'upload';
+    pickFile(e.dataTransfer.files[0]);
+  }
+  function armDelete(id) {
+    if (armedNoteId === id) { armedNoteId = null; removeNote(id); return; }
+    armedNoteId = id;
+    setTimeout(() => { if (armedNoteId === id) armedNoteId = null; }, 3000);
+  }
+  async function removeNote(id) {
+    try {
+      await deleteWorkbookNote(id);
+      savedNotes = savedNotes.filter(n => n.id !== id);
+      if (noteId === id) noteId = null;
+    } catch (err) {
+      error = err.message;
+    }
+  }
+  async function useSaved(id) {
+    try {
+      const n = await getWorkbookNote(id);
+      noteId = n.id; noteText = n.body; date = n.note_date; source = n.source; fileName = '';
       proposals = null;
     } catch (err) {
       error = err.message;
@@ -73,7 +131,7 @@
     for (const n of raw.new) {
       out.push({
         kind: 'new', data: n,
-        edit: { subject: n.subject, text: n.text || '', owner: n.owner || '', priority: n.priority || 2, target: n.target || '' },
+        edit: { subject: n.subject, text: n.text || '', owner: n.owner || '', priority: '', target: n.target || '' },
         sugg: { target: !!n.target }, targetBasis: n.target_basis, reason: n.reason, quote: n.quote, on: true,
       });
     }
@@ -85,10 +143,12 @@
   }
 
   async function draft() {
+    if (mode === 'upload' && !noteText.trim()) { error = 'Choose a file first.'; return; }
     if (noteText.trim().length < 20) { error = 'Add some notes first.'; return; }
     drafting = true;
     error = null;
     proposals = null;
+    showMissing = false;
     try {
       const raw = await suggestWorkbookAdvancement(projectId, { text: noteText, noteId, date, source });
       summary = raw.summary;
@@ -103,6 +163,13 @@
   function toggle(i) {
     proposals = proposals.map((p, idx) => (idx === i ? { ...p, on: !p.on } : p));
   }
+  function removeProposal(i) {
+    proposals = proposals.filter((_, idx) => idx !== i);
+  }
+  // A new risk, action or issue needs a priority from the person applying. Decisions have none.
+  const needsPriority = p => p.kind === 'new' && p.data.type !== 'decision';
+  const hasPriority = p => [1, 2, 3].includes(Number(p.edit.priority));
+
   function setEdit(i, patch) {
     proposals = proposals.map((p, idx) => (idx === i ? { ...p, edit: { ...p.edit, ...patch } } : p));
   }
@@ -140,18 +207,24 @@
     }
     if (p.kind === 'new') {
       if (!(e.subject || '').trim()) return null;
-      return { op: 'new_item', data: { type: p.data.type, subject: e.subject.trim(), text: (e.text || '').trim(), owner: (e.owner || '').trim(), priority: Number(e.priority) || 2, target: e.target || '', gate_refs: p.data.gate_refs, parent_id: p.data.parent_id } };
+      return { op: 'new_item', data: { type: p.data.type, subject: e.subject.trim(), text: (e.text || '').trim(), owner: (e.owner || '').trim(), priority: Number(e.priority), target: e.target || '', gate_refs: p.data.gate_refs, parent_id: p.data.parent_id } };
     }
     return { op: 'link', item_id: p.it.id, patch: p.patch };
   }
 
   async function apply() {
+    const missing = proposals.filter(p => p.on && needsPriority(p) && !hasPriority(p));
+    if (missing.length) {
+      showMissing = true;
+      priorityWarning = missing.map(p => `${p.edit.subject || p.data.subject} (${p.data.type})`);
+      return;
+    }
     const ops = proposals.filter(p => p.on).map(opFor).filter(Boolean);
     if (!ops.length) { error = 'Nothing to apply. Tick a suggestion, or change a value.'; return; }
     applying = true;
     error = null;
     try {
-      const result = await applyWorkbookAdvancement(projectId, { ops, date, source, summary, noteId });
+      const result = await applyWorkbookAdvancement(projectId, { ops, date, source, summary, noteId, saveNote: keepCopy && !noteId, noteText, noteTitle });
       onApplied(result);
     } catch (err) {
       error = err.message;
@@ -188,17 +261,69 @@
         </label>
       </div>
 
-      <label class="wa-field">
-        <span class="form-label">Notes or transcript</span>
-        <textarea class="form-input wa-text" rows="7" bind:value={noteText} on:input={() => { noteId = null; }} placeholder="Paste meeting notes, an email or a transcript. Claude suggests updates to existing rows and any new actions, risks, issues or decisions. Nothing is saved until you apply it."></textarea>
-      </label>
+      <div class="wa-tabs">
+        <button type="button" class="wa-tab" class:active={mode === 'paste'} on:click={() => (mode = 'paste')}>Paste text</button>
+        <button type="button" class="wa-tab" class:active={mode === 'upload'} on:click={() => (mode = 'upload')}>Upload a file</button>
+      </div>
+
+      {#if mode === 'upload'}
+        <!-- svelte-ignore a11y-no-static-element-interactions -->
+        <div class="wa-drop" class:over={dragOver} on:dragover|preventDefault={() => (dragOver = true)} on:dragleave={() => (dragOver = false)} on:drop={onDrop}>
+          {#if parsing}
+            Reading the file…
+          {:else if fileName}
+            <strong>{fileName}</strong> read ({noteText.length.toLocaleString()} characters).
+            <button type="button" class="btn btn-secondary btn-sm" on:click={() => fileInput.click()}>Choose another</button>
+          {:else}
+            Drop a .docx, .pdf, .txt or .md file here, or
+            <button type="button" class="btn btn-secondary btn-sm" on:click={() => fileInput.click()}>choose a file</button>
+          {/if}
+          <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt,.md" on:change={e => pickFile(e.target.files[0])} hidden>
+        </div>
+      {/if}
+
+      {#if mode === 'paste'}
+        <label class="wa-field">
+          <span class="form-label">Notes or transcript</span>
+          <textarea class="form-input wa-text" rows="7" bind:value={noteText} on:input={() => { noteId = null; }} placeholder="Paste meeting notes, an email or a transcript. Claude suggests updates to existing rows and any new actions, risks, issues or decisions. Nothing is saved until you apply it."></textarea>
+        </label>
+      {/if}
+
+      <div class="wa-keep">
+        {#if noteId}
+          <span class="wa-keep-note">These notes are already saved on the workbook.</span>
+        {:else}
+          <label class="wa-keep-check"><input type="checkbox" bind:checked={keepCopy}> Keep a copy of these notes on the workbook</label>
+          {#if keepCopy}
+            <input class="form-input wa-keep-title" bind:value={noteTitle} placeholder="Title, e.g. Client call (optional)">
+          {/if}
+          <span class="wa-keep-note">{keepCopy ? 'Saved when you click Apply, not before.' : 'Nothing is kept. The changes are still applied.'}</span>
+        {/if}
+      </div>
+
+      <div class="wa-saved">
+        <button type="button" class="wa-saved-toggle" on:click={() => (savedOpen = !savedOpen)} aria-expanded={savedOpen}>
+          <i class="las {savedOpen ? 'la-angle-down' : 'la-angle-right'}"></i> Saved notes ({savedNotes.length})
+        </button>
+        {#if savedOpen}
+          {#each savedNotes as n (n.id)}
+            <div class="wa-saved-row">
+              <div class="wa-saved-main"><strong>{n.title}</strong><span>{fmtLong(n.note_date)} · {n.source}</span></div>
+              <button type="button" class="btn btn-secondary btn-sm" on:click={() => useSaved(n.id)}>Use</button>
+              <button type="button" class="wa-saved-del" class:armed={armedNoteId === n.id} on:click={() => armDelete(n.id)}>{armedNoteId === n.id ? 'Sure?' : 'Delete'}</button>
+            </div>
+          {:else}
+            <div class="wa-saved-empty">No notes saved on this workbook yet.</div>
+          {/each}
+        {/if}
+      </div>
 
       {#if error}<div class="wa-error">{error}</div>{/if}
       {#if drafting}<div class="wa-note">Reading the notes against {items.length} rows and {gate.length} gate questions…</div>{/if}
 
       {#if proposals}
         {#if summary}<p class="wa-summary">{summary}</p>{/if}
-        {#if proposals.length}<p class="wa-hint">Change anything below before applying. The AI never suggests a score; you can set one yourself.</p>{/if}
+        {#if proposals.length}<p class="wa-hint">Change anything below before applying. The AI never suggests a score or a priority; you set those yourself, and every new risk, action or issue needs a priority.</p>{/if}
         {#if !proposals.length}
           <div class="wa-empty">No changes suggested from these notes.</div>
         {/if}
@@ -207,12 +332,15 @@
             <div class="wa-gh"><span>{g.title}</span><span class="wa-count">{g.rows.length}</span></div>
             {#each g.rows as { p, i } (i)}
               <div class="wa-prop" class:off={!p.on}>
+                <div class="wa-prop-bar">
                 <label class="wa-prop-head">
                   <input type="checkbox" checked={p.on} on:change={() => toggle(i)}>
                   {#if p.kind === 'new'}<span class="wa-tag wa-new">New {p.data.type}</span><span class="wa-title">{p.edit.subject || p.data.subject}</span>
                   {:else if p.kind === 'link'}<span class="wa-tag wa-link">Link</span><span class="wa-title">{p.label}</span>
                   {:else}<span class="wa-tag wa-upd">Update</span><span class="wa-title">{p.label}</span>{/if}
                 </label>
+                <button type="button" class="wa-remove" on:click={() => removeProposal(i)}>Remove</button>
+                </div>
 
                 <dl class="wa-grid">
                   <dt>Suggested</dt>
@@ -268,7 +396,8 @@
                       {#if p.data.type !== 'decision'}
                         <label class="wa-ef">
                           <span class="wa-lab">Priority</span>
-                          <select class="form-input" value={p.edit.priority} on:change={e => setEdit(i, { priority: parseInt(e.target.value, 10) })}>
+                          <select class="form-input" class:wa-missing={showMissing && !hasPriority(p)} value={p.edit.priority} on:change={e => setEdit(i, { priority: e.target.value ? parseInt(e.target.value, 10) : '' })}>
+                            <option value="">Select a priority</option>
                             <option value={1}>1 · High</option><option value={2}>2 · Medium</option><option value={3}>3 · Low</option>
                           </select>
                         </label>
@@ -310,6 +439,17 @@
   </div>
 </div>
 
+{#if priorityWarning}
+  <div class="wa-alert-backdrop" on:click|self={() => (priorityWarning = null)} role="presentation">
+    <div class="wa-alert" role="alertdialog" aria-modal="true" aria-label="Priority needed">
+      <h3>Priority needed</h3>
+      <p>You need to either select a priority or remove the item for:</p>
+      <ul>{#each priorityWarning as name (name)}<li>{name}</li>{/each}</ul>
+      <div class="wa-alert-foot"><button class="btn btn-primary btn-sm" on:click={() => (priorityWarning = null)}>Back to the suggestions</button></div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .wa-backdrop { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; z-index: 2100; padding: 1rem; }
   .wa-modal { background: var(--color-white); border-radius: var(--radius-lg); width: min(72rem, 100%); max-height: 92vh; display: flex; flex-direction: column; box-shadow: var(--shadow-modal); overflow: hidden; }
@@ -332,7 +472,10 @@
 
   .wa-prop { border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.625rem; }
   .wa-prop.off { opacity: 0.5; }
-  .wa-prop-head { display: flex; align-items: center; gap: 0.625rem; cursor: pointer; }
+  .wa-prop-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+  .wa-prop-head { display: flex; align-items: center; gap: 0.625rem; cursor: pointer; flex: 1; min-width: 0; }
+  .wa-remove { background: none; border: none; padding: 0.125rem; font-family: inherit; font-size: 0.6875rem; color: var(--color-slate-400); text-decoration: underline; cursor: pointer; }
+  .wa-remove:hover { color: var(--color-red-600); }
   .wa-title { font-weight: 600; font-size: 0.9rem; color: var(--color-slate-800); }
   .wa-tag { display: inline-block; padding: 0 0.4rem; border-radius: 3px; font-size: 0.5625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
   .wa-new { background: var(--color-primary-100); color: var(--color-primary-700); }
@@ -359,6 +502,31 @@
   /* values the AI proposed are tinted so they stand out from the ones you change yourself */
   .wa-edit :global(.form-input.wa-ai) { background: var(--color-emerald-100); border-color: var(--color-emerald-500); }
 
+  .wa-tabs { display: flex; gap: 0.25rem; }
+  .wa-tab { background: var(--color-slate-50); border: 1px solid var(--color-slate-200); border-radius: var(--radius-pill); padding: 0.25rem 0.875rem; font-family: inherit; font-size: 0.78rem; font-weight: 500; color: var(--color-slate-500); cursor: pointer; }
+  .wa-tab.active { background: var(--color-primary-50); border-color: var(--color-primary-200); color: var(--color-primary-700); font-weight: 600; }
+  .wa-drop { border: 2px dashed var(--color-slate-300); border-radius: var(--radius-md); padding: 1.25rem; text-align: center; color: var(--color-slate-500); font-size: 0.85rem; display: flex; gap: 0.625rem; align-items: center; justify-content: center; flex-wrap: wrap; }
+  .wa-drop.over { border-color: var(--color-primary-500); background: var(--color-primary-50); }
+  .wa-keep { display: flex; align-items: center; gap: 0.75rem 1rem; flex-wrap: wrap; font-size: 0.8125rem; color: var(--color-slate-700); }
+  .wa-keep-check { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; }
+  .wa-keep-title { width: 16rem; padding: 0.3rem 0.625rem; font-size: 0.8125rem; }
+  .wa-keep-note { color: var(--color-slate-500); font-size: 0.75rem; }
+  .wa-saved { display: flex; flex-direction: column; gap: 0.375rem; }
+  .wa-saved-toggle { align-self: flex-start; display: flex; align-items: center; gap: 0.375rem; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-slate-500); }
+  .wa-saved-toggle:hover { color: var(--color-slate-800); }
+  .wa-saved-row { display: flex; align-items: center; gap: 0.75rem; border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.5rem 0.75rem; }
+  .wa-saved-main { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 0.8125rem; }
+  .wa-saved-main span { font-size: 0.75rem; color: var(--color-slate-500); }
+  .wa-saved-del { background: none; border: none; padding: 0.125rem; font-family: inherit; font-size: 0.6875rem; color: var(--color-slate-400); text-decoration: underline; cursor: pointer; }
+  .wa-saved-del.armed { color: var(--color-red-600); }
+  .wa-saved-empty { font-size: 0.8125rem; color: var(--color-slate-500); }
+  .wa-edit :global(.form-input.wa-missing) { border-color: var(--color-red-500); box-shadow: 0 0 0 1px var(--color-red-500); background: var(--color-red-50); }
+  .wa-alert-backdrop { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; z-index: 2300; padding: 1rem; }
+  .wa-alert { background: var(--color-white); border-radius: var(--radius-lg); width: min(28rem, 100%); padding: 1.25rem 1.5rem; box-shadow: var(--shadow-modal); }
+  .wa-alert h3 { margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 600; color: var(--color-slate-800); }
+  .wa-alert p { margin: 0 0 0.5rem; font-size: 0.875rem; color: var(--color-slate-600); }
+  .wa-alert ul { margin: 0 0 1rem; padding-left: 1.25rem; font-size: 0.875rem; color: var(--color-slate-800); font-weight: 500; }
+  .wa-alert-foot { display: flex; justify-content: flex-end; }
   .wa-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.875rem 1.75rem; border-top: 1px solid var(--color-slate-200); }
   @media (max-width: 48rem) { .wa-edit { grid-template-columns: 1fr; } }
   @media (max-width: 36rem) { .wa-three { grid-template-columns: 1fr; } .wa-grid { grid-template-columns: 1fr; padding-left: 0; } }

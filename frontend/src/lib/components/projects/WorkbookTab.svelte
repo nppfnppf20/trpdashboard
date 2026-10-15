@@ -10,7 +10,6 @@
   import WorkbookNewItemModal from '$lib/components/workbook/WorkbookNewItemModal.svelte';
   import WorkbookGateModal from '$lib/components/workbook/WorkbookGateModal.svelte';
   import WorkbookConfirmModal from '$lib/components/workbook/WorkbookConfirmModal.svelte';
-  import WorkbookNotesModal from '$lib/components/workbook/WorkbookNotesModal.svelte';
   import WorkbookAdvancementModal from '$lib/components/workbook/WorkbookAdvancementModal.svelte';
 
   export let project;
@@ -30,9 +29,7 @@
   let newType = null;
   let gateModalOpen = false;
   let confirmDelete = null;   // { kind: 'item' | 'gate', id, title, lines }
-  let notesOpen = false;
   let advOpen = false;
-  let advNote = null;
   let flagsOpen = false;
   let toast = '';
   let toastTimer;
@@ -232,20 +229,10 @@
   const openLinks = (kind, id, focus = '') => { linksModal = { kind, id, focus }; };
   const openLog = id => { logItemId = id; };
 
-  function draftFromNote(note) {
-    notesOpen = false;
-    advNote = note;
-    advOpen = true;
-  }
-  function openAdvancement() {
-    advNote = null;
-    advOpen = true;
-  }
   function advancementApplied(result) {
     gate = result.gate;
     items = result.items;
     advOpen = false;
-    advNote = null;
     say(`Applied ${result.applied} change${result.applied === 1 ? '' : 's'}.`);
   }
   function goToFlag(f) {
@@ -265,8 +252,7 @@
       <button class="btn btn-secondary btn-sm" on:click={() => (flagsOpen = true)}>
         Flags{#if flags.length}<span class="wb-flagcount">{flags.length}</span>{/if}
       </button>
-      <button class="btn btn-secondary btn-sm" on:click={() => (notesOpen = true)}>Meeting notes</button>
-      <button class="btn btn-primary btn-sm" on:click={openAdvancement}>Add advancement</button>
+      <button class="btn btn-primary btn-sm" on:click={() => (advOpen = true)}>Add advancement</button>
     </div>
   </header>
 
@@ -354,15 +340,10 @@
   <WorkbookGateModal {gate} {gateNo} onSubmit={addGateQuestion} onClose={() => (gateModalOpen = false)} />
 {/if}
 
-{#if notesOpen}
-  <WorkbookNotesModal {projectId} onClose={() => (notesOpen = false)} onDraft={draftFromNote} />
-{/if}
-
 {#if advOpen}
   <WorkbookAdvancementModal
     {projectId} {gate} {items} {refs}
-    initialNote={advNote}
-    onClose={() => { advOpen = false; advNote = null; }}
+    onClose={() => (advOpen = false)}
     onApplied={advancementApplied}
   />
 {/if}

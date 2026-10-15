@@ -63,14 +63,11 @@ export async function getWorkbookNote(id) {
   return json(await authFetch(`/api/workbook/notes/${id}`), 'Failed to load the note');
 }
 
-export async function createWorkbookNote(projectId, { text, file, title, date, source }) {
+// Read an uploaded file (.docx, .pdf, .txt, .md) into plain text. Nothing is saved.
+export async function parseWorkbookFile(projectId, file) {
   const form = new FormData();
-  if (file) form.append('file', file);
-  if (text) form.append('text', text);
-  if (title) form.append('title', title);
-  if (date) form.append('date', date);
-  if (source) form.append('source', source);
-  return json(await authFetch(`/api/workbook/projects/${projectId}/notes`, { method: 'POST', body: form }), 'Failed to save the note');
+  form.append('file', file);
+  return json(await authFetch(`/api/workbook/projects/${projectId}/notes/parse`, { method: 'POST', body: form }), 'Could not read that file');
 }
 
 export async function deleteWorkbookNote(id) {
@@ -84,8 +81,10 @@ export async function suggestWorkbookAdvancement(projectId, { text, noteId, date
   }), 'Failed to draft suggestions');
 }
 
-export async function applyWorkbookAdvancement(projectId, { ops, date, source, summary, noteId }) {
+// saveNote: keep a copy of the notes on the workbook, stored now that the changes are applied (never when only drafting).
+export async function applyWorkbookAdvancement(projectId, { ops, date, source, summary, noteId, saveNote, noteText, noteTitle }) {
   return json(await authFetch(`/api/workbook/projects/${projectId}/advancements/apply`, {
-    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ ops, date, source, summary, note_id: noteId || null }),
+    method: 'POST', headers: JSON_HEADERS,
+    body: JSON.stringify({ ops, date, source, summary, note_id: noteId || null, save_note: !!saveNote, note_text: saveNote ? noteText : undefined, note_title: saveNote ? noteTitle : undefined }),
   }), 'Failed to apply');
 }

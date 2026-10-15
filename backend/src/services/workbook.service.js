@@ -22,7 +22,8 @@ Rules:
 - Never propose a score for a gate question. For gate questions you may only add a short "note" for the comments column.
 - Only propose a link when the notes make the relationship clear: "parent_id" puts an action under a risk, or an issue under an action or risk. "add_gate_refs" attaches an item to gate questions.
 - "quote" is a short phrase copied from the notes that supports the proposal.
-- Dates are YYYY-MM-DD. Priority is 1 (high) to 3 (low).
+- Dates are YYYY-MM-DD.
+- Never propose a priority for a new row. Leave "priority" out entirely; the person reviewing sets it.
 - Only set a "target" date when the notes mention a date or time for that specific item. It can be exact ("22 October") or relative ("next week", "by Friday", "end of the month"); work out the real YYYY-MM-DD from the note date given. Never guess a date, never take it from the date of the next meeting or anything not tied to that item, and never move a date just because other things moved.
 - Whenever you set a "target", also return "target_basis": the exact words copied from the notes that gave the date, for example "by next Friday". If the notes give no date for the item, leave out both "target" and "target_basis". An item with no date mentioned keeps the date it already has.
 - If the notes contain nothing relevant, return empty arrays.
@@ -32,7 +33,7 @@ Reply with only JSON of this shape, no commentary:
  "updates":[
    {"kind":"item","id":<item id>,"note":"...","status":"not started|in progress|completed","target":"YYYY-MM-DD","target_basis":"words from the notes","owner":"...","reason":"short why","quote":"..."},
    {"kind":"gate","gate_ref":"3.8","note":"...","reason":"...","quote":"..."}],
- "new":[{"type":"action|risk|issue|decision","subject":"short title","text":"full wording","owner":"","priority":2,"target":"","target_basis":"","gate_refs":["3.8"],"parent_id":<existing risk id for an action, existing action or risk id for an issue, or null>,"reason":"...","quote":"..."}],
+ "new":[{"type":"action|risk|issue|decision","subject":"short title","text":"full wording","owner":"","target":"","target_basis":"","gate_refs":["3.8"],"parent_id":<existing risk id for an action, existing action or risk id for an issue, or null>,"reason":"...","quote":"..."}],
  "links":[{"item_id":<item id>,"parent_id":<id or null>,"add_gate_refs":["3.7"],"reason":"...","quote":"..."}]}
 Omit optional keys you are not changing.`;
 

@@ -14,7 +14,7 @@ import {
   deleteProgress,
   listNotes,
   getNote,
-  createNote,
+  parseNoteFile,
   deleteNote,
   suggestAdvancement,
   applyAdvancement,
@@ -39,7 +39,7 @@ router.delete('/progress/:id', deleteProgress);
 
 // The workbook's own meeting notes
 router.get('/projects/:projectId/notes', listNotes);
-router.post('/projects/:projectId/notes', upload.single('file'), createNote);
+router.post('/projects/:projectId/notes/parse', upload.single('file'), parseNoteFile);
 router.get('/notes/:id', getNote);
 router.delete('/notes/:id', deleteNote);
 
