@@ -13,6 +13,8 @@
   export let onOpenLog = () => {};    // (id)
   export let onAdd = () => {};        // (type)
   export let onDelete = () => {};     // (id)
+  export let deleteImpact = () => null;      // (id) => lines to warn about, or null when nothing depends on it
+  export let onConfirmDelete = () => {};     // (id) - open the warning
 
   const LABEL = {
     risk: { text: 'Risk or opportunity', update: 'Update' },
@@ -60,6 +62,7 @@
     if (v !== (it.parent_id ?? null)) onChange(it.id, { parent_id: v });
   }
   function arm(id) {
+    if (deleteImpact(id)) { onConfirmDelete(id); return; }
     if (armedId === id) { armedId = null; onDelete(id); return; }
     armedId = id;
     setTimeout(() => { if (armedId === id) armedId = null; }, 3000);
@@ -84,7 +87,7 @@
       <tr>
         <th class="wt-ref-col">Ref</th>
         <th class="wt-w-subject">Subject</th>
-        <th class="wt-w-text">{LABEL[type].text}</th>
+        <th class="wt-w-text wt-left">{LABEL[type].text}</th>
         <th class="wt-w-date">{type === 'decision' ? 'Decision date' : 'Raised'}</th>
         {#if type !== 'decision'}<th class="wt-w-date">Target</th>{/if}
         <th class="wt-w-owner">{type === 'decision' ? 'Taken by' : 'Owner'}</th>
@@ -107,7 +110,7 @@
               <button class="wt-del" class:armed={armedId === it.id} on:click={() => arm(it.id)}>{armedId === it.id ? 'Sure?' : 'Delete'}</button>
             </td>
             <td><textarea class="wt-cell" rows="1" use:autosize={it.subject} value={it.subject} on:change={e => text(it, 'subject', e)} aria-label="Subject"></textarea></td>
-            <td><textarea class="wt-cell" rows="1" use:autosize={it.text} value={it.text} on:change={e => text(it, 'text', e)} aria-label={LABEL[type].text}></textarea></td>
+            <td><textarea class="wt-cell wt-left" rows="1" use:autosize={it.text} value={it.text} on:change={e => text(it, 'text', e)} aria-label={LABEL[type].text}></textarea></td>
             <td><input class="wt-cell wt-date" type="date" value={it.raised || ''} on:change={e => date(it, 'raised', e)} aria-label="Date"></td>
             {#if type !== 'decision'}
               <td class:wt-late={isOverdue(it)}><input class="wt-cell wt-date" type="date" value={it.target || ''} on:change={e => date(it, 'target', e)} aria-label="Target date"></td>
@@ -148,7 +151,7 @@
                 </select>
               </td>
             {/if}
-            <td>
+            <td class="wt-linkcell">
               {#each linkCounts(gate, items, 'item', it.id) as c (c.type)}
                 <button class="wt-chip" on:click={() => onOpenLinks('item', it.id, c.type)}>{c.label}</button>
               {:else}
@@ -196,6 +199,7 @@
   .wt-cell:focus { outline: none; border-color: var(--color-primary-600); background: var(--color-white); box-shadow: var(--focus-ring-blue); }
   .wt-date { font-size: 0.75rem; padding-inline: 0.2rem; }
   .wt-select { cursor: pointer; }
+  .wt-table th.wt-left, .wt-cell.wt-left { text-align: left; text-align-last: auto; }
   .wt-late .wt-date { color: var(--color-red-600); font-weight: 600; }
 
   .wt-pill { display: block; box-sizing: border-box; width: 2.25rem; margin-inline: auto; border: none; border-radius: var(--radius-pill); padding: 0.2rem 0.25rem; font-family: inherit; font-size: 0.71875rem; font-weight: 600; text-align: center; text-align-last: center; padding-inline: 0; cursor: pointer; appearance: none; -webkit-appearance: none; }
@@ -219,6 +223,7 @@
   .wt-empty { text-align: center; padding: 1.75rem 1rem; color: var(--color-slate-500); }
   .wt-hint { margin: 0.5rem 0.125rem; font-size: 0.75rem; color: var(--color-slate-500); }
   .wt-status-cell { text-align: center; }
+  .wt-table td.wt-linkcell { text-align: left; }
   /* status dropdowns: use the page font, not the browser's form-control font */
   .badge-select { font-family: inherit; font-size: 0.71875rem; font-weight: 600; line-height: 1.4; }
 </style>

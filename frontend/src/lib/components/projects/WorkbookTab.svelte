@@ -8,6 +8,8 @@
   import WorkbookLinksModal from '$lib/components/workbook/WorkbookLinksModal.svelte';
   import WorkbookProgressDrawer from '$lib/components/workbook/WorkbookProgressDrawer.svelte';
   import WorkbookNewItemModal from '$lib/components/workbook/WorkbookNewItemModal.svelte';
+  import WorkbookGateModal from '$lib/components/workbook/WorkbookGateModal.svelte';
+  import WorkbookConfirmModal from '$lib/components/workbook/WorkbookConfirmModal.svelte';
   import WorkbookNotesModal from '$lib/components/workbook/WorkbookNotesModal.svelte';
   import WorkbookAdvancementModal from '$lib/components/workbook/WorkbookAdvancementModal.svelte';
 
@@ -26,6 +28,8 @@
   let linksModal = null;      // { kind, id, focus }
   let logItemId = null;
   let newType = null;
+  let gateModalOpen = false;
+  let confirmDelete = null;   // { kind: 'item' | 'gate', id, title, lines }
   let notesOpen = false;
   let advOpen = false;
   let advNote = null;
@@ -103,6 +107,61 @@
     } catch (err) {
       say(err.message);
       await load();
+    }
+  }
+
+  async function addGateQuestion(data) {
+    const result = await api.createGateQuestion(projectId, data);
+    gate = result.gate;
+    say('Gate question added.');
+  }
+
+  // What deleting something would affect, as sentences for the warning. null means nothing depends on it.
+  const list = (names, max = 6) => names.slice(0, max).join(', ') + (names.length > max ? `, and ${names.length - max} more` : '');
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  function itemImpact(id) {
+    const it = items.find(i => i.id === id);
+    if (!it) return null;
+    const lines = [];
+    const children = items.filter(i => i.parent_id === id);
+    if (children.length) {
+      lines.push(`${plural(children.length, 'row sits', 'rows sit')} under ${refs[id] || 'it'}: ${list(children.map(c => refs[c.id] || c.subject))}. ${children.length === 1 ? 'It' : 'They'} will stay but lose this link.`);
+    }
+    const nLog = (it.log || []).length;
+    if (nLog) lines.push(`Its ${plural(nLog, 'progress entry', 'progress entries')} will be deleted with it.`);
+    return lines.length ? lines : null;
+  }
+
+  function gateImpact(id) {
+    const g = gate.find(x => x.id === id);
+    if (!g) return null;
+    const linked = items.filter(i => (i.gate_refs || []).includes(g.ref));
+    if (!linked.length) return null;
+    return [`${plural(linked.length, 'row is', 'rows are')} linked to gate question ${g.ref}: ${list(linked.map(i => refs[i.id] || i.subject))}. ${linked.length === 1 ? 'It' : 'They'} will stay but lose this link.`];
+  }
+
+  function askDelete(kind, id) {
+    const lines = kind === 'gate' ? gateImpact(id) : itemImpact(id);
+    if (!lines) return kind === 'gate' ? deleteGateQuestion(id) : deleteItem(id);
+    const subject = kind === 'gate' ? `gate question ${gate.find(g => g.id === id)?.ref}` : (refs[id] || 'this row');
+    confirmDelete = { kind, id, title: `Delete ${subject}?`, lines };
+  }
+
+  async function confirmedDelete() {
+    const { kind, id } = confirmDelete;
+    if (kind === 'gate') await deleteGateQuestion(id);
+    else await deleteItem(id);
+    confirmDelete = null;
+  }
+
+  async function deleteGateQuestion(id) {
+    try {
+      const result = await api.deleteGateQuestion(id);
+      gate = result.gate;
+      items = result.items;
+    } catch (err) {
+      say(err.message);
     }
   }
 
@@ -225,7 +284,8 @@
   {:else if error}
     <div class="wb-state wb-error">{error}</div>
   {:else if tab === 'gate'}
-    <WorkbookGateTable {gate} {items} onChange={changeGate} onOpenLinks={openLinks} />
+    <WorkbookGateTable {gate} {items} onChange={changeGate} onOpenLinks={openLinks} onAdd={() => (gateModalOpen = true)} onDelete={deleteGateQuestion}
+      deleteImpact={gateImpact} onConfirmDelete={id => askDelete('gate', id)} />
   {:else if ['risk', 'action', 'issue', 'decision'].includes(tab)}
     <WorkbookItemTable
       type={tab} {gate} {items} {refs} {owners}
@@ -234,6 +294,8 @@
       onOpenLog={openLog}
       onAdd={t => (newType = t)}
       onDelete={deleteItem}
+      deleteImpact={itemImpact}
+      onConfirmDelete={id => askDelete('item', id)}
     />
   {:else}
     <div class="card wb-later-card">
@@ -277,6 +339,19 @@
     onSubmit={addItem}
     onClose={() => (newType = null)}
   />
+{/if}
+
+{#if confirmDelete}
+  <WorkbookConfirmModal
+    title={confirmDelete.title}
+    lines={confirmDelete.lines}
+    onConfirm={confirmedDelete}
+    onCancel={() => (confirmDelete = null)}
+  />
+{/if}
+
+{#if gateModalOpen}
+  <WorkbookGateModal {gate} {gateNo} onSubmit={addGateQuestion} onClose={() => (gateModalOpen = false)} />
 {/if}
 
 {#if notesOpen}

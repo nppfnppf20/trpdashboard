@@ -22,6 +22,22 @@ const str = v => (typeof v === 'string' ? v : '');
 const intOrNull = v => { const n = parseInt(v, 10); return Number.isInteger(n) ? n : null; };
 const refList = v => (Array.isArray(v) ? [...new Set(v.map(x => String(x).replace(/^G\d\s*/i, '').trim()).filter(Boolean))] : []);
 
+const normText = v => String(v || '').toLowerCase().replace(/[\s ]+/g, ' ').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").trim();
+
+// Words that make a quoted phrase a date or a time reference. "ASAP" and "soon" deliberately do not count.
+const MONTHS = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const DATE_WORDS = new RegExp(
+  `\\b(?:\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?${MONTHS}|${MONTHS}\\s+\\d{1,2}|\\d{1,2}[/.-]\\d{1,2}(?:[/.-]\\d{2,4})?` +
+  `|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|tonight|next (?:week|month|fortnight)|this (?:week|month)` +
+  `|end of (?:the )?(?:week|month|year|october|november|december)|by the end|within \\d+|in \\d+ (?:days?|weeks?)|\\d+ (?:days?|weeks?)|a fortnight|a week|eod|cob)\\b`,
+  'i'
+);
+// The model's quoted basis must really be in the notes and must read as a date or time.
+function basisMentionsDate(basis, noteNorm) {
+  const b = normText(basis);
+  return b.length >= 3 && noteNorm.includes(b) && DATE_WORDS.test(b);
+}
+
 function stamp(date) {
   const d = new Date((isoDate(date) || new Date().toISOString().slice(0, 10)) + 'T12:00:00');
   return `[${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}] `;
@@ -130,6 +146,79 @@ export async function updateGateQuestion(req, res) {
   } catch (err) {
     console.error('workbook.updateGateQuestion error:', err);
     res.status(500).json({ error: err.message });
+  }
+}
+
+// Add a gate question under a section. It slots in after the last question of that section (or at the end for a
+// new section), shifting later questions down so the order stays as the team sees it.
+export async function createGateQuestion(req, res) {
+  const projectId = pid(req, res); if (projectId == null) return;
+  const b = req.body || {};
+  const gateNo = intOrNull(b.gate) ?? 2;
+  const ref = str(b.ref).trim();
+  const question = str(b.question).trim();
+  const section = intOrNull(b.section);
+  const score = b.score === undefined || b.score === '' ? 0 : Number(b.score);
+  if (!question) return res.status(400).json({ error: 'Add the question' });
+  if (!/^[A-Za-z0-9.\-]+$/.test(ref)) return res.status(400).json({ error: 'The reference can only use letters, numbers, dots and dashes, for example 3.14' });
+  if (section == null || section < 1) return res.status(400).json({ error: 'Choose a section' });
+  if (!Number.isInteger(score) || score < 0 || score > 5) return res.status(400).json({ error: 'Score must be a whole number from 0 to 5' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [existing] } = await client.query(
+      `SELECT section_title, MAX(sort_order) AS last FROM public.workbook_gate_questions
+       WHERE project_id = $1 AND gate = $2 AND section = $3 GROUP BY section_title`, [projectId, gateNo, section]);
+    let title, after;
+    if (existing) {
+      title = existing.section_title;
+      after = existing.last;
+    } else {
+      title = str(b.section_title).trim();
+      if (!title) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Give the new section a title' }); }
+      const { rows: [m] } = await client.query(`SELECT COALESCE(MAX(sort_order), 0) AS last FROM public.workbook_gate_questions WHERE project_id = $1 AND gate = $2`, [projectId, gateNo]);
+      after = m.last;
+    }
+    await client.query(`UPDATE public.workbook_gate_questions SET sort_order = sort_order + 1 WHERE project_id = $1 AND gate = $2 AND sort_order > $3`, [projectId, gateNo, after]);
+    await client.query(
+      `INSERT INTO public.workbook_gate_questions (project_id, gate, ref, section, section_title, sort_order, question, owner, score, comment)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [projectId, gateNo, ref, section, title, after + 1, question, str(b.owner).trim(), score, str(b.comment)]);
+    await client.query('COMMIT');
+    const { rows: gate } = await pool.query(`SELECT ${GATE_SELECT} FROM public.workbook_gate_questions WHERE project_id = $1 ORDER BY gate, sort_order, id`, [projectId]);
+    res.status(201).json({ gate });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.code === '23505') return res.status(409).json({ error: `A gate question with the reference ${ref} already exists` });
+    console.error('workbook.createGateQuestion error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+}
+
+// Remove a gate question. Rows that pointed at its reference lose that gate ref, so nothing is left linked to a question that no longer exists.
+export async function deleteGateQuestion(req, res) {
+  const id = intOrNull(req.params.id);
+  if (id == null) return res.status(400).json({ error: 'Invalid id' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [q] } = await client.query(`SELECT project_id, ref FROM public.workbook_gate_questions WHERE id = $1`, [id]);
+    if (!q) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Gate question not found' }); }
+    await client.query(
+      `UPDATE public.workbook_items SET gate_refs = array_remove(gate_refs, $2), updated_at = now()
+       WHERE project_id = $1 AND $2 = ANY(gate_refs)`, [q.project_id, q.ref]);
+    await client.query(`DELETE FROM public.workbook_gate_questions WHERE id = $1`, [id]);
+    await client.query('COMMIT');
+    res.json(await loadWorkbook(pool, q.project_id));
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('workbook.deleteGateQuestion error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 }
 
@@ -345,24 +434,28 @@ export async function suggestAdvancement(req, res) {
 
     const itemById = new Map(items.map(i => [i.id, i]));
     const gateByRef = new Map(gate.map(g => [g.ref, g]));
-    const okDate = d => isoDate(d) || undefined;
+
+    // A target date is only accepted when the notes actually mention a date for the item. The model must quote the
+    // words that gave it (target_basis); we check those words really appear in the notes and read as a date or a
+    // time ("22 October", "next Friday", "by the end of the month"), and that the date is not in the past.
+    const noteNorm = normText(noteText);
+    const dateOk = (target, basis) => !!isoDate(target) && target >= date && basisMentionsDate(basis, noteNorm);
 
     const updates = [];
     for (const u of raw.updates) {
       if (u.kind === 'gate') {
         const g = gateByRef.get(String(u.gate_ref));
         if (!g) continue;
-        const score = Number.isInteger(u.score) && u.score >= 0 && u.score <= 5 && u.score !== g.score ? u.score : undefined;
-        if (!u.note && score === undefined) continue;
-        updates.push({ kind: 'gate', gate_id: g.id, note: str(u.note), score, reason: str(u.reason), quote: str(u.quote) });
+        if (!str(u.note).trim()) continue;
+        updates.push({ kind: 'gate', gate_id: g.id, note: str(u.note), reason: str(u.reason), quote: str(u.quote) });
       } else {
         const it = itemById.get(Number(u.id));
         if (!it) continue;
         const status = STATUSES.includes(u.status) && u.status !== it.status ? u.status : undefined;
-        const target = okDate(u.target) && u.target !== it.target ? u.target : undefined;
+        const target = dateOk(u.target, u.target_basis) && u.target !== it.target ? u.target : undefined;
         const owner = u.owner && u.owner !== it.owner ? str(u.owner) : undefined;
         if (!u.note && !status && !target && !owner) continue;
-        updates.push({ kind: 'item', item_id: it.id, note: str(u.note), status, target, owner, reason: str(u.reason), quote: str(u.quote) });
+        updates.push({ kind: 'item', item_id: it.id, note: str(u.note), status, target, target_basis: target ? str(u.target_basis).trim() : undefined, owner, reason: str(u.reason), quote: str(u.quote) });
       }
     }
 
@@ -373,7 +466,8 @@ export async function suggestAdvancement(req, res) {
       const parentOk = parent && ((n.type === 'action' && parent.type === 'risk') || (n.type === 'issue' && (parent.type === 'action' || parent.type === 'risk')));
       newRows.push({
         type: n.type, subject: str(n.subject).trim(), text: str(n.text || n.subject).trim(), owner: str(n.owner).trim(),
-        priority: [1, 2, 3].includes(n.priority) ? n.priority : 2, target: okDate(n.target) || '',
+        priority: [1, 2, 3].includes(n.priority) ? n.priority : 2,
+        target: dateOk(n.target, n.target_basis) ? n.target : '', target_basis: dateOk(n.target, n.target_basis) ? str(n.target_basis).trim() : '',
         gate_refs: refList(n.gate_refs).filter(r => gateByRef.has(r)), parent_id: parentOk ? parent.id : null,
         reason: str(n.reason), quote: str(n.quote),
       });
@@ -436,6 +530,8 @@ export async function applyAdvancement(req, res) {
       } else if (op.op === 'gate_update') {
         const { rows: [g] } = await client.query(`SELECT id, comment FROM public.workbook_gate_questions WHERE id = $1 AND project_id = $2`, [intOrNull(op.gate_id), projectId]);
         if (!g) continue;
+        // The AI never proposes a score (the suggest step drops them). A score can only arrive here because the person
+        // reviewing the suggestions set one by hand, so it is accepted as long as it is a whole number from 0 to 5.
         const sets = [], vals = [];
         const add = (col, val) => { vals.push(val); sets.push(`${col} = $${vals.length}`); };
         const score = Number(op.score);

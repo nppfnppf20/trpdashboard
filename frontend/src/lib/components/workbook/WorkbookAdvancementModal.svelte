@@ -1,10 +1,12 @@
 <script>
   // Add advancement: read a note against the workbook, review the suggested changes, apply the ticked ones.
-  // Suggestions come back in four groups: progress and status on existing rows, gate question changes, new rows,
-  // and links between rows. Nothing is saved until Apply.
+  // Suggestions are grouped by the kind of row they are about (stage gate, risks, actions, issues, decisions). Each
+  // is an update to an existing row, a new row, or a link between rows, laid out as Previous, Suggested, Why and
+  // Quote. The suggested values are editable before applying, including a gate question's 1 to 5 score and any
+  // date: the AI never proposes a score, but you can set one here. Nothing is saved until Apply.
   import { onMount } from 'svelte';
   import { listWorkbookNotes, getWorkbookNote, suggestWorkbookAdvancement, applyWorkbookAdvancement } from '$lib/api/workbook.js';
-  import { SOURCES, today, fmtLong, fmtShort } from './workbookUtils.js';
+  import { SOURCES, STATUSES, today, fmtLong, fmtShort } from './workbookUtils.js';
 
   export let projectId;
   export let gate = [];
@@ -43,22 +45,41 @@
 
   const refOf = id => refs[id] || '';
   const itemLabel = i => `${refOf(i.id)} · ${i.subject}`.trim();
+  const firstLine = t => String(t || '').split('\n')[0];
+  const newest = it => [...(it.log || [])].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id)[0];
+  function parentLabel(id) {
+    const x = items.find(i => i.id === id);
+    return x ? itemLabel(x) : 'None';
+  }
 
+  // Each proposal keeps an `edit` object with the values that will be applied, starting from what the AI suggested
+  // (or the row's current value where it suggested nothing), plus `sugg` flags for what the AI actually proposed.
   function build(raw) {
     const out = [];
     for (const u of raw.updates) {
       if (u.kind === 'gate') {
         const g = gate.find(x => x.id === u.gate_id);
-        if (g) out.push({ kind: 'gate', g, label: `Gate ${g.ref} · ${g.question.length > 70 ? g.question.slice(0, 70) + '…' : g.question}`, note: u.note, score: u.score, reason: u.reason, quote: u.quote, on: true });
+        if (g) out.push({ kind: 'gate', g, label: `Gate ${g.ref} · ${g.question.length > 70 ? g.question.slice(0, 70) + '…' : g.question}`, edit: { note: u.note || '', score: g.score }, sugg: {}, reason: u.reason, quote: u.quote, on: true });
       } else {
         const it = items.find(x => x.id === u.item_id);
-        if (it) out.push({ kind: 'item', it, label: itemLabel(it), note: u.note, status: u.status, target: u.target, owner: u.owner, reason: u.reason, quote: u.quote, on: true });
+        if (it) out.push({
+          kind: 'item', it, label: itemLabel(it),
+          edit: { note: u.note || '', status: u.status ?? it.status, target: u.target ?? it.target ?? '', owner: u.owner ?? it.owner ?? '' },
+          sugg: { status: !!u.status, target: !!u.target, owner: !!u.owner }, targetBasis: u.target_basis,
+          reason: u.reason, quote: u.quote, on: true,
+        });
       }
     }
-    for (const n of raw.new) out.push({ kind: 'new', data: n, reason: n.reason, quote: n.quote, on: true });
+    for (const n of raw.new) {
+      out.push({
+        kind: 'new', data: n,
+        edit: { subject: n.subject, text: n.text || '', owner: n.owner || '', priority: n.priority || 2, target: n.target || '' },
+        sugg: { target: !!n.target }, targetBasis: n.target_basis, reason: n.reason, quote: n.quote, on: true,
+      });
+    }
     for (const l of raw.links) {
       const it = items.find(x => x.id === l.item_id);
-      if (it) out.push({ kind: 'link', it, label: itemLabel(it), patch: l.patch, reason: l.reason, quote: l.quote, on: true });
+      if (it) out.push({ kind: 'link', it, label: itemLabel(it), patch: l.patch, edit: {}, sugg: {}, reason: l.reason, quote: l.quote, on: true });
     }
     return out;
   }
@@ -82,23 +103,51 @@
   function toggle(i) {
     proposals = proposals.map((p, idx) => (idx === i ? { ...p, on: !p.on } : p));
   }
+  function setEdit(i, patch) {
+    proposals = proposals.map((p, idx) => (idx === i ? { ...p, edit: { ...p.edit, ...patch } } : p));
+  }
 
-  $: groups = proposals ? [
-    { title: 'Progress and status', rows: proposals.map((p, i) => ({ p, i })).filter(x => x.p.kind === 'item') },
-    { title: 'Gate questions', rows: proposals.map((p, i) => ({ p, i })).filter(x => x.p.kind === 'gate') },
-    { title: 'New rows', rows: proposals.map((p, i) => ({ p, i })).filter(x => x.p.kind === 'new') },
-    { title: 'Links between rows', rows: proposals.map((p, i) => ({ p, i })).filter(x => x.p.kind === 'link') },
-  ].filter(g => g.rows.length) : [];
+  // Grouped by the kind of row each suggestion is about; within a group, updates come first, then new rows, then links.
+  const GROUPS = [
+    ['gate', 'Stage gate'], ['risk', 'Risks and opportunities'], ['action', 'Actions'], ['issue', 'Issues'], ['decision', 'Decisions'],
+  ];
+  const KIND_RANK = { gate: 0, item: 0, new: 1, link: 2 };
+  const typeOf = p => (p.kind === 'gate' ? 'gate' : p.kind === 'new' ? p.data.type : p.it.type);
+
+  $: groups = proposals ? GROUPS.map(([type, title]) => ({
+    type,
+    title,
+    rows: proposals.map((p, i) => ({ p, i })).filter(x => typeOf(x.p) === type).sort((a, b) => KIND_RANK[a.p.kind] - KIND_RANK[b.p.kind] || a.i - b.i),
+  })).filter(g => g.rows.length) : [];
   $: ticked = proposals ? proposals.filter(p => p.on).length : 0;
 
+  // The operation to send for a ticked proposal, or null when there is nothing to change.
+  function opFor(p) {
+    const e = p.edit;
+    if (p.kind === 'item') {
+      const note = (e.note || '').trim();
+      const status = p.it.type !== 'decision' && STATUSES.includes(e.status) && e.status !== p.it.status ? e.status : undefined;
+      const target = p.it.type !== 'decision' && e.target && e.target !== (p.it.target || '') ? e.target : undefined;
+      const owner = (e.owner || '').trim() && (e.owner || '').trim() !== (p.it.owner || '') ? e.owner.trim() : undefined;
+      if (!note && !status && !target && !owner) return null;
+      return { op: 'item_update', item_id: p.it.id, note, status, target, owner };
+    }
+    if (p.kind === 'gate') {
+      const note = (e.note || '').trim();
+      const score = Number(e.score) !== p.g.score ? Number(e.score) : undefined;
+      if (!note && score === undefined) return null;
+      return { op: 'gate_update', gate_id: p.g.id, note, score };
+    }
+    if (p.kind === 'new') {
+      if (!(e.subject || '').trim()) return null;
+      return { op: 'new_item', data: { type: p.data.type, subject: e.subject.trim(), text: (e.text || '').trim(), owner: (e.owner || '').trim(), priority: Number(e.priority) || 2, target: e.target || '', gate_refs: p.data.gate_refs, parent_id: p.data.parent_id } };
+    }
+    return { op: 'link', item_id: p.it.id, patch: p.patch };
+  }
+
   async function apply() {
-    const ops = proposals.filter(p => p.on).map(p => {
-      if (p.kind === 'item') return { op: 'item_update', item_id: p.it.id, note: p.note, status: p.status, target: p.target, owner: p.owner };
-      if (p.kind === 'gate') return { op: 'gate_update', gate_id: p.g.id, note: p.note, score: p.score };
-      if (p.kind === 'new') return { op: 'new_item', data: { type: p.data.type, subject: p.data.subject, text: p.data.text, owner: p.data.owner, priority: p.data.priority, target: p.data.target, gate_refs: p.data.gate_refs, parent_id: p.data.parent_id } };
-      return { op: 'link', item_id: p.it.id, patch: p.patch };
-    });
-    if (!ops.length) return;
+    const ops = proposals.filter(p => p.on).map(opFor).filter(Boolean);
+    if (!ops.length) { error = 'Nothing to apply. Tick a suggestion, or change a value.'; return; }
     applying = true;
     error = null;
     try {
@@ -110,10 +159,6 @@
     }
   }
 
-  function parentLabel(id) {
-    const x = items.find(i => i.id === id);
-    return x ? itemLabel(x) : 'None';
-  }
   function onKey(e) { if (e.key === 'Escape' && !drafting && !applying) onClose(); }
 </script>
 
@@ -153,6 +198,7 @@
 
       {#if proposals}
         {#if summary}<p class="wa-summary">{summary}</p>{/if}
+        {#if proposals.length}<p class="wa-hint">Change anything below before applying. The AI never suggests a score; you can set one yourself.</p>{/if}
         {#if !proposals.length}
           <div class="wa-empty">No changes suggested from these notes.</div>
         {/if}
@@ -160,37 +206,95 @@
           <section class="wa-group">
             <div class="wa-gh"><span>{g.title}</span><span class="wa-count">{g.rows.length}</span></div>
             {#each g.rows as { p, i } (i)}
-              <label class="wa-prop" class:off={!p.on}>
-                <input type="checkbox" checked={p.on} on:change={() => toggle(i)}>
-                <div class="wa-prop-main">
-                  <div class="wa-title">
-                    {#if p.kind === 'new'}<span class="wa-tag wa-new">New {p.data.type}</span>{p.data.subject}
-                    {:else if p.kind === 'link'}<span class="wa-tag wa-link">Link</span>{p.label}
-                    {:else}<span class="wa-tag wa-upd">Update</span>{p.label}{/if}
-                  </div>
-                  <div class="wa-diff">
-                    {#if p.kind === 'new'}
-                      {#if p.data.text}<div>{p.data.text}</div>{/if}
-                      <div><b>Owner</b> {p.data.owner || 'none'} <b>Pri</b> {p.data.priority} <b>Target</b> {p.data.target ? fmtLong(p.data.target) : 'none'}
-                        {#if p.data.gate_refs.length}<b>Gate</b> {p.data.gate_refs.join(', ')}{/if}
-                        {#if p.data.parent_id}<b>Under</b> {refOf(p.data.parent_id)}{/if}</div>
-                    {:else if p.kind === 'link'}
-                      {#if 'parent_id' in p.patch}<div><b>Parent</b> <span class="wa-old">{parentLabel(p.it.parent_id)}</span> → {parentLabel(p.patch.parent_id)}</div>{/if}
-                      {#if 'gate_refs' in p.patch}<div><b>Gate ref</b> <span class="wa-old">{(p.it.gate_refs || []).join(', ') || 'none'}</span> → {p.patch.gate_refs.join(', ')}</div>{/if}
+              <div class="wa-prop" class:off={!p.on}>
+                <label class="wa-prop-head">
+                  <input type="checkbox" checked={p.on} on:change={() => toggle(i)}>
+                  {#if p.kind === 'new'}<span class="wa-tag wa-new">New {p.data.type}</span><span class="wa-title">{p.edit.subject || p.data.subject}</span>
+                  {:else if p.kind === 'link'}<span class="wa-tag wa-link">Link</span><span class="wa-title">{p.label}</span>
+                  {:else}<span class="wa-tag wa-upd">Update</span><span class="wa-title">{p.label}</span>{/if}
+                </label>
+
+                <dl class="wa-grid">
+                  <dt>Suggested</dt>
+                  <dd class="wa-edit">
+                    {#if p.kind === 'item'}
+                      <label class="wa-ef wa-wide">
+                        <span class="wa-lh"><span class="wa-lab">{p.it.type === 'action' ? 'New progress entry' : 'Update added'}</span><span class="wa-prev">Previous {p.it.type === 'action' ? 'entry' : 'update'}: {p.it.type === 'action' ? (newest(p.it) ? `${fmtLong(newest(p.it).date)}: ${newest(p.it).text}` : 'none') : (firstLine(p.it.update) || 'none')}</span></span>
+                        <textarea class="form-input" class:wa-ai={!!p.edit.note} rows="2" value={p.edit.note} on:input={e => setEdit(i, { note: e.target.value })} placeholder="Nothing suggested. Type one if you want to add it."></textarea>
+                      </label>
+                      {#if p.it.type !== 'decision'}
+                        <label class="wa-ef">
+                          <span class="wa-lh"><span class="wa-lab">Status</span>{#if p.edit.status !== p.it.status}<span class="wa-prev">Previous: {p.it.status}</span>{/if}</span>
+                          <select class="form-input" class:wa-ai={p.sugg.status} value={p.edit.status} on:change={e => setEdit(i, { status: e.target.value })}>
+                            {#each STATUSES as s (s)}<option value={s}>{s}</option>{/each}
+                          </select>
+                        </label>
+                        <label class="wa-ef">
+                          <span class="wa-lh"><span class="wa-lab">Target date</span>{#if (p.edit.target || '') !== (p.it.target || '')}<span class="wa-prev">Previous: {p.it.target ? fmtLong(p.it.target) : 'none'}</span>{/if}</span>
+                          <input class="form-input" class:wa-ai={p.sugg.target} type="date" value={p.edit.target} on:change={e => setEdit(i, { target: e.target.value })}>
+                          {#if p.sugg.target && p.targetBasis}<span class="wa-basis">from “{p.targetBasis}”</span>{/if}
+                        </label>
+                      {/if}
+                      <label class="wa-ef">
+                        <span class="wa-lh"><span class="wa-lab">Owner</span>{#if (p.edit.owner || '') !== (p.it.owner || '')}<span class="wa-prev">Previous: {p.it.owner || 'none'}</span>{/if}</span>
+                        <input class="form-input" class:wa-ai={p.sugg.owner} value={p.edit.owner} on:input={e => setEdit(i, { owner: e.target.value })}>
+                      </label>
+
                     {:else if p.kind === 'gate'}
-                      {#if p.note}<div><b>Comment</b> <span class="wa-add">{p.note}</span></div>{/if}
-                      {#if p.score !== undefined}<div><b>Score</b> <span class="wa-old">{p.g.score}</span> → {p.score}</div>{/if}
+                      <label class="wa-ef wa-wide">
+                        <span class="wa-lh"><span class="wa-lab">Comment added</span><span class="wa-prev">Previous comment: {firstLine(p.g.comment) || 'none'}</span></span>
+                        <textarea class="form-input" class:wa-ai={!!p.edit.note} rows="2" value={p.edit.note} on:input={e => setEdit(i, { note: e.target.value })} placeholder="Nothing suggested."></textarea>
+                      </label>
+                      <label class="wa-ef">
+                        <span class="wa-lh"><span class="wa-lab">Score (0 to 5)</span>{#if Number(p.edit.score) !== p.g.score}<span class="wa-prev">Previous: {p.g.score}</span>{/if}</span>
+                        <select class="form-input" value={p.edit.score} on:change={e => setEdit(i, { score: parseInt(e.target.value, 10) })}>
+                          {#each [0, 1, 2, 3, 4, 5] as n (n)}<option value={n}>{n}</option>{/each}
+                        </select>
+                      </label>
+
+                    {:else if p.kind === 'new'}
+                      <label class="wa-ef wa-wide">
+                        <span class="wa-lab">Subject</span>
+                        <input class="form-input wa-ai" value={p.edit.subject} on:input={e => setEdit(i, { subject: e.target.value })}>
+                      </label>
+                      <label class="wa-ef wa-wide">
+                        <span class="wa-lab">Details</span>
+                        <textarea class="form-input wa-ai" rows="2" value={p.edit.text} on:input={e => setEdit(i, { text: e.target.value })}></textarea>
+                      </label>
+                      <label class="wa-ef">
+                        <span class="wa-lab">Owner</span>
+                        <input class="form-input" class:wa-ai={!!p.data.owner} value={p.edit.owner} on:input={e => setEdit(i, { owner: e.target.value })}>
+                      </label>
+                      {#if p.data.type !== 'decision'}
+                        <label class="wa-ef">
+                          <span class="wa-lab">Priority</span>
+                          <select class="form-input" value={p.edit.priority} on:change={e => setEdit(i, { priority: parseInt(e.target.value, 10) })}>
+                            <option value={1}>1 · High</option><option value={2}>2 · Medium</option><option value={3}>3 · Low</option>
+                          </select>
+                        </label>
+                        <label class="wa-ef">
+                          <span class="wa-lab">Target date</span>
+                          <input class="form-input" class:wa-ai={p.sugg.target} type="date" value={p.edit.target} on:change={e => setEdit(i, { target: e.target.value })}>
+                          {#if p.sugg.target && p.targetBasis}<span class="wa-basis">from “{p.targetBasis}”</span>{/if}
+                        </label>
+                      {/if}
+                      {#if p.data.gate_refs.length || p.data.parent_id}
+                        <div class="wa-ef wa-wide wa-fixed">
+                          {#if p.data.gate_refs.length}<span><span class="wa-lab">Gate ref</span> {p.data.gate_refs.join(', ')}</span>{/if}
+                          {#if p.data.parent_id}<span><span class="wa-lab">{p.data.type === 'action' ? 'Under risk' : 'Arising from'}</span> {parentLabel(p.data.parent_id)}</span>{/if}
+                        </div>
+                      {/if}
+
                     {:else}
-                      {#if p.note}<div><b>{p.it.type === 'action' ? 'Progress' : 'Update'}</b> <span class="wa-add">{p.note}</span></div>{/if}
-                      {#if p.status}<div><b>Status</b> <span class="wa-old">{p.it.status}</span> → {p.status}</div>{/if}
-                      {#if p.target}<div><b>Target</b> <span class="wa-old">{p.it.target ? fmtLong(p.it.target) : 'none'}</span> → {fmtLong(p.target)}</div>{/if}
-                      {#if p.owner}<div><b>Owner</b> <span class="wa-old">{p.it.owner || 'none'}</span> → {p.owner}</div>{/if}
+                      {#if 'parent_id' in p.patch}<div><span class="wa-lab">Parent</span> <span class="wa-sugg">{parentLabel(p.patch.parent_id)}</span> <span class="wa-prev">Previous: {parentLabel(p.it.parent_id)}</span></div>{/if}
+                      {#if 'gate_refs' in p.patch}<div><span class="wa-lab">Gate ref</span> <span class="wa-sugg">{p.patch.gate_refs.join(', ')}</span> <span class="wa-prev">Previous: {(p.it.gate_refs || []).join(', ') || 'none'}</span></div>{/if}
                     {/if}
-                  </div>
-                  {#if p.quote}<div class="wa-quote">“{p.quote}”</div>{/if}
-                  {#if p.reason}<div class="wa-why">{p.reason}</div>{/if}
-                </div>
-              </label>
+                  </dd>
+
+                  {#if p.reason}<dt>Why</dt><dd>{p.reason}</dd>{/if}
+                  {#if p.quote}<dt>Quote</dt><dd class="wa-quote">“{p.quote}”</dd>{/if}
+                </dl>
+              </div>
             {/each}
           </section>
         {/each}
@@ -208,35 +312,54 @@
 
 <style>
   .wa-backdrop { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; z-index: 2100; padding: 1rem; }
-  .wa-modal { background: var(--color-white); border-radius: var(--radius-lg); width: min(46rem, 100%); max-height: 92vh; display: flex; flex-direction: column; box-shadow: var(--shadow-modal); overflow: hidden; }
-  .wa-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-slate-200); }
+  .wa-modal { background: var(--color-white); border-radius: var(--radius-lg); width: min(72rem, 100%); max-height: 92vh; display: flex; flex-direction: column; box-shadow: var(--shadow-modal); overflow: hidden; }
+  .wa-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 1.25rem 1.75rem; border-bottom: 1px solid var(--color-slate-200); }
   .wa-head h2 { margin: 0.125rem 0 0; font-size: 1.05rem; font-weight: 600; color: var(--color-slate-800); }
   .wa-eyebrow { font-size: 0.625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-slate-400); }
-  .wa-body { padding: 1rem 1.25rem; overflow: auto; display: flex; flex-direction: column; gap: 0.75rem; }
+  .wa-body { padding: 1.25rem 1.75rem; overflow: auto; display: flex; flex-direction: column; gap: 1rem; }
   .wa-three { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 0.625rem; }
   .wa-field { display: flex; flex-direction: column; }
   .wa-text { min-height: 8rem; }
   .wa-error { font-size: 0.8rem; color: var(--color-red-600); background: var(--color-red-50); border: 1px solid var(--color-red-200); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; }
   .wa-note { font-size: 0.8rem; color: var(--color-amber-800); background: var(--color-amber-100); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; }
-  .wa-summary { margin: 0; font-size: 0.85rem; color: var(--color-slate-700); }
+  .wa-summary { margin: 0; font-size: 0.875rem; color: var(--color-slate-700); }
+  .wa-hint { margin: 0; font-size: 0.78rem; color: var(--color-slate-500); }
   .wa-empty { padding: 1rem; text-align: center; color: var(--color-slate-500); }
-  .wa-group { display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .wa-group { display: flex; flex-direction: column; gap: 0.625rem; }
   .wa-gh { display: flex; justify-content: space-between; align-items: center; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-slate-500); padding-top: 0.25rem; }
   .wa-count { background: var(--color-slate-100); border: 1px solid var(--color-slate-200); border-radius: var(--radius-pill); padding: 0 0.5rem; font-size: 0.6875rem; }
-  .wa-prop { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.625rem; border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.625rem 0.75rem; cursor: pointer; }
+
+  .wa-prop { border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.625rem; }
   .wa-prop.off { opacity: 0.5; }
-  .wa-prop input { margin-top: 0.2rem; }
-  .wa-title { font-weight: 600; font-size: 0.85rem; color: var(--color-slate-800); }
-  .wa-tag { display: inline-block; margin-right: 0.4rem; padding: 0 0.35rem; border-radius: 3px; font-size: 0.5625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .wa-prop-head { display: flex; align-items: center; gap: 0.625rem; cursor: pointer; }
+  .wa-title { font-weight: 600; font-size: 0.9rem; color: var(--color-slate-800); }
+  .wa-tag { display: inline-block; padding: 0 0.4rem; border-radius: 3px; font-size: 0.5625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
   .wa-new { background: var(--color-primary-100); color: var(--color-primary-700); }
   .wa-upd { background: var(--color-amber-100); color: var(--color-amber-800); }
   .wa-link { background: var(--color-slate-100); color: var(--color-slate-600); border: 1px solid var(--color-slate-200); }
-  .wa-diff { font-size: 0.8125rem; color: var(--color-slate-700); display: flex; flex-direction: column; gap: 0.125rem; margin-top: 0.25rem; }
-  .wa-diff b { font-size: 0.625rem; font-weight: 700; text-transform: uppercase; color: var(--color-slate-400); margin-right: 0.25rem; }
-  .wa-add { color: var(--color-emerald-600); }
-  .wa-old { color: var(--color-slate-400); text-decoration: line-through; }
-  .wa-quote { margin-top: 0.375rem; padding-left: 0.5rem; border-left: 2px solid var(--color-slate-200); font-size: 0.75rem; font-style: italic; color: var(--color-slate-500); }
-  .wa-why { margin-top: 0.25rem; font-size: 0.75rem; color: var(--color-slate-500); }
-  .wa-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.875rem 1.25rem; border-top: 1px solid var(--color-slate-200); }
-  @media (max-width: 36rem) { .wa-three { grid-template-columns: 1fr; } }
+
+  .wa-grid { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.625rem 1rem; margin: 0; padding-left: 1.6rem; font-size: 0.84375rem; line-height: 1.45; }
+  .wa-grid dt { font-size: 0.625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-slate-400); padding-top: 0.3rem; }
+  .wa-grid dd { margin: 0; color: var(--color-slate-700); min-width: 0; }
+  .wa-grid dd > div + div { margin-top: 0.2rem; }
+  .wa-lab { display: inline-block; min-width: 7rem; font-size: 0.6875rem; font-weight: 600; color: var(--color-slate-500); }
+  .wa-sugg { color: var(--color-emerald-800); font-weight: 500; }
+  .wa-basis { color: var(--color-slate-500); font-style: italic; font-weight: 400; font-size: 0.75rem; }
+  .wa-quote { font-style: italic; color: var(--color-slate-500); border-left: 2px solid var(--color-slate-200); padding-left: 0.625rem; }
+
+  .wa-edit { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem 0.75rem; }
+  .wa-ef { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+  .wa-ef .wa-lab { min-width: 0; }
+  .wa-lh { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
+  .wa-prev { font-size: 0.6875rem; font-weight: 400; color: var(--color-slate-500); text-align: right; overflow-wrap: anywhere; }
+  .wa-wide { grid-column: 1 / -1; }
+  .wa-fixed { flex-direction: row; gap: 1.5rem; flex-wrap: wrap; color: var(--color-slate-600); }
+  .wa-edit :global(.form-input) { font-size: 0.8125rem; padding: 0.4rem 0.625rem; }
+  /* values the AI proposed are tinted so they stand out from the ones you change yourself */
+  .wa-edit :global(.form-input.wa-ai) { background: var(--color-emerald-100); border-color: var(--color-emerald-500); }
+
+  .wa-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.875rem 1.75rem; border-top: 1px solid var(--color-slate-200); }
+  @media (max-width: 48rem) { .wa-edit { grid-template-columns: 1fr; } }
+  @media (max-width: 36rem) { .wa-three { grid-template-columns: 1fr; } .wa-grid { grid-template-columns: 1fr; padding-left: 0; } }
 </style>

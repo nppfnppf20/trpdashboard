@@ -4,6 +4,8 @@ import { analysisLimiter } from '../middleware/rateLimiter.js';
 import {
   getWorkbook,
   updateGateQuestion,
+  createGateQuestion,
+  deleteGateQuestion,
   createItem,
   updateItem,
   deleteItem,
@@ -23,7 +25,9 @@ const upload = createUpload({ exts: ['pdf', 'docx', 'txt', 'md'] });
 
 // Whole workbook for a project: gate questions, items (with their progress log)
 router.get('/projects/:projectId', getWorkbook);
+router.post('/projects/:projectId/gate-questions', createGateQuestion);
 router.put('/gate-questions/:id', updateGateQuestion);
+router.delete('/gate-questions/:id', deleteGateQuestion);
 
 router.post('/projects/:projectId/items', createItem);
 router.put('/items/:id', updateItem);

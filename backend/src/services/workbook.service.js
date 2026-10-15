@@ -9,7 +9,7 @@ import { callClaude, ANTI_AI_SLOP_BLOCK, noEmDash } from './llm.shared.js';
 // the client applies the ticked proposals through the apply endpoint.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You maintain a project-management workbook for a UK planning consultancy. It holds stage-gate questions (scored 0 to 5), risks, actions, issues and decisions for one planning project.
+const SYSTEM_PROMPT = `You maintain a project-management workbook for a UK planning consultancy. It holds stage-gate questions (each has a score that only the team sets), risks, actions, issues and decisions for one planning project.
 
 You are given the workbook's current state as JSON, then notes from a meeting, email, call or site visit. Propose changes to the workbook that the notes clearly support.
 
@@ -19,18 +19,20 @@ Rules:
 - "note" is one or two plain sentences saying what happened or was agreed, written in the team's own voice, with no date (the date is added for you). No em dashes.
 - Use an existing owner name where one fits.
 - Decisions are things agreed or decided in the notes. Issues are problems that have already happened. Risks are things that might happen. Actions are tasks someone must do.
-- Only raise a gate "score" if the notes show the question is better answered than its current score. A score of 4 or 5 means ready to progress.
+- Never propose a score for a gate question. For gate questions you may only add a short "note" for the comments column.
 - Only propose a link when the notes make the relationship clear: "parent_id" puts an action under a risk, or an issue under an action or risk. "add_gate_refs" attaches an item to gate questions.
 - "quote" is a short phrase copied from the notes that supports the proposal.
 - Dates are YYYY-MM-DD. Priority is 1 (high) to 3 (low).
+- Only set a "target" date when the notes mention a date or time for that specific item. It can be exact ("22 October") or relative ("next week", "by Friday", "end of the month"); work out the real YYYY-MM-DD from the note date given. Never guess a date, never take it from the date of the next meeting or anything not tied to that item, and never move a date just because other things moved.
+- Whenever you set a "target", also return "target_basis": the exact words copied from the notes that gave the date, for example "by next Friday". If the notes give no date for the item, leave out both "target" and "target_basis". An item with no date mentioned keeps the date it already has.
 - If the notes contain nothing relevant, return empty arrays.
 
 Reply with only JSON of this shape, no commentary:
 {"summary":"one sentence on what the notes changed",
  "updates":[
-   {"kind":"item","id":<item id>,"note":"...","status":"not started|in progress|completed","target":"YYYY-MM-DD","owner":"...","reason":"short why","quote":"..."},
-   {"kind":"gate","gate_ref":"3.8","note":"...","score":3,"reason":"...","quote":"..."}],
- "new":[{"type":"action|risk|issue|decision","subject":"short title","text":"full wording","owner":"","priority":2,"target":"","gate_refs":["3.8"],"parent_id":<existing risk id for an action, existing action or risk id for an issue, or null>,"reason":"...","quote":"..."}],
+   {"kind":"item","id":<item id>,"note":"...","status":"not started|in progress|completed","target":"YYYY-MM-DD","target_basis":"words from the notes","owner":"...","reason":"short why","quote":"..."},
+   {"kind":"gate","gate_ref":"3.8","note":"...","reason":"...","quote":"..."}],
+ "new":[{"type":"action|risk|issue|decision","subject":"short title","text":"full wording","owner":"","priority":2,"target":"","target_basis":"","gate_refs":["3.8"],"parent_id":<existing risk id for an action, existing action or risk id for an issue, or null>,"reason":"...","quote":"..."}],
  "links":[{"item_id":<item id>,"parent_id":<id or null>,"add_gate_refs":["3.7"],"reason":"...","quote":"..."}]}
 Omit optional keys you are not changing.`;
 

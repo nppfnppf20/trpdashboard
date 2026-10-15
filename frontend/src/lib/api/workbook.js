@@ -20,6 +20,16 @@ export async function updateGateQuestion(id, fields) {
   return json(await authFetch(`/api/workbook/gate-questions/${id}`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(fields) }), 'Failed to save');
 }
 
+// Add a gate question. Resolves with the whole refreshed list (later questions shift down to make room): { gate: [...] }
+export async function createGateQuestion(projectId, question) {
+  return json(await authFetch(`/api/workbook/projects/${projectId}/gate-questions`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(question) }), 'Failed to add the gate question');
+}
+
+// Remove a gate question. Resolves with the refreshed workbook ({ gate, items }): rows linked to it lose that gate ref.
+export async function deleteGateQuestion(id) {
+  return json(await authFetch(`/api/workbook/gate-questions/${id}`, { method: 'DELETE' }), 'Failed to delete the gate question');
+}
+
 export async function createWorkbookItem(projectId, item) {
   return json(await authFetch(`/api/workbook/projects/${projectId}/items`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(item) }), 'Failed to add');
 }
