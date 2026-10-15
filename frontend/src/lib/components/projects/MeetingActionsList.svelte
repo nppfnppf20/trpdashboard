@@ -4,7 +4,7 @@
   // meeting, one project, or several projects merged. Changing `loadKey`
   // reloads; `dispatch('changed')` tells the parent counts may be stale.
   import { createEventDispatcher } from 'svelte';
-  import { addMeetingActionUpdate, updateMeetingAction } from '$lib/api/meetingNotes.js';
+  import { addMeetingActionUpdate, updateMeetingAction, deleteMeetingAction } from '$lib/api/meetingNotes.js';
   import OwnerInput from '$lib/components/shared/OwnerInput.svelte';
 
   export let load;
@@ -76,6 +76,23 @@
   }
 
   $: fieldsInvalid = !fields.action_text.trim() || !fields.owner.trim();
+
+  async function removeAction(a) {
+    if (!confirm(`Delete this action?\n\n"${a.action_text}"`)) return;
+    busyId = a.id;
+    error = null;
+    try {
+      await deleteMeetingAction(a.id);
+      if (fieldsId === a.id) fieldsId = null;
+      if (editingId === a.id) editingId = null;
+      await reload();
+      dispatch('changed');
+    } catch (err) {
+      error = err.message;
+    } finally {
+      busyId = null;
+    }
+  }
 
   async function saveFields(a) {
     if (fieldsInvalid) return;
@@ -185,9 +202,6 @@
 
         {#if editingId !== a.id && fieldsId !== a.id}
           <div class="mal-buttons">
-            <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => startFieldsEdit(a)}>
-              <i class="las la-pen"></i> Edit
-            </button>
             {#if a.status !== 'complete'}
               <button class="btn btn-secondary btn-sm" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
                 <i class="las la-comment"></i> Update
@@ -196,6 +210,12 @@
                 <i class="las la-check"></i> Resolve
               </button>
             {/if}
+            <button class="btn btn-icon btn-ghost" title="Edit action" aria-label="Edit action" disabled={busyId === a.id} on:click={() => startFieldsEdit(a)}>
+              <i class="las la-pen"></i>
+            </button>
+            <button class="btn btn-icon btn-ghost" title="Delete action" aria-label="Delete action" disabled={busyId === a.id} on:click={() => removeAction(a)}>
+              <i class="las la-trash"></i>
+            </button>
           </div>
         {/if}
       </div>
