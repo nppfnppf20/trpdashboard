@@ -1108,52 +1108,10 @@ export async function generateHlpvV3(req, res) {
         ].join('\n\n')
       : '(not provided)';
 
-    // ── 5. Drafting Issue Notes ─ same mechanism as stage1_review_v3 (migration 137) ───
-    const { rows: draftingIssueRows } = await pool.query(
-      `SELECT di.id, di.label, di.discipline, di.summary,
-              di.policy_national, di.policy_local, di.policy_neighbourhood,
-              di.policy_supplementary, di.policy_other,
-              di.argument_for, di.argument_against, di.specialist_report
-       FROM admin_console.drafting_issues di
-       WHERE di.project_id = $1
-       ORDER BY di.sort_order, di.id`,
-      [projectId]
-    );
-    let linkedPoliciesByIssue = {};
-    if (draftingIssueRows.length) {
-      const { rows: linkRows } = await pool.query(
-        `SELECT dipr.drafting_issue_id, pp.policy_reference, pp.policy_name
-         FROM admin_console.drafting_issue_policy_relevance dipr
-         JOIN public.project_policies pp ON pp.id = dipr.policy_id
-         WHERE dipr.drafting_issue_id = ANY($1)`,
-        [draftingIssueRows.map(r => r.id)]
-      );
-      linkedPoliciesByIssue = linkRows.reduce((map, r) => {
-        (map[r.drafting_issue_id] ??= []).push(`${r.policy_reference}${r.policy_name ? `: ${r.policy_name}` : ''}`);
-        return map;
-      }, {});
-    }
-    const draftingIssueNotes = draftingIssueRows.length
-      ? draftingIssueRows.map(issue => {
-          const lines = [`### ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}`];
-          const linkedPolicies = linkedPoliciesByIssue[issue.id];
-          if (linkedPolicies?.length) lines.push(`Linked policies: ${linkedPolicies.join('; ')}`);
-          const policyTiers = [
-            issue.policy_national && `National: ${issue.policy_national}`,
-            issue.policy_local && `Local: ${issue.policy_local}`,
-            issue.policy_neighbourhood && `Neighbourhood: ${issue.policy_neighbourhood}`,
-            issue.policy_supplementary && `Supplementary: ${issue.policy_supplementary}`,
-            issue.policy_other && `Other: ${issue.policy_other}`,
-          ].filter(Boolean);
-          if (policyTiers.length) lines.push(`Policy notes — ${policyTiers.join('; ')}`);
-          if (issue.argument_for) lines.push(`Supporting case: ${issue.argument_for}`);
-          if (issue.argument_against) lines.push(`Opposing case / risk: ${issue.argument_against}`);
-          if (issue.summary) lines.push(`Summary: ${issue.summary}`);
-          if (issue.specialist_report) lines.push(`Specialist report evidence: ${issue.specialist_report}`);
-          if (lines.length === 1) lines.push('(no further notes recorded for this issue)');
-          return lines.join('\n');
-        }).join('\n\n')
-      : '(not provided)';
+    // ── 5. Drafting Issue Notes ─ not used: the HLPV is written from the meeting notes alone.
+    // The token is kept in the prompt text and filled with "(not provided)", which the prompt
+    // already treats as "work out the relevant issues from the transcript".
+    const draftingIssueNotes = '(not provided)';
 
     // ── 6. Planning history ─ same source/format as Stage 1 Review ───────────────
     const { rows: planningHistoryRows } = await pool.query(

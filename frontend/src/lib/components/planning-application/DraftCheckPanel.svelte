@@ -213,9 +213,9 @@
             {:else if s.meta.no_policies}
               <p class="check-section-empty">No policies linked to this project yet. Add them on the Policy tab first.</p>
             {:else if s.meta.no_linked_policies}
-              <p class="check-section-empty">No policies are linked to any drafting issue yet. Link NPPF and local plan policies to your drafting issues first.</p>
+              <p class="check-section-empty">No policies are linked to any policy assessment yet. Link NPPF and local plan policies to your policy assessments first.</p>
             {:else if s.meta.no_policy_pairs}
-              <p class="check-section-empty">No drafting issue has both NPPF policies and local plan policies linked to it, so there is nothing to compare.</p>
+              <p class="check-section-empty">No policy assessment has both NPPF policies and local plan policies linked to it, so there is nothing to compare.</p>
 
             {:else if s.status === 'done' && s.items.length === 0}
               <p class="check-section-empty">Nothing flagged.</p>

@@ -479,7 +479,9 @@ const HLPV_V3_BASE_SECTIONS = [
     questions: [
       "What's the overall sense of the site's apparent potential for this development, at this very early stage?",
       'Is there any apparent showstopping or fundamental constraint that should be flagged immediately?',
-      'Any broad implication for layout or developable area worth noting up front?'
+      'Any broad implication for layout or developable area worth noting up front?',
+      'Name each planning issue you want covered, using the heading you want it to appear under.',
+      'Which of those issues matter most? Say them in order of importance: the document follows the order you give.'
     ]
   },
   {
@@ -503,7 +505,7 @@ const HLPV_V3_BASE_SECTIONS = [
 const HLPV_V3_ASSESSMENT_QUESTIONS = [
   'What is the apparent constraint or opportunity, and what site feature or baseline does it relate to?',
   "What's the preliminary implication for site layout, developable area, or design approach, if any?",
-  'What further work or specialist input should happen next on this specifically? This can only come from this meeting - it will not be inferred from the drafting issue notes or the constraint itself.',
+  'What further work or specialist input should happen next on this specifically? This can only come from this meeting - it will not be inferred from the constraint itself.',
   'Is there a supporting figure or plan that should be referenced here, even just to note one exists?'
 ];
 

@@ -60,7 +60,9 @@
       ]
     },
     {
-      label: 'Trackers',
+      label: 'Trackers and Programme',
+      collapsible: true,
+      icon: 'la-tasks',
       items: [
         { label: 'Consultation Tracker', icon: 'la-clipboard-list', tab: 'consultation_tracker' },
         { label: 'Conditions Tracker', icon: 'la-shield-alt', tab: 'conditions_tracker' },
@@ -92,6 +94,10 @@
     // { label: 'Completeness', icon: 'la-check-circle', tab: 'completeness' }
   ];
   let betaOpen = false;
+  // The Trackers and Programme group folds away like Beta. It stays open while one of its pages is showing.
+  let trackersOpen = false;
+  const trackerTabs = workspaceGroups.find(g => g.collapsible).items.map(i => i.tab);
+  $: if ($mainView === 'project' && trackerTabs.includes($mainViewInitialTab)) trackersOpen = true;
 
   let switcherOpen = false;
 
@@ -225,17 +231,27 @@
         <span>{surveyorManagementItem.label}</span>
       </button>
       {#each workspaceGroups as group}
-        <div class="group-divider" role="separator" aria-label={group.label}></div>
-        {#each group.items as item}
-          <button
-            class="nav-item workspace-item"
-            class:active={$mainView === 'project' && $mainViewInitialTab === item.tab}
-            on:click={() => openWorkspaceTab(item.tab)}
-          >
-            <i class="las {item.icon}"></i>
-            <span>{item.label}</span>
+        {#if group.collapsible}
+          <button class="beta-toggle" on:click={() => trackersOpen = !trackersOpen} aria-expanded={trackersOpen}>
+            <i class="las {group.icon}"></i>
+            <span>{group.label}</span>
+            <i class="las la-angle-down beta-caret {trackersOpen ? 'open' : ''}"></i>
           </button>
-        {/each}
+        {:else}
+          <div class="group-divider" role="separator" aria-label={group.label}></div>
+        {/if}
+        {#if !group.collapsible || trackersOpen}
+          {#each group.items as item}
+            <button
+              class="nav-item workspace-item"
+              class:active={$mainView === 'project' && $mainViewInitialTab === item.tab}
+              on:click={() => openWorkspaceTab(item.tab)}
+            >
+              <i class="las {item.icon}"></i>
+              <span>{item.label}</span>
+            </button>
+          {/each}
+        {/if}
       {/each}
 
       <button class="beta-toggle" on:click={() => betaOpen = !betaOpen}>

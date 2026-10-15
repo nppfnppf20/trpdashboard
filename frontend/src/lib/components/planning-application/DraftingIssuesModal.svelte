@@ -10,7 +10,7 @@
 <div class="modal-overlay" on:click|self={() => dispatch('close')} role="dialog" aria-modal="true">
   <div class="modal modal-drafting-issues">
     <div class="modal-header">
-      <span class="modal-title">Drafting Issues</span>
+      <span class="modal-title">Policy Assessment</span>
       <button class="modal-close" on:click={() => dispatch('close')}><i class="las la-times"></i></button>
     </div>
 

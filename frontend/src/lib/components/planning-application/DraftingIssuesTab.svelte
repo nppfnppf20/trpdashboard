@@ -307,8 +307,8 @@
 <div class="drafting-issues-tab">
   <div class="di-header">
     <div class="di-header-text">
-      <h3>Drafting Issues</h3>
-      <p>An independent issue list used for AI document generation (currently Planning Statement v3). Build it up manually or with "Draft from Briefing Note" below.</p>
+      <h3>Policy Assessment</h3>
+      <p>An independent list of policy assessments used for AI document generation (Stage 1 Review and Planning Statement v3). Build it up manually or with "Draft from Briefing Note" below.</p>
     </div>
     <div class="di-header-actions">
       <button class="btn btn-secondary" on:click={openDraftModal} disabled={!project}>
@@ -321,13 +321,13 @@
     <div class="di-loading"><div class="mini-spinner"></div> Loading...</div>
   {:else}
     <div class="di-add-row">
-      <input class="di-input" placeholder="New issue label..." bind:value={newLabel} on:keydown={e => e.key === 'Enter' && handleAdd()} />
+      <input class="di-input" placeholder="New policy assessment label..." bind:value={newLabel} on:keydown={e => e.key === 'Enter' && handleAdd()} />
       <input class="di-input di-input-discipline" placeholder="Discipline (optional)" bind:value={newDiscipline} on:keydown={e => e.key === 'Enter' && handleAdd()} />
       <button class="btn btn-primary" on:click={handleAdd} disabled={!newLabel.trim()}><i class="las la-plus"></i> Add</button>
     </div>
 
     {#if issues.length === 0}
-      <p class="di-empty">No drafting issues yet. Add one manually above, or use "Draft from Briefing Note".</p>
+      <p class="di-empty">No policy assessments yet. Add one manually above, or use "Draft from Briefing Note".</p>
     {:else}
       <div class="di-list">
         {#each issues as issue (issue.id)}
@@ -500,7 +500,7 @@
           projectUniqueId={project?.unique_id}
           bind:selectedSources={draftSources}
           bind:overBudget={draftOverBudget}
-          hint="Tick any briefing notes and meeting notes to draft drafting issues from."
+          hint="Tick any briefing notes and meeting notes to draft policy assessments from."
         />
 
         <div class="di-scope">

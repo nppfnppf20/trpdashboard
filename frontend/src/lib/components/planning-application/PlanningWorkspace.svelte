@@ -4,7 +4,7 @@
   import { initNotes, briefingDraftOpen, runDraftFromBriefing, runDraftFromIssueSummaries, selectedBriefingNoteId, briefingDropdownOpen, briefingUploadOpen, loadBriefingNotes, selectBriefingNote, keyIssueDraftOpen } from '$lib/stores/planning-notes.js';
   import { documentLog, logModalOpen, initLog, editModalOpen, openEditModal, deleteEntry } from '$lib/stores/planning-log.js';
   import { suggestState, conversation, suggestError, refinementInput, refinementLoading, suggestInputTab, suggestFile, suggestPasteText, suggestDocumentType, suggestDocumentTitle, suggestUserNotes, suggestTrackIds, acceptedIssues, suggestPromptOpen, initSuggestion, runSuggestion, sendRefinement, acceptSuggestion, openSuggestionLogModal, resetSuggestion, onSuggestDrop, onSuggestFileChange, toggleSuggestTrack, openSuggestPromptModal } from '$lib/stores/planning-suggestion.js';
-  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, requestGenerateSection, toggleCardExpand, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
+  import { draftTypes, drafts, draftGenerating, activeDraftTypeId, draftEditorHtml, draftSaving, draftSaved, sectionsModalOpen, sectionGenerating, sectionExampleModalOpen, cardExpandedTypeId, cardSections, cardSectionsLoading, assessmentIssues, assessmentIssuesLoading, issueGenerating, initDrafts, loadDraftTypes, setDraftEditor, handleGenerate, openDraft, closeDraft, handleSaveDraft, openSectionsModal, handleGenerateSection, requestGenerateSection, toggleCardExpand, ensureCardSections, loadAssessmentIssues, handleGenerateAssessmentIssue, cardContextState, toggleCardContext, appealPromptOpen, appealPromptTypeId, appealPromptText, appealPromptLoading, appealPromptSaving, appealPromptSaved, openAppealPrompt, closeAppealPrompt, saveAppealPrompt, resetAppealPrompt} from '$lib/stores/planning-drafts.js';
   import { getStage1Context } from '$lib/api/stage1Review.js';
   import { getTemplates, createDeliverable, createCustomDeliverable, updateDeliverableFromHTML, getProjectDeliverables, getDeliverableAsHTML, deleteDeliverable as deleteDeliverableApi, incorporateDeliverableTargeted } from '$lib/services/planningDeliverablesApi.js';
   import { authFetch } from '$lib/api/client.js';
@@ -128,20 +128,17 @@
 
   let draftEditor;
 
-  // Planning Statement v1/v2 and the original HLPV narrative are retired:
-  // they only read a fixed "briefing transcript" document and can't use
-  // selected meeting notes, so they never appear as cards. Purely a display
-  // filter — nothing about how any version actually works changes here.
-  const RETIRED_DRAFT_SLUGS = ['planning_statement', 'planning_statement_v2', 'hlpv_narrative'];
-
-  // Stage 1 Review's older versions stay out of the main card list by
-  // default, tucked behind a small picker on the v3 card.
-  const LEGACY_STAGE1_SLUGS = ['stage1_review', 'stage1_review_v2'];
-  const LEGACY_STAGE1_LABELS = {
-    stage1_review:    'Original',
-    stage1_review_v2: 'v2',
-  };
-  let visibleLegacyStage1Slug = '';
+  // Older versions and unfinished cards never appear as cards. Planning
+  // Statement v1/v2 and the original HLPV narrative only read a fixed
+  // "briefing transcript" document and can't use selected meeting notes;
+  // Stage 1 Review v1/v2 are superseded by v3; Socio-economic Baseline isn't
+  // ready yet. Purely a display filter — nothing about how any version
+  // actually works changes here.
+  const RETIRED_DRAFT_SLUGS = [
+    'planning_statement', 'planning_statement_v2', 'hlpv_narrative',
+    'stage1_review', 'stage1_review_v2',
+    'socio_economic_baseline',
+  ];
 
   // Draft types not in this list keep their relative order and are appended
   // after all of these — Array.prototype.sort is stable, so this is purely
@@ -159,11 +156,9 @@
   // of a live draft-type card.
   const COMING_SOON_SLUGS = [];
 
-  $: legacyStage1Types = ($draftTypes ?? []).filter(t => LEGACY_STAGE1_SLUGS.includes(t.slug));
   $: visibleDraftTypes = ($draftTypes ?? [])
     .filter(t =>
       !RETIRED_DRAFT_SLUGS.includes(t.slug) &&
-      (!LEGACY_STAGE1_SLUGS.includes(t.slug) || t.slug === visibleLegacyStage1Slug) &&
       !COMING_SOON_SLUGS.includes(t.slug)
     )
     .sort((a, b) => {
@@ -174,6 +169,19 @@
       if (bi === -1) return -1;
       return ai - bi;
     });
+
+  // Planning Statement v3 always shows its three parts, so its sections are
+  // loaded up front instead of when a toggle is opened. Each id is requested
+  // once, so a failed load can't retrigger itself.
+  const v3SectionsRequested = new Set();
+  let showAssessmentIssues = false;
+  $: {
+    const v3 = ($draftTypes ?? []).find(t => t.slug === 'planning_statement_v3');
+    if (v3 && !v3SectionsRequested.has(v3.id)) {
+      v3SectionsRequested.add(v3.id);
+      ensureCardSections(v3.id);
+    }
+  }
 
   $: setDraftEditor(draftEditor);
 
@@ -407,6 +415,8 @@
   async function openMeetingGuide(type) {
     meetingGuideType = type;
     meetingGuideIssues = [];
+    // The HLPV is written from the meeting alone, so its guide ignores any policy assessments set up for other documents.
+    if (type.slug === 'hlpv_v3') return;
     try {
       meetingGuideIssues = await getDraftingIssues(project.id);
     } catch (err) {
@@ -1136,7 +1146,7 @@
             {@const typeSections = $cardSections[type.id] ?? []}
             {@const typeLoading = $cardSectionsLoading[type.id] ?? false}
             {@const isComingSoon = type.slug === 'socio_economic_baseline'}
-            <div class="card draft-type-card" class:draft-type-card--coming-soon={isComingSoon}>
+            <div class="card draft-type-card" class:draft-type-card--coming-soon={isComingSoon} class:draft-type-card--wide={type.slug === 'planning_statement_v3'}>
               <div class="draft-type-main">
                 <div class="draft-type-info">
                   <span class="draft-type-name">
@@ -1165,20 +1175,14 @@
                   </button>
                   {#if type.tool === 'appeal'}
                     {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
-                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the drafting issues this draft is generated from" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
-                        <i class="las la-list-alt"></i> Issues
+                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the policy assessments this draft is generated from" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                        <i class="las la-list-alt"></i> Policy Assessment
                       </button>
                     {/if}
                   {:else if type.tool === 'stage1'}
                     {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
-                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
-                        <i class="las la-list-alt"></i> Issues
-                      </button>
-                    {/if}
-                  {:else if type.tool === 'hlpv'}
-                    {#if DRAFTING_ISSUES_SLUGS.includes(type.slug)}
-                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the drafting issues feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
-                        <i class="las la-list-alt"></i> Issues
+                      <button class="draft-setting-btn" disabled={isComingSoon} title="View / edit the policy assessments feeding this draft" on:click={() => draftingIssuesType = { id: type.id, slug: type.slug, name: type.name }}>
+                        <i class="las la-list-alt"></i> Policy Assessment
                       </button>
                     {/if}
                   {/if}
@@ -1221,7 +1225,11 @@
                             <i class="las la-clipboard-list"></i> Meeting Guide
                           </button>
                         {/if}
-                        {#if type.tool === 'appeal'}
+                        {#if type.slug === 'planning_statement_v3'}
+                          <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionsModal(type.id); }}>
+                            <i class="las la-cog"></i> Configure sections
+                          </button>
+                        {:else if type.tool === 'appeal'}
                           <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openAppealPrompt(type.id); }}>
                             <i class="las la-sliders-h"></i> Edit Prompt
                           </button>
@@ -1233,17 +1241,6 @@
                           <button class="draft-config-item" on:click={() => { configOpenTypeId = null; openSectionsModal(type.id); }}>
                             <i class="las la-sliders-h"></i> Edit Section Prompts
                           </button>
-                        {/if}
-                        {#if type.slug === 'stage1_review_v3' && legacyStage1Types.length}
-                          <div class="draft-config-row">
-                            <span class="draft-config-label">Version</span>
-                            <select class="card-dev-type-select" bind:value={visibleLegacyStage1Slug} title="Show an older Stage 1 Review version as its own card">
-                              <option value="">v3 only</option>
-                              {#each legacyStage1Types as t (t.id)}
-                                <option value={t.slug}>{LEGACY_STAGE1_LABELS[t.slug] ?? t.name}</option>
-                              {/each}
-                            </select>
-                          </div>
                         {/if}
                       </div>
                     {/if}
@@ -1267,7 +1264,83 @@
               <!-- Sections toggle row — hidden for appeal, stage1 and hlpv types (broad-prompt
                    generation), except v3, which carves Policy/Assessment out into their own
                    dedicated prompts -->
-              {#if type.tool !== 'stage1' && type.tool !== 'hlpv' && (type.tool !== 'appeal' || type.slug === 'planning_statement_v3')}
+              {#if type.slug === 'planning_statement_v3'}
+              <!-- Planning Statement v3 is written from three prompts. They sit side by side
+                   as equal parts: the main body (the type's own generation prompt) and the
+                   two sections spliced into it (Planning Policy, Planning Assessment). -->
+              <div class="ps-parts">
+                <div class="ps-part">
+                  <div class="ps-part-head">
+                    <span class="ps-part-name">Main body</span>
+                    <span class="ps-part-sub">Everything except the two sections beside it</span>
+                  </div>
+                  <div class="ps-part-actions">
+                    <button class="draft-setting-btn" title="View / edit the main body prompt" on:click={() => openAppealPrompt(type.id)}>
+                      <i class="las la-sliders-h"></i> Edit prompt
+                    </button>
+                  </div>
+                  <span class="ps-part-note">Written when you press {draft ? 'Regenerate' : 'Generate'} above.</span>
+                </div>
+
+                {#if typeLoading}
+                  <div class="ps-part ps-part--loading"><div class="mini-spinner"></div><span>Loading sections...</span></div>
+                {:else}
+                  {#each typeSections as section (section.id)}
+                    <div class="ps-part">
+                      <div class="ps-part-head">
+                        <span class="ps-part-name">{section.name}</span>
+                        <span class="ps-part-sub">{section.slug === 'planning_policy' ? 'Lists the policies. Does not assess them' : section.slug === 'planning_assessment' ? 'One subsection per issue' : (section.description || '')}</span>
+                      </div>
+                      <div class="ps-part-actions">
+                        <button class="draft-setting-btn" title="View / edit this section's prompt" on:click={() => openSectionPromptEdit(section, type.id)}>
+                          <i class="las la-sliders-h"></i> Edit prompt
+                        </button>
+                        <button
+                          class="draft-generate-btn"
+                          disabled={$sectionGenerating === section.id}
+                          title="Generate this section only"
+                          on:click={() => requestGenerateSection(section, type.id, sectionProviderById[section.id] || draftProviderByType[type.id] || '')}
+                        >
+                          {#if $sectionGenerating === section.id}<div class="mini-spinner"></div> Generating...{:else}<i class="las la-magic"></i> Generate{/if}
+                        </button>
+                      </div>
+                      <select
+                        class="card-dev-type-select section-model-select"
+                        bind:value={sectionProviderById[section.id]}
+                        title="AI model for this section - Default uses the card's AI Model setting"
+                      >
+                        <option value="">Default model</option>
+                        <option value="anthropic">Claude</option>
+                        <option value="openai">GPT-5.6</option>
+                      </select>
+                      {#if section.slug === 'planning_assessment' && $assessmentIssues.length > 0}
+                        <button class="draft-sections-toggle" on:click={() => showAssessmentIssues = !showAssessmentIssues}>
+                          Policy assessments ({$assessmentIssues.length})
+                          <i class="las {showAssessmentIssues ? 'la-angle-up' : 'la-angle-down'} toggle-chevron"></i>
+                        </button>
+                        {#if showAssessmentIssues}
+                          <div class="assessment-issues-list">
+                            {#each $assessmentIssues as issue (issue.id)}
+                              <div class="assessment-issue-row">
+                                <span class="assessment-issue-label">{issue.label}{issue.discipline ? `, ${issue.discipline}` : ''}</span>
+                                <button
+                                  class="issue-generate-btn"
+                                  disabled={$issueGenerating === issue.id}
+                                  title="Regenerate this issue only"
+                                  on:click={() => handleGenerateAssessmentIssue(type.id, section.id, issue.id, issue.label)}
+                                >
+                                  {#if $issueGenerating === issue.id}<div class="mini-spinner"></div>{:else}<i class="las la-magic"></i>{/if}
+                                </button>
+                              </div>
+                            {/each}
+                          </div>
+                        {/if}
+                      {/if}
+                    </div>
+                  {/each}
+                {/if}
+              </div>
+              {:else if type.tool !== 'stage1' && type.tool !== 'hlpv' && (type.tool !== 'appeal' || type.slug === 'planning_statement_v3')}
               <button class="draft-sections-toggle" on:click={() => toggleCardExpand(type.id)}>
                 <i class="las la-layer-group"></i>
                 Sections
@@ -2289,6 +2362,32 @@
   }
   .draft-sections-toggle:hover { color: var(--color-slate-700); }
   .toggle-chevron { margin-left: auto; font-size: 0.75rem; }
+
+  /* Planning Statement v3: main body + the two spliced sections as equal parts */
+  .draft-type-card--wide { grid-column: 1 / -1; }
+  .ps-parts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 0.75rem;
+    padding: 0.5rem 0 0.75rem;
+    border-top: 1px solid var(--color-slate-100);
+  }
+  .ps-part {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    min-width: 0;
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
+    border-radius: 6px;
+  }
+  .ps-part--loading { flex-direction: row; align-items: center; color: var(--color-slate-500); font-size: 0.8125rem; }
+  .ps-part-head { display: flex; flex-direction: column; gap: 0.125rem; }
+  .ps-part-name { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); }
+  .ps-part-sub { font-size: 0.75rem; color: var(--color-slate-500); }
+  .ps-part-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
+  .ps-part-note { font-size: 0.75rem; color: var(--color-slate-500); }
 
   .draft-inline-sections {
     display: flex;

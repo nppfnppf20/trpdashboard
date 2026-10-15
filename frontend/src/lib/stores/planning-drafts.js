@@ -474,6 +474,21 @@ export async function toggleCardExpand(typeId) {
   }
 }
 
+// Loads a card's sections without toggling its expanded state, for cards that
+// always show their sections (Planning Statement v3's three-part layout).
+export async function ensureCardSections(typeId) {
+  if (get(cardSections)[typeId]) return;
+  cardSectionsLoading.update(s => ({ ...s, [typeId]: true }));
+  try {
+    const loaded = await api(typeId).getSections(rawId(typeId));
+    cardSections.update(s => ({ ...s, [typeId]: loaded }));
+  } catch (err) {
+    console.error('Failed to load card sections:', err);
+  } finally {
+    cardSectionsLoading.update(s => ({ ...s, [typeId]: false }));
+  }
+}
+
 export function invalidateCardSections(typeId) {
   cardSections.update(s => { const copy = { ...s }; delete copy[typeId]; return copy; });
 }

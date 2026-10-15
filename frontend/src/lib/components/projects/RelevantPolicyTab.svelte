@@ -324,7 +324,7 @@
   async function deleteSelected() {
     if (!selectedIds.size) return;
     const n = selectedIds.size;
-    if (!confirm(`Delete ${n} selected polic${n === 1 ? 'y' : 'ies'}? This cannot be undone, and will remove any Drafting Issue links to them.`)) return;
+    if (!confirm(`Delete ${n} selected polic${n === 1 ? 'y' : 'ies'}? This cannot be undone, and will remove any Policy Assessment links to them.`)) return;
     bulkDeleting = true;
     try {
       await Promise.all([...selectedIds].map(id => deletePolicy(id)));
