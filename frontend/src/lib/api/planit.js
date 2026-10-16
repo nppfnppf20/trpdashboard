@@ -29,6 +29,17 @@ export async function generateSearchFromSources(projectId, sources = null) {
 }
 
 /**
+ * Authorities PlanIt holds applications for, for the LPA type-ahead.
+ *
+ * @returns {Promise<Array<{ id: string, label: string, long_name: string }>>}
+ */
+export async function getPlanitAreas() {
+  const res = await authFetch(`${BASE}/areas`);
+  if (!res.ok) throw new Error('Failed to load authorities');
+  return (await res.json()).areas ?? [];
+}
+
+/**
  * Search PlanIt for planning applications matching keywords within an LPA.
  *
  * @param {number} projectId

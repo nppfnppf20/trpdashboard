@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import { generateSearch, searchPlanit, triageSchemes, getSavedSchemes, saveSchemes, removeSavedScheme } from '../controllers/planit.controller.js';
+import { generateSearch, listPlanitAreas, searchPlanit, triageSchemes, getSavedSchemes, saveSchemes, removeSavedScheme } from '../controllers/planit.controller.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 import { createUpload } from '../middleware/upload.js';
 import { listDocuments, getDocumentText, uploadDocument, setDocumentType, deleteDocument, chatDocuments, lensDocuments } from '../controllers/similarSchemeDocs.controller.js';
@@ -14,6 +14,9 @@ const upload = createUpload({ exts: ['pdf', 'docx', 'txt', 'md'] });
 
 // Draft keywords, LPA and the "what we're looking for" description from the project and chosen sources
 router.post('/projects/:projectId/generate', analysisLimiter, generateSearch);
+
+// Authorities PlanIt holds applications for (feeds the LPA type-ahead)
+router.get('/areas', listPlanitAreas);
 
 // Search PlanIt API — proxied through backend to avoid CORS
 router.get('/projects/:projectId/search', searchPlanit);

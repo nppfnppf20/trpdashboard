@@ -6,7 +6,8 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { safeUrl } from '$lib/utils/safeUrl.js';
-  import { generateSearchFromSources, searchSimilarSchemes, triageSimilarSchemes, getSavedSchemes, saveSchemes, removeSavedScheme } from '$lib/api/planit.js';
+  import AutocompleteInput from '$lib/components/shared/AutocompleteInput.svelte';
+  import { getPlanitAreas, generateSearchFromSources, searchSimilarSchemes, triageSimilarSchemes, getSavedSchemes, saveSchemes, removeSavedScheme } from '$lib/api/planit.js';
   import AppealSourcePicker from '$lib/components/appeal-precedent/AppealSourcePicker.svelte';
   import SchemesMap from '$lib/components/projects/SchemesMap.svelte';
   import SavedWorkspace from '$lib/components/similar-schemes/SavedWorkspace.svelte';
@@ -80,7 +81,13 @@
   let saving = false;
   let justSaved = 0;
 
-  onMount(loadSaved);
+  // Authorities PlanIt holds applications for, offered as LPA suggestions (typing a name not listed still works).
+  let areas = [];
+  async function loadAreas() {
+    try { areas = await getPlanitAreas(); } catch { /* the LPA field still accepts typed text */ }
+  }
+
+  onMount(() => { loadSaved(); loadAreas(); });
   onDestroy(() => clearInterval(aiTimer));
 
   // Saved schemes
@@ -342,10 +349,6 @@
     s = s;
   }
 
-  function handleKeydown(e) {
-    if (e.key === 'Enter') search(1);
-  }
-
   function formatDate(d) {
     if (!d) return '-';
     return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -439,13 +442,11 @@
       </div>
       <div class="input-group lpa-group">
         <label for="ss-lpa">LPA (PlanIt authority name)</label>
-        <input
+        <AutocompleteInput
           id="ss-lpa"
-          type="text"
           bind:value={s.lpa}
-          placeholder="e.g. South Holland"
-          on:keydown={handleKeydown}
-          class="text-input"
+          suggestions={areas}
+          placeholder="Start typing, e.g. South Holland"
         />
       </div>
     </div>

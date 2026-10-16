@@ -21,6 +21,21 @@ const FETCH_HEADERS = {
 // Simple in-process cache so we don't hit the areas API on every search
 const lpaCache = new Map();
 
+/** True unless PlanIt positively reports the area as empty (total null). Errors count as "has data". */
+async function areaHasApplications(areaName) {
+  try {
+    // PlanIt needs a date or search restriction, so ask for anything started since 2000.
+    const params = new URLSearchParams({ auth: areaName, pg_sz: '1', select: 'name', start_date: '2000-01-01' });
+    const res = await fetch(`${PLANIT_BASE}?${params}`, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return true;
+    const data = await res.json();
+    if (data.error) return true;
+    return !(data.total == null && !(data.records?.length));
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Strip common UK council suffixes to get a shorter search term,
  * then query PlanIt's areas API to resolve the exact authority name.
@@ -58,7 +73,13 @@ async function resolveLpaName(raw) {
           r.long_name?.toLowerCase().includes(stripped.toLowerCase()) ||
           r.area_name?.toLowerCase().includes(stripped.toLowerCase())
         ) || records[0];
-        const resolved = match.area_name;
+        // Some areas exist but hold no applications (e.g. "Babergh", whose data sits under
+        // "Babergh Mid Suffolk"), so try the matched area first, then the others.
+        const ordered = [match, ...records.filter(r => r !== match)];
+        let resolved = match.area_name;
+        for (const r of ordered) {
+          if (await areaHasApplications(r.area_name)) { resolved = r.area_name; break; }
+        }
         console.log(`[planit] resolved "${raw}" → "${resolved}"`);
         lpaCache.set(key, resolved);
         return resolved;
@@ -225,6 +246,38 @@ export async function generateSearch(req, res) {
     }
     console.error('generateSearch error:', err);
     res.status(500).json({ error: 'Failed to generate the search', detail: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Endpoint: List PlanIt authorities (for the LPA type-ahead)
+// GET /api/planit/areas
+// Only areas that hold applications, so merged councils such as "Babergh" (whose data
+// is under "Babergh Mid Suffolk") don't show up as dead ends.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AREAS_TTL_MS = 24 * 60 * 60 * 1000;
+let areasCache = { at: 0, areas: null };
+
+export async function listPlanitAreas(req, res) {
+  try {
+    if (!areasCache.areas || Date.now() - areasCache.at > AREAS_TTL_MS) {
+      const params = new URLSearchParams({ pg_sz: '1000', select: 'area_name,long_name,total' });
+      const response = await fetch(`${PLANIT_AREAS}?${params}`, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(20_000) });
+      if (!response.ok) throw new PlanitError(502, 'PlanIt authority list unavailable');
+      const data = await response.json();
+      if (data.error) throw new PlanitError(502, 'PlanIt authority list unavailable', String(data.error));
+      areasCache = {
+        at: Date.now(),
+        areas: (data.records || [])
+          .filter(r => r.total > 0 && r.area_name)
+          .map(r => ({ id: r.area_name, label: r.area_name, long_name: r.long_name || r.area_name }))
+          .sort((a, b) => a.label.localeCompare(b.label))
+      };
+    }
+    res.json({ areas: areasCache.areas });
+  } catch (err) {
+    sendPlanitError(res, err, 'Failed to load authorities');
   }
 }
 
