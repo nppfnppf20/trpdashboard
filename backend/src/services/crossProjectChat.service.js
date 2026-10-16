@@ -12,9 +12,9 @@ export { CONTEXT_BUDGET };
 
 // Returns [{ id, groups, budget }] — one source catalogue per project, for
 // building a per-project source picker on the frontend.
-export async function getMultiProjectCatalogue(projectIds) {
+export async function getMultiProjectCatalogue(projectIds, ctx = {}) {
   return Promise.all(projectIds.map(async (id) => {
-    const catalogue = await getSourceCatalogue(id);
+    const catalogue = await getSourceCatalogue(id, ctx);
     return { id, ...catalogue };
   }));
 }
@@ -24,10 +24,10 @@ export async function getMultiProjectCatalogue(projectIds) {
  * sourcesByProject: { [projectId]: { project_details, document_ids, meeting_ids, groups } }
  * Returns { blocks: [{ sourceId, label, text }], totalChars }
  */
-export async function assembleMultiProjectContext(projectNames, sourcesByProject) {
+export async function assembleMultiProjectContext(projectNames, sourcesByProject, ctx = {}) {
   const perProject = await Promise.all(
     Object.entries(sourcesByProject).map(async ([projectId, sources]) => {
-      const { blocks } = await assembleContext(projectId, sources);
+      const { blocks } = await assembleContext(projectId, sources, ctx);
       const projectName = projectNames[projectId] || `Project ${projectId}`;
       return blocks.map(b => ({
         sourceId: `${projectId}:${b.sourceId}`,

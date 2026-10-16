@@ -576,6 +576,99 @@ async function serializeSurveyor(projectId) {
   return { text: parts.join('\n\n'), count: quotes.length };
 }
 
+// The actions saved from meeting notes (the Actions list on the Overview). Open actions first, then the most
+// recent completed ones. `ctx` ({ userId, userName }) lets the chat tell which actions are the asking user's, so
+// "what are my actions?" can be answered; without it nothing is marked.
+const COMPLETED_ACTIONS_SHOWN = 30;
+
+function isMyAction(row, ctx = {}) {
+  if (ctx.userId && row.assigned_user_id && String(row.assigned_user_id) === String(ctx.userId)) return true;
+  const name = (ctx.userName || '').trim().toLowerCase();
+  if (!name || !row.owner) return false;
+  const first = name.split(/\s+/)[0];
+  const tokens = row.owner.toLowerCase().split(/[\/,&]|\band\b/).map(s => s.trim()).filter(Boolean);
+  return tokens.some(tok => tok === name || tok === first);
+}
+
+async function serializeMeetingActions(projectId, ctx = {}) {
+  try {
+    const { rows: actions } = await pool.query(
+      `SELECT a.id, a.action_text, a.owner, a.assigned_user_id, a.due_date, a.status, a.notes, a.completed_at, a.created_at,
+              t.title AS meeting_title, t.meeting_date
+         FROM planning_applications.meeting_actions a
+         LEFT JOIN planning_applications.meeting_transcripts t ON t.id = a.transcript_id
+        WHERE a.project_id = $1
+        ORDER BY a.due_date NULLS LAST, a.created_at`,
+      [projectId]
+    );
+    if (!actions.length) return null;
+
+    const { rows: updates } = await pool.query(
+      `SELECT action_id, update_type, update_text, created_at
+         FROM planning_applications.meeting_action_updates
+        WHERE action_id = ANY($1) ORDER BY created_at`,
+      [actions.map(a => a.id)]
+    );
+
+    const today = new Date().toISOString().slice(0, 10);
+    const describe = a => {
+      const due = a.due_date ? new Date(a.due_date).toISOString().slice(0, 10) : null;
+      const parts = [
+        `Action: ${a.action_text}`,
+        a.owner ? `owner: ${a.owner}` : 'owner: not assigned',
+        isMyAction(a, ctx) ? '[assigned to you]' : null,
+        due ? `due ${fmtDate(a.due_date)}${a.status === 'pending' && due < today ? ' (OVERDUE)' : ''}` : 'no due date',
+        a.meeting_title ? `from "${a.meeting_title}"${a.meeting_date ? ` (${fmtDate(a.meeting_date)})` : ''}` : null,
+        a.status === 'complete' && a.completed_at ? `completed ${fmtDate(a.completed_at)}` : null,
+      ].filter(Boolean).join(' | ');
+      const lines = [parts];
+      if (a.notes) lines.push(`  notes: ${a.notes}`);
+      for (const u of updates.filter(x => x.action_id === a.id)) {
+        lines.push(`  - ${fmtDate(u.created_at)} (${u.update_type}): ${u.update_text || 'no detail'}`);
+      }
+      return lines.join('\n');
+    };
+
+    const open = actions.filter(a => a.status === 'pending');
+    const done = actions.filter(a => a.status === 'complete')
+      .sort((x, y) => new Date(y.completed_at || y.created_at) - new Date(x.completed_at || x.created_at))
+      .slice(0, COMPLETED_ACTIONS_SHOWN);
+
+    const text = [
+      `OPEN ACTIONS (${open.length}):`,
+      open.length ? open.map(describe).join('\n\n') : 'None.',
+      '',
+      `COMPLETED ACTIONS (most recent ${done.length}):`,
+      done.length ? done.map(describe).join('\n\n') : 'None.',
+    ].join('\n');
+
+    return { text, count: open.length + done.length };
+  } catch (err) {
+    console.error('projectChat.serializeMeetingActions failed:', err.message);
+    return null;
+  }
+}
+
+// Who is asking, for "my actions" style questions. { userId, userName } (name null if the profile has none).
+export async function getChatUserContext(userId) {
+  if (!userId) return {};
+  try {
+    const { rows } = await pool.query('SELECT display_name FROM public.user_profiles WHERE id = $1', [userId]);
+    return { userId, userName: rows[0]?.display_name?.trim() || null };
+  } catch {
+    return { userId, userName: null };
+  }
+}
+
+// Prompt lines giving the model today's date and who the user is.
+export function buildWhoAmIPrompt(ctx = {}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const who = ctx.userName
+    ? `The person asking is ${ctx.userName}. When they ask about "my" or "our" actions or tasks, mean actions marked [assigned to you] in the sources.`
+    : 'You do not know the name of the person asking, so you cannot tell which actions are theirs.';
+  return `Today's date is ${today}. ${who}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Group registry: id prefix, label, serializer
 // ─────────────────────────────────────────────────────────────────────────────
@@ -585,7 +678,8 @@ const TABLE_GROUPS = [
   { key: 'consultation',     sourceId: 'C',    label: 'Consultation Tracker',     serialize: serializeConsultation },
   { key: 'conditions',       sourceId: 'COND', label: 'Conditions Tracker',       serialize: serializeConditions },
   { key: 'issues_tracker',   sourceId: 'IT',   label: 'Project Tracker',          serialize: serializeIssuesTracker },
-  { key: 'actions',          sourceId: 'A',    label: 'Action Tracker',           serialize: serializeActions },
+  { key: 'actions',          sourceId: 'A',    label: 'Tracker Actions',          serialize: serializeActions },
+  { key: 'meeting_actions',  sourceId: 'ACT',  label: 'Actions',                  serialize: serializeMeetingActions },
   { key: 'planning_history', sourceId: 'H',    label: 'Planning History',         serialize: serializePlanningHistory },
   { key: 'policies',         sourceId: 'POL',  label: 'Relevant Policies',        serialize: serializePolicies },
   { key: 'policy_documents', sourceId: 'PD',   label: 'Policy Documents',         serialize: serializePolicyDocuments },
@@ -609,12 +703,12 @@ const DOC_TYPE_LABELS = {
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getSourceCatalogue(projectId) {
+export async function getSourceCatalogue(projectId, ctx = {}) {
   const [details, docs, meetings, ...tableResults] = await Promise.all([
     serializeProjectDetails(projectId),
     fetchDocuments(projectId),
     fetchMeetings(projectId),
-    ...TABLE_GROUPS.map(g => g.serialize(projectId)),
+    ...TABLE_GROUPS.map(g => g.serialize(projectId, ctx)),
   ]);
 
   const groups = [];
@@ -664,7 +758,7 @@ export async function getSourceCatalogue(projectId) {
  * sources: { project_details: bool, document_ids: number[], meeting_ids: number[], groups: string[] }
  * Returns { blocks: [{ sourceId, label, text }], totalChars, availableGroups }
  */
-export async function assembleContext(projectId, sources = {}) {
+export async function assembleContext(projectId, sources = {}, ctx = {}) {
   const blocks = [];
   const selectedGroups = new Set(sources.groups ?? []);
   const documentIds = (sources.document_ids ?? []).map(Number).filter(Number.isFinite);
@@ -699,7 +793,7 @@ export async function assembleContext(projectId, sources = {}) {
 
   for (const g of TABLE_GROUPS) {
     if (!selectedGroups.has(g.key)) continue;
-    const result = await g.serialize(projectId);
+    const result = await g.serialize(projectId, ctx);
     if (result) blocks.push({ sourceId: g.sourceId, label: g.label, text: result.text });
   }
 

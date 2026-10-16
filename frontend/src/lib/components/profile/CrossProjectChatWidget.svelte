@@ -110,7 +110,11 @@
           .reduce((a, b) => (!a || b.chars > a.chars ? b : a), null);
         nextSelection[cat.id] = {
           detailsSelected: !!detailsGroup,
-          selectedGroups: new Set(biggestTracker ? [biggestTracker.key] : []),
+          // Actions are small and the most common thing to ask about, so they are ticked by default when there are any.
+          selectedGroups: new Set([
+            ...(biggestTracker ? [biggestTracker.key] : []),
+            ...(cat.groups.some(g => g.key === 'meeting_actions' && g.count > 0) ? ['meeting_actions'] : []),
+          ]),
           selectedMeetingIds: new Set(),
         };
       }

@@ -2,6 +2,7 @@ import { pool } from '../db.js';
 import { client, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from '../services/llm.shared.js';
 import { getMultiProjectCatalogue, assembleMultiProjectContext, CONTEXT_BUDGET } from '../services/crossProjectChat.service.js';
 import { getTone } from '../services/emailTones.service.js';
+import { getChatUserContext, buildWhoAmIPrompt } from '../services/projectChat.service.js';
 
 function emailToneInstructions(tone) {
   if (!tone) return '';
@@ -28,7 +29,7 @@ export async function getSources(req, res) {
     return res.status(400).json({ error: 'project_ids required' });
   }
   try {
-    const projects = await getMultiProjectCatalogue(project_ids);
+    const projects = await getMultiProjectCatalogue(project_ids, await getChatUserContext(req.user?.id));
     res.json({ projects });
   } catch (err) {
     console.error('crossProjectChat.getSources error:', err);
@@ -54,7 +55,8 @@ export async function chat(req, res) {
     if (!projectRows.length) return res.status(404).json({ error: 'No matching projects found' });
 
     const projectNames = Object.fromEntries(projectRows.map(p => [p.id, p.project_name]));
-    const { blocks, totalChars } = await assembleMultiProjectContext(projectNames, sources ?? {});
+    const userCtx = await getChatUserContext(req.user?.id);
+    const { blocks, totalChars } = await assembleMultiProjectContext(projectNames, sources ?? {}, userCtx);
 
     if (!blocks.length) {
       return res.status(400).json({ error: 'No sources selected. Tick at least one source across your projects to chat.' });
@@ -74,6 +76,8 @@ export async function chat(req, res) {
     const projectList = projectRows.map(p => `"${p.project_name}"${p.client ? ` (client: ${p.client})` : ''}`).join(', ');
 
     const systemPrompt = `You are a planning consultant's assistant answering questions across MULTIPLE projects: ${projectList}.
+
+${buildWhoAmIPrompt(userCtx)}
 
 Grounding rules — these are absolute:
 - Answer ONLY from the source blocks below. Never use outside knowledge for any project-specific claim. You may use general planning knowledge to explain terminology, but never to assert project facts.

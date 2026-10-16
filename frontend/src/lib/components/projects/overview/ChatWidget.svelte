@@ -116,6 +116,8 @@
         .filter(g => g && g.count > 0)
         .reduce((a, b) => (!a || b.chars > a.chars ? b : a), null);
       if (biggestTracker) selectedGroups = new Set([...selectedGroups, biggestTracker.key]);
+      // Actions are small and the most common thing to ask about, so they are ticked by default when there are any.
+      if (groups.some(g => g.key === 'meeting_actions' && g.count > 0)) selectedGroups = new Set([...selectedGroups, 'meeting_actions']);
       sourcesLoaded = true;
     } catch (err) {
       error = err.message;

@@ -11,7 +11,7 @@ function parseCitationsArray(text) {
   }
   return [];
 }
-import { getSourceCatalogue, assembleContext, CONTEXT_BUDGET } from '../services/projectChat.service.js';
+import { getSourceCatalogue, assembleContext, CONTEXT_BUDGET, getChatUserContext, buildWhoAmIPrompt } from '../services/projectChat.service.js';
 import {
   loadPlanningStageState, stageSuggestionsWanted, suggestStageChangeTool, buildChatStageContext, validateStageSuggestions
 } from '../services/planningStages.service.js';
@@ -93,7 +93,7 @@ const toISODate = d => {
 export async function getSources(req, res) {
   const { projectId } = req.params;
   try {
-    const catalogue = await getSourceCatalogue(projectId);
+    const catalogue = await getSourceCatalogue(projectId, await getChatUserContext(req.user?.id));
     res.json(catalogue);
   } catch (err) {
     console.error('projectChat.getSources error:', err);
@@ -118,7 +118,8 @@ export async function chat(req, res) {
     if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
     const { project_name, client: clientName } = projectRows[0];
 
-    const { blocks, totalChars, availableGroups } = await assembleContext(projectId, sources ?? {});
+    const userCtx = await getChatUserContext(req.user?.id);
+    const { blocks, totalChars, availableGroups } = await assembleContext(projectId, sources ?? {}, userCtx);
 
     // Stage-change suggestions are best-effort: if the stage tables are missing the chat still works.
     const stageState = await loadPlanningStageState(pool, projectId).catch(err => {
@@ -155,6 +156,8 @@ export async function chat(req, res) {
     const includeDateTool = !!sources?.project_details;
 
     const systemPrompt = `You are a planning consultant's assistant answering questions about the project "${project_name}"${clientName ? ` (client: ${clientName})` : ''}.
+
+${buildWhoAmIPrompt(userCtx)}
 
 Grounding rules — these are absolute:
 - Answer ONLY from the source blocks below. Never use outside knowledge for any project-specific claim (facts about this site, this application, these consultees, these dates, etc.). You may use general planning knowledge to explain terminology, but never to assert project facts.
