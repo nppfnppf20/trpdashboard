@@ -5,6 +5,7 @@
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { renderReply, buildSourceLabels, copyReplyToClipboard } from '$lib/utils/chatMarkdown.js';
   import ProjectDateSuggestionCard from '$lib/components/projects/ProjectDateSuggestionCard.svelte';
+  import StageSuggestionCard from '$lib/components/projects/StageSuggestionCard.svelte';
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
   import FeeQuoteSuggestionCard from '$lib/components/projects/FeeQuoteSuggestionCard.svelte';
   import DraftFromBriefingFlow from '$lib/components/surveyor-briefings/DraftFromBriefingFlow.svelte';
@@ -334,6 +335,8 @@
                 <FeeQuoteSuggestionCard {suggestion} onStart={() => draftFlow?.open({ guidance: lastUserMessageBefore(idx) })} compact />
               {:else if suggestion.kind === 'slideshow'}
                 <SlideshowSuggestionCard {suggestion} onStart={() => slideshowModal?.open({ guidance: suggestion.guidance })} compact />
+              {:else if suggestion.kind === 'planning_stage'}
+                <StageSuggestionCard projectId={projectId} {suggestion} dismissLabel="Don't change" compact />
               {:else}
                 <ProjectDateSuggestionCard {suggestion} onAccept={onAcceptDateSuggestion} compact />
               {/if}

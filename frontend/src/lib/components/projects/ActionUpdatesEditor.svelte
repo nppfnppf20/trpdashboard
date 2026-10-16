@@ -1,4 +1,5 @@
 <script>
+  import { autoGrow } from '$lib/utils/autoGrow.js';
   // Existing open actions this meeting spoke to. The AI suggests a status
   // (complete / progress) and an update sentence; the user accepts or changes
   // each one. `dirty` flips true on any edit.
@@ -29,13 +30,14 @@
           </select>
         </div>
         {#if u.status !== 'none'}
-          <input
-            class="form-input"
-            type="text"
+          <textarea
+            class="form-input aue-note"
+            rows="1"
             placeholder={u.status === 'complete' ? 'Optional note on how it was closed…' : 'What happened on this action…'}
             bind:value={u.update_text}
             on:input={touch}
-          />
+            use:autoGrow={u.update_text}
+          ></textarea>
         {/if}
         {#if u.evidence}<p class="aue-evidence">“{u.evidence}”</p>{/if}
       </div>
@@ -55,6 +57,7 @@
   .aue-text { font-size: 0.85rem; font-weight: 500; color: var(--color-slate-800); }
   .aue-owner { font-size: 0.75rem; color: var(--color-slate-500); }
   .aue-status { width: 11rem; flex-shrink: 0; }
+  .aue-note { resize: none; overflow: hidden; line-height: 1.4; min-height: 2.25rem; font-family: inherit; }
   .aue-evidence { margin: 0; font-size: 0.75rem; font-style: italic; color: var(--color-slate-500); }
   .aue-empty { margin: 0; font-size: 0.85rem; color: var(--color-slate-500); }
   .aue-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }

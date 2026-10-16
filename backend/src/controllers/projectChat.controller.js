@@ -12,6 +12,9 @@ function parseCitationsArray(text) {
   return [];
 }
 import { getSourceCatalogue, assembleContext, CONTEXT_BUDGET } from '../services/projectChat.service.js';
+import {
+  loadPlanningStageState, stageSuggestionsWanted, suggestStageChangeTool, buildChatStageContext, validateStageSuggestions
+} from '../services/planningStages.service.js';
 import { getTone } from '../services/emailTones.service.js';
 
 function emailToneInstructions(tone) {
@@ -117,6 +120,13 @@ export async function chat(req, res) {
 
     const { blocks, totalChars, availableGroups } = await assembleContext(projectId, sources ?? {});
 
+    // Stage-change suggestions are best-effort: if the stage tables are missing the chat still works.
+    const stageState = await loadPlanningStageState(pool, projectId).catch(err => {
+      console.error('projectChat.chat: could not load planning stage state:', err.message);
+      return null;
+    });
+    const includeStageTool = stageSuggestionsWanted(stageState);
+
     if (!blocks.length) {
       return res.status(400).json({ error: 'No sources selected. Tick at least one source to chat.' });
     }
@@ -172,6 +182,7 @@ ${sourceBlocks}`
       + `\n\nYou also have a suggest_fee_quote_requests tool. If the user asks you to draft, prepare or send fee quote requests to surveyors, call it and keep your text reply to one or two sentences saying a button below will start the guided draft flow (where they choose a briefing or meeting note). Do not draft the request emails in the reply, and do not add a citations block for this reply.
 
 You also have a suggest_slideshow tool. If the user asks you to make a slideshow, slide deck, presentation or PowerPoint, call it and keep your text reply to one or two sentences saying a button below will open the form where they choose the notes and confirm the guidance. Do not write the slides in the reply, and do not add a citations block for this reply.`
+      + buildChatStageContext(stageState)
       + emailToneInstructions(emailTone)
       + ANTI_AI_SLOP_BLOCK;
 
@@ -180,7 +191,7 @@ You also have a suggest_slideshow tool. If the user asks you to make a slideshow
       max_tokens: 4096,
       system: systemPrompt,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
-      tools: [...(includeDateTool ? [suggestProjectDateTool] : []), suggestFeeQuoteRequestsTool, suggestSlideshowTool],
+      tools: [...(includeDateTool ? [suggestProjectDateTool] : []), ...(includeStageTool ? [suggestStageChangeTool] : []), suggestFeeQuoteRequestsTool, suggestSlideshowTool],
     });
 
     const textBlock = response.content.find(b => b.type === 'text');
@@ -211,8 +222,19 @@ You also have a suggest_slideshow tool. If the user asks you to make a slideshow
         source_id: s.source_id || null,
       }));
 
+    // Stage changes: each quote must really appear in the user's latest message or in the selected sources.
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+    const stageSuggestions = validateStageSuggestions(
+      response.content
+        .filter(b => b.type === 'tool_use' && b.name === 'suggest_stage_change')
+        .map(b => ({ ...b.input, confidence: 'high' })),
+      stageState,
+      `${lastUserMessage}\n${blocks.map(b => b.text).join('\n')}`
+    ).map(s => ({ kind: 'planning_stage', ...s }));
+
     const suggestions = [
       ...dateSuggestions,
+      ...stageSuggestions,
       ...(feeQuoteCall ? [{ kind: 'fee_quote_request', reason: feeQuoteCall.input?.reason || null }] : []),
       ...(slideshowCall ? [{ kind: 'slideshow', guidance: slideshowCall.input?.guidance || '' }] : []),
     ];

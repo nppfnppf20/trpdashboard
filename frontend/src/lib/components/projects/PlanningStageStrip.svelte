@@ -9,6 +9,7 @@
   export let projectId;
 
   import { PLANNING_STAGES as STAGES, STAGE_STATUS_LABEL as STATUS_LABEL } from '$lib/utils/planningStages.js';
+  import { planningStagesVersion } from '$lib/stores/planningStages.js';
 
   const STATUS_OPTIONS = ['not_started', 'in_progress', 'complete', 'na'];
 
@@ -23,6 +24,14 @@
 
   let loadedFor = null;
   $: if (projectId && projectId !== loadedFor) { loadedFor = projectId; load(); }
+
+  // Another part of the page (accepting a suggestion on a meeting note or in chat) changed a stage: refetch.
+  let seenVersion = null;
+  $: if ($planningStagesVersion !== seenVersion) {
+    const first = seenVersion === null;
+    seenVersion = $planningStagesVersion;
+    if (!first && projectId) load();
+  }
 
   async function load() {
     loadFailed = false;

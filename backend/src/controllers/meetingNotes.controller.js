@@ -4,6 +4,7 @@ import { parseFile } from '../services/parser.service.js';
 import { processMeetingTranscript, processMultiProjectMeetingTranscript, extractInsights } from '../services/meeting.service.js';
 import { draftActionsFromMeetingNotes } from '../services/progressTracker.service.js';
 import { loadIssuesForDrafting } from './progressTracker.controller.js';
+import { loadPlanningStageState } from '../services/planningStages.service.js';
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -113,9 +114,15 @@ export async function processMeetingNote(req, res) {
         return null;
       });
 
-    const [{ meeting_title, meeting_date, attendees, summary_html, actions, actionUpdates, dateSuggestions }, draftedProposals] = await Promise.all([
+    // Stage-change suggestions are best-effort: if the stage tables are missing the note still processes.
+    const stageState = await loadPlanningStageState(pool, projectId).catch(err => {
+      console.error('meetingNotes.processMeetingNote: could not load planning stage state:', err.message);
+      return null;
+    });
+
+    const [{ meeting_title, meeting_date, attendees, summary_html, actions, actionUpdates, dateSuggestions, stageSuggestions }, draftedProposals] = await Promise.all([
       processMeetingTranscript(
-        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null, existingOpenActions
+        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, 'project', provider || null, existingOpenActions, stageState
       ),
       draftPromise,
     ]);
@@ -149,7 +156,7 @@ export async function processMeetingNote(req, res) {
         source_note_id: transcript.id,
         action_date: meeting_date || p.action_date,
       }));
-      res.status(201).json({ transcript, summary, suggestedActions: actions, actionUpdates, dateSuggestions, proposals });
+      res.status(201).json({ transcript, summary, suggestedActions: actions, actionUpdates, dateSuggestions, stageSuggestions: stageSuggestions || [], proposals });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

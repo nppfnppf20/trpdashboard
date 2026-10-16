@@ -15,3 +15,6 @@ export const STAGE_STATUS_LABEL = {
   complete: 'Complete',
   na: 'Not applicable'
 };
+
+// The status each kind of suggested change leads to (matches STATUS_FOR_CHANGE on the backend).
+export const STATUS_FOR_CHANGE = { start: 'in_progress', complete: 'complete', na: 'na' };

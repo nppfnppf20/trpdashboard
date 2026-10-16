@@ -1,5 +1,6 @@
 import { callClaude, callLLM, resolveProvider, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 import { getGuidingBrief } from '../controllers/guidingBriefs.controller.js';
+import { buildMeetingStagePromptSection, buildMeetingStageContext, validateStageSuggestions } from './planningStages.service.js';
 
 const PROMPT_PREFIX = `You are a planning consultant assistant. Process a meeting transcript into a structured record.
 
@@ -169,7 +170,7 @@ ${projectList}`;
   return [PROMPT_PREFIX_MULTI, projectsSection, structureSection + styleSection, PROMPT_ACTIONS].join('\n\n') + ANTI_AI_SLOP_BLOCK;
 }
 
-async function buildSystemPrompt() {
+async function buildSystemPrompt(stageState = null) {
   const brief = await getGuidingBrief('meeting_notes', null).catch(() => null);
 
   const structureSection = brief?.guidance_content?.trim()
@@ -190,7 +191,8 @@ The following is an example of the required format and style. Match its structur
 ${brief.style_example.trim()}`
     : '';
 
-  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS, PROMPT_COMPLETED_ACTIONS, PROMPT_DATE_SUGGESTIONS].join('\n\n') + ANTI_AI_SLOP_BLOCK;
+  const stageSection = buildMeetingStagePromptSection(stageState);
+  return [PROMPT_PREFIX, structureSection + styleSection, PROMPT_ACTIONS, PROMPT_COMPLETED_ACTIONS, PROMPT_DATE_SUGGESTIONS, ...(stageSection ? [stageSection] : [])].join('\n\n') + ANTI_AI_SLOP_BLOCK;
 }
 
 function extractTag(text, tag) {
@@ -288,8 +290,10 @@ export async function extractInsights(transcriptText, meetingType) {
   }
 }
 
-export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null, existingOpenActions = []) {
-  const systemPrompt = await buildSystemPrompt();
+// stageState (optional): { applicable, stages } from loadPlanningStageState. When the project uses planning stages, the
+// model is also asked for strict stage-change suggestions, returned verified as `stageSuggestions`.
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null, existingOpenActions = [], stageState = null) {
+  const systemPrompt = await buildSystemPrompt(stageState);
 
   const parts = [`TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}`];
 
@@ -317,6 +321,9 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
       .join('\n');
     parts.push(`EXISTING OPEN ACTIONS (mark complete in COMPLETED_ACTIONS_JSON only with clear evidence):\n${list}`);
   }
+
+  const stageContext = buildMeetingStageContext(stageState);
+  if (stageContext) parts.push(stageContext);
 
   parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
 
@@ -375,6 +382,17 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
     console.warn('[meeting.service] Could not parse DATE_SUGGESTIONS_JSON, defaulting to []:', dateSuggestionsRaw.slice(0, 200));
   }
 
+  // Strict stage-change suggestions: every one must quote words that really appear in the transcript or notes.
+  let stageSuggestions = [];
+  const stageRaw = extractTag(raw, 'STAGE_SUGGESTIONS_JSON');
+  if (stageRaw) {
+    try {
+      stageSuggestions = validateStageSuggestions(JSON.parse(stageRaw), stageState, `${text}\n${userNotes || ''}`);
+    } catch {
+      console.warn('[meeting.service] Could not parse STAGE_SUGGESTIONS_JSON, defaulting to []:', stageRaw.slice(0, 200));
+    }
+  }
+
   return {
     meeting_title: extractTag(raw, 'MEETING_TITLE') || null,
     meeting_date: extractTag(raw, 'MEETING_DATE') || null,
@@ -387,7 +405,8 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
       notes: a.notes?.trim() || null
     })).filter(a => a.action_text),
     actionUpdates,
-    dateSuggestions
+    dateSuggestions,
+    stageSuggestions
   };
 }
 

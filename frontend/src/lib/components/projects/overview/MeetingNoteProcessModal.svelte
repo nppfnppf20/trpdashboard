@@ -13,6 +13,7 @@
   import ActionUpdatesEditor from '$lib/components/projects/ActionUpdatesEditor.svelte';
   import { buildReviewBlocksHtml, syncReviewIntoSummary, toEditableActions, toEditableUpdates } from '$lib/utils/meetingActions.js';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
+  import StageSuggestionCard from '$lib/components/projects/StageSuggestionCard.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import { processMeetingNote, processMultiProjectNote, updateMeetingSummary, saveMeetingReviewActions, saveVerbatimMeetingNote } from '$lib/api/meetingNotes.js';
   import { getProjects } from '$lib/api/projects.js';
@@ -104,6 +105,13 @@
   function markDateDecided(key) {
     decidedDates = new Set([...decidedDates, key]);
   }
+  // Planning stage changes spotted in the transcript: accepted one by one, never applied automatically.
+  let reviewStageSuggestions = [];
+  let decidedStages = new Set();
+  $: undecidedStages = reviewStageSuggestions.filter(s => !decidedStages.has(s._key)).length;
+  function markStageDecided(key) {
+    decidedStages = new Set([...decidedStages, key]);
+  }
   let reviewProposals = null; // tracker proposals drafted in parallel with the summary; null = draft on demand
 
   async function submitUpload() {
@@ -114,7 +122,7 @@
     processing = true;
     error = null;
     try {
-      let transcript, summaryHtml, dateSuggestions, otherProjectNames = [], combinedCreated = false, proposals = null, suggestedActions = [], actionUpdates = [];
+      let transcript, summaryHtml, dateSuggestions, stageSuggestions = [], otherProjectNames = [], combinedCreated = false, proposals = null, suggestedActions = [], actionUpdates = [];
 
       if (multiProject) {
         const result = await processMultiProjectNote({
@@ -151,6 +159,7 @@
         transcript = result.transcript;
         summaryHtml = result.summary?.summary_html || '';
         dateSuggestions = result.dateSuggestions || [];
+        stageSuggestions = result.stageSuggestions || [];
         proposals = result.proposals ?? null;
         suggestedActions = result.suggestedActions || [];
         actionUpdates = result.actionUpdates || [];
@@ -170,6 +179,8 @@
       reviewSummaryHtml = summaryHtml + buildReviewBlocksHtml(reviewActions, reviewUpdates);
       decidedDates = new Set();
       reviewDateSuggestions = dateSuggestions.map((d, i) => ({ ...d, _key: i }));
+      decidedStages = new Set();
+      reviewStageSuggestions = stageSuggestions.map((s, i) => ({ ...s, _key: i }));
       reviewOtherProjectNames = otherProjectNames;
       reviewCombinedCreated = combinedCreated;
       reviewProposals = proposals;
@@ -215,6 +226,7 @@
       reviewUpdatesDirty = false;
       reviewSummaryHtml = result.summary?.summary_html || '';
       reviewDateSuggestions = [];
+      reviewStageSuggestions = [];
       reviewOtherProjectNames = [];
       reviewCombinedCreated = false;
       reviewProposals = null;
@@ -426,6 +438,23 @@
     {:else if !reviewSaved}
       <!-- ── Review AI summary ── -->
       <div class="mnp-body mnp-review-body">
+          {#if reviewStageSuggestions.length}
+            <section class="mnp-date-suggestions">
+              <h3 class="mnp-review-section-title">Planning stage change spotted</h3>
+              {#each reviewStageSuggestions as s (s._key)}
+                <StageSuggestionCard
+                  projectId={project.id}
+                  suggestion={s}
+                  dismissLabel="Don't change"
+                  onAccepted={() => markStageDecided(s._key)}
+                  onDismiss={() => markStageDecided(s._key)}
+                />
+              {/each}
+              {#if undecidedStages > 0}
+                <p class="mnp-date-hint">{undecidedStages} not changed or skipped yet. Saving the note won't change the stage.</p>
+              {/if}
+            </section>
+          {/if}
           {#if reviewDateSuggestions.length}
             <section class="mnp-date-suggestions">
               <h3 class="mnp-review-section-title">Key dates spotted in this meeting</h3>
@@ -455,10 +484,12 @@
           <h3 class="mnp-review-section-title">Open actions mentioned in this meeting</h3>
           <ActionUpdatesEditor bind:updates={reviewUpdates} bind:dirty={reviewUpdatesDirty} />
         </section>
-        <label class="mnp-review-include">
-          <input type="checkbox" bind:checked={reviewIncludeInSummary} />
-          Include completed actions and updates in the summary text
-        </label>
+        {#if reviewUpdates.length}
+          <label class="mnp-review-include">
+            <input type="checkbox" bind:checked={reviewIncludeInSummary} />
+            Include completed actions and updates in the summary text
+          </label>
+        {/if}
         {#if reviewError}<p class="mnp-error-sm">{reviewError}</p>{/if}
       </div>
       <div class="mnp-footer">

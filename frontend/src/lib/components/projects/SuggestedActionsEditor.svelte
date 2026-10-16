@@ -1,5 +1,6 @@
 <script>
   import OwnerInput from '$lib/components/shared/OwnerInput.svelte';
+  import { autoGrow } from '$lib/utils/autoGrow.js';
   // Editable rows for the actions the AI pulled from a meeting. `actions` is
   // bound by the parent; `dirty` flips true on any edit so the parent knows to
   // rewrite the summary's Actions block on save.
@@ -36,7 +37,7 @@
     </div>
     {#each actions as a (a._key)}
       <div class="sae-row">
-        <input class="form-input" type="text" placeholder="Action…" bind:value={a.action_text} on:input={touch} />
+        <textarea class="form-input sae-text" rows="1" placeholder="Action…" bind:value={a.action_text} on:input={touch} use:autoGrow={a.action_text}></textarea>
         <OwnerInput bind:value={a.owner} on:input={touch} />
         <input class="form-input" type="date" bind:value={a.due_date} on:input={touch} />
         <button type="button" class="btn btn-icon btn-ghost" title="Remove action" aria-label="Remove action" on:click={() => removeRow(a._key)}>
@@ -64,6 +65,7 @@
     gap: 0.5rem;
     align-items: center;
   }
+  .sae-text { resize: none; overflow: hidden; line-height: 1.4; min-height: 2.25rem; font-family: inherit; }
   .sae-head { font-size: 0.72rem; font-weight: 600; color: var(--color-slate-500); text-transform: uppercase; }
   .sae-empty { margin: 0; font-size: 0.85rem; color: var(--color-slate-500); }
   .sae-add { align-self: flex-start; }

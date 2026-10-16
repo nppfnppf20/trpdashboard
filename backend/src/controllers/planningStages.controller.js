@@ -1,4 +1,5 @@
 import { pool } from '../db.js';
+import { STAGE_KEYS, STAGE_STATUSES as STATUSES } from '../services/planningStages.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Planning stages: the strip of seven stage pills in the project workspace header.
@@ -6,8 +7,6 @@ import { pool } from '../db.js';
 // A stage with no row is "not started", so a project always comes back with all seven.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STAGE_KEYS = ['appraisal', 'pre_app', 'eia_screening', 'surveys', 'public_engagement', 'prepare_application', 'post_submission'];
-const STATUSES = ['not_started', 'in_progress', 'complete', 'na'];
 
 function projectIdOf(req, res) {
   const id = parseInt(req.params.projectId, 10);
