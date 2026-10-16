@@ -112,6 +112,11 @@
     return d.length > 0 && !d.some(x => x.doc_type === 'officer_report');
   };
 
+  function shortDate(iso) {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+
   function stateClass(state) {
     if (state === 'Permitted' || state === 'Conditions') return 'granted';
     if (state === 'Rejected') return 'refused';
@@ -232,6 +237,8 @@
             <span class="item-text" class:dim={n === 0}>{r.description || r.name}</span>
             <span class="item-meta">
               {#if r.app_state}<span class="badge {stateClass(r.app_state)}">{r.app_state}</span>{/if}
+              {#if r.previous_state}<span class="badge changed" title="Changed from {r.previous_state} on {shortDate(r.state_changed_at)}">Was {r.previous_state}</span>{/if}
+              <span class="checked">{r.last_checked ? `Checked ${shortDate(r.last_checked)}` : 'Not checked since saved'}</span>
               <span class="docs">{n === 0 ? 'No docs' : `${n} doc${n === 1 ? '' : 's'}`}</span>
               {#if missingOfficer(r.name)}<span class="badge warn">No officer report</span>{/if}
             </span>
@@ -310,6 +317,8 @@
   .badge.granted { background: var(--color-emerald-100); color: var(--color-green-800); }
   .badge.refused { background: var(--color-red-100); color: var(--color-red-800); }
   .badge.other { background: var(--color-slate-100); color: var(--color-slate-600); }
+  .badge.changed { background: var(--color-badge-info-bg); color: var(--color-badge-info-fg); }
+  .checked { font-size: 0.68rem; color: var(--color-slate-500); }
   .badge.warn { background: var(--color-badge-warning-bg); color: var(--color-badge-warning-fg); }
   .empty { margin: 0; padding: 1rem; font-size: 0.8rem; color: var(--color-slate-500); }
   .p-foot { margin: 0; padding: 0.65rem 0.9rem; border-top: 1px solid var(--color-slate-200); font-size: 0.73rem; color: var(--color-slate-500); line-height: 1.45; }

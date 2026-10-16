@@ -105,6 +105,25 @@ export async function saveSchemes(projectId, schemes) {
   );
 }
 
+/**
+ * Re-check saved schemes against PlanIt (only those not checked in the last day, unless forced).
+ * Returns the updated list and a summary of what happened.
+ *
+ * @returns {Promise<{ schemes: Array, refreshed: number, changed: number, failed: number, rateLimited: boolean, busy?: boolean }>}
+ */
+export async function refreshSavedSchemes(projectId, force = false) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/saved/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Could not refresh the saved schemes');
+  }
+  return res.json();
+}
+
 /** Remove one saved scheme by its PlanIt application name. Returns the remaining saved list. */
 export async function removeSavedScheme(projectId, name) {
   return savedJson(

@@ -7,7 +7,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { safeUrl } from '$lib/utils/safeUrl.js';
   import AutocompleteInput from '$lib/components/shared/AutocompleteInput.svelte';
-  import { getPlanitAreas, generateSearchFromSources, searchSimilarSchemes, triageSimilarSchemes, getSavedSchemes, saveSchemes, removeSavedScheme } from '$lib/api/planit.js';
+  import { getPlanitAreas, refreshSavedSchemes, generateSearchFromSources, searchSimilarSchemes, triageSimilarSchemes, getSavedSchemes, saveSchemes, removeSavedScheme } from '$lib/api/planit.js';
   import AppealSourcePicker from '$lib/components/appeal-precedent/AppealSourcePicker.svelte';
   import SchemesMap from '$lib/components/projects/SchemesMap.svelte';
   import SavedWorkspace from '$lib/components/similar-schemes/SavedWorkspace.svelte';
@@ -91,6 +91,34 @@
   onDestroy(() => clearInterval(aiTimer));
 
   // Saved schemes
+  // Re-check the saved schemes' statuses with PlanIt: once when the Saved tab is first opened
+  // (the backend skips any checked in the last day), and on demand with the button.
+  let refreshing = false;
+  let refreshNote = '';
+  async function refreshSaved(force = false) {
+    if (refreshing) return;
+    const sess = s;
+    refreshing = true;
+    refreshNote = '';
+    try {
+      const out = await refreshSavedSchemes(projectId, force);
+      sess.saved = out.schemes;
+      refreshNote = out.rateLimited
+        ? 'PlanIt is limiting requests, so some statuses were not checked. Try again later.'
+        : out.changed
+          ? `${out.changed} status${out.changed === 1 ? '' : 'es'} changed.`
+          : out.refreshed ? 'Statuses are up to date.' : '';
+      if (out.failed && !out.rateLimited) refreshNote += ` ${out.failed} could not be found on PlanIt.`;
+    } catch (err) {
+      refreshNote = err.message;
+    } finally {
+      refreshing = false;
+      sess.refreshed = true;
+      s = s;
+    }
+  }
+  $: if (s.tab === 'saved' && s.saved?.length && !s.refreshed) refreshSaved();
+
   async function loadSaved() {
     const sess = s;
     if (sess.saved !== null) return;
@@ -379,6 +407,12 @@
     {#if saveError}
       <div class="error-banner"><i class="las la-exclamation-circle"></i> {saveError}</div>
     {/if}
+    <div class="refresh-row">
+      <button class="btn-refresh" on:click={() => refreshSaved(true)} disabled={refreshing || !s.saved?.length}>
+        <i class="las la-sync" class:spin={refreshing}></i> {refreshing ? 'Checking PlanIt…' : 'Refresh statuses'}
+      </button>
+      {#if refreshNote}<span class="refresh-note">{refreshNote}</span>{/if}
+    </div>
     <SavedWorkspace {project} saved={s.saved ?? []} on:removeScheme={e => removeSaved(e.detail)} />
   {:else}
 
@@ -895,4 +929,16 @@
   }
   .spinner-sm.spinner-dark { border-color: rgba(0, 0, 0, 0.15); border-top-color: var(--color-slate-600); }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Saved list: refresh statuses */
+  .refresh-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+  .btn-refresh {
+    display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.8rem;
+    border: 1px solid var(--color-slate-300); border-radius: var(--radius-md); background: var(--color-slate-50);
+    color: var(--color-slate-700); font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  }
+  .btn-refresh:hover:not(:disabled) { background: var(--color-slate-100); }
+  .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-refresh .spin { animation: spin 0.8s linear infinite; }
+  .refresh-note { font-size: 0.8rem; color: var(--color-slate-600); }
 </style>

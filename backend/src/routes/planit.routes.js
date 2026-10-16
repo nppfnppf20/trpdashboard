@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import { generateSearch, listPlanitAreas, searchPlanit, triageSchemes, getSavedSchemes, saveSchemes, removeSavedScheme } from '../controllers/planit.controller.js';
+import { generateSearch, listPlanitAreas, searchPlanit, triageSchemes, getSavedSchemes, saveSchemes, refreshSavedSchemes, removeSavedScheme } from '../controllers/planit.controller.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 import { createUpload } from '../middleware/upload.js';
 import { listDocuments, getDocumentText, uploadDocument, setDocumentType, deleteDocument, chatDocuments, lensDocuments } from '../controllers/similarSchemeDocs.controller.js';
@@ -28,6 +28,7 @@ router.post('/projects/:projectId/triage', analysisLimiter, triageSchemes);
 router.get('/projects/:projectId/saved', getSavedSchemes);
 router.post('/projects/:projectId/saved', saveSchemes);
 router.delete('/projects/:projectId/saved', removeSavedScheme);
+router.post('/projects/:projectId/saved/refresh', refreshSavedSchemes);
 
 // Documents uploaded against saved schemes, and chat over the ticked schemes' documents
 router.get('/projects/:projectId/saved/documents', listDocuments);

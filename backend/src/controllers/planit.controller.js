@@ -579,6 +579,78 @@ export async function saveSchemes(req, res) {
   }
 }
 
+// ── Keeping saved statuses current ───────────────────────────────────────────
+// The saved snapshot is refreshed from PlanIt when the Saved list is opened, for schemes not
+// checked in the last day. PlanIt rate-limits, so it is one lookup per scheme (a list of names
+// in one request is not supported), capped per refresh, and it stops at the first rate limit.
+
+const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
+const MAX_REFRESH_PER_CALL = 25;
+const refreshing = new Set(); // project ids with a refresh already running
+
+export async function refreshSavedSchemes(req, res) {
+  const projectId = Number(req.params.projectId);
+  const force = req.body?.force === true;
+  const result = { refreshed: 0, changed: 0, failed: 0, rateLimited: false };
+
+  if (refreshing.has(projectId)) {
+    return res.json({ schemes: await listSavedSchemes(projectId), ...result, busy: true });
+  }
+  refreshing.add(projectId);
+  try {
+    const { rows } = await pool.query(
+      `SELECT planit_name, data FROM similar_schemes_saved WHERE project_id = $1`,
+      [projectId]
+    );
+    const cutoff = Date.now() - REFRESH_AFTER_MS;
+    const due = rows
+      .filter(r => force || !r.data.last_checked || Date.parse(r.data.last_checked) < cutoff)
+      .sort((a, b) => (Date.parse(a.data.last_checked) || 0) - (Date.parse(b.data.last_checked) || 0))
+      .slice(0, MAX_REFRESH_PER_CALL);
+
+    for (const row of due) {
+      let rec;
+      try {
+        const data = await fetchPlanit(new URLSearchParams({ id_match: row.planit_name, pg_sz: '1', compress: 'on' }));
+        if (data.error) {
+          if (/limit/i.test(String(data.error))) { result.rateLimited = true; break; }
+          result.failed++;
+          continue;
+        }
+        rec = data.records?.[0];
+      } catch (err) {
+        if (err instanceof PlanitError && err.status === 429) { result.rateLimited = true; break; }
+        result.failed++;
+        continue;
+      }
+      if (!rec) { result.failed++; continue; }
+
+      const next = { ...row.data, last_checked: new Date().toISOString() };
+      const newState = clip(rec.app_state, 40);
+      if (newState && newState !== row.data.app_state) {
+        next.previous_state = row.data.app_state || '';
+        next.state_changed_at = next.last_checked;
+        result.changed++;
+      }
+      if (newState) next.app_state = newState;
+      next.decided_date = clip(rec.decided_date, 10);
+      if (rec.start_date) next.start_date = clip(rec.start_date, 10);
+      await pool.query(
+        `UPDATE similar_schemes_saved SET data = $3 WHERE project_id = $1 AND planit_name = $2`,
+        [projectId, row.planit_name, next]
+      );
+      result.refreshed++;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    res.json({ schemes: await listSavedSchemes(projectId), ...result });
+  } catch (err) {
+    console.error('refreshSavedSchemes error:', err);
+    res.status(500).json({ error: 'Failed to refresh the saved schemes' });
+  } finally {
+    refreshing.delete(projectId);
+  }
+}
+
 export async function removeSavedScheme(req, res) {
   const projectId = Number(req.params.projectId);
   const name = String(req.query.name ?? '').trim();
