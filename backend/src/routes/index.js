@@ -64,6 +64,7 @@ import marketingRoutes from './marketing.routes.js';
 import policyUpdatesRoutes from './policyUpdates.routes.js';
 import nppfPoliciesRoutes from './nppfPolicies.routes.js';
 import slideshowRoutes from './slideshow.routes.js';
+import companyPoliciesRoutes from './companyPolicies.routes.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { analysisLimiter } from '../middleware/rateLimiter.js';
 
@@ -214,6 +215,9 @@ router.use('/api/policy-updates', policyUpdatesRoutes);
 // pattern as /api/issue-types (not gated under /api/admin-console since the
 // project Policy tab's import dropdown needs to read it too)
 router.use('/api/nppf-policies', nppfPoliciesRoutes);
+
+// Company policy library — internal policy documents (upload/list/version); search + chat to follow
+router.use('/api/company-policies', companyPoliciesRoutes);
 
 export default router;
 

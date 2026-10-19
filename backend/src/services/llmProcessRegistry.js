@@ -14,6 +14,12 @@
 export const LLM_PROCESS_REGISTRY = [
   // ── configurable ──────────────────────────────────────────────────────
   {
+    key: 'company_policy_chat',
+    label: 'Company Policy Chat',
+    description: 'Answers questions from the indexed company policy library, with citations to the source document and section.',
+    status: 'configurable',
+  },
+  {
     key: 'quote_extraction',
     label: 'Quote Extraction (PDF import)',
     description: 'Reads an uploaded or pasted surveyor fee quote and prefills the Add Quote form.',

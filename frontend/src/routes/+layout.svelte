@@ -191,7 +191,8 @@
     onProjectUpdated={closeEditModal}
   />
 
-  {#if !$mainView}
+  <!-- Not on the Company Policies page: it has its own full-height layout and the button would sit over the chat header -->
+  {#if !$mainView && !$page.url.pathname.startsWith('/company-policies')}
     <button
       type="button"
       class="global-create-project-btn"

@@ -12,6 +12,7 @@ import { errorHandler, scrubServerErrorDetails } from './middleware/errorHandler
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { log, LOG_FILE_PATH } from './utils/logger.js';
+import { recoverInterruptedIndexing } from './services/policyIndexer.service.js';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -126,6 +127,7 @@ app.listen(port, () => {
   console.log(`⏱️  Rate limiting: ${process.env.NODE_ENV === 'production' ? 'ENABLED (user-based)' : 'DISABLED (dev mode)'}`);
   console.log(`🪵 Request/error log: ${LOG_FILE_PATH}`);
   log('info', 'server started', { port });
+  recoverInterruptedIndexing().catch((err) => log('error', 'company policy recovery failed', { message: err?.message }));
 });
 
 // Handle unhandled promise rejections — these can otherwise fail silently:

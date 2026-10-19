@@ -21,6 +21,7 @@
     { href: '/', label: 'Projects', icon: 'la-project-diagram' },
     { href: '/team', label: 'Team', icon: 'la-users' },
     { href: '/policy', label: 'Policy', icon: 'la-newspaper' },
+    { href: '/company-policies', label: 'Company Policies', icon: 'la-book' },
     { href: '/meeting-notes', label: 'Meeting Notes', icon: 'la-file-signature' },
     { href: '/webscraper', label: 'Scraper', icon: 'la-database' }
   ];
