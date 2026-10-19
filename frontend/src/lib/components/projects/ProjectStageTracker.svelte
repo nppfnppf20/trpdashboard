@@ -75,7 +75,7 @@
     flex-wrap: wrap;
     margin-bottom: 1rem;
   }
-  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.75rem; color: var(--color-slate-500); align-items: center; }
+  .legend { padding-top: 0.75rem; padding-bottom: 0.75rem; display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.75rem; color: var(--color-slate-500); align-items: center; }
   .legend span { display: inline-flex; align-items: center; gap: 0.375rem; }
 
   .scroll { overflow-x: auto; }

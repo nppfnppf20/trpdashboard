@@ -199,7 +199,7 @@
 
   <div class="view-tabs" role="tablist">
     <button class="view-tab" class:active={view === 'stage'} role="tab" aria-selected={view === 'stage'} on:click={() => (view = 'stage')}>Stage view</button>
-    <button class="view-tab" class:active={view === 'info'} role="tab" aria-selected={view === 'info'} on:click={() => (view = 'info')}>Information view</button>
+    <button class="view-tab" class:active={view === 'info'} role="tab" aria-selected={view === 'info'} on:click={() => (view = 'info')}>Table view</button>
   </div>
 
   {#if loading}
@@ -436,6 +436,8 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
+    /* Clear the fixed global "+" create-project button (top-right, from +layout.svelte). */
+    padding-right: 3.5rem;
     min-width: 0;
     flex-wrap: wrap;
     gap: 1rem;
