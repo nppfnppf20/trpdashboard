@@ -14,7 +14,7 @@ async function fail(res, fallback) {
 
 export async function getCompanyPolicies({ includeHistory = false } = {}) {
   const res = await authFetch(`${BASE}${includeHistory ? '?include_history=1' : ''}`);
-  if (!res.ok) await fail(res, 'Failed to fetch policies');
+  if (!res.ok) await fail(res, 'Failed to fetch documents');
   return res.json();
 }
 
@@ -26,7 +26,7 @@ export async function uploadCompanyPolicy(file, fields = {}) {
     if (value !== undefined && value !== null && value !== '') body.append(key, value);
   }
   const res = await authFetch(BASE, { method: 'POST', body });
-  if (!res.ok) await fail(res, 'Failed to upload policy');
+  if (!res.ok) await fail(res, 'Failed to upload the document');
   return res.json();
 }
 
@@ -36,7 +36,7 @@ export async function updateCompanyPolicy(id, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  if (!res.ok) await fail(res, 'Failed to update policy');
+  if (!res.ok) await fail(res, 'Failed to update the document');
   return res.json();
 }
 
@@ -134,7 +134,7 @@ export async function deleteCompanyPolicyFolder(id) {
 
 export async function getCompanyPolicyContent(id) {
   const res = await authFetch(`${BASE}/${id}/content`);
-  if (!res.ok) await fail(res, 'Failed to load the policy');
+  if (!res.ok) await fail(res, 'Failed to load the document');
   return res.json();
 }
 
@@ -148,6 +148,6 @@ export async function getCompanyPolicyFileUrl(id, { inline = false } = {}) {
 
 export async function deleteCompanyPolicy(id) {
   const res = await authFetch(`${BASE}/${id}`, { method: 'DELETE' });
-  if (!res.ok) await fail(res, 'Failed to delete policy');
+  if (!res.ok) await fail(res, 'Failed to delete the document');
   return res.json();
 }

@@ -131,9 +131,9 @@
   }
 </script>
 
-<section class="card ask-panel" aria-label="Ask the policies">
+<section class="card ask-panel" aria-label="Ask the documents">
   <div class="ask-head">
-    <h2 class="ask-title"><i class="las la-comments"></i> Ask the policies</h2>
+    <h2 class="ask-title"><i class="las la-comments"></i> Ask the documents</h2>
     <div class="ask-tools">
       <label class="scope">
         <span class="scope-label">Searching</span>
@@ -157,7 +157,7 @@
           {#if t.error}
             <div class="a a-error">{t.error}</div>
           {:else if t.answer === null}
-            <div class="a a-pending"><span class="spinner"></span> Searching the policies…</div>
+            <div class="a a-pending"><span class="spinner"></span> Searching the documents…</div>
           {:else}
             <div class="a" class:streaming={!t.done}>
               {#each parseAnswer(t.answer) as block}
@@ -201,12 +201,12 @@
       <div class="empty">
         <i class="las la-comment-dots empty-icon"></i>
         {#if ready}
-          <p class="empty-title">Ask anything about {scopeName ? `the ${scopeName} folder` : 'company policy'}</p>
-          <p class="empty-hint">For example, "How many days of leave can I carry over?" Each answer shows which policy it came from.</p>
+          <p class="empty-title">Ask anything about {scopeName ? `the ${scopeName} folder` : 'your documents'}</p>
+          <p class="empty-hint">For example, "How many days of leave can I carry over?" Each answer shows which document it came from.</p>
         {:else}
           <p class="empty-title">Nothing to search yet</p>
           <p class="empty-hint">
-            {scopeName ? `There are no indexed policies in ${scopeName}. Choose another folder, or search all documents.` : 'Upload a policy and wait for it to show as Ready, then ask your question here.'}
+            {scopeName ? `There are no indexed documents in ${scopeName}. Choose another folder, or search all documents.` : 'Upload a document and wait for it to show as Ready, then ask your question here.'}
           </p>
         {/if}
       </div>
@@ -222,8 +222,8 @@
         bind:value={question}
         on:keydown={onKeydown}
         on:input={resizeInput}
-        aria-label="Ask a question about company policy"
-        placeholder="Ask a question about company policy…"
+        aria-label="Ask a question about your documents"
+        placeholder="Ask a question about your documents…"
         disabled={asking || !ready}
       ></textarea>
       <button class="btn btn-primary send" on:click={ask} disabled={asking || !question.trim() || !ready} aria-label="Ask">

@@ -242,8 +242,9 @@
   }
 
   // ── Small display helpers ──
-  const fileIcon = (d) => (d.mime_type === 'application/pdf' ? 'la-file-pdf' : d.original_filename?.toLowerCase().endsWith('.docx') ? 'la-file-word' : 'la-file-alt');
-  const fileClass = (d) => (d.mime_type === 'application/pdf' ? 'pdf' : 'word');
+  const isImage = (d) => (d.mime_type || '').startsWith('image/');
+  const fileIcon = (d) => (isImage(d) ? 'la-file-image' : d.mime_type === 'application/pdf' ? 'la-file-pdf' : d.original_filename?.toLowerCase().endsWith('.docx') ? 'la-file-word' : 'la-file-alt');
+  const fileClass = (d) => (isImage(d) ? 'img' : d.mime_type === 'application/pdf' ? 'pdf' : 'word');
 
   function size(bytes) {
     if (!bytes) return '';
@@ -252,9 +253,13 @@
 
   function docTip(d) {
     const parts = [d.title, `Version ${d.version}`];
-    if (d.status === 'ready') parts.push(`${d.chunk_count} sections indexed`);
-    parts.push(STATUS[d.status]?.label || d.status);
-    if (d.status === 'failed' && d.status_detail) parts.push(d.status_detail);
+    if (d.display_only) {
+      parts.push('Display only: shown as uploaded, not read or searched');
+    } else {
+      if (d.status === 'ready') parts.push(`${d.chunk_count} sections indexed`);
+      parts.push(STATUS[d.status]?.label || d.status);
+      if (d.status === 'failed' && d.status_detail) parts.push(d.status_detail);
+    }
     if (!d.is_current) parts.push('Superseded by a newer version');
     if (d.visibility === 'admin') parts.push('Admins only');
     parts.push(`${d.original_filename}${d.file_size ? ` · ${size(d.file_size)}` : ''}`);
@@ -362,7 +367,11 @@
             <span class="nm">{d.title}</span>
             {#if !d.is_current}<span class="tag">old</span>{/if}
             {#if d.visibility === 'admin'}<i class="las la-lock lock" title="Admins only"></i>{/if}
-            <span class="dot {d.status}" title={STATUS[d.status]?.label || d.status}></span>
+            {#if d.display_only}
+              <span class="dot display" title="Display only: shown as uploaded, not searched"></span>
+            {:else}
+              <span class="dot {d.status}" title={STATUS[d.status]?.label || d.status}></span>
+            {/if}
             <span class="acts">
               <button class="ibtn" on:click|stopPropagation={() => clickDoc(d)} title="View" aria-label="View {d.title}"><i class="las la-eye"></i></button>
               <button class="ibtn" disabled={busyId === d.id} on:click|stopPropagation={() => dispatch('download', d)} title="Download original" aria-label="Download {d.title}"><i class="las la-download"></i></button>
@@ -383,7 +392,7 @@
         {:else if needle}
           Nothing matches "{filterText.trim()}".
         {:else}
-          No policies yet. Use "Upload policy" to add the first one, or create a folder to organise them.
+          No documents yet. Use "Upload document" to add the first one, or create a folder to organise them.
         {/if}
       </div>
     {/if}
@@ -403,7 +412,9 @@
     {#if menu.doc.is_current}
       <button role="menuitem" on:click={() => menuAction('newversion')}><i class="las la-code-branch"></i> Upload new version</button>
     {/if}
-    <button role="menuitem" disabled={menu.doc.status === 'processing'} on:click={() => menuAction('reindex')}><i class="las la-sync"></i> Re-index</button>
+    {#if !menu.doc.display_only}
+      <button role="menuitem" disabled={menu.doc.status === 'processing'} on:click={() => menuAction('reindex')}><i class="las la-sync"></i> Re-index</button>
+    {/if}
     <button role="menuitem" on:click={() => menuAction('editdoc')}><i class="las la-edit"></i> Edit details</button>
     <div class="menu-sep" role="separator"></div>
     <button role="menuitem" class="danger" on:click={() => menuAction('delete')}><i class="las la-trash"></i> Delete</button>
@@ -451,6 +462,7 @@
   .file { font-size: 1.1875rem; flex-shrink: 0; }
   .file.pdf { color: var(--color-red-600); }
   .file.word { color: var(--color-primary-600); }
+  .file.img { color: var(--color-violet-600); }
 
   .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cnt { font-size: 0.6875rem; font-weight: 500; color: var(--color-slate-500); background: var(--color-slate-100); border-radius: var(--radius-pill); padding: 0 0.4375rem; flex-shrink: 0; }
@@ -464,6 +476,8 @@
   .dot.processing { background: var(--color-primary-500); animation: dot-pulse 1.4s ease-in-out infinite; }
   .dot.failed { background: var(--color-red-500); }
   .dot.uploaded { background: var(--color-slate-400); }
+  /* Display only: a hollow ring, so it reads as "not part of the searchable set" */
+  .dot.display { box-sizing: border-box; background: transparent; border: 1.5px solid var(--color-slate-400); }
   @keyframes dot-pulse { 50% { opacity: 0.35; } }
   @media (prefers-reduced-motion: reduce) { .dot.processing { animation: none; } }
 

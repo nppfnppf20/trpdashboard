@@ -15,8 +15,8 @@ export const LLM_PROCESS_REGISTRY = [
   // ── configurable ──────────────────────────────────────────────────────
   {
     key: 'company_policy_chat',
-    label: 'Company Policy Chat',
-    description: 'Answers questions from the indexed company policy library, with citations to the source document and section.',
+    label: 'Dolphin Chat',
+    description: 'Answers questions from the indexed company documents, with links to the source document and section.',
     status: 'configurable',
   },
   {

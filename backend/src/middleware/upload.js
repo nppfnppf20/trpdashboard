@@ -29,6 +29,12 @@ const SIGNATURES = {
   doc: (buf) => hasBytes(buf, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), // OLE2
   txt: isPlainText,
   md: isPlainText,
+  // Images (only routes that list these extensions accept them). SVG is deliberately not here: it can carry scripts.
+  png: (buf) => hasBytes(buf, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  jpg: (buf) => hasBytes(buf, [0xff, 0xd8, 0xff]),
+  jpeg: (buf) => hasBytes(buf, [0xff, 0xd8, 0xff]),
+  gif: (buf) => hasBytes(buf, [0x47, 0x49, 0x46, 0x38]), // 'GIF8'
+  webp: (buf) => hasBytes(buf, [0x52, 0x49, 0x46, 0x46]) && hasBytes(buf, [0x57, 0x45, 0x42, 0x50], 8), // 'RIFF'....'WEBP'
 };
 
 // Browser dictation clips: webm (Chrome/Firefox), mp4 (Safari), wav, ogg.

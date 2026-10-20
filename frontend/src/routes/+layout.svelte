@@ -191,8 +191,8 @@
     onProjectUpdated={closeEditModal}
   />
 
-  <!-- Not on the Company Policies page: it has its own full-height layout and the button would sit over the chat header -->
-  {#if !$mainView && !$page.url.pathname.startsWith('/company-policies')}
+  <!-- Only on the Projects page (and not inside a project workspace) -->
+  {#if !$mainView && $page.url.pathname === '/'}
     <button
       type="button"
       class="global-create-project-btn"

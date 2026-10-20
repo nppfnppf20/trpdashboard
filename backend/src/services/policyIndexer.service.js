@@ -78,11 +78,11 @@ async function indexDocument(id) {
     const { rows } = await pool.query(
       `UPDATE company_documents.documents
           SET status = 'processing', status_detail = NULL, updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND NOT display_only
       RETURNING title, version, storage_path`,
       [id]
     );
-    if (!rows.length) return; // deleted while queued
+    if (!rows.length) return; // deleted while queued, or switched to display-only (never indexed)
     const { title, version, storage_path: storagePath } = rows[0];
 
     const { data: file, error: downloadError } = await supabaseAdmin.storage.from(BUCKET).download(storagePath);
@@ -101,6 +101,12 @@ async function indexDocument(id) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // If it was switched to display-only while this job ran, write nothing
+      const flag = await client.query('SELECT display_only FROM company_documents.documents WHERE id = $1 FOR UPDATE', [id]);
+      if (!flag.rows.length || flag.rows[0].display_only) {
+        await client.query('ROLLBACK');
+        return;
+      }
       await client.query('DELETE FROM company_documents.chunks WHERE document_id = $1', [id]);
       for (const [i, c] of chunks.entries()) {
         await client.query(

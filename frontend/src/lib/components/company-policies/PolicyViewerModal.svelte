@@ -33,8 +33,8 @@
       const result = await getCompanyPolicyContent(documentId);
       doc = result.document;
       sections = result.sections;
-      // Not indexed yet (or failed): the reader has nothing to show, so go straight to the original
-      if (!sections.length) await selectTab('original');
+      // Display-only, not indexed yet, or failed: the reader has nothing to show, so go straight to the original
+      if (doc.display_only || !sections.length) await selectTab('original');
       else if (focusChunk != null) {
         await tick();
         scrollToFocus();
@@ -52,10 +52,11 @@
   }
 
   const isPdf = () => doc?.mime_type === 'application/pdf';
+  const isImage = () => (doc?.mime_type || '').startsWith('image/');
 
   async function selectTab(next) {
     tab = next;
-    if (next === 'original' && !originalUrl && isPdf()) {
+    if (next === 'original' && !originalUrl && (isPdf() || isImage())) {
       originalLoading = true;
       originalError = null;
       try {
@@ -143,7 +144,7 @@
 <svelte:window on:keydown={onKeydown} />
 
 <div class="modal-backdrop" role="presentation" on:click|self={() => dispatch('close')}>
-  <div class="viewer" role="dialog" aria-modal="true" aria-label={doc?.title || 'Policy'}>
+  <div class="viewer" role="dialog" aria-modal="true" aria-label={doc?.title || 'Document'}>
     <div class="viewer-header">
       <div class="viewer-heading">
         <h2>{doc?.title || 'Loading…'}</h2>
@@ -153,7 +154,8 @@
             <span>Version {doc.version}</span>
             {#if fmtDate(doc.effective_date)}<span>Effective {fmtDate(doc.effective_date)}</span>{/if}
             {#if !doc.is_current}<span class="badge badge-neutral">Superseded</span>{/if}
-            {#if doc.status !== 'ready'}<span class="badge badge-warning">{STATUS_LABEL[doc.status] || doc.status}</span>{/if}
+            {#if doc.display_only}<span class="badge badge-neutral" title="Shown as uploaded; not read or searched">Display only</span>{/if}
+            {#if !doc.display_only && doc.status !== 'ready'}<span class="badge badge-warning">{STATUS_LABEL[doc.status] || doc.status}</span>{/if}
           </div>
         {/if}
       </div>
@@ -165,7 +167,7 @@
       </div>
     </div>
 
-    {#if doc}
+    {#if doc && !doc.display_only}
       <div class="viewer-tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'reader'} class:active={tab === 'reader'} disabled={!sections.length} on:click={() => selectTab('reader')}>
           <i class="las la-align-left"></i> Reader
@@ -199,7 +201,7 @@
             {/if}
           {/each}
           <p class="reader-note">
-            This is the text of the policy as indexed, laid out for reading. Tables and images are not shown; use the Original tab for the exact document.
+            This is the text of the document as indexed, laid out for reading. Tables and images are not shown; use the Original tab for the exact document.
           </p>
         </article>
       {:else if originalLoading}
@@ -208,6 +210,8 @@
         <div class="viewer-error">{originalError}</div>
       {:else if isPdf() && originalUrl}
         <iframe class="original" title="{doc.title} (original)" src={focusPage != null ? `${originalUrl}#page=${focusPage}` : originalUrl}></iframe>
+      {:else if isImage() && originalUrl}
+        <div class="image-stage"><img class="original-image" src={originalUrl} alt={doc.title} /></div>
       {:else}
         <div class="no-preview">
           <i class="las la-file-word"></i>
@@ -331,6 +335,8 @@
 
   /* ── Original ── */
   .original { display: block; width: 100%; height: 100%; border: none; background: var(--color-slate-100); }
+  .image-stage { min-height: 100%; display: grid; place-items: center; padding: 1.5rem; box-sizing: border-box; }
+  .original-image { display: block; max-width: 100%; height: auto; background: var(--color-white); border: 1px solid var(--color-slate-200); border-radius: var(--radius-sm); box-shadow: var(--shadow-subtle); }
   .no-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; height: 100%; color: var(--color-slate-500); font-size: 0.875rem; }
   .no-preview i { font-size: 3rem; color: var(--color-slate-300); }
   .no-preview p { margin: 0; }

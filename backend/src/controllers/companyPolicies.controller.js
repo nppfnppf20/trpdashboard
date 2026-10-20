@@ -20,9 +20,16 @@ const MIME_BY_EXT = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   txt: 'text/plain',
   md: 'text/markdown',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
 };
+// Images can't be read for text, so they are always display-only
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
 
-const DOC_COLUMNS = `id, title, category, folder_id, version, effective_date, status, status_detail, visibility,
+const DOC_COLUMNS = `id, title, category, folder_id, display_only, version, effective_date, status, status_detail, visibility,
   is_current, supersedes_id, original_filename, mime_type, file_size, chunk_count, uploaded_by,
   created_at, updated_at`;
 
@@ -60,7 +67,7 @@ export async function listCompanyPolicies(req, res) {
     res.json(rows);
   } catch (err) {
     console.error('companyPolicies.list error:', err);
-    res.status(500).json({ error: 'Failed to fetch policies' });
+    res.status(500).json({ error: 'Failed to fetch documents' });
   }
 }
 
@@ -91,6 +98,13 @@ export async function uploadCompanyPolicy(req, res) {
   }
 
   const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+
+  // Display only = stored and shown as uploaded, never read, indexed or searched. Images always are.
+  const displayOnly = IMAGE_EXTS.includes(ext) || req.body.display_only === 'true' || req.body.display_only === true;
+  if (displayOnly && ext === 'docx') {
+    return res.status(400).json({ error: "Word documents can't be shown as they are in the browser, so they are always read and indexed. Upload a PDF instead if you want it displayed as is." });
+  }
+
   // The stored key is generated; the client-supplied filename is kept only as a display label.
   const storagePath = `${randomUUID()}.${ext}`;
   const mimeType = MIME_BY_EXT[ext] || 'application/octet-stream';
@@ -116,7 +130,7 @@ export async function uploadCompanyPolicy(req, res) {
       if (!prev.rows.length) {
         await client.query('ROLLBACK');
         await removeFromStorage(storagePath);
-        return res.status(404).json({ error: 'The policy being replaced was not found or is already superseded' });
+        return res.status(404).json({ error: 'The document being replaced was not found or is already superseded' });
       }
       if (!clean(req.body.category, 100)) category = prev.rows[0].category;
       if (folderId === undefined) folderId = prev.rows[0].folder_id; // a new version stays where the old one was
@@ -129,8 +143,8 @@ export async function uploadCompanyPolicy(req, res) {
     const { rows } = await client.query(
       `INSERT INTO company_documents.documents
          (title, category, folder_id, version, effective_date, visibility, supersedes_id,
-          original_filename, mime_type, file_size, storage_path, uploaded_by, status)
-       VALUES ($1, $2, $12, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'processing')
+          original_filename, mime_type, file_size, storage_path, uploaded_by, status, display_only)
+       VALUES ($1, $2, $12, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, $14)
        RETURNING ${DOC_COLUMNS}`,
       [
         title,
@@ -145,16 +159,18 @@ export async function uploadCompanyPolicy(req, res) {
         storagePath,
         req.user?.id ?? null,
         folderId ?? null,
+        displayOnly ? 'ready' : 'processing', // nothing to index for a display-only document
+        displayOnly,
       ]
     );
     await client.query('COMMIT');
-    queueIndexing(rows[0].id); // background; the status badge flips to Ready/Failed when it finishes
+    if (!displayOnly) queueIndexing(rows[0].id); // background; the status badge flips to Ready/Failed when it finishes
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     await removeFromStorage(storagePath);
     console.error('companyPolicies.upload error:', err);
-    res.status(500).json({ error: 'Failed to save the policy' });
+    res.status(500).json({ error: 'Failed to save the document' });
   } finally {
     client.release();
   }
@@ -178,12 +194,33 @@ export async function updateCompanyPolicy(req, res) {
   const folderId = parseFolderId(req.body.folder_id);
   if (folderId === 'invalid') return res.status(400).json({ error: 'Invalid folder' });
 
+  // display_only: omitted = leave as is; true/false switches a PDF between "shown as uploaded" and "read and searched"
+  const wantDisplayOnly = req.body.display_only;
+  if (wantDisplayOnly !== undefined && typeof wantDisplayOnly !== 'boolean') {
+    return res.status(400).json({ error: 'display_only must be true or false' });
+  }
+
   try {
-    const before = await pool.query('SELECT title, version FROM company_documents.documents WHERE id = $1', [id]);
-    if (!before.rows.length) return res.status(404).json({ error: 'Policy not found' });
+    const before = await pool.query(
+      'SELECT title, version, display_only, mime_type FROM company_documents.documents WHERE id = $1',
+      [id]
+    );
+    if (!before.rows.length) return res.status(404).json({ error: 'Document not found' });
     if (typeof folderId === 'number' && !(await loadFolders()).some((f) => f.id === folderId)) {
       return res.status(400).json({ error: 'That folder no longer exists' });
     }
+
+    const was = before.rows[0];
+    const isImage = (was.mime_type || '').startsWith('image/');
+    const isWord = (was.mime_type || '').includes('wordprocessingml');
+    if (wantDisplayOnly === false && isImage) {
+      return res.status(400).json({ error: 'Images can only be displayed as they are; they have no text to read.' });
+    }
+    if (wantDisplayOnly === true && isWord) {
+      return res.status(400).json({ error: "Word documents can't be shown as they are in the browser, so they are always read and indexed." });
+    }
+    // Only a real change needs any follow-up work
+    const switchTo = wantDisplayOnly !== undefined && wantDisplayOnly !== was.display_only ? wantDisplayOnly : undefined;
 
     const { rows } = await pool.query(
       `UPDATE company_documents.documents SET
@@ -193,6 +230,7 @@ export async function updateCompanyPolicy(req, res) {
          visibility     = COALESCE($4, visibility),
          effective_date = CASE WHEN $5::boolean THEN $6::date ELSE effective_date END,
          folder_id      = CASE WHEN $8::boolean THEN $9::int ELSE folder_id END,
+         display_only   = CASE WHEN $10::boolean THEN $11::boolean ELSE display_only END,
          updated_at     = NOW()
        WHERE id = $7
        RETURNING ${DOC_COLUMNS}`,
@@ -206,13 +244,33 @@ export async function updateCompanyPolicy(req, res) {
         id,
         folderId !== undefined,
         folderId ?? null,
+        switchTo !== undefined,
+        switchTo ?? null,
       ]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Policy not found' });
-
-    // The title and version are part of the text that gets embedded, so a change means re-indexing.
+    if (!rows.length) return res.status(404).json({ error: 'Document not found' });
     const doc = rows[0];
-    if ((doc.title !== before.rows[0].title || doc.version !== before.rows[0].version) && doc.status !== 'uploaded') {
+
+    if (switchTo === true) {
+      // Now display-only: drop what was indexed. There is nothing left to read or search.
+      await pool.query('DELETE FROM company_documents.chunks WHERE document_id = $1', [id]);
+      const done = await pool.query(
+        `UPDATE company_documents.documents SET status = 'ready', status_detail = NULL, chunk_count = 0
+          WHERE id = $1 RETURNING status, status_detail, chunk_count`,
+        [id]
+      );
+      Object.assign(doc, done.rows[0]);
+    } else if (switchTo === false) {
+      // Back to being read and searched: index it now.
+      const queued = await pool.query(
+        `UPDATE company_documents.documents SET status = 'processing', status_detail = NULL
+          WHERE id = $1 RETURNING status, status_detail`,
+        [id]
+      );
+      queueIndexing(id);
+      Object.assign(doc, queued.rows[0]);
+    } else if (!doc.display_only && (doc.title !== was.title || doc.version !== was.version) && doc.status !== 'uploaded') {
+      // The title and version are part of the text that gets embedded, so a change means re-indexing.
       const requeued = await pool.query(
         `UPDATE company_documents.documents SET status = 'processing', status_detail = NULL WHERE id = $1 RETURNING status`,
         [id]
@@ -224,7 +282,7 @@ export async function updateCompanyPolicy(req, res) {
     res.json(doc);
   } catch (err) {
     console.error('companyPolicies.update error:', err);
-    res.status(500).json({ error: 'Failed to update the policy' });
+    res.status(500).json({ error: 'Failed to update the document' });
   }
 }
 
@@ -342,16 +400,20 @@ export async function deleteCompanyPolicyFolder(req, res) {
 export async function reindexCompanyPolicy(req, res) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid id' });
-  if (isIndexing(id)) return res.status(409).json({ error: 'This policy is already being indexed' });
+  if (isIndexing(id)) return res.status(409).json({ error: 'This document is already being indexed' });
   try {
     const { rows } = await pool.query(
       `UPDATE company_documents.documents
           SET status = 'processing', status_detail = NULL, updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND NOT display_only
       RETURNING ${DOC_COLUMNS}`,
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Policy not found' });
+    if (!rows.length) {
+      const exists = await pool.query('SELECT display_only FROM company_documents.documents WHERE id = $1', [id]);
+      if (exists.rows[0]?.display_only) return res.status(400).json({ error: 'This document is display only, so there is nothing to index.' });
+      return res.status(404).json({ error: 'Document not found' });
+    }
     queueIndexing(id);
     res.json(rows[0]);
   } catch (err) {
@@ -441,7 +503,7 @@ export async function getCompanyPolicyContent(req, res) {
       `SELECT ${DOC_COLUMNS} FROM company_documents.documents WHERE id = $1`,
       [id]
     );
-    if (!doc.rows.length) return res.status(404).json({ error: 'Policy not found' });
+    if (!doc.rows.length) return res.status(404).json({ error: 'Document not found' });
 
     const { rows: sections } = await pool.query(
       `SELECT chunk_index, section_path, section_ref, page_start, page_end, content
@@ -451,7 +513,7 @@ export async function getCompanyPolicyContent(req, res) {
     res.json({ document: doc.rows[0], sections });
   } catch (err) {
     console.error('companyPolicies.content error:', err);
-    res.status(500).json({ error: 'Failed to load the policy' });
+    res.status(500).json({ error: 'Failed to load the document' });
   }
 }
 
@@ -465,7 +527,7 @@ export async function getCompanyPolicyFileUrl(req, res) {
       'SELECT storage_path, original_filename FROM company_documents.documents WHERE id = $1',
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Policy not found' });
+    if (!rows.length) return res.status(404).json({ error: 'Document not found' });
 
     const { data, error } = await supabaseAdmin.storage
       .from(BUCKET)
@@ -488,12 +550,12 @@ export async function deleteCompanyPolicy(req, res) {
       'DELETE FROM company_documents.documents WHERE id = $1 RETURNING storage_path',
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Policy not found' });
+    if (!rows.length) return res.status(404).json({ error: 'Document not found' });
     await removeFromStorage(rows[0].storage_path);
     res.json({ ok: true });
   } catch (err) {
     console.error('companyPolicies.delete error:', err);
-    res.status(500).json({ error: 'Failed to delete the policy' });
+    res.status(500).json({ error: 'Failed to delete the document' });
   }
 }
 

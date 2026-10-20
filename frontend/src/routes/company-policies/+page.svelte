@@ -26,7 +26,6 @@
   let scopeFolderId = null;
   let loading = true;
   let error = null;
-  let showHistory = false;
   let busyId = null;
 
   onMount(load);
@@ -39,7 +38,7 @@
     }
     try {
       const [docs, folderData] = await Promise.all([
-        getCompanyPolicies({ includeHistory: showHistory }),
+        getCompanyPolicies(),
         getCompanyPolicyFolders()
       ]);
       policies = docs;
@@ -83,7 +82,7 @@
 
   // The chat can only answer once something in its scope is indexed
   $: askReady = policies.some(p =>
-    p.is_current && p.status === 'ready' &&
+    p.is_current && p.status === 'ready' && !p.display_only && // display-only documents are never searched
     (scopeFolderId == null || scopeIds(folders, scopeFolderId).includes(p.folder_id))
   );
 
@@ -166,10 +165,19 @@
   let file = null;
   let form = blankForm();
 
-  /** @returns {{ title: string, folder_id: number | '', version: string, effective_date: string, visibility: string }} */
+  /** @returns {{ title: string, folder_id: number | '', version: string, effective_date: string, visibility: string, display_only: boolean }} */
   function blankForm() {
-    return { title: '', folder_id: '', version: '1', effective_date: '', visibility: 'all' };
+    return { title: '', folder_id: '', version: '1', effective_date: '', visibility: 'all', display_only: false };
   }
+
+  // What kind of file this dialog is dealing with, which decides whether "display as uploaded" is offered:
+  // images are always displayed as they are, Word files are always read, PDFs can be either.
+  const IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
+  $: modalKind = modalMode === 'edit'
+    ? ((activeDoc?.mime_type || '').startsWith('image/') ? 'image' : (activeDoc?.mime_type || '').includes('wordprocessingml') ? 'word' : 'pdf')
+    : !file ? null : IMAGE_RE.test(file.name) ? 'image' : /\.docx$/i.test(file.name) ? 'word' : 'pdf';
+  $: if (modalKind === 'image') form.display_only = true;
+  $: if (modalKind === 'word') form.display_only = false;
 
   $: folderChoices = folderOptions(folders);
 
@@ -198,7 +206,8 @@
       folder_id: p.folder_id ?? '',
       version: nextVersion(p.version),
       effective_date: '',
-      visibility: p.visibility
+      visibility: p.visibility,
+      display_only: !!p.display_only
     };
     modalError = null;
     modalOpen = true;
@@ -213,7 +222,8 @@
       folder_id: p.folder_id ?? '',
       version: p.version,
       effective_date: p.effective_date ? p.effective_date.slice(0, 10) : '',
-      visibility: p.visibility
+      visibility: p.visibility,
+      display_only: !!p.display_only
     };
     modalError = null;
     modalOpen = true;
@@ -227,8 +237,8 @@
 
   function setFile(f) {
     if (!f) return;
-    if (!/\.(pdf|docx)$/i.test(f.name)) {
-      modalError = 'Only PDF and Word (.docx) files are supported';
+    if (!/\.(pdf|docx|png|jpe?g|webp|gif)$/i.test(f.name)) {
+      modalError = 'Supported files are PDF, Word (.docx) and images (PNG, JPG, WebP, GIF)';
       return;
     }
     modalError = null;
@@ -268,7 +278,7 @@
   async function save() {
     modalError = null;
     if (!form.title.trim()) { modalError = 'Title is required'; return; }
-    if (modalMode !== 'edit' && !file) { modalError = 'Choose a PDF or Word file'; return; }
+    if (modalMode !== 'edit' && !file) { modalError = 'Choose a file to upload'; return; }
     saving = true;
     try {
       if (modalMode === 'edit') {
@@ -277,7 +287,8 @@
           folder_id: form.folder_id === '' ? null : form.folder_id,
           version: form.version,
           effective_date: form.effective_date || null,
-          visibility: form.visibility
+          visibility: form.visibility,
+          display_only: form.display_only
         });
       } else {
         await uploadCompanyPolicy(file, {
@@ -336,18 +347,18 @@
 >
   <div class="page-header">
     <div>
-      <h1 class="page-title"><i class="las la-book"></i> Company Policies</h1>
-      <p class="page-description">Internal policy documents. Upload Word or PDF files here; once indexed they can be searched and queried in chat.</p>
+      <h1 class="page-title"><i class="las la-book"></i> Dolphin</h1>
+      <p class="page-description">Company documents. Upload PDFs, Word files or images here; once indexed they can be searched and asked about in chat.</p>
     </div>
     <div class="header-actions">
-      <button class="btn btn-primary" on:click={openNew}><i class="las la-upload"></i> Upload policy</button>
+      <button class="btn btn-primary" on:click={openNew}><i class="las la-upload"></i> Upload document</button>
     </div>
   </div>
 
   {#if error}<div class="error-banner">{error}</div>{/if}
 
   <div class="cp-split">
-    <section class="card lib-panel" aria-label="Policy library">
+    <section class="card lib-panel" aria-label="Document library">
       <div class="lib-head">
         <div class="lib-title">Library <span class="lib-count">· {policies.length}</span></div>
         <input class="form-input" type="search" bind:value={filterText} placeholder="Filter documents…" aria-label="Filter documents" />
@@ -376,10 +387,6 @@
         on:askfolder={(e) => (scopeFolderId = e.detail)}
         on:dropdoc={(e) => fileDocument(e.detail.docId, e.detail.folderId)}
       />
-
-      <label class="lib-foot">
-        <input type="checkbox" bind:checked={showHistory} on:change={() => load()} /> Show previous versions
-      </label>
     </section>
 
     <PolicyAsk
@@ -441,7 +448,7 @@
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="cp-modal-title">
       <div class="modal-header">
         <div>
-          <h2 id="cp-modal-title">{modalMode === 'edit' ? 'Edit policy details' : modalMode === 'version' ? 'Upload new version' : 'Upload policy'}</h2>
+          <h2 id="cp-modal-title">{modalMode === 'edit' ? 'Edit document details' : modalMode === 'version' ? 'Upload new version' : 'Upload document'}</h2>
           {#if modalMode === 'version'}
             <p class="modal-sub">Replaces <strong>{activeDoc.title}</strong> (v{activeDoc.version}). The old version is kept in history and excluded from search.</p>
           {/if}
@@ -472,11 +479,11 @@
                 <span class="hint">Drop or click to choose a different file</span>
               {:else}
                 <i class="las la-cloud-upload-alt drop-icon"></i>
-                <span>Drop a PDF or Word file here, or click to browse</span>
+                <span>Drop a PDF, Word file or image here, or click to browse</span>
               {/if}
             </div>
-            <input bind:this={fileInput} type="file" accept=".pdf,.docx" on:change={onFileChange} hidden />
-            <span class="hint">PDF or Word (.docx), up to 25 MB. Scanned PDFs without selectable text can't be indexed.</span>
+            <input bind:this={fileInput} type="file" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp,.gif" on:change={onFileChange} hidden />
+            <span class="hint">PDF, Word (.docx) or an image, up to 25 MB.</span>
           </div>
         {/if}
 
@@ -506,10 +513,28 @@
         <div class="field">
           <label class="form-label" for="cp-vis">Who can see it</label>
           <select id="cp-vis" class="form-input" bind:value={form.visibility} disabled={saving}>
-            <option value="all">Everyone with access to policies</option>
+            <option value="all">Everyone with access to documents</option>
             <option value="admin">Admins only (restricted)</option>
           </select>
         </div>
+
+        {#if modalKind !== 'word'}
+          <div class="field">
+            <label class="check" class:disabled={modalKind === 'image' || saving}>
+              <input type="checkbox" bind:checked={form.display_only} disabled={modalKind === 'image' || saving} />
+              <span>
+                <span class="check-title">Display as uploaded (don't read or search it)</span>
+                <span class="hint">
+                  {#if modalKind === 'image'}
+                    Images are always shown exactly as they are.
+                  {:else}
+                    Shows the original only, with no reader view. It won't be indexed, searched or used to answer questions. Good for scans, forms and anything that should be seen exactly as it is.
+                  {/if}
+                </span>
+              </span>
+            </label>
+          </div>
+        {/if}
       </div>
 
       <div class="modal-footer">
@@ -636,6 +661,12 @@
   .row { display: flex; gap: 1rem; }
   .required { color: var(--color-red-500); }
   .hint { display: block; margin-top: 0.375rem; font-size: 0.75rem; color: var(--color-slate-500); }
+
+  .check { display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.75rem 0.875rem; border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); background: var(--color-slate-50); cursor: pointer; }
+  .check.disabled { cursor: default; }
+  .check input { margin-top: 0.1875rem; width: 1rem; height: 1rem; accent-color: var(--color-primary-600); flex-shrink: 0; }
+  .check-title { display: block; font-size: 0.8125rem; font-weight: 600; color: var(--color-slate-800); }
+  .check .hint { margin-top: 0.125rem; line-height: 1.4; }
 
   /* ── Drag and drop ── */
   .drop-zone {

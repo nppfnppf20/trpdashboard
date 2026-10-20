@@ -26,7 +26,8 @@ import {
 
 const router = express.Router();
 
-const upload = createUpload({ maxMB: 25, exts: ['pdf', 'docx'] });
+// Images are accepted too, but only as display-only documents (shown as uploaded, never indexed)
+const upload = createUpload({ maxMB: 25, exts: ['pdf', 'docx', 'png', 'jpg', 'jpeg', 'webp', 'gif'] });
 
 router.get('/folders', listCompanyPolicyFolders);
 router.post('/folders', createCompanyPolicyFolder);
