@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { processMeetingTranscript, processMultiProjectMeetingTranscript, extractInsights } from '../services/meeting.service.js';
+import { processMeetingTranscript, processGeneralMeetingTranscript, processMultiProjectMeetingTranscript, extractInsights } from '../services/meeting.service.js';
 import { draftActionsFromMeetingNotes } from '../services/progressTracker.service.js';
 import { loadIssuesForDrafting } from './progressTracker.controller.js';
 import { loadPlanningStageState } from '../services/planningStages.service.js';
@@ -508,8 +508,8 @@ export async function processInternalMeetingNote(req, res) {
   try {
     const { meeting_type = 'internal', user_notes, agenda, summary_type, custom_prompt } = req.body;
 
-    if (!['internal', 'cpd'].includes(meeting_type)) {
-      return res.status(400).json({ error: 'meeting_type must be internal or cpd' });
+    if (!['internal', 'cpd', 'general'].includes(meeting_type)) {
+      return res.status(400).json({ error: 'meeting_type must be internal, cpd or general' });
     }
 
     let text;
@@ -526,7 +526,10 @@ export async function processInternalMeetingNote(req, res) {
 
     // Open actions carried over from earlier meetings of the same type, so the
     // LLM can report which this one closed or moved on.
-    const { rows: existingOpenActions } = await pool.query(
+    // General internal meetings are one-offs: nothing carries over and there
+    // are no policy insights to extract.
+    const isGeneral = meeting_type === 'general';
+    const { rows: existingOpenActions } = isGeneral ? { rows: [] } : await pool.query(
       `SELECT a.id, a.action_text, a.owner
          FROM planning_applications.meeting_actions a
          JOIN planning_applications.meeting_transcripts t ON t.id = a.transcript_id
@@ -535,17 +538,36 @@ export async function processInternalMeetingNote(req, res) {
       [meeting_type]
     );
 
+    // Internal team meetings name specific projects (priorities round); give the
+    // LLM the project list so it can correct misheard spellings.
+    let projectNames = [];
+    if (meeting_type === 'internal') {
+      const { rows } = await pool.query(`SELECT project_name FROM public.projects WHERE project_name IS NOT NULL ORDER BY project_name`);
+      projectNames = rows.map(r => r.project_name);
+    }
+
     // Run summary + insights extraction in parallel
     const [summaryResult, extractedInsights] = await Promise.all([
-      processMeetingTranscript(
-        text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type, null, existingOpenActions
-      ),
-      extractInsights(text, meeting_type),
+      isGeneral
+        ? processGeneralMeetingTranscript(
+            text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null
+          )
+        : processMeetingTranscript(
+            text, fileName, user_notes || null, agenda || null, summary_type || 'brief', custom_prompt || null, meeting_type, null, existingOpenActions, null, projectNames
+          ),
+      isGeneral ? Promise.resolve([]) : extractInsights(text, meeting_type),
     ]);
 
     const { meeting_title, meeting_date, attendees, summary_html, actions, actionUpdates } = summaryResult;
 
-    const title = meeting_title
+    // Internal team meetings always get a fixed title with the meeting date,
+    // rather than whatever the model made up.
+    const teamMeetingTitle = meeting_type === 'internal'
+      ? `TRP Team Meeting${meeting_date ? ` - ${new Date(`${meeting_date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}` : ''}`
+      : null;
+
+    const title = teamMeetingTitle
+      || meeting_title
       || (fileName ? fileName.replace(/\.[^.]+$/, '') : null)
       || (meeting_type === 'cpd' ? 'CPD Record' : 'Meeting Notes');
 
@@ -599,15 +621,28 @@ export async function getAllMeetingNotes(req, res) {
          t.id, t.title, t.meeting_date, t.attendees_text, t.file_name, t.created_at, t.meeting_type,
          t.project_id, p.project_name,
          s.id AS summary_id, s.summary_html,
-         COUNT(a.id) FILTER (WHERE a.status = 'pending')  AS pending_count,
-         COUNT(a.id) FILTER (WHERE a.status = 'complete') AS complete_count
+         COALESCE(ac.pending_count, 0)  AS pending_count,
+         COALESCE(ac.complete_count, 0) AS complete_count
        FROM planning_applications.meeting_transcripts t
        LEFT JOIN planning_applications.meeting_summaries s ON s.transcript_id = t.id
-       LEFT JOIN planning_applications.meeting_actions   a ON a.transcript_id = t.id
+       LEFT JOIN (
+         -- Counts are per action, not per person: the per-person copies of one
+         -- action (same text, due date and notes) count once, open until
+         -- everyone has finished theirs.
+         SELECT transcript_id,
+                COUNT(*) FILTER (WHERE open_n > 0)                    AS pending_count,
+                COUNT(*) FILTER (WHERE open_n = 0 AND done_n > 0)     AS complete_count
+           FROM (
+             SELECT transcript_id,
+                    COUNT(*) FILTER (WHERE status = 'pending')  AS open_n,
+                    COUNT(*) FILTER (WHERE status = 'complete') AS done_n
+               FROM planning_applications.meeting_actions
+              GROUP BY transcript_id, LOWER(TRIM(action_text)), due_date, COALESCE(TRIM(notes), '')
+           ) g
+          GROUP BY transcript_id
+       ) ac ON ac.transcript_id = t.id
        LEFT JOIN public.projects p ON p.id = t.project_id
        ${type ? 'WHERE t.meeting_type = $1' : ''}
-       GROUP BY t.id, t.title, t.meeting_date, t.attendees_text, t.file_name, t.created_at,
-                t.meeting_type, t.project_id, p.project_name, s.id, s.summary_html
        ORDER BY t.meeting_date DESC NULLS LAST, t.created_at DESC`,
       type ? [type] : []
     );

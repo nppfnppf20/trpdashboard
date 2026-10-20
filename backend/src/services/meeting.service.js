@@ -13,7 +13,7 @@ Return your response using EXACTLY these delimiters — nothing before <MEETING_
 HTML summary here
 </SUMMARY_HTML>
 <ACTIONS_JSON>
-[{"action_text":"...","owner":null,"due_date":null,"notes":null}]
+[{"action_text":"...","owner":null,"due_date":null,"notes":null,"source_quote":"..."}]
 </ACTIONS_JSON>
 <COMPLETED_ACTIONS_JSON>
 [{"id":123,"status":"complete","update":"...","evidence":"..."}]
@@ -63,11 +63,12 @@ const PROMPT_ACTIONS = `══════════════════�
 ACTIONS_JSON
 ════════════════════════════════════════
 
-JSON array. Each item: {"action_text":"verb-led description","owner":null,"due_date":null,"notes":null}
+JSON array. Each item: {"action_text":"verb-led description","owner":null,"due_date":null,"notes":null,"source_quote":"exact words from the transcript"}
 - action_text: starts with a verb (e.g. "Instruct heritage consultant")
 - owner: name of person responsible, or null
 - due_date: YYYY-MM-DD or null
 - notes: brief context or null
+- source_quote: the exact words from the transcript (copied character for character, one or two sentences at most) that justify this action, so a reader can find where it came from. Never paraphrase or tidy it up. If the action comes only from the consultant notes or the agenda and not from the transcript, use null.
 - Only extract actions that are explicitly agreed, assigned, or committed to in the source. Do not invent actions from general advice, recommendations, or background information.
 - The source may not be a meeting at all (e.g. a pre-application letter, report, or decision notice). For such documents, return [] unless a specific commitment or instruction to a named party is clearly stated.
 - If no actions: []`;
@@ -114,7 +115,7 @@ HTML summary covering ALL projects together, as one coherent record of the whole
 HTML summary of ONLY this project's relevant content. Leave empty if RELEVANT is false.
 </SUMMARY_HTML>
 <ACTIONS_JSON>
-[{"action_text":"...","owner":null,"due_date":null,"notes":null}]
+[{"action_text":"...","owner":null,"due_date":null,"notes":null,"source_quote":"..."}]
 </ACTIONS_JSON>
 </PROJECT>
 
@@ -290,9 +291,97 @@ export async function extractInsights(transcriptText, meetingType) {
   }
 }
 
+// Finds `quote` in `text` ignoring case, whitespace runs and curly quotes/dashes,
+// and returns the exact slice of the original text plus where it starts, or null
+// when the model's "quote" isn't really in the source (so it is never shown).
+function locateQuote(quote, text) {
+  const q = String(quote || '').trim();
+  if (q.length < 8 || !text) return null;
+
+  const fold = ch => {
+    if (/\s/.test(ch)) return ' ';
+    if ('‘’'.includes(ch)) return "'";
+    if ('“”'.includes(ch)) return '"';
+    if ('–—'.includes(ch)) return '-';
+    const lower = ch.toLowerCase();
+    return lower.length === 1 ? lower : ch;
+  };
+  let norm = '';
+  const map = []; // map[i] = index in `text` of norm[i]
+  let lastSpace = true;
+  for (let i = 0; i < text.length; i++) {
+    const c = fold(text[i]);
+    if (c === ' ') {
+      if (lastSpace) continue;
+      lastSpace = true;
+    } else {
+      lastSpace = false;
+    }
+    norm += c;
+    map.push(i);
+  }
+  const normalise = str => Array.from({ length: str.length }, (_, i) => fold(str[i])).join('').replace(/ +/g, ' ').trim();
+
+  // Whole quote first, then the longest fragment if the model joined pieces with "...".
+  const candidates = [q, ...q.split(/\.{3}|…/).sort((a, b) => b.length - a.length)]
+    .map(normalise)
+    .filter(c => c.length >= 8);
+  for (const cand of candidates) {
+    const at = norm.indexOf(cand);
+    if (at === -1) continue;
+    const start = map[at];
+    const end = map[at + cand.length - 1] + 1;
+    return { quote: text.slice(start, end), start };
+  }
+  return null;
+}
+
+// One suggested action, with its source quote kept only if it genuinely appears
+// in the transcript (source_start is where, so the UI can show the surrounding lines).
+function withSource(a, transcriptText) {
+  const found = locateQuote(a.source_quote, transcriptText);
+  return {
+    action_text: a.action_text?.trim() ?? '',
+    owner: a.owner?.trim() || null,
+    due_date: a.due_date || null,
+    notes: a.notes?.trim() || null,
+    source_quote: found?.quote ?? null,
+    source_start: found?.start ?? null
+  };
+}
+
+// Internal team meetings usually include a "priorities" round where each person
+// runs through their project priorities. That is a team update for the summary,
+// not a source of actions, and team-meeting actions must not be project-specific.
+const INTERNAL_TEAM_STANDARD_AGENDA = `1. Project Priorities
+2. Planning Updates / New Legislation
+3. Processes and Procedures
+4. Company Finance Update
+5. Business Development
+6. Incoming Work / New Projects
+7. Socials
+8. CPD
+9. AOB`;
+
+const INTERNAL_TEAM_MEETING_INSTRUCTIONS = `INTERNAL TEAM MEETING RULES:
+- STRUCTURE: Use the standard team meeting agenda above as the <h3> headings of SUMMARY_HTML, in that order, without the numbers. This is the general format, not a rigid one:
+  - Leave out any heading that was not covered in the meeting. Do not write "not discussed" placeholders.
+  - If the meeting clearly took the topics in a different order, or brought one forward, follow the order the meeting actually used.
+  - If a specific topic was raised that does not fit any heading, give it its own appropriate <h3> heading in the place it was discussed. Use "AOB" for minor miscellaneous points.
+  - If the user supplied their own agenda, that agenda replaces the standard one.
+- Under "Project Priorities", group the update by project name with the person who gave it, in tight bullets.
+- After the agenda sections, end SUMMARY_HTML with a final <h3>Conclusions</h3> section (outcomes, decisions and agreed next steps). Do not write an actions section: actions and action updates are added to the end of the note separately.
+- PROJECT PRIORITIES ARE FOR INFORMATION ONLY. The Project Priorities section is where each person runs through their own client projects (what they are working on, what is due, where each project stands) so the whole team is kept up to date. It stays in SUMMARY_HTML as a record, and that is all it is for. Nothing said in that section may produce an action, a completed action, an action update, or a date suggestion. Treat it as if it were not part of the meeting when filling ACTIONS_JSON, COMPLETED_ACTIONS_JSON and DATE_SUGGESTIONS_JSON, even when someone says "I need to...", "I'll...", "we're waiting on..." or gives a deadline about one of their projects.
+- ACTIONS_JSON: only actions from the rest of the meeting (planning updates, processes and procedures, finance, business development, incoming work, socials, CPD, AOB, and any other topic) that are NOT tied to a specific client project, site or application. These are general team, business, process, admin, policy, training or resourcing actions. If an action is about a particular named project, leave it out wherever in the meeting it came up.
+- COMPLETED_ACTIONS_JSON: only report on an existing open action if the meeting spoke to it OUTSIDE the Project Priorities section, and only if that action is itself not about a specific client project. Do not mark an action complete or in progress because of something said during the priorities round.
+- DATE_SUGGESTIONS_JSON: do not suggest dates mentioned in the Project Priorities section or any other date about a specific client project.
+- CONCLUSIONS: cover decisions and next steps from the rest of the meeting. Do not repeat project priorities or project-specific next steps in Conclusions.
+- If nothing qualifies, return [] for the relevant JSON arrays.
+- PROJECT NAMES: transcripts often misspell or mishear project names, especially in the priorities section. If a PROJECT NAME LIST is provided and a project mentioned in the meeting is clearly similar to a name on that list (spelling, sound or abbreviation), use the spelling from the list. If nothing on the list is a reasonable match, or the project is not on the list at all, write the name as it appears in the transcript. Never replace a name with a list entry unless you are confident it is the same project, and never add projects that were not discussed.`;
+
 // stageState (optional): { applicable, stages } from loadPlanningStageState. When the project uses planning stages, the
 // model is also asked for strict stage-change suggestions, returned verified as `stageSuggestions`.
-export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null, existingOpenActions = [], stageState = null) {
+export async function processMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, meetingType = 'project', provider = null, existingOpenActions = [], stageState = null, projectNames = []) {
   const systemPrompt = await buildSystemPrompt(stageState);
 
   const parts = [`TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}`];
@@ -303,7 +392,7 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
   } else if (summaryType === 'detailed') {
     lengthInstruction = 'SUMMARY LENGTH: Detailed (3-4 pages). Expand each section with full context and depth.';
   } else {
-    lengthInstruction = 'SUMMARY LENGTH: Brief (one page). Be concise. Summarise in tight bullet form. Omit padding.';
+    lengthInstruction = 'SUMMARY LENGTH: Brief (1-2 pages). Be concise. Summarise in tight bullet form. Omit padding.';
   }
   parts.push(lengthInstruction);
 
@@ -313,6 +402,8 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
 
   if (agenda?.trim()) {
     parts.push(`MEETING AGENDA:\n${agenda.trim()}`);
+  } else if (meetingType === 'internal') {
+    parts.push(`MEETING AGENDA (standard team meeting agenda, used when none is supplied):\n${INTERNAL_TEAM_STANDARD_AGENDA}`);
   }
 
   if (existingOpenActions?.length) {
@@ -324,6 +415,13 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
 
   const stageContext = buildMeetingStageContext(stageState);
   if (stageContext) parts.push(stageContext);
+
+  if (meetingType === 'internal') {
+    parts.push(INTERNAL_TEAM_MEETING_INSTRUCTIONS);
+    if (projectNames?.length) {
+      parts.push(`PROJECT NAME LIST (for spelling only):\n${projectNames.map(n => `- ${n}`).join('\n')}`);
+    }
+  }
 
   parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
 
@@ -398,15 +496,78 @@ export async function processMeetingTranscript(text, fileName, userNotes = null,
     meeting_date: extractTag(raw, 'MEETING_DATE') || null,
     attendees: extractTag(raw, 'ATTENDEES') || null,
     summary_html,
-    actions: actions.map(a => ({
-      action_text: a.action_text?.trim() ?? '',
-      owner: a.owner?.trim() || null,
-      due_date: a.due_date || null,
-      notes: a.notes?.trim() || null
-    })).filter(a => a.action_text),
+    actions: actions.map(a => withSource(a, text)).filter(a => a.action_text),
     actionUpdates,
     dateSuggestions,
     stageSuggestions
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// General internal meeting — a catch-up, 1:1 or one-off chat. Lighter than the
+// team/project flow: no guiding brief, no carried-over actions, no date or
+// stage suggestions. Actions are only returned if someone clearly committed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const GENERAL_MEETING_PROMPT = `You are an assistant summarising an informal internal conversation (a catch-up, one-to-one, or one-off chat) from a transcript.
+
+Return your response using EXACTLY these delimiters — nothing before <MEETING_TITLE> and nothing after </ACTIONS_JSON>:
+
+<MEETING_TITLE>short title or leave blank</MEETING_TITLE>
+<MEETING_DATE>YYYY-MM-DD or leave blank</MEETING_DATE>
+<ATTENDEES>comma-separated names or leave blank</ATTENDEES>
+<SUMMARY_HTML>
+HTML summary here
+</SUMMARY_HTML>
+<ACTIONS_JSON>
+[{"action_text":"...","owner":null,"due_date":null,"notes":null,"source_quote":"..."}]
+</ACTIONS_JSON>
+
+- MEETING_TITLE, MEETING_DATE, ATTENDEES: fill only if determinable from the source, otherwise leave blank.
+- SUMMARY_HTML: a short, natural account of what was discussed and anything decided or agreed. Use only <p>, <ul>, <li>, <strong> and, if the conversation covers clearly separate topics, <h3> headings. Do not force a formal structure, and do not add an actions section (actions go in ACTIONS_JSON only).
+- ACTIONS_JSON: this kind of conversation often has no actions, and [] is the normal answer. Only include an item where someone explicitly commits to do something or is asked to. Each item: {"action_text":"verb-led description","owner":null,"due_date":null,"notes":null,"source_quote":"exact words from the transcript"}, with due_date as YYYY-MM-DD or null. source_quote must be copied character for character from the transcript (one or two sentences at most), or null if the action does not come from the transcript. Never invent actions from general chat or opinions.
+- CONSULTANT NOTES (if provided) take precedence: every point in them must appear in the summary.
+- Never use em dashes in any output. Use a comma, colon, or rewrite the sentence instead.`;
+
+export async function processGeneralMeetingTranscript(text, fileName, userNotes = null, agenda = null, summaryType = 'brief', customPrompt = null, provider = null) {
+  const parts = [`TODAY'S DATE: ${new Date().toISOString().slice(0, 10)}`];
+
+  if (summaryType === 'custom' && customPrompt?.trim()) {
+    parts.push(`SUMMARY INSTRUCTIONS: ${customPrompt.trim()}`);
+  } else if (summaryType === 'detailed') {
+    parts.push('SUMMARY LENGTH: Detailed. Cover each topic with full context.');
+  } else {
+    parts.push('SUMMARY LENGTH: Brief. Keep it short and to the point, in tight bullet form.');
+  }
+
+  if (userNotes?.trim()) parts.push(`CONSULTANT NOTES (take absolute precedence):\n${userNotes.trim()}`);
+  if (agenda?.trim()) parts.push(`MEETING AGENDA:\n${agenda.trim()}`);
+  parts.push(`Meeting transcript${fileName ? ` (${fileName})` : ''}:\n\n${text.slice(0, 80000)}`);
+
+  const resolvedProvider = await resolveProvider('meeting_processing', provider);
+  const raw = await callLLM({ provider: resolvedProvider, system: GENERAL_MEETING_PROMPT + ANTI_AI_SLOP_BLOCK, prompt: parts.join('\n\n'), maxTokens: 8000 });
+
+  const summary_html = extractTag(raw, 'SUMMARY_HTML');
+  if (!summary_html) {
+    console.error('[meeting.service] Missing SUMMARY_HTML (general). Raw (first 400):', raw.slice(0, 400));
+    throw new Error('LLM returned unexpected format for meeting transcript');
+  }
+
+  let actions = [];
+  try {
+    const parsed = JSON.parse(extractTag(raw, 'ACTIONS_JSON') || '[]');
+    actions = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.warn('[meeting.service] Could not parse ACTIONS_JSON (general), defaulting to []');
+  }
+
+  return {
+    meeting_title: extractTag(raw, 'MEETING_TITLE') || null,
+    meeting_date: extractTag(raw, 'MEETING_DATE') || null,
+    attendees: extractTag(raw, 'ATTENDEES') || null,
+    summary_html,
+    actions: actions.map(a => withSource(a, text)).filter(a => a.action_text),
+    actionUpdates: []
   };
 }
 

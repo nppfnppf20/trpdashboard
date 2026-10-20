@@ -17,6 +17,10 @@
   /** @type {'open' | 'resolved' | 'all' | null} */
   export let statusFilter = null;     // 'open' | 'resolved' | 'all' — overrides showCompleted when set
   export let search = '';             // case-insensitive match on action text, owner and meeting
+  // Fold the per-person copies of one action (same meeting, text, due date and
+  // notes) into a single row listing everyone it's assigned to. Each person still
+  // has their own row underneath, so it shows separately on their own actions.
+  export let groupByAction = false;
 
   const dispatch = createEventDispatcher();
 
@@ -42,13 +46,50 @@
     }
   }
 
-  $: visible = actions.filter(a => {
+  function groupKey(a) {
+    return [a.transcript_id, (a.action_text || '').trim().toLowerCase(), (a.due_date || '').slice(0, 10), (a.notes || '').trim()].join('|');
+  }
+
+  // Rows become display items with a `members` list (just themselves unless grouped).
+  function buildItems(rows, group) {
+    if (!group) return rows.map(a => ({ ...a, members: [a] }));
+    const byKey = new Map();
+    for (const a of rows) {
+      const key = groupKey(a);
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(a);
+    }
+    return [...byKey.values()].map(members => {
+      if (members.length === 1) return { ...members[0], members };
+      const seen = new Set();
+      const updates = members.flatMap(m => m.updates || []).filter(u => {
+        const k = `${u.update_type}|${u.update_text}|${(u.created_at || '').slice(0, 10)}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      return {
+        ...members[0],
+        members,
+        updates,
+        status: members.every(m => m.status === 'complete') ? 'complete' : 'pending'
+      };
+    });
+  }
+
+  $: visible = buildItems(actions, groupByAction).filter(a => {
     const status = statusFilter ?? (showCompleted ? 'all' : 'open');
     if (status === 'open' && a.status === 'complete') return false;
     if (status === 'resolved' && a.status !== 'complete') return false;
     const q = search.trim().toLowerCase();
-    return !q || [a.action_text, a.owner, a.meeting_title, a.project_name].some(v => v?.toLowerCase().includes(q));
+    return !q || [a.action_text, ...a.members.map(m => m.owner), a.meeting_title, a.project_name].some(v => v?.toLowerCase().includes(q));
   });
+
+  const isGroup = a => a.members.length > 1;
+
+  function ownersLabel(a) {
+    return a.members.map(m => m.owner || 'Unassigned').join(', ');
+  }
 
   let editingId = null;
   let draft = '';
@@ -68,6 +109,7 @@
   function startFieldsEdit(a) {
     editingId = null;
     fieldsId = a.id;
+    fieldsGroup = isGroup(a);
     fields = {
       action_text: a.action_text || '',
       owner: a.owner || '',
@@ -76,14 +118,16 @@
     };
   }
 
-  $: fieldsInvalid = !fields.action_text.trim() || !fields.owner.trim();
+  let fieldsGroup = false; // editing a grouped action: each person keeps their own owner
+  $: fieldsInvalid = !fields.action_text.trim() || (!fieldsGroup && !fields.owner.trim());
 
   async function removeAction(a) {
-    if (!confirm(`Delete this action?\n\n"${a.action_text}"`)) return;
+    const who = isGroup(a) ? ` for all ${a.members.length} people it is assigned to` : '';
+    if (!confirm(`Delete this action${who}?\n\n"${a.action_text}"`)) return;
     busyId = a.id;
     error = null;
     try {
-      await deleteMeetingAction(a.id);
+      for (const m of a.members) await deleteMeetingAction(m.id);
       if (fieldsId === a.id) fieldsId = null;
       if (editingId === a.id) editingId = null;
       await reload();
@@ -100,12 +144,25 @@
     busyId = a.id;
     error = null;
     try {
-      await updateMeetingAction(a.id, {
-        action_text: fields.action_text,
-        owner: fields.owner,
-        due_date: fields.due_date || null,
-        notes: fields.notes
-      });
+      if (isGroup(a)) {
+        // Shared fields change for everyone; each person keeps their own owner and account link.
+        for (const m of a.members) {
+          await updateMeetingAction(m.id, {
+            action_text: fields.action_text,
+            owner: m.owner,
+            assigned_user_id: m.assigned_user_id || null,
+            due_date: fields.due_date || null,
+            notes: fields.notes
+          });
+        }
+      } else {
+        await updateMeetingAction(a.id, {
+          action_text: fields.action_text,
+          owner: fields.owner,
+          due_date: fields.due_date || null,
+          notes: fields.notes
+        });
+      }
       fieldsId = null;
       await reload();
       dispatch('changed');
@@ -120,7 +177,9 @@
     busyId = a.id;
     error = null;
     try {
-      await addMeetingActionUpdate(a.id, { update_type, update_text });
+      for (const m of a.members.filter(m => m.status !== 'complete')) {
+        await addMeetingActionUpdate(m.id, { update_type, update_text });
+      }
       editingId = null;
       draft = '';
       await reload();
@@ -155,11 +214,15 @@
             <div class="mal-fields">
               <input class="form-input" type="text" placeholder="Action…" bind:value={fields.action_text} />
               <div class="mal-fields-row">
-                <OwnerInput bind:value={fields.owner} />
+                {#if fieldsGroup}
+                  <span class="mal-owners-static">{ownersLabel(a)}</span>
+                {:else}
+                  <OwnerInput bind:value={fields.owner} />
+                {/if}
                 <input class="form-input" type="date" bind:value={fields.due_date} />
               </div>
               <input class="form-input" type="text" placeholder="Notes (optional)" bind:value={fields.notes} />
-              {#if !fields.owner.trim()}<p class="mal-warn">An owner is required.</p>{/if}
+              {#if !fieldsGroup && !fields.owner.trim()}<p class="mal-warn">An owner is required.</p>{/if}
               <div class="mal-edit">
                 <button class="btn btn-primary btn-sm" disabled={fieldsInvalid || busyId === a.id} on:click={() => saveFields(a)}>Save</button>
                 <button class="btn btn-ghost btn-sm" on:click={() => (fieldsId = null)}>Cancel</button>
@@ -171,7 +234,11 @@
             <span class="mal-text">{a.action_text}</span>
           </div>
           <div class="mal-meta">
-            {#if a.owner}<span>{a.owner}</span>{/if}
+            {#if isGroup(a)}
+              <span class="mal-owners" title={ownersLabel(a)}>
+                {#each a.members.slice(0, 4) as m, i}{#if i > 0}, {/if}<span class:mal-owner-done={m.status === 'complete'}>{m.owner || 'Unassigned'}</span>{/each}{#if a.members.length > 4} +{a.members.length - 4} more{/if}
+              </span>
+            {:else if a.owner}<span>{a.owner}</span>{/if}
             {#if a.due_date}<span class:mal-overdue={isOverdue(a)}>Due {formatDate(a.due_date)}</span>{/if}
             {#if showMeeting && a.meeting_title}<span>from {a.meeting_title}</span>{/if}
             {#if showProject && a.project_name}<span class="badge badge-neutral">{a.project_name}</span>{/if}
@@ -249,6 +316,8 @@
   .mal-notes { font-size: 0.72rem; color: var(--color-slate-500); }
   .mal-fields { display: flex; flex-direction: column; gap: 0.4rem; }
   .mal-fields-row { display: grid; grid-template-columns: 1fr 9.5rem; gap: 0.5rem; }
+  .mal-owners-static { font-size: 0.8rem; color: var(--color-slate-600); align-self: center; }
+  .mal-owner-done { text-decoration: line-through; color: var(--color-slate-400); }
   .mal-warn { margin: 0; font-size: 0.75rem; color: var(--color-amber-800); }
   .mal-buttons { display: flex; gap: 0.35rem; flex-shrink: 0; }
 </style>

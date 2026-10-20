@@ -34,7 +34,8 @@
   let noteTypeMenuOpen = false;
   let noteTypeDropdownEl;
   const noteTypeOptions = [
-    { value: 'internal', label: 'Internal Meeting', description: 'General internal team meeting' },
+    { value: 'internal', label: 'Internal Team Meeting', description: 'Team meeting, extracts policy updates' },
+    { value: 'general', label: 'General Internal Meeting', description: 'Catch-up or one-off chat, no policy extraction' },
     { value: 'cpd', label: 'CPD', description: 'CPD or training session' },
     { value: 'project', label: 'Project', description: 'Meeting tied to a specific client project' }
   ];
@@ -87,7 +88,7 @@
     // still pick Brief or Custom.
     if (type === 'cpd') {
       uploadSummaryType = 'detailed';
-    } else if (type === 'internal') {
+    } else if (type === 'internal' || type === 'general') {
       uploadSummaryType = 'brief';
     }
     if (type !== 'project') {
@@ -103,34 +104,31 @@
   let notesLoading = false;
   let notesError = null;
 
-  // Transcript expand state
-  let expandedTranscripts = new Set();
-  let transcriptData = {}; // { [noteId]: { loading, text, error } }
+  // Actions / Transcript pop-up — one modal per card button
+  let transcriptData = {}; // { [noteId]: { loading, text, error } } — cached once fetched
+  let detailModal = null; // { type: 'actions' | 'transcript', note }
 
-  // Actions expand state — each card can show its meeting's saved actions
-  let expandedActions = new Set();
-  function toggleActions(noteId) {
-    expandedActions = expandedActions.has(noteId)
-      ? new Set([...expandedActions].filter(id => id !== noteId))
-      : new Set([...expandedActions, noteId]);
+  function closeDetailModal() {
+    detailModal = null;
   }
 
-  async function toggleTranscript(noteId) {
-    if (expandedTranscripts.has(noteId)) {
-      expandedTranscripts = new Set([...expandedTranscripts].filter(id => id !== noteId));
-    } else {
-      expandedTranscripts = new Set([...expandedTranscripts, noteId]);
-      if (!transcriptData[noteId]) {
-        transcriptData[noteId] = { loading: true, text: null, error: null };
-        transcriptData = { ...transcriptData };
-        try {
-          const data = await getMeetingTranscript(noteId);
-          transcriptData[noteId] = { loading: false, text: data.transcript_text, error: null };
-        } catch (err) {
-          transcriptData[noteId] = { loading: false, text: null, error: err.message };
-        }
-        transcriptData = { ...transcriptData };
+  function openActionsModal(note) {
+    detailModal = { type: 'actions', note };
+  }
+
+  async function openTranscriptModal(note) {
+    const noteId = note.id;
+    detailModal = { type: 'transcript', note };
+    if (!transcriptData[noteId]) {
+      transcriptData[noteId] = { loading: true, text: null, error: null };
+      transcriptData = { ...transcriptData };
+      try {
+        const data = await getMeetingTranscript(noteId);
+        transcriptData[noteId] = { loading: false, text: data.transcript_text, error: null };
+      } catch (err) {
+        transcriptData[noteId] = { loading: false, text: null, error: err.message };
       }
+      transcriptData = { ...transcriptData };
     }
   }
 
@@ -227,6 +225,7 @@
       meeting_date: transcript.meeting_date,
       attendees_text: transcript.attendees_text,
       file_name: transcript.file_name,
+      transcript_text: transcript.transcript_text || '',
       created_at: transcript.created_at,
       summary_id: summary?.id,
       summary_html: summaryHtml,
@@ -443,8 +442,14 @@
   let editorSaving = false;
   let editorSaved = false; // true once a project note has been saved — swaps footer to the Issues Tracker prompt
   let richTextEditor;
+  let editorMeta = { title: '', meeting_date: '', attendees_text: '' }; // editable in the modal header, saved with Save
 
   function openNoteEditor(note, isNew = false) {
+    editorMeta = {
+      title: note.title ?? '',
+      meeting_date: note.meeting_date ? String(note.meeting_date).split('T')[0] : '',
+      attendees_text: note.attendees_text ?? ''
+    };
     editorActions = isNew ? toEditableActions(note.suggested_actions) : [];
     editorActionsDirty = false;
     editorUpdates = isNew ? toEditableUpdates(note.action_updates) : [];
@@ -454,6 +459,27 @@
     editorIsNew = isNew;
     editorSaved = false;
     editorNote = note;
+  }
+
+  // Close / X / Esc. A freshly processed note is already stored when the modal
+  // opens, so closing it without saving discards it (after a warning).
+  async function requestCloseNoteEditor() {
+    if (editorSaving) return;
+    if (editorIsNew && !editorSaved) {
+      const ok = confirm('This note has not been saved. If you close now it will be discarded and will not appear in your meeting notes.\n\nClose without saving?');
+      if (!ok) return;
+      const id = editorNote.id;
+      try {
+        await deleteMeetingNote(id);
+      } catch (err) {
+        alert(`Could not discard the note: ${err.message}`);
+        return;
+      }
+      notes = notes.filter(n => n.id !== id);
+      streamNotes = streamNotes.filter(n => n.id !== id);
+      pendingInsights = null; // nothing to preview for a note that no longer exists
+    }
+    closeNoteEditor();
   }
 
   function closeNoteEditor() {
@@ -490,6 +516,23 @@
         html = syncReviewIntoSummary(html, editorActions, editorIncludeInSummary ? editorUpdates : []);
       }
       const updated = await updateMeetingSummary(editorNote.id, html);
+
+      // Title / date / attendees edited in the modal header
+      const metaChanged = editorMeta.title !== (editorNote.title ?? '')
+        || editorMeta.meeting_date !== (editorNote.meeting_date ? String(editorNote.meeting_date).split('T')[0] : '')
+        || editorMeta.attendees_text !== (editorNote.attendees_text ?? '');
+      if (metaChanged) {
+        const saved = await updateMeetingNote(editorNote.id, {
+          title: editorMeta.title.trim() || null,
+          meeting_date: editorMeta.meeting_date || null,
+          attendees_text: editorMeta.attendees_text.trim() || null
+        });
+        const metaPatch = { title: saved.title, meeting_date: saved.meeting_date, attendees_text: saved.attendees_text };
+        notes = notes.map(n => n.id === editorNote.id ? { ...n, ...metaPatch } : n);
+        streamNotes = streamNotes.map(n => n.id === editorNote.id ? { ...n, ...metaPatch } : n);
+        editorNote = { ...editorNote, ...metaPatch };
+      }
+
       if (editorIsNew) {
         await saveMeetingReviewActions(editorNote.id, {
           newActions: editorActions,
@@ -516,11 +559,11 @@
 
   async function downloadFromEditor() {
     const note = editorNote;
-    const title = note.title || 'Meeting Notes';
-    const dateStr = note.meeting_date
-      ? new Date(note.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    const title = editorMeta.title || 'Meeting Notes';
+    const dateStr = editorMeta.meeting_date
+      ? new Date(editorMeta.meeting_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
       : '';
-    const metaLine = [dateStr, note.attendees_text].filter(Boolean).join(' · ');
+    const metaLine = [dateStr, editorMeta.attendees_text].filter(Boolean).join(' · ');
     const html = richTextEditor?.getHTML() ?? note.summary_html ?? '';
     const exportHtml = `<h1>${title}</h1>${metaLine ? `<p>${metaLine}</p>` : ''}${html}`;
     await exportHtmlToWord(exportHtml, `${title}${dateStr ? ` ${dateStr}` : ''}`, '/basicdocument.docx');
@@ -579,8 +622,8 @@
     return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  const TYPE_LABELS = { internal: 'Internal', cpd: 'CPD', project: 'Project', multi_project: 'Multi-Project' };
-  const TYPE_COLORS = { internal: 'badge-info', cpd: 'badge-purple', project: 'badge-success', multi_project: 'badge-indigo' };
+  const TYPE_LABELS = { internal: 'Internal Team', general: 'General', cpd: 'CPD', project: 'Project', multi_project: 'Multi-Project' };
+  const TYPE_COLORS = { internal: 'badge-info', general: 'badge-neutral', cpd: 'badge-purple', project: 'badge-success', multi_project: 'badge-indigo' };
 </script>
 
 <svelte:window on:click={handleWindowClick} on:keydown={handleWindowKeydown} />
@@ -685,7 +728,7 @@
         <div class="mn-type-row">
           <span class="mn-type-label">Summary</span>
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'brief'} class:btn-secondary={uploadSummaryType !== 'brief'} on:click={() => uploadSummaryType = 'brief'}>
-            Brief <span class="mn-type-sub">· 1 page</span>
+            Brief <span class="mn-type-sub">· 1-2 pages</span>
           </button>
           <button class="btn btn-sm" class:btn-primary={uploadSummaryType === 'detailed'} class:btn-secondary={uploadSummaryType !== 'detailed'} on:click={() => uploadSummaryType = 'detailed'}>
             Detailed <span class="mn-type-sub">· 3-4 pages</span>
@@ -850,7 +893,7 @@
     </div>
 
     <div class="stream-tabs">
-      {#each [['all', 'All'], ['internal', 'Internal'], ['cpd', 'CPD'], ['project', 'Project'], ['multi_project', 'Multi-Project']] as [key, label]}
+      {#each [['all', 'All'], ['internal', 'Internal Team'], ['general', 'General'], ['cpd', 'CPD'], ['project', 'Project'], ['multi_project', 'Multi-Project']] as [key, label]}
         <button
           class="stream-tab"
           class:stream-tab--active={streamTab === key}
@@ -904,14 +947,14 @@
               {#if Number(note.complete_count) > 0}
                 <span class="badge badge-success">{note.complete_count} done</span>
               {/if}
-              <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)}>
-                <i class="las la-eye"></i> View
+              <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)} title="View or edit title, details and summary">
+                <i class="las la-edit"></i> View / Edit
               </button>
-              <button class="btn btn-secondary btn-sm" on:click={() => toggleActions(note.id)} title="Actions from this meeting">
-                <i class="las la-tasks"></i> {expandedActions.has(note.id) ? 'Hide actions' : 'Actions'}
+              <button class="btn btn-secondary btn-sm" on:click={() => openActionsModal(note)} title="Actions from this meeting">
+                <i class="las la-tasks"></i> Actions
               </button>
-              <button class="btn btn-secondary btn-sm" on:click={() => toggleTranscript(note.id)} title="Full transcript">
-                <i class="las la-file-alt"></i> {expandedTranscripts.has(note.id) ? 'Hide' : 'Transcript'}
+              <button class="btn btn-secondary btn-sm" on:click={() => openTranscriptModal(note)} title="Full transcript">
+                <i class="las la-file-alt"></i> Transcript
               </button>
               <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
                 <i class="las la-download"></i>
@@ -922,35 +965,55 @@
             </div>
             </div><!-- end stream-card-main -->
 
-          {#if expandedActions.has(note.id)}
-            <div class="stream-actions">
-              <MeetingActionsList
-                load={() => getMeetingNoteActions(note.id)}
-                loadKey={String(note.id)}
-                showCompleted
-                emptyText="No actions were saved for this meeting."
-                on:changed={refreshStreamCounts}
-              />
-            </div>
-          {/if}
-
-          {#if expandedTranscripts.has(note.id)}
-            <div class="mn-transcript stream-transcript">
-              {#if transcriptData[note.id]?.loading}
-                <span class="mn-spinner-blue"></span> Loading transcript…
-              {:else if transcriptData[note.id]?.error}
-                <span class="mn-error-sm">{transcriptData[note.id].error}</span>
-              {:else if transcriptData[note.id]?.text}
-                <pre class="mn-transcript-text">{transcriptData[note.id].text}</pre>
-              {/if}
-            </div>
-          {/if}
           </div><!-- end stream-card -->
         {/each}
       </div>
     {/if}
   </div>
 </div>
+
+<!-- Actions / Transcript pop-up -->
+{#if detailModal}
+  {@const dNote = detailModal.note}
+  <div class="modal-backdrop" role="dialog" tabindex="-1"
+    on:click|self={closeDetailModal}
+    on:keydown={(e) => e.key === 'Escape' && closeDetailModal()}>
+    <div class="mn-modal mn-detail-modal">
+      <div class="modal-header">
+        <div>
+          <h2 class="mn-modal-title">{detailModal.type === 'actions' ? 'Actions' : 'Transcript'}: {dNote.title}</h2>
+          <p class="mn-modal-meta">
+            {formatDate(dNote.meeting_date)}
+            {#if dNote.attendees_text} &bull; {dNote.attendees_text}{/if}
+            {#if dNote.project_name} &bull; {dNote.project_name}{/if}
+          </p>
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={closeDetailModal} title="Close">
+          <i class="las la-times"></i>
+        </button>
+      </div>
+
+      <div class="mn-detail-body">
+        {#if detailModal.type === 'actions'}
+          <MeetingActionsList
+            load={() => getMeetingNoteActions(dNote.id)}
+            loadKey={String(dNote.id)}
+            showCompleted
+            groupByAction
+            emptyText="No actions were saved for this meeting."
+            on:changed={refreshStreamCounts}
+          />
+        {:else if transcriptData[dNote.id]?.loading}
+          <span class="mn-spinner-blue"></span> Loading transcript…
+        {:else if transcriptData[dNote.id]?.error}
+          <span class="mn-error-sm">{transcriptData[dNote.id].error}</span>
+        {:else if transcriptData[dNote.id]?.text}
+          <pre class="mn-transcript-text">{transcriptData[dNote.id].text}</pre>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Create project modal -->
 <AddProjectModal
@@ -1026,22 +1089,26 @@
 <!-- Note editor modal -->
 {#if editorNote}
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && !editorSaving && closeNoteEditor()}>
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && requestCloseNoteEditor()}>
     <div class="mn-modal mn-editor-modal">
 
       <div class="modal-header mn-editor-header">
         <div class="mn-result-header-text">
           {#if editorIsNew}<div class="mn-result-tick"><i class="las la-check-circle"></i></div>{/if}
-          <div>
-            <h2 class="mn-modal-title">
-              {editorNote.title}
-              {#if reviewTotal > 0}<span class="mn-review-progress">Note {reviewTotal - reviewQueue.length} of {reviewTotal}</span>{/if}
-            </h2>
+          <div class="mn-editor-meta">
+            {#if reviewTotal > 0}<span class="mn-review-progress mn-review-progress--solo">Note {reviewTotal - reviewQueue.length} of {reviewTotal}</span>{/if}
+            {#if editorSaved}
+              <h2 class="mn-modal-title">{editorNote.title}</h2>
+            {:else}
+              <input type="text" class="form-input mn-editor-title-input" bind:value={editorMeta.title} placeholder="Title" aria-label="Title" disabled={editorSaving} />
+              <div class="mn-editor-meta-row">
+                <input type="date" class="form-input" bind:value={editorMeta.meeting_date} aria-label="Meeting date" disabled={editorSaving} />
+                <input type="text" class="form-input" bind:value={editorMeta.attendees_text} placeholder="Attendees" aria-label="Attendees" disabled={editorSaving} />
+              </div>
+            {/if}
             <p class="mn-modal-meta">
-              {formatDate(editorNote.meeting_date)}
-              {#if editorNote.attendees_text} &bull; {editorNote.attendees_text}{/if}
-              {#if editorNote.meeting_type === 'multi_project'} &bull; Combined
-              {:else if editorNote.project_name} &bull; {editorNote.project_name}{/if}
+              {#if editorNote.meeting_type === 'multi_project'}Combined
+              {:else if editorNote.project_name}{editorNote.project_name}{/if}
             </p>
           </div>
         </div>
@@ -1049,7 +1116,7 @@
           <button class="btn btn-secondary btn-sm" on:click={downloadFromEditor} disabled={editorSaving}>
             <i class="las la-download"></i> Download
           </button>
-          <button class="btn btn-icon btn-ghost close-btn" on:click={closeNoteEditor} disabled={editorSaving}>
+          <button class="btn btn-icon btn-ghost close-btn" on:click={requestCloseNoteEditor} disabled={editorSaving}>
             <i class="las la-times"></i>
           </button>
         </div>
@@ -1088,7 +1155,7 @@
         {#if editorIsNew}
           <div class="mn-editor-actions">
             <h3 class="mn-editor-actions-title">Actions</h3>
-            <SuggestedActionsEditor bind:actions={editorActions} bind:dirty={editorActionsDirty} bind:missingOwner={editorMissingOwner} />
+            <SuggestedActionsEditor transcriptText={editorNote.transcript_text || ''} bind:actions={editorActions} bind:dirty={editorActionsDirty} bind:missingOwner={editorMissingOwner} />
             <h3 class="mn-editor-actions-title mn-editor-actions-title--spaced">Open actions mentioned in this meeting</h3>
             <ActionUpdatesEditor bind:updates={editorUpdates} bind:dirty={editorUpdatesDirty} />
             <label class="mn-editor-include">
@@ -1099,7 +1166,7 @@
         {/if}
 
         <div class="modal-footer">
-          <button class="btn btn-secondary btn-sm" on:click={closeNoteEditor} disabled={editorSaving}>
+          <button class="btn btn-secondary btn-sm" on:click={requestCloseNoteEditor} disabled={editorSaving}>
             Close
           </button>
           <button class="btn btn-primary" on:click={saveNoteEditor} disabled={editorSaving || editorMissingOwner > 0} title={editorMissingOwner > 0 ? 'Assign an owner to every action before saving' : ''}>
@@ -1422,18 +1489,8 @@
   .mn-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--color-slate-500); font-size: 0.875rem; padding: 2rem; justify-content: center; }
 
   /* ── Transcript ────────────────────────────────────────────────────────────── */
-  .mn-transcript {
-    margin-top: 0.6rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--color-slate-100);
-    font-size: 0.8rem;
-    color: var(--color-slate-500);
-  }
-  .stream-transcript {
-    margin-top: 0;
-    padding: 0 1rem 0.75rem;
-    border-top: 1px solid var(--color-slate-200);
-  }
+  .mn-detail-modal { max-width: 860px; height: 80vh; }
+  .mn-detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 1.5rem; font-size: 0.8rem; color: var(--color-slate-500); }
   .mn-transcript-text {
     font-family: inherit;
     font-size: 0.8rem;
@@ -1441,16 +1498,13 @@
     white-space: pre-wrap;
     line-height: 1.6;
     margin: 0;
-    max-height: 360px;
-    overflow-y: auto;
     background: var(--color-slate-50);
     border-radius: 4px;
     padding: 0.75rem;
   }
-  .stream-actions { padding: 0.75rem 1rem; border-top: 1px solid var(--color-slate-200); }
   .mn-error-sm { color: var(--color-red-600); font-size: 0.8rem; }
   .mn-editor-actions { padding: 0.75rem 1.5rem; border-top: 1px solid var(--color-slate-200); max-height: 45%; overflow-y: auto; flex-shrink: 0; }
-  .mn-editor-actions-title--spaced { margin-top: 1rem; }
+  .mn-editor-actions-title--spaced { margin-top: 1.75rem; padding-top: 1rem; border-top: 1px solid var(--color-slate-200); }
   .mn-editor-include { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-size: 0.8rem; color: var(--color-slate-700); }
   .mn-editor-actions-title { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-slate-800); }
 
@@ -1500,6 +1554,13 @@
     border-radius: var(--radius-pill); padding: 0.15rem 0.5rem; margin-left: 0.5rem; vertical-align: middle;
   }
   .mn-modal-meta { font-size: 0.8rem; color: var(--color-slate-500); margin: 0; }
+  .mn-modal-meta:empty { display: none; }
+  .mn-editor-meta { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; flex: 1; }
+  .mn-editor-title-input { font-size: 1.05rem; font-weight: 600; }
+  .mn-editor-meta-row { display: flex; gap: 0.5rem; }
+  .mn-editor-meta-row input[type="date"] { flex: 0 0 11rem; }
+  .mn-editor-meta-row input[type="text"] { flex: 1; min-width: 0; }
+  .mn-review-progress--solo { align-self: flex-start; margin-left: 0; }
   .close-btn { flex-shrink: 0; }
 
   .mn-editor-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }

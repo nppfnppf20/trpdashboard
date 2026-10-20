@@ -1,4 +1,5 @@
 import { authFetch } from './client.js';
+import { expandActionOwners } from '$lib/utils/meetingActions.js';
 
 export async function processMeetingNote(projectId, { file, text, fileName, userNotes, agenda, summaryType, customPrompt, provider }) {
   const formData = new FormData();
@@ -215,7 +216,7 @@ export async function saveMeetingReviewActions(meetingId, { newActions, updates 
   const res = await authFetch(`/api/meeting-notes/${meetingId}/review-actions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ newActions, updates })
+    body: JSON.stringify({ newActions: expandActionOwners(newActions), updates })
   });
   if (!res.ok) throw new Error('Failed to save actions');
   return res.json();

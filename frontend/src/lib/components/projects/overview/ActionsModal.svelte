@@ -61,6 +61,7 @@
         {statusFilter}
         {search}
         showMeeting
+        groupByAction
         showProject={merged}
         emptyText={statusFilter === 'resolved' ? 'No resolved actions.' : statusFilter === 'open' ? 'No outstanding actions.' : 'No actions.'}
         on:changed={bumpActionsVersion}

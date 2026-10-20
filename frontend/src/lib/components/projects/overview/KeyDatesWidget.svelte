@@ -263,6 +263,7 @@
         loadKey={actionsLoadKey}
         showProject={merged}
         showMeeting
+        groupByAction
         compact
         emptyText="No open actions."
       />
