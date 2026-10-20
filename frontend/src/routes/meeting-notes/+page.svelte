@@ -978,7 +978,7 @@
   <div class="modal-backdrop" role="dialog" tabindex="-1"
     on:click|self={closeDetailModal}
     on:keydown={(e) => e.key === 'Escape' && closeDetailModal()}>
-    <div class="mn-modal mn-detail-modal">
+    <div class="mn-modal mn-detail-modal" class:mn-detail-modal--wide={detailModal.type === 'actions'}>
       <div class="modal-header">
         <div>
           <h2 class="mn-modal-title">{detailModal.type === 'actions' ? 'Actions' : 'Transcript'}: {dNote.title}</h2>
@@ -1000,6 +1000,7 @@
             loadKey={String(dNote.id)}
             showCompleted
             groupByAction
+            ownerColumn
             emptyText="No actions were saved for this meeting."
             on:changed={refreshStreamCounts}
           />
@@ -1490,6 +1491,7 @@
 
   /* ── Transcript ────────────────────────────────────────────────────────────── */
   .mn-detail-modal { max-width: 860px; height: 80vh; }
+  .mn-detail-modal--wide { max-width: 1200px; }
   .mn-detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 1.5rem; font-size: 0.8rem; color: var(--color-slate-500); }
   .mn-transcript-text {
     font-family: inherit;

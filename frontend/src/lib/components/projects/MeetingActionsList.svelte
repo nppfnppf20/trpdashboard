@@ -21,6 +21,9 @@
   // notes) into a single row listing everyone it's assigned to. Each person still
   // has their own row underneath, so it shows separately on their own actions.
   export let groupByAction = false;
+  // Give the owner(s) their own column beside the action instead of a line of
+  // small text under it, so who it belongs to is obvious at a glance.
+  export let ownerColumn = false;
 
   const dispatch = createEventDispatcher();
 
@@ -234,7 +237,9 @@
             <span class="mal-text">{a.action_text}</span>
           </div>
           <div class="mal-meta">
-            {#if isGroup(a)}
+            {#if ownerColumn}
+              <!-- owners are shown in their own column -->
+            {:else if isGroup(a)}
               <span class="mal-owners" title={ownersLabel(a)}>
                 {#each a.members.slice(0, 4) as m, i}{#if i > 0}, {/if}<span class:mal-owner-done={m.status === 'complete'}>{m.owner || 'Unassigned'}</span>{/each}{#if a.members.length > 4} +{a.members.length - 4} more{/if}
               </span>
@@ -267,6 +272,19 @@
             </div>
           {/if}
         </div>
+
+        {#if ownerColumn && fieldsId !== a.id}
+          <div class="mal-owner-col">
+            <div class="mal-owner-label">{isGroup(a) ? `Assigned to (${a.members.length})` : 'Owner'}</div>
+            <div class="mal-owner-names">
+              {#each a.members as m (m.id)}
+                <div class="mal-owner-name" class:mal-owner-done={m.status === 'complete'} title={m.status === 'complete' ? 'Done' : 'Open'}>
+                  {#if m.status === 'complete'}<i class="las la-check-circle mal-tick"></i>{/if}{m.owner || 'Unassigned'}
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
 
         {#if editingId !== a.id && fieldsId !== a.id}
           <div class="mal-buttons">
@@ -316,6 +334,11 @@
   .mal-notes { font-size: 0.72rem; color: var(--color-slate-500); }
   .mal-fields { display: flex; flex-direction: column; gap: 0.4rem; }
   .mal-fields-row { display: grid; grid-template-columns: 1fr 9.5rem; gap: 0.5rem; }
+  .mal-owner-col { flex: 0 0 15rem; display: flex; flex-direction: column; gap: 0.2rem; padding-left: 0.75rem; border-left: 1px solid var(--color-slate-200); align-self: stretch; }
+  .mal-owner-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-slate-500); }
+  .mal-owner-names { display: flex; flex-direction: column; gap: 0.15rem; max-height: 7.5rem; overflow-y: auto; }
+  .mal-owner-name { font-size: 0.85rem; font-weight: 500; color: var(--color-slate-800); }
+  .mal--compact .mal-owner-col { display: none; }
   .mal-owners-static { font-size: 0.8rem; color: var(--color-slate-600); align-self: center; }
   .mal-owner-done { text-decoration: line-through; color: var(--color-slate-400); }
   .mal-warn { margin: 0; font-size: 0.75rem; color: var(--color-amber-800); }

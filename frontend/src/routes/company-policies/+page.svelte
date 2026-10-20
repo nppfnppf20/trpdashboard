@@ -2,8 +2,8 @@
   import { onMount, onDestroy } from 'svelte';
   import PolicyAsk from '$lib/components/company-policies/PolicyAsk.svelte';
   import PolicyViewerModal from '$lib/components/company-policies/PolicyViewerModal.svelte';
-  import PolicyFolderTree from '$lib/components/company-policies/PolicyFolderTree.svelte';
-  import { folderOptions, scopeIds, folderPath } from '$lib/utils/policyFolders.js';
+  import PolicyLibraryTree from '$lib/components/company-policies/PolicyLibraryTree.svelte';
+  import { folderOptions, scopeIds } from '$lib/utils/policyFolders.js';
   import {
     getCompanyPolicies,
     getCompanyPolicyFolders,
@@ -20,22 +20,14 @@
   let policies = [];
   /** Flat folder rows from the API. @type {any[]} */
   let folders = [];
-  /** What the library is showing: everything, documents with no folder, or one folder (and what is in it). @type {'all' | 'unfiled' | number} */
-  let selected = 'all';
+  /** The row last clicked in the tree. @type {{ kind: 'folder' | 'doc', id: number } | null} */
+  let selected = null;
   /** The folder the chat searches, or null for all documents. @type {number | null} */
   let scopeFolderId = null;
   let loading = true;
   let error = null;
   let showHistory = false;
-  let confirmDeleteId = null;
   let busyId = null;
-
-  const STATUS = {
-    uploaded: { label: 'Awaiting indexing', cls: 'badge-neutral' },
-    processing: { label: 'Processing', cls: 'badge-info' },
-    ready: { label: 'Ready', cls: 'badge-success' },
-    failed: { label: 'Failed', cls: 'badge-danger' }
-  };
 
   onMount(load);
   onDestroy(() => clearTimeout(pollTimer));
@@ -52,8 +44,9 @@
       ]);
       policies = docs;
       folders = folderData.folders;
-      // A folder that no longer exists can't stay selected or be the chat's scope
-      if (typeof selected === 'number' && !folders.some(f => f.id === selected)) selected = 'all';
+      // Something that no longer exists can't stay selected or be the chat's scope
+      if (selected?.kind === 'folder' && !folders.some(f => f.id === selected?.id)) selected = null;
+      if (selected?.kind === 'doc' && !policies.some(p => p.id === selected?.id)) selected = null;
       if (scopeFolderId != null && !folders.some(f => f.id === scopeFolderId)) scopeFolderId = null;
     } catch (err) {
       if (!silent) error = err.message;
@@ -87,15 +80,6 @@
 
   // ── Library filter ──────────────────────────────────────────────────────────
   let filterText = '';
-  $: needle = filterText.trim().toLowerCase();
-  $: inFolder = selected === 'all'
-    ? policies
-    : selected === 'unfiled'
-      ? policies.filter(p => p.folder_id == null)
-      : policies.filter(p => scopeIds(folders, selected).includes(p.folder_id));
-  $: visibleDocs = needle
-    ? inFolder.filter(p => [p.title, folderPath(folders, p.folder_id), p.original_filename].some(v => (v || '').toLowerCase().includes(needle)))
-    : inFolder;
 
   // The chat can only answer once something in its scope is indexed
   $: askReady = policies.some(p =>
@@ -131,7 +115,7 @@
     try {
       if (folderModal.mode === 'new') {
         const created = await createCompanyPolicyFolder(name, parentId);
-        selected = created.id;
+        selected = { kind: 'folder', id: created.id };
       } else {
         await updateCompanyPolicyFolder(folderModal.id, { name, parent_id: parentId });
       }
@@ -152,7 +136,7 @@
     }
   }
 
-  // Drag a document onto a folder (or "Unfiled")
+  // Drag a document onto a folder (or onto the "take it out" zone)
   async function fileDocument(docId, folderId) {
     folderError = null;
     const doc = policies.find(p => p.id === docId);
@@ -163,11 +147,6 @@
     } catch (err) {
       folderError = err.message;
     }
-  }
-
-  function startDocDrag(e, p) {
-    e.dataTransfer.setData('application/x-policy-doc', String(p.id));
-    e.dataTransfer.effectAllowed = 'move';
   }
 
   // ── Document viewer ─────────────────────────────────────────────────────────
@@ -194,11 +173,18 @@
 
   $: folderChoices = folderOptions(folders);
 
+  // The folder of the selected row: the folder itself, or the folder holding the selected document
+  function selectedFolderId() {
+    if (selected?.kind === 'folder') return selected.id;
+    if (selected?.kind === 'doc') return policies.find(p => p.id === selected?.id)?.folder_id ?? '';
+    return '';
+  }
+
   function openNew() {
     modalMode = 'new';
     activeDoc = null;
     file = null;
-    form = { ...blankForm(), folder_id: typeof selected === 'number' ? selected : '' }; // upload into the folder you are looking at
+    form = { ...blankForm(), folder_id: selectedFolderId() }; // upload into the folder you are looking at
     modalError = null;
     modalOpen = true;
   }
@@ -325,22 +311,12 @@
     error = null;
     try {
       await deleteCompanyPolicy(p.id);
-      confirmDeleteId = null;
       await load();
     } catch (err) {
       error = err.message;
     } finally {
       busyId = null;
     }
-  }
-
-  function fmtDate(d) {
-    return d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-  }
-
-  function fmtSize(bytes) {
-    if (!bytes) return '';
-    return bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
 </script>
 
@@ -373,77 +349,33 @@
   <div class="cp-split">
     <section class="card lib-panel" aria-label="Policy library">
       <div class="lib-head">
-        <div class="lib-title">Library <span class="lib-count">· {visibleDocs.length}</span></div>
+        <div class="lib-title">Library <span class="lib-count">· {policies.length}</span></div>
         <input class="form-input" type="search" bind:value={filterText} placeholder="Filter documents…" aria-label="Filter documents" />
       </div>
 
-      <div class="tree-wrap">
-        <PolicyFolderTree
-          {folders}
-          docs={policies}
-          bind:selected
-          {scopeFolderId}
-          on:select={() => (folderError = null)}
-          on:create={(e) => openNewFolder(e.detail)}
-          on:edit={(e) => openEditFolder(e.detail)}
-          on:remove={(e) => removeFolder(e.detail)}
-          on:ask={(e) => (scopeFolderId = e.detail)}
-          on:dropdoc={(e) => fileDocument(e.detail.docId, e.detail.folderId)}
-        />
-        {#if folderError}<div class="folder-error" role="alert">{folderError}</div>{/if}
-      </div>
+      {#if folderError}<div class="folder-error" role="alert">{folderError}</div>{/if}
 
-      <div class="lib-list">
-        {#if loading}
-          <div class="loading-state">Loading…</div>
-        {:else}
-          {#each visibleDocs as p (p.id)}
-            <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div class="doc" class:superseded={!p.is_current} draggable="true" on:dragstart={(e) => startDocDrag(e, p)} title="Drag onto a folder to move it">
-              <i class="las la-file-alt doc-icon"></i>
-              <div class="doc-main">
-                <button class="title-link" on:click={() => openViewer(p.id)} title="View document">{p.title}</button>
-                <div class="doc-meta">
-                  {folderPath(folders, p.folder_id) || 'Unfiled'} · v{p.version}{p.status === 'ready' ? ` · ${p.chunk_count} sections` : ''}
-                  {#if !p.is_current}<span class="badge badge-neutral">Superseded</span>{/if}
-                  {#if p.visibility === 'admin'}<span class="badge badge-warning" title="Visible to admins only">Restricted</span>{/if}
-                </div>
-                <div class="doc-meta doc-file">{p.original_filename}{p.file_size ? ` · ${fmtSize(p.file_size)}` : ''}</div>
-
-                <div class="doc-foot">
-                  <span class="badge {STATUS[p.status]?.cls || 'badge-neutral'}" title={p.status_detail || ''}>
-                    {STATUS[p.status]?.label || p.status}
-                  </span>
-                  <span class="doc-actions">
-                    {#if confirmDeleteId === p.id}
-                      <span class="confirm-delete">
-                        Delete?
-                        <button class="btn btn-danger btn-sm" disabled={busyId === p.id} on:click={() => remove(p)}>Delete</button>
-                        <button class="btn btn-secondary btn-sm" on:click={() => (confirmDeleteId = null)}>Cancel</button>
-                      </span>
-                    {:else}
-                      <button class="btn btn-ghost btn-sm btn-icon" on:click={() => openViewer(p.id)} title="View document" aria-label="View document"><i class="las la-eye"></i></button>
-                      <button class="btn btn-ghost btn-sm btn-icon" disabled={busyId === p.id} on:click={() => download(p)} title="Download original" aria-label="Download original"><i class="las la-download"></i></button>
-                      {#if p.is_current}
-                        <button class="btn btn-ghost btn-sm btn-icon" on:click={() => openVersion(p)} title="Upload a new version" aria-label="Upload a new version"><i class="las la-code-branch"></i></button>
-                      {/if}
-                      <button class="btn btn-ghost btn-sm btn-icon" disabled={busyId === p.id || p.status === 'processing'} on:click={() => reindex(p)} title="Re-index" aria-label="Re-index"><i class="las la-sync"></i></button>
-                      <button class="btn btn-ghost btn-sm btn-icon" on:click={() => openEdit(p)} title="Edit details" aria-label="Edit details"><i class="las la-edit"></i></button>
-                      <button class="btn btn-danger-ghost btn-sm btn-icon" on:click={() => (confirmDeleteId = p.id)} title="Delete" aria-label="Delete"><i class="las la-trash"></i></button>
-                    {/if}
-                  </span>
-                </div>
-                {#if p.status === 'failed' && p.status_detail}<div class="doc-error">{p.status_detail}</div>{/if}
-              </div>
-            </div>
-          {/each}
-          {#if !visibleDocs.length}
-            <div class="empty-row">
-              {policies.length ? 'No documents match that filter.' : 'No policies yet. Use "Upload policy" to add the first one.'}
-            </div>
-          {/if}
-        {/if}
-      </div>
+      <PolicyLibraryTree
+        {folders}
+        docs={policies}
+        {filterText}
+        bind:selected
+        {scopeFolderId}
+        {busyId}
+        {loading}
+        on:select={() => (folderError = null)}
+        on:view={(e) => openViewer(e.detail)}
+        on:download={(e) => download(e.detail)}
+        on:newversion={(e) => openVersion(e.detail)}
+        on:reindex={(e) => reindex(e.detail)}
+        on:editdoc={(e) => openEdit(e.detail)}
+        on:removedoc={(e) => remove(e.detail)}
+        on:createfolder={(e) => openNewFolder(e.detail)}
+        on:editfolder={(e) => openEditFolder(e.detail)}
+        on:removefolder={(e) => removeFolder(e.detail)}
+        on:askfolder={(e) => (scopeFolderId = e.detail)}
+        on:dropdoc={(e) => fileDocument(e.detail.docId, e.detail.folderId)}
+      />
 
       <label class="lib-foot">
         <input type="checkbox" bind:checked={showHistory} on:change={() => load()} /> Show previous versions
@@ -646,48 +578,7 @@
   .lib-head { padding: 0.875rem 1rem 0.75rem; border-bottom: 1px solid var(--color-slate-100); display: flex; flex-direction: column; gap: 0.625rem; flex-shrink: 0; }
   .lib-title { font-size: 0.9375rem; font-weight: 700; color: var(--color-slate-800); }
   .lib-count { font-weight: 500; color: var(--color-slate-500); }
-  .tree-wrap { flex-shrink: 0; max-height: 15rem; overflow-y: auto; border-bottom: 1px solid var(--color-slate-100); }
-  .folder-error { margin: 0 0.75rem 0.625rem; padding: 0.5rem 0.625rem; background: var(--color-red-50); color: var(--color-red-600); border-radius: var(--radius-md); font-size: 0.75rem; line-height: 1.4; }
-  .lib-list { flex: 1; min-height: 0; overflow-y: auto; }
-  .lib-foot {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.625rem 1rem;
-    border-top: 1px solid var(--color-slate-100);
-    font-size: 0.75rem;
-    color: var(--color-slate-600);
-    cursor: pointer;
-  }
-
-  .doc { display: flex; gap: 0.75rem; padding: 0.875rem 1rem; border-bottom: 1px solid var(--color-slate-100); }
-  .doc:last-child { border-bottom: none; }
-  .doc:hover { background: var(--color-slate-50); }
-  .doc[draggable='true'] { cursor: grab; }
-  .doc.superseded .title-link { color: var(--color-slate-500); }
-  .doc-icon { font-size: 1.25rem; color: var(--color-slate-400); margin-top: 0.1rem; flex-shrink: 0; }
-  .doc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem; }
-  .title-link {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-slate-800);
-    cursor: pointer;
-    text-align: left;
-    line-height: 1.35;
-  }
-  .title-link:hover { color: var(--color-primary-600); text-decoration: underline; }
-  .doc-meta { font-size: 0.75rem; color: var(--color-slate-500); display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; }
-  .doc-file { word-break: break-all; }
-  .doc-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 0.5rem; margin-top: 0.5rem; }
-  .doc-actions { display: flex; align-items: center; gap: 0.0625rem; margin-left: auto; }
-  .doc-error { margin-top: 0.375rem; font-size: 0.75rem; color: var(--color-red-600); }
-  .confirm-delete { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--color-red-600); }
-  .empty-row { text-align: center; color: var(--color-slate-500); font-size: 0.8125rem; padding: 2rem 1.25rem; }
+  .folder-error { margin: 0.5rem 0.75rem 0; padding: 0.5rem 0.625rem; background: var(--color-red-50); color: var(--color-red-600); border-radius: var(--radius-md); font-size: 0.75rem; line-height: 1.4; flex-shrink: 0; }
 
   /* ── Modal ── */
   .modal-backdrop {
