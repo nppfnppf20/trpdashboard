@@ -192,6 +192,11 @@
     menu = { doc: d, left: Math.max(8, r.right - MENU_W), top: up ? r.top - 4 : r.bottom + 4, up };
   }
 
+  // Keyboard users land on the first available item when the menu opens
+  function focusFirst(node) {
+    node.querySelector('button:not(:disabled)')?.focus();
+  }
+
   function menuAction(name) {
     const d = menu?.doc;
     menu = null;
@@ -394,7 +399,7 @@
 
 {#if menu}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <div class="menu" role="menu" style="left: {menu.left}px; top: {menu.top}px; transform: translateY({menu.up ? '-100%' : '0'})" on:click|stopPropagation>
+  <div class="menu" role="menu" tabindex="-1" use:focusFirst style="left: {menu.left}px; top: {menu.top}px; transform: translateY({menu.up ? '-100%' : '0'})" on:click|stopPropagation>
     {#if menu.doc.is_current}
       <button role="menuitem" on:click={() => menuAction('newversion')}><i class="las la-code-branch"></i> Upload new version</button>
     {/if}

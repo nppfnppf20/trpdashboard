@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { user, userRole, signOut } from '$lib/stores/auth.js';
+  import { user, userRole, userDisplayName, signOut } from '$lib/stores/auth.js';
   import {
     projects, selectedProjectId, selectedProject, hasSelectedProject,
     loadProjects, selectProject, clearProjectSelection
@@ -153,7 +153,7 @@
       .join('');
   }
 
-  $: displayName = $user?.user_metadata?.full_name || $user?.email || '';
+  $: displayName = $userDisplayName || $user?.user_metadata?.full_name || $user?.email || '';
 
   async function handleLogout() {
     await signOut();
@@ -328,16 +328,23 @@
   </div>
 
   <div class="profile">
-    <button class="profile-link" on:click={() => openProfile($user.id)} title="View my profile">
+    <div class="profile-who">
       <div class="avatar">{initials(displayName)}</div>
       <div class="profile-text">
-        <div class="profile-name">{displayName}</div>
+        <div class="profile-name" title={displayName}>{displayName}</div>
         <div class="profile-role">{$userRole}</div>
       </div>
-    </button>
-    <button class="logout-btn" on:click={handleLogout} title="Logout" aria-label="Logout">
-      <i class="las la-sign-out-alt"></i>
-    </button>
+    </div>
+    <div class="profile-actions">
+      <button class="profile-btn" on:click={() => openProfile($user.id)}>
+        <i class="las la-user"></i>
+        Profile
+      </button>
+      <button class="profile-btn logout-btn" on:click={handleLogout}>
+        <i class="las la-sign-out-alt"></i>
+        Log out
+      </button>
+    </div>
   </div>
 </div>
 
@@ -651,40 +658,30 @@
 
   .profile {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
+    flex-direction: column;
+    gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
   }
 
-  .profile-link {
+  .profile-who {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    flex: 1;
     min-width: 0;
-    background: none;
-    border: none;
-    padding: 0;
-    text-align: left;
-    cursor: pointer;
-    border-radius: var(--radius-md, 6px);
-  }
-
-  .profile-link:hover .profile-name {
-    color: var(--color-primary-600);
   }
 
   .avatar {
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
-    background: var(--color-slate-800);
+    background: var(--color-primary-600);
     color: var(--color-white);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 700;
     flex-shrink: 0;
   }
@@ -695,9 +692,10 @@
   }
 
   .profile-name {
-    font-size: 0.78125rem;
+    font-size: 0.8125rem;
     font-weight: 600;
     color: var(--color-slate-800);
+    line-height: 1.25;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -705,20 +703,46 @@
 
   .profile-role {
     font-size: 0.6875rem;
-    color: var(--color-slate-400);
+    color: var(--color-slate-500);
+    line-height: 1.25;
     text-transform: capitalize;
   }
 
-  .logout-btn {
-    background: none;
-    border: none;
-    color: var(--color-slate-400);
-    cursor: pointer;
-    padding: var(--space-1);
-    flex-shrink: 0;
+  .profile-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
   }
 
-  .logout-btn:hover {
+  .profile-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 8px;
+    border-radius: var(--radius-md, 6px);
+    border: 1px solid var(--color-slate-200);
+    background: var(--color-white);
     color: var(--color-slate-700);
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+
+  .profile-btn:hover {
+    background: var(--color-slate-100);
+    border-color: var(--color-slate-300);
+  }
+
+  .profile-btn.logout-btn:hover {
+    background: var(--color-red-50);
+    border-color: var(--color-red-200);
+    color: var(--color-red-600);
+  }
+
+  .profile-btn i {
+    font-size: 1rem;
   }
 </style>

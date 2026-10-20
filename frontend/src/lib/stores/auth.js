@@ -13,6 +13,8 @@ import { clearAllStoredScreenshots } from '$lib/services/screenshotManager.js';
 export const user = writable(null);
 export const session = writable(null);
 export const userRole = writable('viewer');
+// The "First Last" name from the synced profile (same one the profile page shows).
+export const userDisplayName = writable('');
 export const loading = writable(true);
 export const sessionIdle = writable(false);
 
@@ -50,7 +52,9 @@ export async function initAuth() {
         }
         // Fire-and-forget: keeps public.user_profiles in sync with the Supabase
         // account so it can be queried/joined from Postgres. Never blocks login.
-        syncMyProfile().catch(e => console.warn('Failed to sync user profile:', e));
+        syncMyProfile()
+          .then(profile => userDisplayName.set(profile?.display_name || ''))
+          .catch(e => console.warn('Failed to sync user profile:', e));
       }
       // SIGNED_IN / TOKEN_REFRESHED: do nothing.
       // The Supabase client already has the fresh token internally,
@@ -93,6 +97,7 @@ export async function signOut() {
     session.set(null);
     user.set(null);
     userRole.set('viewer');
+    userDisplayName.set('');
 
     // Remove authenticated data cached in browser storage (ASVS V14.3.1)
     clearAllStoredScreenshots();

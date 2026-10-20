@@ -83,22 +83,29 @@
   function buildBlocks(list) {
     /** @type {any[]} */
     const out = [];
+    // The cover details (author, approver, review dates) are metadata, so they go after the policy text,
+    // all together in one box
+    /** @type {string[]} */
+    const infoLines = [];
+    let infoChunk = null;
     let lastPath = null;
     /** @type {string[]} */
     let lastParts = [];
     for (const s of list) {
+      const isInfo = s.section_path === 'Document information';
       const parts = s.section_path.split(' > ');
+      if (isInfo) {
+        infoChunk ??= s.chunk_index;
+        infoLines.push(...s.content.split(/\n{2,}/).map(p => p.trim()).filter(Boolean));
+        continue;
+      }
       if (s.section_path !== lastPath) {
-        if (s.section_path === 'Document information') {
-          out.push({ kind: 'info-heading', chunk: s.chunk_index });
-        } else {
-          // A parent section with no text of its own ("2. Responsibilities" above "2.1 ...") has no
-          // chunk, so its heading is added here, from wherever this path first differs from the last.
-          let common = 0;
-          while (common < parts.length - 1 && parts[common] === lastParts[common]) common++;
-          for (let i = common; i < parts.length; i++) {
-            out.push({ kind: 'heading', depth: Math.min(i + 1, 3), text: parts[i], chunk: i === parts.length - 1 ? s.chunk_index : null });
-          }
+        // A parent section with no text of its own ("2. Responsibilities" above "2.1 ...") has no
+        // chunk, so its heading is added here, from wherever this path first differs from the last.
+        let common = 0;
+        while (common < parts.length - 1 && parts[common] === lastParts[common]) common++;
+        for (let i = common; i < parts.length; i++) {
+          out.push({ kind: 'heading', depth: Math.min(i + 1, 3), text: parts[i], chunk: i === parts.length - 1 ? s.chunk_index : null });
         }
         lastPath = s.section_path;
         lastParts = parts;
@@ -114,9 +121,12 @@
           list_.items.push(para.replace(BULLET_RE, ''));
         } else {
           list_ = null;
-          out.push({ kind: s.section_path === 'Document information' ? 'info' : 'para', text: para, chunk: s.chunk_index });
+          out.push({ kind: 'para', text: para, chunk: s.chunk_index });
         }
       }
+    }
+    if (infoLines.length) {
+      out.push({ kind: 'info-heading', chunk: infoChunk }, { kind: 'info', text: infoLines.join('\n'), chunk: infoChunk });
     }
     return out;
   }
@@ -303,7 +313,8 @@
   .rh-2, .rh-3 { font-size: 1.0625rem; margin: 1.5rem 0 0.5rem; color: var(--color-slate-800); }
   .reader > :first-child { margin-top: 0; }
 
-  .info-label { font-size: 0.625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-slate-400); margin-bottom: 0.375rem; }
+  /* Document details sit at the end, set apart from the policy text */
+  .info-label { font-size: 0.625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-slate-500); margin: 2.25rem 0 0.375rem; }
   .info {
     font-size: 0.8125rem;
     color: var(--color-slate-600);
@@ -311,7 +322,8 @@
     border: 1px solid var(--color-slate-200);
     border-radius: var(--radius-md);
     padding: 0.75rem 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
+    white-space: pre-line;
   }
 
   .focused { background: var(--color-badge-warning-bg); box-shadow: -0.75rem 0 0 var(--color-badge-warning-bg), 0.75rem 0 0 var(--color-badge-warning-bg); border-radius: var(--radius-sm); }
