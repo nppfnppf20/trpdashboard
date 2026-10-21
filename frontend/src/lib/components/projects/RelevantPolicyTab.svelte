@@ -8,6 +8,7 @@
   import { checkNppfPolicyLibrary } from '$lib/api/draftCheck.js';
   import { getActionPrompt, saveActionPrompt, resetActionPrompt } from '$lib/api/planningApplication.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
+  import PlanPolicyPickerModal from '$lib/components/projects/PlanPolicyPickerModal.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -342,6 +343,15 @@
   // re-upload that plan's document, and let the LLM find each policy's
   // verbatim operative wording in it (one plan at a time, so the document
   // handed to the model only ever needs to cover the policies it belongs to).
+  // Pick Policies from a Plan: upload a whole development plan and pull chosen
+  // policies out verbatim (also files the plan itself in Relevant Documents).
+  let showPlanPicker = false;
+
+  async function onPlanPickerSaved() {
+    await load();
+    dispatch('changed');
+  }
+
   let showWordingModal = false;
   let wordingStep = 'plan'; // 'plan' | 'upload' | 'review'
   let wordingPlanId = '';
@@ -636,6 +646,9 @@
         <i class="las {showNppfCheck ? 'la-angle-up' : 'la-angle-down'}"></i>
       </button>
       <div class="tab-header-actions">
+        <button class="btn-add-multiple" on:click={() => showPlanPicker = true}>
+          <i class="las la-book"></i> Pick Policies from a Plan
+        </button>
         <button class="btn-add-multiple" on:click={openWordingModal}>
           <i class="las la-file-alt"></i> Extract Policy Wording
         </button>
@@ -1040,6 +1053,10 @@
       </div>
     </div>
   </div>
+{/if}
+
+{#if showPlanPicker}
+  <PlanPolicyPickerModal {projectId} {planDocs} {policies} on:close={() => showPlanPicker = false} on:saved={onPlanPickerSaved} />
 {/if}
 
 <!-- Extract Policy Wording Modal -->

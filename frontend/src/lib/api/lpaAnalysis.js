@@ -121,6 +121,44 @@ export async function generatePlanRelevance(projectId, { file, text, planName } 
   return res.json();
 }
 
+// Plan Policy Picker. Step 1: upload a full development plan, get back what it
+// is (and where it sits in Relevant Documents) plus an index of its policies.
+// Step 2: re-send the same document with the chosen index entries to pull
+// each policy's wording out verbatim. Nothing is stored between the calls.
+function planPickerBody({ file, text }, fields) {
+  if (file) {
+    const body = new FormData();
+    body.append('file', file);
+    for (const [k, v] of Object.entries(fields)) body.append(k, typeof v === 'string' ? v : JSON.stringify(v));
+    return { body };
+  }
+  return { body: JSON.stringify({ text, ...fields }), headers: { 'Content-Type': 'application/json' } };
+}
+
+export async function analysePlanDocument(projectId, { file, text } = {}) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/plan-picker/analyse`, {
+    method: 'POST',
+    ...planPickerBody({ file, text }, {})
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to analyse the plan document');
+  }
+  return res.json();
+}
+
+export async function extractPlanPolicies(projectId, { file, text, selections, hint, hintNote } = {}) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/plan-picker/extract`, {
+    method: 'POST',
+    ...planPickerBody({ file, text }, { selections, hint: hint || '', hint_note: hintNote || '' })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to extract policies');
+  }
+  return res.json();
+}
+
 export async function getNationalPolicyPrecedents(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/national-policy-precedents`);
   if (!res.ok) throw new Error('Failed to fetch national policy precedents');
