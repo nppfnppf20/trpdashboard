@@ -7,8 +7,7 @@
 import { chunkText } from './parser.service.js';
 import {
   callClaude, parseJSON, MAX_CHUNKS, MODEL_SONNET,
-  PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, buildSequentialBatches,
-  buildFullDocumentBlock, checkDocumentSize
+  PLANNING_TIER_LABELS, PLANNING_TIER_ORDER, buildSequentialBatches
 } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,8 +123,8 @@ const POLICY_EXTRACTION_SYSTEM = `You are a specialist planning consultant extra
 (e.g. a planning statement, appeal statement, stage one review, or committee report) so they can be logged in a project's policy tracker. \
 This is an identification pass only: you are finding WHICH policies and plans are cited, not their wording. A document like a pre-application \
 letter or stage one review typically discusses, summarises, or briefly quotes a fragment of a policy while making a point about it — none of \
-that counts as the policy's full operative wording, and none of it should be recorded as such. The actual verbatim wording is captured later, \
-in a separate pass that reads the source plan document (or, for NPPF policies, pulled from a canonical library) — never by this one. \
+that counts as the policy's full operative wording, and none of it should be recorded as such. Wording is never captured by this pass: \
+NPPF policies are filled from a canonical library afterwards, and everything else is added by the user. \
 Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
 
 const POLICY_EXTRACTION_PROMPT = `The following is one section of a larger document (other sections are sent separately as their own requests) — extract two things found in THIS section, so they can be added to a project's policy tracker:
@@ -150,7 +149,7 @@ For each distinct POLICY you find, extract:
 - policy_type: one of "national" (NPPF/NPPG/national guidance), "local" (adopted Local Plan), "neighbourhood" (Neighbourhood Plan), "supplementary" (SPD/SPG/design guide), "other"
 - plan_name: the name of the parent plan/document this policy belongs to, exactly matching a "plan_name" from the plans list above where applicable (null if the policy is national/NPPF or has no identifiable parent document)
 
-Do NOT include a "policy_text" field, and do not attempt to record a policy's wording at all — not even if this section appears to quote a short fragment of one. This pass only identifies which policies exist; capturing their wording is a separate, later step that reads the actual source plan document.
+Do NOT include a "policy_text" field, and do not attempt to record a policy's wording at all — not even if this section appears to quote a short fragment of one. This pass only identifies which policies exist.
 
 Rules:
 - Only extract policies and plans actually present in THIS section — never add ones you recognise from general knowledge that aren't cited here.
@@ -229,7 +228,7 @@ export async function extractPoliciesFromDocument(rawText) {
         // Always empty here regardless of what the model returns — this pass
         // identifies policies, it never records wording (see prompt above).
         // National ones get filled from the NPPF library afterward; others
-        // get filled later by the dedicated wording-extraction pass.
+        // are filled in by the user.
         policy_text: '',
         relevant_supporting_text: '',
         notes: '',
@@ -250,157 +249,6 @@ export async function extractPoliciesFromDocument(rawText) {
     policies: [...policiesByKey.values()],
     plans: [...plansByKey.values()],
     sizeWarning: [truncationWarning, failureWarning].filter(Boolean).join(' ') || null,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Policy wording extraction — given policies already saved against one
-// development plan, re-read that plan's document and pull out each named
-// policy's verbatim operative wording, distinct from its supporting/
-// explanatory text. Run one plan at a time (the caller uploads that plan's
-// document each time — nothing is persisted from the original extraction),
-// so the prompt only ever has to search one document for the policies that
-// actually belong to it. See [[project_policy_wording_extraction]].
-// ─────────────────────────────────────────────────────────────────────────────
-
-const POLICY_WORDING_SYSTEM = `You are a specialist planning consultant extracting the exact verbatim wording of specific, named planning policies from a development plan document (e.g. a Local Plan or Neighbourhood Plan), so it can be recorded precisely in a project's policy tracker.
-
-You will be given a list of named policies to find, and the full text of the plan document. For each policy, locate it by its reference and/or name and extract ONLY its operative policy wording, exactly as written, character for character.
-
-CRITICAL DISTINCTION: every policy in a development plan is normally followed or preceded by explanatory material such as "Reasoned Justification", "Supporting Text", "Explanation", or introductory context paragraphs under the same heading. Do NOT include any of this. Extract ONLY the operative wording of the policy itself, i.e. the actual normative text (the numbered/lettered criteria, "the Council will...", "Development will be permitted where...", etc.) that sits directly under the policy's own heading or box, before any "Reasoned Justification"/"Supporting Text"/"Explanation" sub-heading begins.
-
-VERBATIM RULE: copy the operative wording word-for-word, including punctuation, capitalisation, and any lettered/numbered sub-parts inline. Do not paraphrase, summarise, correct grammar, reformat, or merge/split paragraphs.
-
-If a listed policy cannot be found in this document at all (wrong document, or only referenced by name without its wording appearing here), return null for that policy's wording rather than guessing or reconstructing it from general knowledge.
-
-Never use an em dash (—); use a comma, colon, or rewrite the sentence instead.`;
-
-const POLICY_WORDING_PROMPT = `The following is one section of a larger document (other sections are sent separately as their own requests) — find and extract the verbatim operative wording of any of the listed policies that appear in THIS section. Most policies will not appear in any given section — that's expected, return null for those.
-
-Policies to find:
-{{POLICY_LIST}}
-
-Document section:
-<document>
-{{DOCUMENT}}
-</document>
-
-Respond ONLY with valid JSON, no markdown fences:
-{
-  "results": [
-    { "index": 1, "wording": "verbatim operative policy wording, or null if this policy is not found in THIS section" }
-  ]
-}
-Return exactly one result per listed policy, in the same order, using its index number.`;
-
-/**
- * @param {Array<{id:number, policy_reference:string|null, policy_name:string}>} policies - policies belonging to one plan
- * @param {string} rawText - the re-uploaded plan document's parsed text
- * @returns {Promise<{results: Array<{policy_id:number, wording:string|null}>, sizeWarning:string|null}>}
- */
-export async function extractPolicyWordingFromDocument(policies, rawText) {
-  const { batches, warningMessage: truncationWarning } = buildSequentialBatches(rawText);
-  if (!batches.length) return { results: policies.map(p => ({ policy_id: p.id, wording: null })), sizeWarning: null };
-
-  const policyList = policies
-    .map((p, i) => `${i + 1}. ${p.policy_reference ? `${p.policy_reference}: ` : ''}${p.policy_name}`)
-    .join('\n');
-
-  const wordingById = new Map(policies.map(p => [p.id, null]));
-  let failedBatches = 0;
-
-  // Sequential, not parallel: keeps each call's input and output small
-  // enough to stay well under the token caps, regardless of how long the
-  // source document is. The full policy list is re-sent to every batch
-  // (cheap — it's just references/names) since any policy could turn up in
-  // any section; the document text is what's actually split.
-  for (let i = 0; i < batches.length; i++) {
-    const userPrompt = POLICY_WORDING_PROMPT
-      .replace('{{POLICY_LIST}}', policyList)
-      .replace('{{DOCUMENT}}', batches[i]);
-
-    let raw, parsed;
-    try {
-      raw = await callClaude(POLICY_WORDING_SYSTEM, userPrompt, MODEL_SONNET, 12000);
-      parsed = parseJSON(raw);
-    } catch (err) {
-      console.error(`[extractPolicyWordingFromDocument] batch ${i + 1}/${batches.length} failed:`, err.message);
-      failedBatches++;
-      continue;
-    }
-
-    const results = Array.isArray(parsed.results) ? parsed.results : [];
-    const byIndex = new Map(results.map(r => [r.index, r]));
-    policies.forEach((p, idx) => {
-      if (wordingById.get(p.id)) return; // already found in an earlier batch
-      const r = byIndex.get(idx + 1);
-      const wording = typeof r?.wording === 'string' && r.wording.trim() ? r.wording.trim() : null;
-      if (wording) wordingById.set(p.id, wording);
-    });
-  }
-
-  const failureWarning = failedBatches > 0
-    ? `${failedBatches} of ${batches.length} document section(s) could not be processed — some policy wording may be missing. Check the source document directly for that section.`
-    : null;
-
-  return {
-    results: policies.map(p => ({ policy_id: p.id, wording: wordingById.get(p.id) })),
-    sizeWarning: [truncationWarning, failureWarning].filter(Boolean).join(' ') || null,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Plan relevance summary — for a plan document with no policies logged
-// against it (typically Supplementary Guidance or another material
-// consideration, which isn't structured into discrete "policies" the way a
-// Local Plan is), generate a short project-specific note on how the
-// document actually applies to this site and proposal, grounded in the
-// re-uploaded document and the project's own context. Used by the same
-// "Extract Policy Wording" flow as extractPolicyWordingFromDocument above —
-// which of the two runs depends on whether the chosen plan has any saved
-// policies. Nothing is saved here; the caller reviews it first, same as
-// everywhere else, then saves it into that plan's own `relevance` field.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const PLAN_RELEVANCE_SYSTEM = `You are a specialist planning consultant writing a short, project-specific relevance note on a planning document (typically supplementary guidance, an SPD, or another material consideration) for a live project's policy tracker. \
-You are not summarising the document in general — you are judging what in it actually bears on this specific site and proposal, and saying so plainly. \
-Never use em dashes (—); use a comma, colon, or rewrite the sentence instead.`;
-
-const PLAN_RELEVANCE_PROMPT = `## Live Project Context
-{{PROJECT_CONTEXT}}
-
-## Document: {{PLAN_NAME}}
-<document>
-{{DOCUMENT}}
-</document>
-
-Write a concise relevance note, 2-4 short paragraphs of plain text (no markdown headings, no bullet lists), explaining how this document applies to THIS project specifically — which parts of its guidance or content are most relevant to the site and the proposed development, and why, given the project context above. Do not produce a generic summary of the whole document; focus only on what matters here. If, having read it, the document turns out to have little or no bearing on this particular site or proposal, say that plainly instead of inventing relevance.`;
-
-/**
- * @param {string} planName
- * @param {object} projectContext - shape returned by the controller's getProjectContext
- * @param {string} rawText - the re-uploaded document's parsed text
- * @returns {Promise<{summary: string, warning: string|null}>}
- */
-export async function generatePlanRelevanceSummary(planName, projectContext, rawText) {
-  const sizeCheck = checkDocumentSize(rawText);
-  if (sizeCheck.status === 'rejected') {
-    const err = new Error(sizeCheck.warningMessage);
-    err.status = 400;
-    throw err;
-  }
-
-  const docBlock = buildFullDocumentBlock(rawText);
-  const userPrompt = PLAN_RELEVANCE_PROMPT
-    .replace('{{PROJECT_CONTEXT}}', buildProjectBlock(projectContext))
-    .replace('{{PLAN_NAME}}', planName)
-    .replace('{{DOCUMENT}}', docBlock);
-
-  const raw = await callClaude(PLAN_RELEVANCE_SYSTEM, userPrompt, MODEL_SONNET, 2000);
-
-  return {
-    summary: raw.trim(),
-    warning: sizeCheck.warningMessage,
   };
 }
 

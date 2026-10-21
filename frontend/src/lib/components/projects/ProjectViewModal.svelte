@@ -14,7 +14,6 @@
   import WorkbookTab from '$lib/components/projects/WorkbookTab.svelte';
   import ProjectDocsTab from '$lib/components/projects/ProjectDocsTab.svelte';
   import PlanningHistoryTab from '$lib/components/projects/PlanningHistoryTab.svelte';
-  import RelevantDocumentsSection from '$lib/components/projects/RelevantDocumentsSection.svelte';
   import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import ConsultationTrackerTab from '$lib/components/projects/ConsultationTrackerTab.svelte';
   import ConditionsTrackerTab from '$lib/components/projects/ConditionsTrackerTab.svelte';
@@ -24,9 +23,6 @@
   import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
-  import { extractPoliciesFromDocument, getPolicies } from '$lib/api/lpaAnalysis.js';
-  import { exportPolicyPdf } from '$lib/services/policyPdfExport.js';
-  import { getPolicyDocuments, createPolicyDocument } from '$lib/api/policyDocuments.js';
 
   export let isOpen = false;
   export let onClose = () => {};
@@ -40,22 +36,6 @@
 
   // Tab state
   let activeTab = 'site_boundary';
-  let policyFormOpen = false;
-  let exportingPolicy = false;
-
-  // Fetches fresh copies so the PDF reflects what's saved, whatever the child components currently show.
-  async function exportPolicy() {
-    exportingPolicy = true;
-    try {
-      const [policies, docs] = await Promise.all([getPolicies(projectData.id), getPolicyDocuments(projectData.id)]);
-      exportPolicyPdf(projectData, policies, docs);
-    } catch (err) {
-      alert(`Could not export policy PDF: ${err.message}`);
-    } finally {
-      exportingPolicy = false;
-    }
-  }
-
   const trackerLabels = {
     consultation_tracker: 'Consultation Tracker',
     conditions_tracker: 'Conditions Tracker',
@@ -506,141 +486,7 @@
     // being destroyed, just switching tabs in place (openProjectModal for
     // the SAME project doesn't remount it), so resetting would force a
     // pointless reload.
-    showExtractModal = false;
-    policyFormOpen = false;
     openProjectModal(projectId, 'details');
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Extract from Document — reads a planning document, pulls out policies and
-  // development plan documents it references, and stages both for review
-  // before anything is saved. Lives here rather than inside RelevantPolicyTab
-  // because it populates both the Relevant Documents section and the
-  // Relevant Policy tab below it.
-  // ─────────────────────────────────────────────────────────────────────────
-
-  let relevantDocsRef;
-  let relevantPolicyRef;
-
-  let showExtractModal = false;
-  let extractStep = 'input'; // 'input' | 'plans'
-  let extractMode = 'file'; // 'file' | 'text'
-  let extractFile = null;
-  let extractText = '';
-  let extracting = false;
-  let confirmingPlans = false;
-  let extractError = null;
-  let extractWarning = null;
-  let stagedPlans = [];
-  let stagedPolicies = [];
-
-  function openExtractModal() {
-    extractStep = 'input';
-    extractMode = 'file';
-    extractFile = null;
-    extractText = '';
-    extractError = null;
-    extractWarning = null;
-    stagedPlans = [];
-    stagedPolicies = [];
-    showExtractModal = true;
-  }
-
-  function closeExtractModal() {
-    showExtractModal = false;
-    extractStep = 'input';
-    extractFile = null;
-    extractText = '';
-    extractError = null;
-    stagedPlans = [];
-    stagedPolicies = [];
-  }
-
-  function onExtractFileChange(e) {
-    extractFile = e.target.files?.[0] ?? null;
-  }
-
-  // Builds rows for RelevantPolicyTab's bulk-review table from extracted
-  // policies, matching each one to a plan (by name, case-insensitive) from
-  // the given plan list — used both for plans that already existed and ones
-  // just created via confirmPlansAndContinue below.
-  function policiesToBulkRows(policies, plans) {
-    return policies.map(p => {
-      const matched = p.plan_name
-        ? plans.find(d => d.plan_name?.trim().toLowerCase() === p.plan_name.trim().toLowerCase())
-        : null;
-      return {
-        policy_reference: p.policy_reference || '',
-        policy_name: p.policy_name || '',
-        policy_type: p.policy_type || 'national',
-        policy_text: p.policy_text || '',
-        relevant_supporting_text: '',
-        notes: '',
-        is_key_policy: false,
-        plan_id: matched ? matched.id : ''
-      };
-    });
-  }
-
-  async function runExtract() {
-    if (extractMode === 'file' && !extractFile) { extractError = 'Choose a file to upload'; return; }
-    if (extractMode === 'text' && !extractText.trim()) { extractError = 'Paste some text first'; return; }
-    extracting = true;
-    extractError = null;
-    try {
-      const { policies: found, plans: foundPlans, warning } = await extractPoliciesFromDocument(
-        projectId,
-        extractMode === 'file' ? { file: extractFile } : { text: extractText }
-      );
-      extractWarning = warning || null;
-      if (!found.length && !foundPlans.length) {
-        extractError = 'No policies or development plan documents were found in that document.';
-        return;
-      }
-      stagedPolicies = found;
-      if (foundPlans.length > 0) {
-        stagedPlans = foundPlans.map(p => ({ ...p, include: true }));
-        extractStep = 'plans';
-      } else {
-        const existingPlans = await getPolicyDocuments(projectId);
-        showExtractModal = false;
-        relevantPolicyRef?.reviewExtractedPolicies(policiesToBulkRows(found, existingPlans), extractWarning);
-      }
-    } catch (err) {
-      extractError = err.message;
-    } finally {
-      extracting = false;
-    }
-  }
-
-  // Creates whichever staged plans the user kept ticked, refreshes both child
-  // panels so they pick the new plans up, then hands the reviewed policies
-  // off to RelevantPolicyTab's existing bulk-review table.
-  async function confirmPlansAndContinue() {
-    confirmingPlans = true;
-    extractError = null;
-    try {
-      const toCreate = stagedPlans.filter(p => p.include && p.plan_name.trim());
-      const datedSection = p => p.section === 'adopted' || p.section === 'supplementary' || p.section === 'other';
-      await Promise.all(toCreate.map(p => createPolicyDocument(projectId, {
-        section: p.section,
-        plan_name: p.plan_name.trim(),
-        plan_type: (p.section === 'adopted' || p.section === 'emerging') ? p.plan_type : null,
-        year_adopted: datedSection(p) ? (p.year_adopted || null) : null,
-        month_adopted: datedSection(p) ? (p.month_adopted || null) : null
-      })));
-
-      await Promise.all([relevantDocsRef?.refresh(), relevantPolicyRef?.refreshPlanDocs()]);
-      const allPlans = await getPolicyDocuments(projectId);
-
-      showExtractModal = false;
-      extractStep = 'input';
-      relevantPolicyRef?.reviewExtractedPolicies(policiesToBulkRows(stagedPolicies, allPlans), extractWarning);
-    } catch (err) {
-      extractError = err.message;
-    } finally {
-      confirmingPlans = false;
-    }
   }
 </script>
 
@@ -1240,24 +1086,9 @@
           {:else if activeTab === 'policy_and_history'}
             <div class="policy-history-split">
               <div class="split-card">
-                <div class="split-card-label split-card-label--with-action">
-                  <span>Policy</span>
-                  <div class="policy-header-actions">
-                    <button class="btn-extract-policy" on:click={openExtractModal}>
-                      <i class="las la-file-import"></i> Extract from Document
-                    </button>
-                    <button class="btn-extract-policy" on:click={exportPolicy} disabled={exportingPolicy}>
-                      <i class="las la-file-pdf"></i> {exportingPolicy ? 'Exporting…' : 'Export to PDF'}
-                    </button>
-                  </div>
-                </div>
+                <div class="split-card-label">Policy</div>
                 <div class="split-card-body split-card-body--scroll">
-                  {#if !policyFormOpen}
-                    <div class="left-panel-section-divider">Relevant Documents</div>
-                    <RelevantDocumentsSection project={projectData} bind:this={relevantDocsRef} on:changed={() => relevantPolicyRef?.refresh()} />
-                    <div class="left-panel-section-divider">Relevant Planning Policy</div>
-                  {/if}
-                  <RelevantPolicyTab project={projectData} bind:this={relevantPolicyRef} on:formopen={() => policyFormOpen = true} on:formclose={() => policyFormOpen = false} on:changed={() => relevantDocsRef?.refresh()} />
+                  <RelevantPolicyTab project={projectData} />
                 </div>
               </div>
               <div class="split-card">
@@ -1322,95 +1153,6 @@
   issueTracks={[]}
   onClose={() => showMeetingGuide = false}
 />
-
-<!-- Extract from Document Modal -->
-{#if showExtractModal}
-  <div class="extract-backdrop" on:click|self={closeExtractModal} role="presentation">
-    <div class="extract-modal">
-      <div class="extract-modal-header">
-        <h3>{extractStep === 'input' ? 'Extract Policies from Document' : 'Plans & Guidance Documents Found'}</h3>
-        <button class="extract-close-btn" on:click={closeExtractModal}>&times;</button>
-      </div>
-
-      <div class="extract-modal-body">
-        {#if extractStep === 'input'}
-          <p class="extract-hint">
-            Upload a planning document (e.g. a stage one review or planning statement) or paste its text below.
-            The AI will find every policy it cites and copy the wording verbatim, plus any development plans, SPDs, or other
-            documents it references — you'll review and edit everything before anything is saved.
-          </p>
-
-          <div class="extract-mode-toggle">
-            <button type="button" class:active={extractMode === 'file'} on:click={() => extractMode = 'file'}>Upload file</button>
-            <button type="button" class:active={extractMode === 'text'} on:click={() => extractMode = 'text'}>Paste text</button>
-          </div>
-
-          {#if extractMode === 'file'}
-            <input type="file" accept=".pdf,.docx,.txt,.md" on:change={onExtractFileChange} />
-            {#if extractFile}<p class="extract-filename"><i class="las la-file-alt"></i> {extractFile.name}</p>{/if}
-          {:else}
-            <textarea bind:value={extractText} rows="10" placeholder="Paste the document text here…"></textarea>
-          {/if}
-        {:else}
-          <p class="extract-hint">
-            Found {stagedPlans.length} document{stagedPlans.length === 1 ? '' : 's'} referenced (adopted/emerging plans, supplementary guidance, or other material considerations).
-            Check each one's <strong>type</strong> — the AI's guess isn't always right, e.g. supplementary guidance or other national documents can get mislabelled as an adopted plan.
-            Untick any you don't want added to the project's Development Plans list, correct their name/type/date as needed, then continue to review the policies.
-          </p>
-
-          <div class="staged-plans-list">
-            {#each stagedPlans as plan, i (i)}
-              <div class="staged-plan-row" class:excluded={!plan.include}>
-                <input type="checkbox" bind:checked={plan.include} />
-                <input type="text" class="staged-plan-name" bind:value={plan.plan_name} disabled={!plan.include} />
-                <select bind:value={plan.section} disabled={!plan.include}>
-                  <option value="adopted">Adopted</option>
-                  <option value="emerging">Emerging</option>
-                  <option value="supplementary">Supplementary</option>
-                  <option value="other">Other</option>
-                </select>
-                {#if plan.section === 'adopted' || plan.section === 'emerging'}
-                  <select bind:value={plan.plan_type} disabled={!plan.include}>
-                    <option value="local">Local Plan</option>
-                    <option value="neighbourhood">Neighbourhood Plan</option>
-                  </select>
-                {/if}
-                {#if plan.section === 'adopted' || plan.section === 'supplementary' || plan.section === 'other'}
-                  <input type="number" class="staged-plan-year" bind:value={plan.year_adopted} placeholder="Year" min="1900" max="2100" disabled={!plan.include} />
-                  <input type="number" class="staged-plan-month" bind:value={plan.month_adopted} placeholder="Month" min="1" max="12" disabled={!plan.include} />
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-
-        {#if extractWarning}
-          <div class="extract-warning">{extractWarning}</div>
-        {/if}
-        {#if extractError}
-          <div class="extract-error">{extractError}</div>
-        {/if}
-      </div>
-
-      <div class="extract-modal-footer">
-        <span class="extract-count-hint">Nothing is saved until you review and confirm the results</span>
-        <div class="extract-footer-actions">
-          {#if extractStep === 'input'}
-            <button class="btn-cancel" on:click={closeExtractModal} disabled={extracting}>Cancel</button>
-            <button class="btn-save" on:click={runExtract} disabled={extracting}>
-              {extracting ? 'Extracting…' : 'Extract'}
-            </button>
-          {:else}
-            <button class="btn-cancel" on:click={closeExtractModal} disabled={confirmingPlans}>Cancel</button>
-            <button class="btn-save" on:click={confirmPlansAndContinue} disabled={confirmingPlans}>
-              {confirmingPlans ? 'Adding…' : 'Continue to Policies'}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
 
 <style>
   /* No longer a true backdrop — this fills the main content area inline
@@ -2130,11 +1872,13 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 1rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--color-purple-600);
-    background: var(--color-purple-50);
-    border-bottom: 1px solid var(--color-violet-200);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-slate-600);
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
 
@@ -2151,236 +1895,11 @@
     overflow-x: hidden;
   }
 
-  .split-card-label--with-action {
-    justify-content: space-between;
-  }
-
-  .btn-extract-policy {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.75rem;
-    background: white;
-    color: var(--color-purple-600);
-    border: 1px solid var(--color-purple-600);
-    border-radius: 6px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    font-family: inherit;
-    flex-shrink: 0;
-  }
-  .btn-extract-policy:hover { background: var(--color-purple-50); }
-  .btn-extract-policy:disabled { opacity: 0.6; cursor: default; }
-  .policy-header-actions { display: flex; gap: 0.5rem; }
-
-  /* Extract from Document modal */
-  .extract-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--overlay-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-    padding: 1rem;
-  }
-
-  .extract-modal {
-    background: white;
-    border-radius: 12px;
-    width: 95%;
-    max-width: 700px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 20px 60px var(--overlay-bg);
-    overflow: hidden;
-  }
-
-  .extract-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--color-slate-200);
-    flex-shrink: 0;
-  }
-  .extract-modal-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--color-slate-800);
-  }
-  .extract-close-btn {
-    background: none;
-    border: none;
-    font-size: 1.75rem;
-    color: var(--color-slate-500);
-    cursor: pointer;
-    line-height: 1;
-    padding: 0;
-    width: 2rem;
-    height: 2rem;
-  }
-  .extract-close-btn:hover { color: var(--color-slate-800); }
-
-  .extract-modal-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1.25rem 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .extract-hint {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--color-slate-500);
-    line-height: 1.5;
-  }
-
-  .extract-mode-toggle { display: flex; gap: 0.5rem; }
-  .extract-mode-toggle button {
-    padding: 0.4rem 0.9rem;
-    border: 1px solid var(--color-slate-300);
-    background: white;
-    color: var(--color-slate-500);
-    border-radius: 6px;
-    font-size: 0.82rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .extract-mode-toggle button.active { background: var(--color-purple-600); color: white; border-color: var(--color-purple-600); }
-
-  .extract-filename {
-    display: flex; align-items: center; gap: 0.4rem;
-    margin: 0; font-size: 0.8rem; color: var(--color-slate-600);
-  }
-
-  .extract-warning {
-    font-size: 0.8rem;
-    color: var(--color-amber-800);
-    background: var(--color-red-50);
-    border: 1px solid var(--color-amber-200);
-    border-radius: 6px;
-    padding: 0.5rem 0.75rem;
-  }
-
-  .extract-error {
-    font-size: 0.8rem;
-    color: var(--color-red-600);
-    background: var(--color-red-50);
-    border: 1px solid var(--color-red-200);
-    border-radius: 6px;
-    padding: 0.5rem 0.75rem;
-  }
-
-  .staged-plans-list { display: flex; flex-direction: column; gap: 0.5rem; }
-  .staged-plan-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    background: var(--color-purple-50);
-    border: 1px solid var(--color-violet-200);
-    border-radius: 8px;
-    padding: 0.6rem 0.75rem;
-  }
-  .staged-plan-row.excluded { opacity: 0.55; }
-  .staged-plan-row input[type="checkbox"] {
-    width: 16px; height: 16px; accent-color: var(--color-purple-600); cursor: pointer; flex-shrink: 0;
-  }
-  /* min-width keeps the name readable — if the row's other fields don't
-     leave room, .staged-plan-row scrolls horizontally rather than squeezing
-     the name down to nothing. */
-  .staged-plan-name { flex: 1 1 auto; min-width: 14rem; }
-  .staged-plan-year { width: 5.5rem; flex-shrink: 0; }
-  .staged-plan-month { width: 5.5rem; flex-shrink: 0; }
-  .staged-plan-row select { flex-shrink: 0; }
-
-  .extract-modal input[type="text"],
-  .extract-modal input[type="number"],
-  .extract-modal input[type="file"],
-  .extract-modal select,
-  .extract-modal textarea {
-    padding: 0.5rem 0.65rem;
-    border: 1px solid var(--color-slate-300);
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-family: inherit;
-    color: var(--color-slate-800);
-    background: white;
-    resize: vertical;
-  }
-  .extract-modal input[type="text"]:focus,
-  .extract-modal select:focus,
-  .extract-modal textarea:focus {
-    outline: none;
-    border-color: var(--color-purple-600);
-    box-shadow: 0 0 0 3px var(--color-violet-100);
-  }
-
-  .extract-modal-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--color-slate-200);
-    flex-shrink: 0;
-  }
-  .extract-count-hint { font-size: 0.8rem; color: var(--color-slate-500); }
-  .extract-footer-actions { display: flex; gap: 0.5rem; }
-
-  .extract-modal-footer .btn-cancel {
-    padding: 0.45rem 1rem;
-    border: 1px solid var(--color-slate-300);
-    background: white;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-family: inherit;
-    cursor: pointer;
-    color: var(--color-slate-500);
-  }
-  .extract-modal-footer .btn-cancel:hover { background: var(--color-slate-50); }
-  .extract-modal-footer .btn-save {
-    padding: 0.45rem 1.1rem;
-    background: var(--color-purple-600);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  .extract-modal-footer .btn-save:hover:not(:disabled) { background: var(--color-purple-700); }
-  .extract-modal-footer .btn-save:disabled,
-  .extract-modal-footer .btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
-
   /* Override child components' own scroll when they live in the shared scrolling left panel */
   .split-card-body--scroll :global(.policy-tab) {
     height: auto;
     overflow-y: visible;
-    padding: 0;
+    padding: 1rem 1.25rem;
   }
 
-  .left-panel-section-divider {
-    padding: 0.6rem 1.25rem 0.4rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--color-purple-700);
-    background: var(--color-violet-50);
-    border-top: 1px solid var(--color-violet-200);
-    border-bottom: 1px solid var(--color-violet-200);
-    flex-shrink: 0;
-  }
-
-  .left-panel-section-divider:first-child {
-    border-top: none;
-  }
 </style>

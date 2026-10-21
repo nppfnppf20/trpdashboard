@@ -1,0 +1,142 @@
+/* Shared Dialog & Alert Styles
+ * Dialogs (modals) were redeclared per component with near-identical
+ * backdrop / header / footer chrome. Use these instead of redefining them:
+ *
+ *   <div class="dialog-backdrop" on:click|self={close} role="presentation">
+ *     <div class="dialog dialog-md">
+ *       <div class="dialog-header"><h3 class="dialog-title">…</h3><button class="dialog-close">&times;</button></div>
+ *       <div class="dialog-body">…</div>
+ *       <div class="dialog-footer"><span class="dialog-meta">…</span><div class="dialog-actions">…</div></div>
+ *     </div>
+ *   </div>
+ *
+ * Named dialog-* (not modal-*) so they cannot clash with the page-scoped
+ * .modal-backdrop / .modal-container used by ProjectViewModal.
+ */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: var(--space-4);
+}
+
+.dialog {
+  background: var(--color-white);
+  border-radius: var(--radius-lg);
+  width: 95%;
+  max-width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.dialog-sm { max-width: 480px; }
+.dialog-md { max-width: 640px; }
+.dialog-lg { max-width: 900px; }
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-slate-200);
+  flex-shrink: 0;
+}
+
+.dialog-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-slate-800);
+}
+
+.dialog-close {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.75rem;
+  line-height: 1;
+  color: var(--color-slate-500);
+  cursor: pointer;
+}
+
+.dialog-close:hover { color: var(--color-slate-800); }
+
+.dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-slate-200);
+  flex-shrink: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.dialog-hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--color-slate-500);
+}
+
+.dialog-meta {
+  font-size: var(--font-size-xs);
+  color: var(--color-slate-500);
+}
+
+/* Inline notices (errors, warnings, info) */
+.alert {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.alert-error {
+  background: var(--color-red-50);
+  border-color: var(--color-red-200);
+  color: var(--color-red-600);
+}
+
+.alert-warning {
+  background: var(--color-badge-warning-bg);
+  border-color: var(--color-amber-200);
+  color: var(--color-badge-warning-fg);
+}
+
+.alert-info {
+  background: var(--color-slate-50);
+  border-color: var(--color-slate-200);
+  color: var(--color-slate-600);
+}

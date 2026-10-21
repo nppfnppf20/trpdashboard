@@ -12,8 +12,6 @@ import {
   updatePolicyAnnotatedText,
   deletePolicy,
   extractPolicies,
-  extractPolicyWording,
-  generatePlanRelevance,
   listNationalPolicyPrecedents,
   listLpaDocuments,
   uploadLpaDocument,
@@ -22,13 +20,10 @@ import {
   saveBriefingNote,
   triggerSynthesis
 } from '../controllers/lpaAnalysis.controller.js';
-import { analysePlanDocument, extractPlanPolicies } from '../controllers/planPolicyPicker.controller.js';
 
 const router = express.Router();
 
 const upload = createUpload({ exts: ['pdf', 'docx', 'txt', 'md'] });
-// Full development plans run to hundreds of pages.
-const planUpload = createUpload({ exts: ['pdf', 'docx', 'txt', 'md'], maxMB: 60, fieldSizeMB: 25 });
 
 // Relevant policies
 router.get('/projects/:projectId/policies', listPolicies);
@@ -37,10 +32,6 @@ router.put('/policies/:policyId', updatePolicy);
 router.put('/policies/:policyId/annotated-text', updatePolicyAnnotatedText);
 router.delete('/policies/:policyId', deletePolicy);
 router.post('/projects/:projectId/policies/extract', upload.single('file'), extractPolicies);
-router.post('/projects/:projectId/policies/extract-wording', upload.single('file'), extractPolicyWording);
-router.post('/projects/:projectId/policies/plan-relevance', upload.single('file'), generatePlanRelevance);
-router.post('/projects/:projectId/plan-picker/analyse', planUpload.single('file'), analysePlanDocument);
-router.post('/projects/:projectId/plan-picker/extract', planUpload.single('file'), extractPlanPolicies);
 router.get('/projects/:projectId/national-policy-precedents', listNationalPolicyPrecedents);
 
 // LPA decision documents

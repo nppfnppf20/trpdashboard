@@ -64,6 +64,12 @@
   color: var(--color-badge-purple-fg);
 }
 
+/* Compact variant for counts and tags beside headings */
+.badge-sm {
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.6875rem;
+}
+
 /* Badge-styled dropdown select */
 .badge-select {
   display: inline-block;

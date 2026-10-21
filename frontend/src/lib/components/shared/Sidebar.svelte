@@ -56,7 +56,8 @@
     {
       label: 'Site & Policy',
       items: [
-        { label: 'Site Boundary', icon: 'la-map-marked-alt', tab: 'site_boundary' }
+        { label: 'Site Boundary', icon: 'la-map-marked-alt', tab: 'site_boundary' },
+        { label: 'Policy & History', icon: 'la-history', tab: 'policy_and_history' }
       ]
     },
     {
@@ -82,7 +83,6 @@
   // Still-in-construction tools, tucked away behind a collapsed "Beta"
   // group so the main Project Workspace list stays short.
   const betaItems = [
-    { label: 'Policy & History', icon: 'la-history', tab: 'policy_and_history' },
     { label: 'Similar Schemes', icon: 'la-search', tab: 'similar_schemes' },
     { label: 'Appeal Precedent', icon: 'la-gavel', tab: 'appeal_precedent' },
     { label: 'Project Workbook', icon: 'la-clipboard-list', tab: 'project_workbook' }
@@ -95,9 +95,6 @@
     // { label: 'Completeness', icon: 'la-check-circle', tab: 'completeness' }
   ];
   let betaOpen = false;
-  // Stays open while one of its pages is showing, so the active item is never hidden.
-  const betaTabs = betaItems.map(i => i.tab);
-  $: if ($mainView === 'project' && betaTabs.includes($mainViewInitialTab)) betaOpen = true;
   // The Trackers and Programme group folds away like Beta. It stays open while one of its pages is showing.
   let trackersOpen = false;
   const trackerTabs = workspaceGroups.find(g => g.collapsible).items.map(i => i.tab);

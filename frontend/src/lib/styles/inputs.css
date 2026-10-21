@@ -47,3 +47,28 @@ textarea.form-input {
   color: var(--color-slate-600);
   margin-bottom: 0.375rem;
 }
+
+/* Form layout helpers
+ * A labelled field (label above control) and a responsive row of fields.
+ * Named .form-item / .form-cols (not .form-field / .form-row) because those
+ * names are already declared locally in other components and a global rule
+ * would leak into them.
+ */
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-item > .form-label {
+  margin-bottom: 0;
+}
+
+.form-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+
+.form-required { color: var(--color-red-500); }
+.form-optional { color: var(--color-slate-400); font-weight: 400; }

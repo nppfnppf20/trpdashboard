@@ -50,10 +50,14 @@ export async function createPolicyDocument(req, res) {
 
 export async function updatePolicyDocument(req, res) {
   const { id } = req.params;
-  const { plan_name, plan_type, year_adopted, month_adopted, summary, relevance } = req.body;
+  const { section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance } = req.body;
 
   if (!plan_name?.trim()) {
     return res.status(400).json({ error: 'plan_name is required' });
+  }
+  // section is optional on update so older callers that omit it leave it unchanged.
+  if (section && !['adopted', 'emerging', 'other', 'supplementary'].includes(section)) {
+    return res.status(400).json({ error: 'section must be adopted, emerging, other or supplementary' });
   }
   if (plan_type && !['local', 'neighbourhood'].includes(plan_type)) {
     return res.status(400).json({ error: 'plan_type must be local or neighbourhood' });
@@ -65,10 +69,10 @@ export async function updatePolicyDocument(req, res) {
   try {
     const { rows } = await pool.query(
       `UPDATE policy_documents
-       SET plan_name = $1, plan_type = $2, year_adopted = $3, month_adopted = $4, summary = $5, relevance = $6, updated_at = NOW()
+       SET section = COALESCE($8, section), plan_name = $1, plan_type = $2, year_adopted = $3, month_adopted = $4, summary = $5, relevance = $6, updated_at = NOW()
        WHERE id = $7
        RETURNING id, section, plan_name, plan_type, year_adopted, month_adopted, summary, relevance, created_at`,
-      [plan_name.trim(), plan_type || null, year_adopted || null, month_adopted || null, summary?.trim() || null, relevance?.trim() || null, id]
+      [plan_name.trim(), plan_type || null, year_adopted || null, month_adopted || null, summary?.trim() || null, relevance?.trim() || null, id, section || null]
     );
     if (!rows.length) return res.status(404).json({ error: 'Entry not found' });
     res.json(rows[0]);
