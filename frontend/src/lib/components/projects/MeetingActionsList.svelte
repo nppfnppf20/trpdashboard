@@ -242,6 +242,7 @@
             <span class="mal-text">{a.action_text}</span>
           </div>
           <div class="mal-meta">
+            {#if showProject && a.project_name}<span class="mal-project" title={a.project_name}>{a.project_name}</span>{/if}
             {#if ownerColumn}
               <!-- owners are shown in their own column -->
             {:else if isGroup(a)}
@@ -251,7 +252,6 @@
             {:else if a.owner}<span>{a.owner}</span>{/if}
             {#if a.due_date}<span class:mal-overdue={isOverdue(a)}>Due {formatDate(a.due_date)}</span>{/if}
             {#if showMeeting && a.meeting_title}<span>from {a.meeting_title}</span>{/if}
-            {#if showProject && a.project_name}<span class="badge badge-neutral">{a.project_name}</span>{/if}
           </div>
           {#if a.notes}<div class="mal-notes">{a.notes}</div>{/if}
           {/if}
@@ -326,6 +326,7 @@
   .mal-tick { color: var(--color-emerald-600); margin-top: 1px; }
   .mal-text { color: var(--color-slate-800); font-weight: 500; }
   .mal-meta { display: flex; flex-wrap: wrap; gap: 0.15rem 0.6rem; align-items: center; font-size: 0.72rem; color: var(--color-slate-500); }
+  .mal-project { font-weight: 600; color: var(--color-primary-600); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mal-overdue { color: var(--color-red-600); font-weight: 600; }
   .mal-update { font-size: 0.75rem; color: var(--color-slate-600); padding-left: 0.6rem; border-left: 2px solid var(--color-slate-200); }
   .mal-update-date { color: var(--color-slate-400); margin-right: 0.3rem; }

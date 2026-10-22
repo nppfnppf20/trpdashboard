@@ -254,9 +254,11 @@
           {#if tickedCount < projectList.length}{tickedCount}/{projectList.length}{/if}
         </button>
       {/if}
-      <button class="widget-icon-btn" on:click={openAll} title={merged ? 'Open Meeting Notes' : 'Open all meeting notes'} aria-label="Open all meeting notes">
-        <i class="las la-expand-arrows-alt"></i>
-      </button>
+      {#if !merged}
+        <button class="widget-icon-btn" on:click={openAll} title="Open all meeting notes" aria-label="Open all meeting notes">
+          <i class="las la-expand-arrows-alt"></i>
+        </button>
+      {/if}
     </div>
   </div>
   <div class="widget-body mnw-body">

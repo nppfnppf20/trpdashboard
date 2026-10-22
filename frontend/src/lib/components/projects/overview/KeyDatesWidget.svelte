@@ -46,7 +46,7 @@
   // ── Actions filter: Mine/All, then which projects. Applied client-side to the
   // loaded rows (MeetingActionsList `rowFilter`), so ticking never refetches.
   // Projects are stored as the *unticked* ids so the default is every project. ──
-  let onlyMine = false;
+  let onlyMine = !!userId; // profile page starts on the person's own actions; the project overview has no userId, so no filter
   let hiddenActionProjectIds = new Set();
   let filterOpen = false;
   let filterBtn;
@@ -314,7 +314,7 @@
             aria-label="Filter actions"
           >
             <i class="las la-filter"></i>
-            {#if filterActive}{onlyMine ? 'Mine' : ''}{onlyMine && hiddenActionProjectIds.size ? ' · ' : ''}{hiddenActionProjectIds.size ? `${tickedProjects}/${projectList.length}` : ''}{/if}
+            {#if filterActive}{onlyMine ? mineLabel : ''}{onlyMine && hiddenActionProjectIds.size ? ' · ' : ''}{hiddenActionProjectIds.size ? `${tickedProjects}/${projectList.length}` : ''}{/if}
           </button>
         {/if}
         <button class="widget-icon-btn" on:click={() => (showAddAction = true)} title="Add an action manually" aria-label="Add action">

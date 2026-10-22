@@ -4,7 +4,7 @@
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
   import KeyDatesWidget from '$lib/components/projects/overview/KeyDatesWidget.svelte';
   import MeetingNotesWidget from '$lib/components/projects/overview/MeetingNotesWidget.svelte';
-  import TrackersSurveyorWidget from './TrackersSurveyorWidget.svelte';
+  import TrackersModal from './TrackersModal.svelte';
   import CrossProjectChatWidget from './CrossProjectChatWidget.svelte';
   import EmailTonesSettings from './EmailTonesSettings.svelte';
 
@@ -13,6 +13,7 @@
 
   $: isOwnProfile = !!$currentUser && userId === $currentUser.id;
   let emailTonesOpen = false;
+  let trackersOpen = false;
 
   let profile = null;
   let allProjects = [];
@@ -111,6 +112,9 @@
           <MultiSelectDropdown options={projectOptions} bind:selected={selectedLabels} placeholder="Select projects..." />
         </div>
       {/if}
+      <button type="button" class="btn btn-secondary btn-sm pw-trackers-btn" on:click={() => (trackersOpen = true)} disabled={visibleProjects.length === 0}>
+        <i class="las la-clipboard-list"></i> Trackers &amp; Surveyor
+      </button>
     </div>
 
     {#if visibleProjects.length === 0}
@@ -120,9 +124,7 @@
       </div>
     {:else}
       <div class="pw-grid">
-        <TrackersSurveyorWidget projects={visibleProjects} />
         <CrossProjectChatWidget projects={visibleProjects} />
-        <MeetingNotesWidget project={visibleProjects[0]} projects={visibleProjects} />
         <KeyDatesWidget
           project={visibleProjects[0]}
           projects={visibleProjects}
@@ -130,6 +132,7 @@
           userName={profile.display_name}
           mineLabel={isOwnProfile ? 'My actions' : `${profile.display_name.split(' ')[0]}'s actions`}
         />
+        <MeetingNotesWidget project={visibleProjects[0]} projects={visibleProjects} />
       </div>
     {/if}
   {:else}
@@ -139,6 +142,10 @@
     </div>
   {/if}
 </div>
+
+{#if trackersOpen}
+  <TrackersModal projects={visibleProjects} onClose={() => (trackersOpen = false)} />
+{/if}
 
 {#if emailTonesOpen}
   <EmailTonesSettings onClose={() => (emailTonesOpen = false)} />
@@ -223,10 +230,14 @@
     min-width: 260px;
   }
 
+  .pw-trackers-btn { margin-left: auto; }
+
+  /* Three full-height widgets side by side: chat and actions get the room,
+     meeting notes sits beside them, narrower. */
   .pw-grid {
     display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr;
-    grid-template-rows: minmax(320px, 2fr) minmax(160px, 1fr);
+    grid-template-columns: 1.3fr 1.3fr 0.9fr;
+    grid-template-rows: minmax(420px, 1fr);
     gap: 1rem;
     flex: 1;
     min-height: 0;
@@ -234,18 +245,12 @@
     padding: 1.25rem 1.75rem;
   }
 
-  /* Trackers & Surveyor declares its own grid-row: span 2 (.ts-widget).
-     Four widgets in this 3-column grid leaves one cell short in row 2 —
-     Key Dates (the last child) spans both remaining columns to fill it. */
-  .pw-grid > :global(.widget:last-child) { grid-column: span 2; }
-
   @media (max-width: 1100px) {
     .pw-grid {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       grid-template-rows: none;
-      min-height: 0;
+      grid-auto-rows: minmax(420px, auto);
     }
-    .pw-grid > :global(.widget:last-child) { grid-column: auto; }
   }
 
   .loading-state, .error-state, .empty-state {
