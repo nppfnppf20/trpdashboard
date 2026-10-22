@@ -13,6 +13,7 @@
 
   export let projectId;
   export let projectDevTypes = [];
+  export let canExport = true; // Export to PDF needs at least one policy
 
   const dispatch = createEventDispatcher();
 
@@ -21,12 +22,13 @@
   const MENU_ITEMS = [
     { key: 'add:nppf', label: 'Add policies from the NPPF library', icon: 'la-flag', description: 'Tick several; the wording is filled in for you' },
     { key: 'add:document', label: 'Add policies from a document', icon: 'la-file-import', description: 'Find the policies a planning document cites' },
-    { key: 'add:plan', label: 'Add a plan or guidance document', icon: 'la-book', description: 'Add to the documents the policies belong to' },
+    { key: 'export', label: 'Export to PDF', icon: 'la-file-pdf', description: 'All documents and policies on this project' },
     { key: 'templates', label: 'National Policy Templates', icon: 'la-layer-group', description: 'Ready-made NPPF / NPPG snippets for this development type' },
     { key: 'precedents', label: 'Used on Similar Projects', icon: 'la-history', description: 'National policies recorded on projects like this one' },
     { key: 'nppf', label: 'NPPF Inconsistency Check', icon: 'la-exchange-alt', description: 'Compare local policies against the NPPF' }
   ];
   const TOOL_TITLES = Object.fromEntries(MENU_ITEMS.map(i => [i.key, i.label]));
+  $: menuItems = MENU_ITEMS.map(i => (i.key === 'export' ? { ...i, disabled: !canExport } : i));
 
   let activeTool = null;
 
@@ -34,6 +36,10 @@
     const key = e.detail;
     if (key.startsWith('add:')) {
       dispatch('add', key.slice(4));
+      return;
+    }
+    if (key === 'export') {
+      dispatch('export');
       return;
     }
     activeTool = key;
@@ -159,7 +165,7 @@
   }
 </script>
 
-<ActionMenu label="Tools" icon="la-tools" badge="Beta" items={MENU_ITEMS} on:select={onSelect} />
+<ActionMenu label="Tools" icon="la-tools" badge="Beta" small items={menuItems} on:select={onSelect} />
 
 {#if activeTool}
   <div class="dialog-backdrop" on:click|self={() => activeTool = null} role="presentation">

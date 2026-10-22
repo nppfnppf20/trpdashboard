@@ -14,6 +14,7 @@
   import WorkbookTab from '$lib/components/projects/WorkbookTab.svelte';
   import ProjectDocsTab from '$lib/components/projects/ProjectDocsTab.svelte';
   import PlanningHistoryTab from '$lib/components/projects/PlanningHistoryTab.svelte';
+  import DraftingIssuesTab from '$lib/components/planning-application/DraftingIssuesTab.svelte';
   import MeetingNotesTab from '$lib/components/projects/MeetingNotesTab.svelte';
   import ConsultationTrackerTab from '$lib/components/projects/ConsultationTrackerTab.svelte';
   import ConditionsTrackerTab from '$lib/components/projects/ConditionsTrackerTab.svelte';
@@ -36,6 +37,9 @@
 
   // Tab state
   let activeTab = 'site_boundary';
+  // Left panel of the Policy & History page: the policy list, or the Policy Assessment
+  // (the issue list the Stage 1 Review and Planning Statement are drafted from)
+  let policyPanelTab = 'policy';
   const trackerLabels = {
     consultation_tracker: 'Consultation Tracker',
     conditions_tracker: 'Conditions Tracker',
@@ -1086,9 +1090,23 @@
           {:else if activeTab === 'policy_and_history'}
             <div class="policy-history-split">
               <div class="split-card">
-                <div class="split-card-label">Policy</div>
+                <div class="split-card-label split-card-tabs" role="tablist">
+                  <button role="tab" class="split-tab" class:active={policyPanelTab === 'policy'} aria-selected={policyPanelTab === 'policy'} on:click={() => policyPanelTab = 'policy'}>Policy</button>
+                  <button role="tab" class="split-tab" class:active={policyPanelTab === 'assessment'} aria-selected={policyPanelTab === 'assessment'} on:click={() => policyPanelTab = 'assessment'}>Policy Assessment</button>
+                </div>
                 <div class="split-card-body split-card-body--scroll">
-                  <RelevantPolicyTab project={projectData} />
+                  <!-- The Policy tab stays mounted (just hidden) so its collapsed plans and
+                       selection survive a trip to the other tab. Policy Assessment is mounted
+                       only while open, so it loads fresh each time and sees any policies
+                       just added or removed. -->
+                  <div class="policy-pane" class:pane-hidden={policyPanelTab !== 'policy'}>
+                    <RelevantPolicyTab project={projectData} />
+                  </div>
+                  {#if policyPanelTab === 'assessment'}
+                    <div class="assessment-pane">
+                      <DraftingIssuesTab project={projectData} />
+                    </div>
+                  {/if}
                 </div>
               </div>
               <div class="split-card">
@@ -1894,6 +1912,27 @@
     overflow-y: auto;
     overflow-x: hidden;
   }
+
+  /* Policy / Policy Assessment tabs in the left panel's heading bar */
+  .split-card-tabs { gap: var(--space-5); padding-block: 0; }
+  .split-tab {
+    padding: 0.6rem 0;
+    margin-bottom: -1px; /* sits on the bar's bottom border */
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+  }
+  .split-tab:hover { color: var(--color-slate-800); }
+  .split-tab.active { color: var(--color-primary-700); border-bottom-color: var(--color-primary-600); }
+
+  .pane-hidden { display: none; }
+  /* Policy Assessment sits on a light ground so its white issue cards stand out (as in the popup) */
+  .assessment-pane { padding: var(--space-5); background: var(--color-slate-50); min-height: 100%; }
 
   /* Override child components' own scroll when they live in the shared scrolling left panel */
   .split-card-body--scroll :global(.policy-tab) {

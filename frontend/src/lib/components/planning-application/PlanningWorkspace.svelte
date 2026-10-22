@@ -1812,7 +1812,7 @@
   open={$appealPromptOpen}
   title="Edit Generation Prompt: {appealPromptTitle}"
   promptText={$appealPromptText}
-  contextTemplate={`↑ YOUR INSTRUCTIONS (editable above)\n━━━ Dynamic context injected automatically ━━━\nUse {{GUIDING_BRIEF}} anywhere above to embed the guiding brief inline.\nThe project brief and working argument notes by issue are always appended below your prompt.`}
+  contextTemplate={`↑ YOUR INSTRUCTIONS (editable above)\n━━━ Dynamic context injected automatically ━━━\nUse {{GUIDING_BRIEF}} anywhere above to embed the guiding brief inline.\nThe project brief and working notes by issue are always appended below your prompt.`}
   loading={$appealPromptLoading}
   saving={$appealPromptSaving}
   saved={$appealPromptSaved}

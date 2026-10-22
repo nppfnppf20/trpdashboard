@@ -173,3 +173,30 @@ td.actions-cell .action-btn:last-child {
   color: var(--color-red-500);
   border-color: var(--color-red-500);
 }
+
+/* Small round "add" button: a dashed grey circle with a plus. The quiet add
+   control used in tracker rows and beside section headings. Put the plus icon
+   inside, and give it a title and aria-label. */
+.btn-circle-add {
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px dashed var(--color-slate-300);
+  border-radius: 50%;
+  background: none;
+  color: var(--color-slate-500);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-circle-add:hover {
+  background: var(--color-slate-50);
+  color: var(--color-slate-700);
+  border-color: var(--color-slate-400);
+}

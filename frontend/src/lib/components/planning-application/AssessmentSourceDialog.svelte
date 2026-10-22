@@ -12,9 +12,9 @@
   export let project;
 
   const MODES = [
-    { value: 'notes',      label: 'Notes',           hint: "Summaries plus each issue's argument notes" },
-    { value: 'transcript', label: 'Full transcript', hint: 'Built from the full transcripts; argument notes not used' },
-    { value: 'both',       label: 'Both',            hint: 'Argument notes guide the structure, full transcripts supply the detail' },
+    { value: 'notes',      label: 'Notes',           hint: "Summaries plus each issue's notes" },
+    { value: 'transcript', label: 'Full transcript', hint: 'Built from the full transcripts; notes not used' },
+    { value: 'both',       label: 'Both',            hint: 'Notes guide the structure, full transcripts supply the detail' },
   ];
   const CONTEXT_BUDGET = 200000;
 

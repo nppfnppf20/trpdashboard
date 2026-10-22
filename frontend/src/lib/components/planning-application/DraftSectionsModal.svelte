@@ -94,7 +94,7 @@
     ISSUE_LABEL:              { label: 'Issue label',                   source: 'drafting_issues.label / project_issue_tracks.label', programmatic: true },
     ISSUE_DISCIPLINE:         { label: 'Issue discipline',              source: 'drafting_issues.discipline / project_issue_tracks.discipline', programmatic: true },
     ISSUE_LIST:               { label: 'Issue list (all issues)',       source: 'drafting_issues / project_issue_tracks, label + discipline, one per line', programmatic: true },
-    ISSUE_CONTEXT:            { label: 'Issue context (single issue)',  source: 'linked policies, snippet templates, and working notes (tier notes, argument notes, specialist report) for one issue', programmatic: true },
+    ISSUE_CONTEXT:            { label: 'Issue context (single issue)',  source: 'linked policies, snippet templates, and working notes (tier notes, notes, specialist report) for one issue', programmatic: true },
     ISSUES_CONTEXT:           { label: 'Issues context (all issues)',   source: 'same as Issue context, for every issue in the section, clearly delimited', programmatic: true },
     DECISION_NOTICE:          { label: 'Decision Notice',               source: 'appeals.pa_draft_starting_docs, slot: decision_notice', programmatic: true },
     OFFICERS_REPORT:          { label: "Officer's Report",              source: 'appeals.pa_draft_starting_docs, slot: officers_report', programmatic: true },

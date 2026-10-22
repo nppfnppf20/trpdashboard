@@ -100,7 +100,15 @@
 </div>
 
 <style>
-  .np-list { border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); overflow: hidden; }
+  /* The list is the part that scrolls, so the hint and filter stay put above it.
+     min-height: 0 lets it shrink to the dialog's height instead of overflowing it. */
+  .np-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    border: 1px solid var(--color-slate-200);
+    border-radius: var(--radius-md);
+  }
   .np-item {
     display: flex;
     align-items: center;

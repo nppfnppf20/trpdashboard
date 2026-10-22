@@ -40,7 +40,7 @@
 
   // Per-issue permission for this run: which fields the LLM is allowed to
   // write to. Lets you, for example, drop in a specialist report for one
-  // issue without disturbing anything else's argument notes, or match
+  // issue without disturbing anything else's notes, or match
   // policies to an issue without touching its argument text at all.
   let allowNewIssues = true;
   let issueScope = {}; // { [issueId]: { argumentNotes: bool, specialistReport: bool, policyLinks: bool } }
@@ -357,7 +357,7 @@
                 onNoteChange={(tierKey, value) => handleFieldBlur(issue, tierKey, value)}
               />
 
-              <label class="di-field-label">Argument notes</label>
+              <label class="di-field-label">Notes</label>
               <textarea
                 class="di-textarea"
                 value={issue.argument_for ?? ''}
@@ -522,7 +522,7 @@
                     Select all
                   </label>
                   <div class="di-scope-headcell">
-                    <span class="di-scope-colname">Argument notes</span>
+                    <span class="di-scope-colname">Notes</span>
                     <label class="di-scope-field di-scope-selectall">
                       <input
                         type="checkbox"
@@ -567,7 +567,7 @@
                       checked={issueScope[issue.id]?.argumentNotes}
                       on:change={() => toggleScope(issue.id, 'argumentNotes')}
                     />
-                    Argument notes{issue.argument_for?.trim() ? ' (filled)' : ''}
+                    Notes{issue.argument_for?.trim() ? ' (filled)' : ''}
                   </label>
                   <label class="di-scope-field">
                     <input
@@ -592,7 +592,7 @@
         </div>
 {:else}
         <p class="di-scope-title" style="margin-top: 0;">
-          Uses this project's Project Tracker (issues and their dated actions) as the source. Argument notes are drafted per issue; specialist report fields are never touched by this tool.
+          Uses this project's Project Tracker (issues and their dated actions) as the source. Notes are drafted per issue; specialist report fields are never touched by this tool.
         </p>
 
         <div class="di-scope">
@@ -614,7 +614,7 @@
                     Select all
                   </label>
                   <div class="di-scope-headcell">
-                    <span class="di-scope-colname">Argument notes</span>
+                    <span class="di-scope-colname">Notes</span>
                     <label class="di-scope-field di-scope-selectall">
                       <input
                         type="checkbox"
@@ -647,7 +647,7 @@
                       checked={trackerIssueScope[issue.id]?.argumentNotes}
                       on:change={() => toggleTrackerScope(issue.id, 'argumentNotes')}
                     />
-                    Argument notes{issue.argument_for?.trim() ? ' (filled)' : ''}
+                    Notes{issue.argument_for?.trim() ? ' (filled)' : ''}
                   </label>
                   <label class="di-scope-field">
                     <input

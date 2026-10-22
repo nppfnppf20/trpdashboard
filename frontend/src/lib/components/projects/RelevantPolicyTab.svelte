@@ -46,10 +46,10 @@
 
   // ── Grouping ──
   const SECTIONS = [
-    { key: 'adopted', label: 'Development Plan Adopted' },
-    { key: 'emerging', label: 'Development Plan Emerging' },
-    { key: 'supplementary', label: 'Supplementary Guidance' },
-    { key: 'other', label: 'Other Material Considerations' }
+    { key: 'adopted', label: 'Development Plan Adopted', addLabel: 'Add an adopted plan' },
+    { key: 'emerging', label: 'Development Plan Emerging', addLabel: 'Add an emerging plan' },
+    { key: 'supplementary', label: 'Supplementary Guidance', addLabel: 'Add supplementary guidance' },
+    { key: 'other', label: 'Other Material Considerations', addLabel: 'Add another material consideration' }
   ];
   const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -61,8 +61,8 @@
       plans: planDocs
         .filter(d => d.section === s.key)
         .map(doc => ({ doc, policies: policies.filter(p => p.plan_id === doc.id) }))
-    }))
-    .filter(g => g.plans.length);
+    }));
+  // Every section shows, even with nothing in it, so each has its own add button.
 
   function planLabel(doc) {
     const typeTag = doc.plan_type === 'neighbourhood' ? 'Neighbourhood Plan' : doc.plan_type === 'local' ? 'Local Plan' : null;
@@ -110,7 +110,6 @@
     const key = e.detail;
     if (key === 'nppf') showNppfPicker = true;
     else if (key === 'document') showExtract = true;
-    else if (key === 'plan') openAddPlan();
   }
 
   // Both the NPPF picker and the document extractor end in the same review
@@ -126,8 +125,12 @@
   let showPlanModal = false;
   let editingPlan = null;
 
-  function openAddPlan() {
+  // The new document starts in the section whose plus was pressed
+  let newPlanSection = 'adopted';
+
+  function openAddPlan(section = 'adopted') {
     editingPlan = null;
+    newPlanSection = section;
     showPlanModal = true;
   }
 
@@ -411,10 +414,7 @@
     </div>
   {:else}
     <div class="tab-header">
-      <PolicyTools {projectId} {projectDevTypes} on:imported={refresh} on:add={onAdd} />
-      <button class="btn btn-secondary" on:click={exportPolicy} disabled={!policies.length}>
-        <i class="las la-file-pdf"></i> Export to PDF
-      </button>
+      <PolicyTools {projectId} {projectDevTypes} canExport={policies.length > 0} on:imported={refresh} on:add={onAdd} on:export={exportPolicy} />
       <span class="tab-counts">
         {planDocs.length} document{planDocs.length === 1 ? '' : 's'} · {policies.length} polic{policies.length === 1 ? 'y' : 'ies'}
       </span>
@@ -433,14 +433,14 @@
     {#if !planDocs.length && !policies.length}
       <div class="empty-state">
         <i class="las la-balance-scale"></i>
-        <p>Nothing here yet. Use <strong>Tools</strong> to add a plan or guidance document, or to bring in policies from the NPPF library or a planning document.</p>
+        <p>Nothing here yet. Use the blue <strong>+</strong> beside a heading below to add a plan or guidance document, or <strong>Tools</strong> to bring in policies from the NPPF library or a planning document.</p>
       </div>
     {/if}
 
     {#if nationalPolicies.length}
       <div class="group-label">
         National policy <span class="badge badge-sm badge-neutral">{nationalPolicies.length}</span>
-        <button class="btn btn-primary btn-icon group-add" on:click={() => openAdd(null, 'national')} title="Add a national policy"><i class="las la-plus"></i></button>
+        <button class="btn-circle-add" on:click={() => openAdd(null, 'national')} title="Add a national policy" aria-label="Add a national policy"><i class="las la-plus"></i></button>
       </div>
       <div class="policy-list">
         {#each nationalPolicies as policy (policy.id)}
@@ -452,7 +452,10 @@
     {/if}
 
     {#each planGroups as group (group.key)}
-      <div class="group-label">{group.label} <span class="badge badge-sm badge-neutral">{group.plans.length}</span></div>
+      <div class="group-label">
+        {group.label} <span class="badge badge-sm badge-neutral">{group.plans.length}</span>
+        <button class="btn-circle-add" on:click={() => openAddPlan(group.key)} title={group.addLabel} aria-label={group.addLabel}><i class="las la-plus"></i></button>
+      </div>
       {#each group.plans as { doc, policies: planPolicies } (doc.id)}
         <div class="card plan-card">
           <div class="plan-head">
@@ -463,7 +466,7 @@
             {#if planMeta(doc)}<span class="plan-meta">{planMeta(doc)}</span>{/if}
             <span class="badge badge-sm badge-info">{planPolicies.length} polic{planPolicies.length === 1 ? 'y' : 'ies'}</span>
             <div class="plan-actions">
-              <button class="btn btn-primary btn-icon" on:click={() => openAdd(doc)} title="Add a policy to this plan"><i class="las la-plus"></i></button>
+              <button class="btn-circle-add" on:click={() => openAdd(doc)} title="Add a policy to this plan" aria-label="Add a policy to this plan"><i class="las la-plus"></i></button>
               <button class="btn btn-ghost btn-icon" on:click={() => openEditPlan(doc)} title="Edit this document"><i class="las la-pen"></i></button>
               <button class="btn btn-danger-ghost btn-icon" on:click={() => removePlan(doc, planPolicies.length)} title="Delete this document"><i class="las la-trash"></i></button>
             </div>
@@ -497,7 +500,7 @@
     {#if unlinkedPolicies.length}
       <div class="group-label">
         Not linked to a plan <span class="badge badge-sm badge-neutral">{unlinkedPolicies.length}</span>
-        <button class="btn btn-primary btn-icon group-add" on:click={() => openAdd(null, 'local')} title="Add a policy"><i class="las la-plus"></i></button>
+        <button class="btn-circle-add" on:click={() => openAdd(null, 'local')} title="Add a policy" aria-label="Add a policy"><i class="las la-plus"></i></button>
       </div>
       <div class="policy-list">
         {#each unlinkedPolicies as policy (policy.id)}
@@ -523,7 +526,7 @@
 {/if}
 
 {#if showPlanModal}
-  <PlanEditModal {projectId} plan={editingPlan} on:close={() => { showPlanModal = false; editingPlan = null; }} on:saved={onPlanSaved} />
+  <PlanEditModal {projectId} plan={editingPlan} defaultSection={newPlanSection} on:close={() => { showPlanModal = false; editingPlan = null; }} on:saved={onPlanSaved} />
 {/if}
 
 {#if showForm}
@@ -793,9 +796,6 @@
   .plan-name { font-size: var(--font-size-sm); font-weight: 600; text-align: left; }
   .plan-meta { font-size: var(--font-size-xs); color: var(--color-slate-500); }
   .plan-actions { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
-
-  /* The plus beside a group heading: a compact version of the blue add button */
-  .group-add { padding: 0.25rem; min-width: 1.75rem; }
 
   .plan-about { padding: var(--space-2) var(--space-4); font-size: var(--font-size-xs); border-bottom: 1px solid var(--color-slate-100); }
   .plan-about summary { cursor: pointer; color: var(--color-primary-600); font-weight: 500; user-select: none; }

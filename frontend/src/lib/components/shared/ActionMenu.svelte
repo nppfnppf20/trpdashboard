@@ -1,13 +1,14 @@
 <script>
   // A button that opens a short dropdown of actions. The parent decides what
   // each action does: this only reports which one was picked.
-  //   items: [{ key, label, icon?, description? }]
+  //   items: [{ key, label, icon?, description?, disabled? }]
   import { createEventDispatcher } from 'svelte';
 
   export let label;
   export let icon = '';
   export let items = [];
   export let primary = false;
+  export let small = false; // compact button (btn-sm)
   export let badge = '';
 
   const dispatch = createEventDispatcher();
@@ -28,7 +29,7 @@
 <svelte:window on:click={onWindowClick} on:keydown={(e) => { if (e.key === 'Escape') open = false; }} />
 
 <div class="action-menu" bind:this={root}>
-  <button class="btn {primary ? 'btn-primary' : 'btn-secondary'}" aria-haspopup="menu" aria-expanded={open} on:click={() => open = !open}>
+  <button class="btn {primary ? 'btn-primary' : 'btn-secondary'}" class:btn-sm={small} aria-haspopup="menu" aria-expanded={open} on:click={() => open = !open}>
     {#if icon}<i class="las {icon}"></i>{/if}
     {label}
     {#if badge}<span class="badge badge-sm badge-warning">{badge}</span>{/if}
@@ -38,7 +39,7 @@
   {#if open}
     <div class="menu-list" role="menu">
       {#each items as item (item.key)}
-        <button class="menu-item" role="menuitem" on:click={() => pick(item.key)}>
+        <button class="menu-item" role="menuitem" disabled={item.disabled} on:click={() => pick(item.key)}>
           {#if item.icon}<i class="las {item.icon}"></i>{/if}
           <span class="menu-item-text">
             <span class="menu-item-label">{item.label}</span>
@@ -83,7 +84,8 @@
     font-family: inherit;
     color: var(--color-slate-800);
   }
-  .menu-item:hover { background: var(--color-slate-50); }
+  .menu-item:hover:not(:disabled) { background: var(--color-slate-50); }
+  .menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
   .menu-item > i { font-size: 1.1rem; color: var(--color-primary-600); margin-top: 0.1rem; }
   .menu-item-text { display: flex; flex-direction: column; gap: 0.1rem; }
   .menu-item-label { font-size: var(--font-size-sm); font-weight: 500; }
