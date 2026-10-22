@@ -13,6 +13,8 @@
   import PlanEditModal from '$lib/components/projects/PlanEditModal.svelte';
   import ExtractFromDocumentModal from '$lib/components/projects/ExtractFromDocumentModal.svelte';
   import NppfPickerModal from '$lib/components/projects/NppfPickerModal.svelte';
+  import PolicyPreviewModal from '$lib/components/shared/PolicyPreviewModal.svelte';
+  import { formatOnPaste } from '$lib/utils/policyFormat.js';
 
   export let project;
   $: projectId = project?.id;
@@ -87,6 +89,16 @@
     const next = new Set(collapsed);
     if (next.has(id)) next.delete(id); else next.add(id);
     collapsed = next;
+  }
+
+  // ── Preview (read-only wording with bold / highlight etc.) ──
+  let previewPolicy = null;
+
+  // The modal saves its own formatting; this keeps the list in step so
+  // reopening a policy shows what was saved.
+  function onAnnotated(e) {
+    const { id, html } = e.detail;
+    policies = policies.map(p => p.id === id ? { ...p, policy_text_annotated: html } : p);
   }
 
   // ── Add menu ──
@@ -436,7 +448,7 @@
         {#each nationalPolicies as policy (policy.id)}
           <PolicyCard {policy} selected={selectedIds.has(policy.id)} selecting={selectedIds.size > 0}
             on:select={() => toggleSelect(policy.id)} on:togglekey={() => toggleKeyPolicy(policy)}
-            on:edit={() => openEdit(policy)} on:delete={() => remove(policy)} />
+            on:preview={() => previewPolicy = policy} on:edit={() => openEdit(policy)} on:delete={() => remove(policy)} />
         {/each}
       </div>
     {/if}
@@ -473,7 +485,7 @@
                 {#each planPolicies as policy (policy.id)}
                   <PolicyCard {policy} selected={selectedIds.has(policy.id)} selecting={selectedIds.size > 0}
                     on:select={() => toggleSelect(policy.id)} on:togglekey={() => toggleKeyPolicy(policy)}
-                    on:edit={() => openEdit(policy)} on:delete={() => remove(policy)} />
+                    on:preview={() => previewPolicy = policy} on:edit={() => openEdit(policy)} on:delete={() => remove(policy)} />
                 {/each}
               </div>
             {:else}
@@ -490,12 +502,16 @@
         {#each unlinkedPolicies as policy (policy.id)}
           <PolicyCard {policy} showType selected={selectedIds.has(policy.id)} selecting={selectedIds.size > 0}
             on:select={() => toggleSelect(policy.id)} on:togglekey={() => toggleKeyPolicy(policy)}
-            on:edit={() => openEdit(policy)} on:delete={() => remove(policy)} />
+            on:preview={() => previewPolicy = policy} on:edit={() => openEdit(policy)} on:delete={() => remove(policy)} />
         {/each}
       </div>
     {/if}
   {/if}
 </div>
+
+{#if previewPolicy}
+  <PolicyPreviewModal policy={previewPolicy} on:close={() => previewPolicy = null} on:annotated={onAnnotated} />
+{/if}
 
 {#if showNppfPicker}
   <NppfPickerModal existingPolicies={policies} on:close={() => showNppfPicker = false} on:review={onReview} />
@@ -552,12 +568,13 @@
 
         <div class="form-item">
           <label class="form-label" for="pf-text">Relevant Policy Text</label>
-          <textarea id="pf-text" class="form-input" bind:value={form.policy_text} rows="5" placeholder="Paste the relevant policy wording here…"></textarea>
+          <textarea id="pf-text" class="form-input" bind:value={form.policy_text} use:formatOnPaste rows="5" placeholder="Paste the relevant policy wording here…"></textarea>
+          <span class="form-hint">Pasted wording is tidied automatically: broken line wraps are joined and each (a), (b), (i) clause starts on its own line.</span>
         </div>
 
         <div class="form-item">
           <label class="form-label" for="pf-support">Relevant Supporting Text</label>
-          <textarea id="pf-support" class="form-input" bind:value={form.relevant_supporting_text} rows="3" placeholder="Any supporting text, footnotes, or guidance relevant to this project…"></textarea>
+          <textarea id="pf-support" class="form-input" bind:value={form.relevant_supporting_text} use:formatOnPaste rows="3" placeholder="Any supporting text, footnotes, or guidance relevant to this project…"></textarea>
         </div>
 
         <div class="form-item">
@@ -641,11 +658,11 @@
               <div class="form-cols">
                 <div class="form-item">
                   <label class="form-label" for="rv-text-{i}">Relevant Policy Text</label>
-                  <textarea id="rv-text-{i}" class="form-input" bind:value={row.policy_text} rows="2"></textarea>
+                  <textarea id="rv-text-{i}" class="form-input" bind:value={row.policy_text} use:formatOnPaste rows="2"></textarea>
                 </div>
                 <div class="form-item">
                   <label class="form-label" for="rv-support-{i}">Relevant Supporting Text</label>
-                  <textarea id="rv-support-{i}" class="form-input" bind:value={row.relevant_supporting_text} rows="2"></textarea>
+                  <textarea id="rv-support-{i}" class="form-input" bind:value={row.relevant_supporting_text} use:formatOnPaste rows="2"></textarea>
                 </div>
               </div>
               <div class="form-item">
@@ -781,6 +798,8 @@
   .plan-about p { margin: var(--space-2) 0 0; color: var(--color-slate-700); line-height: 1.5; white-space: pre-wrap; }
   .plan-policies { padding: var(--space-3) var(--space-4) var(--space-4); }
   .plan-empty { padding: var(--space-3) var(--space-4); font-size: var(--font-size-xs); color: var(--color-slate-400); }
+
+  .form-hint { font-size: var(--font-size-xs); color: var(--color-slate-400); }
 
   /* Checkbox with an inline label */
   .check-label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); color: var(--color-slate-800); cursor: pointer; }

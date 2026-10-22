@@ -245,6 +245,11 @@ export async function updatePolicy(req, res) {
          policy_reference = COALESCE($1, policy_reference),
          policy_name = COALESCE($2, policy_name),
          policy_type = COALESCE($3, policy_type),
+         -- The annotation (bold / highlight) belongs to the exact wording it was
+         -- applied to, so changing the wording drops it and the preview re-seeds
+         -- from the new text. In an UPDATE the right-hand side reads the old row,
+         -- so this compares old against new.
+         policy_text_annotated = CASE WHEN policy_text IS DISTINCT FROM $4 THEN NULL ELSE policy_text_annotated END,
          policy_text = $4,
          relevant_supporting_text = $5,
          notes = $6,

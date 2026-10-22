@@ -30,12 +30,13 @@
       {/if}
     </div>
     <div class="policy-actions">
+      <button class="btn btn-ghost btn-icon" on:click={() => dispatch('preview')} title="View and mark up"><i class="las la-eye"></i></button>
       <button class="btn btn-ghost btn-icon" on:click={() => dispatch('edit')} title="Edit"><i class="las la-pen"></i></button>
       <button class="btn btn-danger-ghost btn-icon" on:click={() => dispatch('delete')} title="Delete"><i class="las la-trash"></i></button>
     </div>
   </div>
 
-  <div class="policy-name">{policy.policy_name}</div>
+  <button class="policy-name" on:click={() => dispatch('preview')} title="View and mark up">{policy.policy_name}</button>
 
   {#if policy.policy_text}
     <details class="policy-detail">
@@ -104,7 +105,20 @@
     font-weight: 600;
   }
 
-  .policy-name { font-size: var(--font-size-sm); font-weight: 600; color: var(--color-slate-800); line-height: 1.4; }
+  .policy-name {
+    align-self: flex-start;
+    padding: 0;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: left;
+    color: var(--color-slate-800);
+    cursor: pointer;
+  }
+  .policy-name:hover { color: var(--color-primary-600); text-decoration: underline; text-underline-offset: 2px; }
 
   .policy-detail { font-size: var(--font-size-xs); }
   .policy-detail summary { cursor: pointer; color: var(--color-primary-600); font-weight: 500; user-select: none; }
