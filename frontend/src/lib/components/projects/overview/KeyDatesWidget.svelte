@@ -1,4 +1,5 @@
 <script>
+  import { isActionMine } from '$lib/utils/actionOwnership.js';
   import ProgrammeTab from '$lib/components/projects/ProgrammeTab.svelte';
   import ActionsModal from './ActionsModal.svelte';
   import AddMeetingActionModal from './AddMeetingActionModal.svelte';
@@ -47,11 +48,7 @@
   let onlyMine = !!userId; // profile page starts on the person's own actions; the project overview has no userId, so no filter
   $: canFilterMine = !!userId;
 
-  function isMine(a) {
-    if (a.assigned_user_id) return String(a.assigned_user_id) === String(userId);
-    return !!userName && a.owner?.trim().toLowerCase() === userName.trim().toLowerCase();
-  }
-  $: actionRowFilter = canFilterMine && onlyMine ? isMine : null;
+  $: actionRowFilter = canFilterMine && onlyMine ? (a) => isActionMine(a, userId, userName) : null;
 
   $: actionsLoadKey = projectList.map(p => p.id).sort((a, b) => a - b).join(',') + ':' + $actionsVersion;
   async function loadActions() {
@@ -323,7 +320,14 @@
 {/if}
 
 {#if showActionsModal}
-  <ActionsModal projects={projectList} onClose={() => (showActionsModal = false)} />
+  <ActionsModal
+    projects={projectList}
+    {userId}
+    {userName}
+    {mineLabel}
+    mineOnly={onlyMine}
+    onClose={() => (showActionsModal = false)}
+  />
 {/if}
 
 {#if showProgrammeModal}
