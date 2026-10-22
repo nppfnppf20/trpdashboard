@@ -24,6 +24,10 @@
   // Give the owner(s) their own column beside the action instead of a line of
   // small text under it, so who it belongs to is obvious at a glance.
   export let ownerColumn = false;
+  // Optional predicate on a raw action row (e.g. "assigned to me", "in these
+  // projects"). Applied client-side to the already-loaded rows, so changing it
+  // never refetches. A grouped row shows if any of the people on it match.
+  export let rowFilter = null;
 
   const dispatch = createEventDispatcher();
 
@@ -84,6 +88,7 @@
     const status = statusFilter ?? (showCompleted ? 'all' : 'open');
     if (status === 'open' && a.status === 'complete') return false;
     if (status === 'resolved' && a.status !== 'complete') return false;
+    if (rowFilter && !a.members.some(rowFilter)) return false;
     const q = search.trim().toLowerCase();
     return !q || [a.action_text, ...a.members.map(m => m.owner), a.meeting_title, a.project_name].some(v => v?.toLowerCase().includes(q));
   });

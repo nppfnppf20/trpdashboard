@@ -1,5 +1,6 @@
 <script>
   import { tick } from 'svelte';
+  import { popoverStyle } from '$lib/utils/popoverPosition.js';
   import { goto } from '$app/navigation';
   import { getMeetingNotes, deleteMeetingNote } from '$lib/api/meetingNotes.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
@@ -63,6 +64,7 @@
   let hiddenProjectIds = new Set();
   let filterOpen = false;
   let filterBtn;
+  let filterEl;
   let filterStyle = '';
   $: showFilter = merged && projectList.length > 1;
   $: visibleNotes = hiddenProjectIds.size
@@ -73,9 +75,9 @@
   async function toggleFilter() {
     filterOpen = !filterOpen;
     if (filterOpen) {
+      filterStyle = 'visibility:hidden;'; // hidden until measured, so it can't flash off-screen
       await tick();
-      const rect = filterBtn.getBoundingClientRect();
-      filterStyle = `top:${rect.bottom + 6}px; left:${Math.max(8, rect.right - 240)}px;`;
+      filterStyle = popoverStyle(filterBtn, filterEl, 240);
     }
   }
 
@@ -348,7 +350,7 @@
 </div>
 
 {#if filterOpen}
-  <div class="mnw-filter-popover" style={filterStyle} on:click|stopPropagation>
+  <div class="mnw-filter-popover" style={filterStyle} bind:this={filterEl} on:click|stopPropagation>
     <div class="mnw-filter-actions">
       <button type="button" on:click={() => setAllProjects(true)}>Select all</button>
       <button type="button" on:click={() => setAllProjects(false)}>Clear</button>

@@ -123,7 +123,13 @@
         <TrackersSurveyorWidget projects={visibleProjects} />
         <CrossProjectChatWidget projects={visibleProjects} />
         <MeetingNotesWidget project={visibleProjects[0]} projects={visibleProjects} />
-        <KeyDatesWidget project={visibleProjects[0]} projects={visibleProjects} />
+        <KeyDatesWidget
+          project={visibleProjects[0]}
+          projects={visibleProjects}
+          userId={profile.id}
+          userName={profile.display_name}
+          mineLabel={isOwnProfile ? 'My actions' : `${profile.display_name.split(' ')[0]}'s actions`}
+        />
       </div>
     {/if}
   {:else}
