@@ -14,6 +14,7 @@
   import { getQuotes } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
   import AdvancementTimelineModal from '$lib/components/projects/overview/AdvancementTimelineModal.svelte';
+  import SurveyorModal from '$lib/components/surveyor-management/SurveyorModal.svelte';
 
   export let projects = [];
 
@@ -29,7 +30,6 @@
   let loading = false;
   let error = null;
   let rows = [];    // tracker types
-  let stats = null; // surveyor
 
   $: selectedProject = projects.find(p => p.id == selectedProjectId) || null;
 
@@ -43,7 +43,7 @@
     if (key !== loadedKey) {
       loadedKey = key;
       if (key) load();
-      else { rows = []; stats = null; }
+      else rows = [];
     }
   }
 
@@ -72,14 +72,31 @@
     error = null;
     try {
       const [consultation, conditions, progress, surveyor] = await Promise.all([
-        fetchTracker('consultation', project).then(items => items.length > 0),
-        fetchTracker('conditions', project).then(items => items.length > 0),
-        fetchTracker('progress', project).then(items => items.length > 0),
+        fetchTracker('consultation', project),
+        fetchTracker('conditions', project),
+        fetchTracker('progress', project),
         // A surveyor lookup failing shouldn't hide the trackers — just treat as nothing to show.
         fetchSurveyor(project).then(s => s.quotesSent + s.quotesReceived + s.quotesInstructed > 0).catch(() => false),
       ]);
       // The user may have switched project while this was loading.
-      if (selectedProject?.id === project.id) available = { consultation, conditions, progress, surveyor };
+      if (selectedProject?.id === project.id) {
+        const items = { consultation, conditions, progress };
+        available = {
+          consultation: consultation.length > 0,
+          conditions: conditions.length > 0,
+          progress: progress.length > 0,
+          surveyor,
+        };
+        // Open on whichever tracker holds the most text, rather than asking the user to pick.
+        // (Surveyor is excluded — it opens its own popup rather than showing a list here.)
+        if (!selectedType) {
+          const biggest = ['consultation', 'conditions', 'progress']
+            .filter(type => available[type])
+            .map(type => ({ type, size: textSize(buildRows(type, items[type])) }))
+            .sort((a, b) => b.size - a.size)[0];
+          if (biggest) selectedType = biggest.type;
+        }
+      }
     } catch (err) {
       if (selectedProject?.id === project.id) error = err.message;
     } finally {
@@ -87,12 +104,17 @@
     }
   }
 
+  // Rough measure of how much a tracker holds: the row names plus every log entry's summary.
+  function textSize(rows) {
+    return rows.reduce((sum, r) =>
+      sum + (r.name?.length || 0) + r.timeline.reduce((s, t) => s + (t.summary?.length || 0), 0), 0);
+  }
+
   async function load() {
     loading = true;
     error = null;
     try {
-      if (selectedType === 'surveyor') stats = await fetchSurveyor(selectedProject);
-      else rows = buildRows(selectedType, await fetchTracker(selectedType, selectedProject));
+      rows = buildRows(selectedType, await fetchTracker(selectedType, selectedProject));
     } catch (err) {
       error = err.message;
     } finally {
@@ -242,6 +264,15 @@
   // The row whose advancement log is open (read-only popup), or null.
   let logRow = null;
 
+  // Surveyor Management popup for the chosen project — the same one the project
+  // overview's expand button opens. Closing it drops the cached surveyor figures
+  // (quotes may have changed) so the Surveyor pill's availability is rechecked next time.
+  let showSurveyor = false;
+  function closeSurveyor() {
+    showSurveyor = false;
+    if (selectedProject) cache.delete(`surveyor:${selectedProject.id}`);
+  }
+
   $: currentLabel = TYPE_OPTIONS.find(o => o.value === selectedType)?.label ?? '';
 </script>
 
@@ -273,31 +304,26 @@
       {:else}
       <div class="ts-pills">
         {#each visibleTypes as opt (opt.value)}
-          <button class="tab-pill" class:active={selectedType === opt.value} on:click={() => selectedType = opt.value}>
-            {opt.label}
-          </button>
+          {#if opt.value === 'surveyor'}
+            <!-- Opens the same Surveyor Management popup as the project overview's expand button -->
+            <button class="tab-pill" on:click={() => (showSurveyor = true)} title="Open Surveyor Management">
+              {opt.label} <i class="las la-expand-arrows-alt"></i>
+            </button>
+          {:else}
+            <button class="tab-pill" class:active={selectedType === opt.value} on:click={() => selectedType = opt.value}>
+              {opt.label}
+            </button>
+          {/if}
         {/each}
       </div>
 
       {#if !selectedType}
-        <div class="ts-state">Choose a tracker above to view it for {selectedProject.project_name}.</div>
+        <!-- Only reachable when Surveyor is the sole source with data (it opens its own popup). -->
+        <div class="ts-state">Only Surveyor Management has data for {selectedProject.project_name}. Click Surveyor above to open it.</div>
       {:else if loading}
         <div class="ts-state"><div class="mini-spinner"></div> Loading…</div>
       {:else if error}
         <div class="ts-state ts-state-error">{error}</div>
-      {:else if selectedType === 'surveyor'}
-        {#if stats}
-          <div class="sv-stats">
-            <div><div class="sv-num">{stats.quotesSent}</div><div class="sv-label">Sent</div></div>
-            <div><div class="sv-num">{stats.quotesReceived}</div><div class="sv-label">Received</div></div>
-            <div><div class="sv-num">{stats.quotesInstructed}</div><div class="sv-label">Instructed</div></div>
-          </div>
-          <div class="sv-spend">£{stats.instructedSpend.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} instructed spend</div>
-          <div class="sv-badges">
-            <span class="badge badge-warning">{stats.worksOutstanding} outstanding</span>
-            <span class="badge badge-success">{stats.worksCompleted} completed</span>
-          </div>
-        {/if}
       {:else if !rows.length}
         <div class="ts-state">No items in {currentLabel} yet.</div>
       {:else}
@@ -323,6 +349,10 @@
     {/if}
   </div>
 </div>
+
+{#if showSurveyor && selectedProject}
+  <SurveyorModal project={selectedProject} onClose={closeSurveyor} />
+{/if}
 
 <AdvancementTimelineModal
   show={!!logRow}
@@ -368,12 +398,6 @@
   .progress-cell-summary { font-size: 11.5px; color: var(--color-slate-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .progress-cell-empty { flex: 1.6; height: 40px; box-sizing: border-box; }
-
-  .sv-stats { display: flex; gap: 16px; padding: 0.5rem 0.25rem 0; }
-  .sv-num { font-size: 17px; font-weight: 700; color: var(--color-slate-900); }
-  .sv-label { font-size: 10px; color: var(--color-slate-400); }
-  .sv-spend { font-size: 12px; font-weight: 600; color: var(--color-slate-700); padding: 10px 0.25rem 0; }
-  .sv-badges { display: flex; gap: 6px; padding: 8px 0.25rem 0; }
 
   .mini-spinner {
     display: inline-block; width: 0.9rem; height: 0.9rem;

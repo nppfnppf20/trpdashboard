@@ -1,7 +1,7 @@
 <script>
   import { getUsers, getProjectsForUser } from '$lib/api/userProfiles.js';
   import { user as currentUser } from '$lib/stores/auth.js';
-  import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
+  import ProjectScopeMenu from './ProjectScopeMenu.svelte';
   import KeyDatesWidget from '$lib/components/projects/overview/KeyDatesWidget.svelte';
   import MeetingNotesWidget from '$lib/components/projects/overview/MeetingNotesWidget.svelte';
   import TrackersModal from './TrackersModal.svelte';
@@ -28,6 +28,13 @@
   let scope = 'all';
   let selectedLabels = [];
 
+  // "Shared with": a quick way to tick the project list — ticking colleagues ticks
+  // the projects this person has in common with them. Several ticked = projects ALL
+  // of them are on (together with this person), not any one of them. Being "on" a
+  // project means being its linked lead, manager or director.
+  let allUsers = [];
+  let sharedLabels = [];
+
   $: if (userId && userId !== loadedForId) {
     loadedForId = userId;
     loadProfile(userId);
@@ -46,9 +53,11 @@
         getProjectsForUser(id)
       ]);
       profile = users.find(u => u.id === id) || null;
+      allUsers = users;
       allProjects = userProjects;
       scope = 'all';
       selectedLabels = allProjects.map(p => p.project_name);
+      sharedLabels = [];
     } catch (err) {
       console.error('Failed to load profile:', err);
       error = err.message;
@@ -58,17 +67,42 @@
   }
 
   $: projectOptions = allProjects.map(p => ({ id: p.id, label: p.project_name }));
-  $: visibleProjects = scope === 'all'
+  $: scopeProjects = scope === 'all'
     ? allProjects
     : allProjects.filter(p => selectedLabels.includes(p.project_name));
 
-  $: selectionSummary = selectedLabels.length === 0
-    ? 'No projects selected'
-    : selectedLabels.length === allProjects.length
-      ? `All ${allProjects.length} projects`
-      : selectedLabels.length === 1
-        ? selectedLabels[0]
-        : `${selectedLabels.length} of ${allProjects.length} projects`;
+  const projectPeople = p =>
+    [p.project_lead_user_id, p.project_manager_user_id, p.project_director_user_id].filter(Boolean).map(String);
+
+  // Everyone else who is on at least one of this person's projects.
+  $: sharedOptions = (() => {
+    const ids = new Set(allProjects.flatMap(projectPeople));
+    ids.delete(String(userId));
+    return allUsers
+      .filter(u => ids.has(String(u.id)))
+      .map(u => ({ id: u.id, label: u.display_name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  })();
+  $: sharedIds = sharedLabels
+    .map(label => sharedOptions.find(o => o.label === label)?.id)
+    .filter(Boolean)
+    .map(String);
+
+  $: visibleProjects = scopeProjects;
+
+  // Ticking colleagues re-ticks the project list to exactly the projects this
+  // person is on together with ALL of them (none ticked = every project again).
+  // The project ticks stay the single source of truth, so they can be adjusted by hand afterwards.
+  function applyShared(labels) {
+    sharedLabels = labels;
+    const ids = labels
+      .map(label => sharedOptions.find(o => o.label === label)?.id)
+      .filter(Boolean)
+      .map(String);
+    selectedLabels = allProjects
+      .filter(p => ids.every(id => projectPeople(p).includes(id)))
+      .map(p => p.project_name);
+  }
 
   function initials(name) {
     if (!name) return '?';
@@ -112,15 +146,26 @@
           <i class="las la-layer-group"></i> All projects
           <span class="pw-pill-count">{allProjects.length}</span>
         </button>
-        <button type="button" class="pw-pill" class:active={scope === 'select'} aria-pressed={scope === 'select'} on:click={() => scope = 'select'}>
-          <i class="las la-filter"></i> Select projects
-        </button>
+        <!-- The pill is the dropdown's trigger: the project list opens directly beneath it. -->
+        <ProjectScopeMenu {projectOptions} bind:selected={selectedLabels} {sharedOptions} shared={sharedLabels} on:sharedChange={(e) => applyShared(e.detail)}>
+          <button
+            slot="trigger"
+            let:toggle
+            let:open
+            type="button"
+            class="pw-pill"
+            class:active={scope === 'select'}
+            aria-pressed={scope === 'select'}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            on:click={() => { scope = 'select'; toggle(); }}
+          >
+            <i class="las la-filter"></i> Select projects
+            {#if scope === 'select'}<span class="pw-pill-count">{visibleProjects.length}/{allProjects.length}</span>{/if}
+            <i class="las la-angle-down pw-pill-chev" class:open></i>
+          </button>
+        </ProjectScopeMenu>
       </div>
-      {#if scope === 'select'}
-        <div class="pw-scope-select">
-          <MultiSelectDropdown compact options={projectOptions} bind:selected={selectedLabels} summary={selectionSummary} placeholder="Choose projects…" />
-        </div>
-      {/if}
       <button type="button" class="pw-pill pw-trackers-btn" on:click={() => (trackersOpen = true)} disabled={visibleProjects.length === 0}>
         <i class="las la-clipboard-list"></i> Trackers &amp; Surveyor
       </button>
@@ -129,7 +174,11 @@
     {#if visibleProjects.length === 0}
       <div class="empty-state">
         <i class="las la-project-diagram"></i>
-        <p>{allProjects.length === 0 ? "This person isn't linked as lead, manager, or director on any project." : 'No projects match the current selection.'}</p>
+        <p>{allProjects.length === 0
+          ? "This person isn't linked as lead, manager, or director on any project."
+          : scope === 'select' && sharedIds.length
+            ? `No projects shared with ${sharedLabels.length === 1 ? sharedLabels[0] : 'all of those people'}.`
+            : 'No projects match the current selection.'}</p>
       </div>
     {:else}
       <div class="pw-grid">
@@ -234,8 +283,8 @@
     font-size: 0.6875rem; line-height: 1.15rem; text-align: center;
   }
   .pw-pill.active .pw-pill-count { background: var(--color-slate-700); color: var(--color-white); }
-
-  .pw-scope-select { min-width: 200px; }
+  .pw-pill .pw-pill-chev { font-size: 0.75rem; margin-left: -2px; transition: transform 0.15s; }
+  .pw-pill .pw-pill-chev.open { transform: rotate(180deg); }
 
   .pw-trackers-btn { margin-left: auto; }
 
