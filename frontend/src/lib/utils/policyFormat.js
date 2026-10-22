@@ -27,6 +27,11 @@ const NUMBERED_HEADING = /^\d{1,3}(?:\.\d{1,3})+\.?\s/;
 
 const isAllCaps = line => line.length >= 4 && /[A-Z]/.test(line) && line === line.toUpperCase();
 
+// A transcript speaker label with its timestamp: "Speaker 1 0:21", "Robert Shaw 0:35",
+// "Unknown Speaker 12:04:30". Always its own line, so the speech under it never gets
+// glued onto it, and treated as a heading (bold in the viewer).
+const SPEAKER_LINE = /^\p{L}[\p{L}\p{N} .'’-]{0,59}?\s+\d{1,2}:\d{2}(?::\d{2})?$/u;
+
 // "Full width" for a block of text: the median of its longer lines, not the
 // single longest one, so one long unwrapped line can't hide the wraps around it.
 function typicalLineWidth(lines) {
@@ -142,7 +147,7 @@ export function formatPastedPolicyText(text) {
   // ending a sentence. A heading never absorbs the line after it, and never
   // gets absorbed into the paragraph before it.
   const isHeadingLine = line =>
-    isAllCaps(line) ||
+    isAllCaps(line) || SPEAKER_LINE.test(line) ||
     (NUMBERED_HEADING.test(line) && !SENTENCE_END.test(line) && line.length < typicalWidth * 0.95);
   // A heading that itself wrapped: "1.2 Housing development in" / "existing rural groups".
   // The second line starts in lower case, is short, and doesn't end a sentence.
@@ -165,7 +170,9 @@ export function formatPastedPolicyText(text) {
 
     if (!paragraph) {
       startParagraph(line);
-    } else if (paragraphIsHeading && continuesHeading(line)) {
+    } else if (paragraphIsHeading && NUMBERED_HEADING.test(paragraph) && continuesHeading(line)) {
+      // Only a numbered heading can wrap onto a second line. A speaker label
+      // ("Speaker 1 0:21") or an ALL CAPS title never takes the next line with it.
       paragraph += ` ${line}`; // still the heading
     } else if (
       LIST_MARKER.test(line) || SENTENCE_END.test(paragraph) || paragraphIsHeading || isHeadingLine(line) ||
@@ -211,17 +218,23 @@ function headingFlags(lines) {
   const typical = typicalLineWidth(lines);
   const shortLimit = typical >= 30 ? typical * 0.5 : 45;
   const flags = [];
+  // True for a numbered heading and for the wrapped second line of one. Only those
+  // can take a continuation line, not speaker labels or ALL CAPS titles.
+  const numbered = [];
 
   lines.forEach((line, i) => {
     const next = lines[i + 1];
     let heading = false;
+    let startsNumbered = false;
 
-    if (isAllCaps(line)) {
+    if (isAllCaps(line) || SPEAKER_LINE.test(line)) {
       heading = true;
     } else if (NUMBERED_HEADING.test(line) && !SENTENCE_END.test(line) && (typical === 0 || line.length < typical * 0.95)) {
       heading = true;
-    } else if (i > 0 && flags[i - 1] && /^[a-z]/.test(line) && !SENTENCE_END.test(line) && !LIST_MARKER.test(line) && line.length < (typical >= 30 ? typical * 0.8 : 45)) {
+      startsNumbered = true;
+    } else if (i > 0 && numbered[i - 1] && /^[a-z]/.test(line) && !SENTENCE_END.test(line) && !LIST_MARKER.test(line) && line.length < (typical >= 30 ? typical * 0.8 : 45)) {
       heading = true;
+      startsNumbered = true; // the wrapped second line of a numbered heading
     } else if (
       next !== undefined && /^[A-Z]/.test(line) && !LIST_MARKER.test(line) && !/[.,;:!?]/.test(line) &&
       line.length <= shortLimit && line.split(/\s+/).length <= 8 && !TRAILING_FILLER.test(line) && !CONTINUES.test(next)
@@ -229,6 +242,7 @@ function headingFlags(lines) {
       heading = true;
     }
     flags.push(heading);
+    numbered.push(startsNumbered);
   });
   return flags;
 }
@@ -251,6 +265,20 @@ export function autoFormatPolicyText(text) {
   return lines
     .map((l, i) => (flags[i] ? `<p><b>${escapeHtml(l)}</b></p>` : `<p>${escapeHtml(l)}</p>`))
     .join('');
+}
+
+/**
+ * Starting HTML for saved documents and transcripts (as opposed to policy
+ * wording, which is tidied when it is pasted or saved). Document text often
+ * arrives straight from a PDF with a line break at every wrap, so the lines are
+ * joined back up first, then clear headings are bolded. Display only: the stored
+ * text is never changed by this.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function autoFormatDocumentText(text) {
+  return autoFormatPolicyText(formatPastedPolicyText(text));
 }
 
 /**

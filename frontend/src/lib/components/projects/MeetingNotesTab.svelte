@@ -11,6 +11,7 @@
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
+  import { formatOnPaste } from '$lib/utils/policyFormat.js';
   import KeyDateSuggestionCard from '$lib/components/projects/KeyDateSuggestionCard.svelte';
   import StageSuggestionCard from '$lib/components/projects/StageSuggestionCard.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
@@ -25,7 +26,8 @@
     getDocumentSummaries,
     updateDocumentSummary,
     deleteDocumentSummary,
-    getDocumentSummaryTranscript
+    getDocumentSummaryTranscript,
+    saveDocumentTranscriptAnnotated
   } from '$lib/api/projectDocs.js';
   import {
     getMeetingNotes,
@@ -112,28 +114,17 @@
   // Briefing viewer modal
   let viewingBriefing = null;
 
-  // Briefing transcript viewer modal (lazy-loaded)
-  let briefingTranscripts = {}; // id -> { loading, text, error }
+  // Briefing transcript viewer: the shared TranscriptViewerModal, told where to
+  // load this briefing's text from and where to save its formatting.
   let viewingTranscriptBriefing = null;
 
   function openBriefingTranscript(b) {
     viewingTranscriptBriefing = b;
-    loadBriefingTranscript(b);
   }
 
-  async function loadBriefingTranscript(b) {
-    if (briefingTranscripts[b.id]) return;
-    if (b.transcript_text) {
-      briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: false, text: b.transcript_text, error: null } };
-      return;
-    }
-    briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: true, text: null, error: null } };
-    try {
-      const data = await getDocumentSummaryTranscript(b.id);
-      briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: false, text: data.transcript_text, error: null } };
-    } catch (err) {
-      briefingTranscripts = { ...briefingTranscripts, [b.id]: { loading: false, text: null, error: err.message } };
-    }
+  async function loadBriefingTranscriptText(b) {
+    const data = await getDocumentSummaryTranscript(b.id);
+    return { text: data.transcript_text, annotated: data.transcript_text_annotated };
   }
 
   // Briefing editor modal
@@ -695,7 +686,7 @@
             </div>
             <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
           {:else}
-            <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+            <textarea class="form-input mn-paste" bind:value={uploadPasteText} use:formatOnPaste placeholder="Paste the meeting transcript here…" rows="3"></textarea>
           {/if}
 
           <label class="mn-checkbox-row">
@@ -741,11 +732,11 @@
             <div class="form-row">
               <div class="form-group">
                 <label>Agenda</label>
-                <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the meeting agenda…"></textarea>
+                <textarea class="form-input" bind:value={uploadAgenda} use:formatOnPaste rows="3" placeholder="Paste the meeting agenda…"></textarea>
               </div>
               <div class="form-group">
                 <label>Consultant Notes</label>
-                <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
+                <textarea class="form-input" bind:value={uploadUserNotes} use:formatOnPaste rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
               </div>
             </div>
             {#if uploadSummaryType === 'custom'}
@@ -1093,38 +1084,14 @@
 
 <!-- ── Briefing Transcript Viewer Modal ──────────────────────────────────── -->
 {#if viewingTranscriptBriefing}
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal-backdrop" role="dialog" tabindex="-1" on:keydown={(e) => e.key === 'Escape' && (viewingTranscriptBriefing = null)}>
-    <div class="mn-modal mn-editor-modal">
-
-      <div class="modal-header">
-        <div>
-          <h2 class="mn-modal-title">{viewingTranscriptBriefing.title}</h2>
-          <p class="mn-modal-meta">Full transcript{#if viewingTranscriptBriefing.created_at}&nbsp;&bull; {formatDate(viewingTranscriptBriefing.created_at)}{/if}</p>
-        </div>
-        <button class="btn btn-icon btn-ghost close-btn" on:click={() => viewingTranscriptBriefing = null}>
-          <i class="las la-times"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        {#if briefingTranscripts[viewingTranscriptBriefing.id]?.loading}
-          <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading transcript…</div>
-        {:else if briefingTranscripts[viewingTranscriptBriefing.id]?.error}
-          <div class="mn-error">{briefingTranscripts[viewingTranscriptBriefing.id].error}</div>
-        {:else if briefingTranscripts[viewingTranscriptBriefing.id]?.text}
-          <pre class="mn-transcript-text mn-transcript-modal-text">{briefingTranscripts[viewingTranscriptBriefing.id].text}</pre>
-        {:else}
-          <p class="mn-empty">No transcript stored for this briefing.</p>
-        {/if}
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" on:click={() => viewingTranscriptBriefing = null}>Close</button>
-      </div>
-
-    </div>
-  </div>
+  {#key viewingTranscriptBriefing.id}
+    <TranscriptViewerModal
+      note={viewingTranscriptBriefing}
+      onClose={() => viewingTranscriptBriefing = null}
+      load={() => loadBriefingTranscriptText(viewingTranscriptBriefing)}
+      save={(html) => saveDocumentTranscriptAnnotated(viewingTranscriptBriefing.id, html)}
+    />
+  {/key}
 {/if}
 
 <!-- ── Briefing Editor Modal ─────────────────────────────────────────────── -->

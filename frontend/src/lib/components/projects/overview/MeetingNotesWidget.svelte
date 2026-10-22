@@ -10,6 +10,7 @@
   import VoiceRecordingBar from '$lib/components/projects/VoiceRecordingBar.svelte';
   import { openProjectModal } from '$lib/stores/projectViewModal.js';
   import { debounce } from '$lib/utils/debounce.js';
+  import { formatOnPaste } from '$lib/utils/policyFormat.js';
 
   export let project;
   // Optional — when set (non-empty), merges the recent-notes feed across all
@@ -255,7 +256,7 @@
         </div>
         <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
       {:else}
-        <textarea class="form-input mnw-paste" bind:value={pasteText} placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+        <textarea class="form-input mnw-paste" bind:value={pasteText} use:formatOnPaste placeholder="Paste the meeting transcript here…" rows="3"></textarea>
         <!-- Hidden while recording/transcribing: the text isn't complete until the recording is stopped and transcribed -->
         {#if recordState !== 'recording' && recordState !== 'transcribing'}
           <button class="btn btn-primary btn-sm mnw-process-btn" on:click={handOffText} disabled={!pasteText.trim()}>

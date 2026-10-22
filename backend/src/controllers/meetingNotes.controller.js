@@ -334,10 +334,45 @@ export async function getMeetingTranscript(req, res) {
       [meetingId]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-    res.json(rows[0]);
+
+    // The saved layout (migration 198) is read separately so the viewer still
+    // works, with its automatic layout, on a database that hasn't had it applied yet.
+    let annotated = null;
+    try {
+      const { rows: ann } = await pool.query(
+        `SELECT transcript_text_annotated FROM planning_applications.meeting_transcripts WHERE id = $1`,
+        [meetingId]
+      );
+      annotated = ann[0]?.transcript_text_annotated ?? null;
+    } catch (annErr) {
+      if (annErr.code !== '42703') throw annErr; // 42703 = column does not exist yet
+    }
+    res.json({ ...rows[0], transcript_text_annotated: annotated });
   } catch (err) {
     console.error('meetingNotes.getMeetingTranscript error:', err);
     res.status(500).json({ error: 'Failed to fetch transcript' });
+  }
+}
+
+// Saves the formatted (bold / highlight / line breaks) version of a transcript.
+// Scoped on purpose: touches only transcript_text_annotated, never the transcript itself.
+export async function updateTranscriptAnnotated(req, res) {
+  const { meetingId } = req.params;
+  const { html } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.meeting_transcripts
+          SET transcript_text_annotated = $2
+        WHERE id = $1
+        RETURNING id`,
+      [meetingId, typeof html === 'string' ? html : null]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json({ id: rows[0].id });
+  } catch (err) {
+    console.error('meetingNotes.updateTranscriptAnnotated error:', err);
+    const needsMigration = err.code === '42703';
+    res.status(500).json({ error: needsMigration ? 'Saving formatting needs database migration 198 to be applied' : 'Failed to save formatting' });
   }
 }
 

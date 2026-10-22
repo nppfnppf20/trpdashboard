@@ -61,6 +61,21 @@ export async function getMeetingTranscript(meetingId) {
   return res.json();
 }
 
+// Saves the formatted (bold / highlight / line breaks) version of a transcript.
+// The transcript text itself is never changed by this.
+export async function saveTranscriptAnnotated(meetingId, html) {
+  const res = await authFetch(`/api/meeting-notes/${meetingId}/transcript-annotated`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to save formatting');
+  }
+  return res.json();
+}
+
 export async function updateMeetingSummary(meetingId, summaryHtml) {
   const res = await authFetch(`/api/meeting-notes/${meetingId}/summary`, {
     method: 'PATCH',

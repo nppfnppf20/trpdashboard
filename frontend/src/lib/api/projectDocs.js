@@ -44,6 +44,21 @@ export async function getDocumentSummaryTranscript(summaryId) {
   return res.json(); // { transcript_text }
 }
 
+// Saves the formatted (bold / highlight / line breaks) version of a document's text.
+// The text itself is never changed by this.
+export async function saveDocumentTranscriptAnnotated(summaryId, html) {
+  const res = await authFetch(`/api/planning-application/document-summaries/${summaryId}/transcript-annotated`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to save formatting');
+  }
+  return res.json();
+}
+
 export async function updateDocumentSummary(summaryId, { title, summary_html }) {
   const res = await authFetch(`/api/planning-application/document-summaries/${summaryId}`, {
     method: 'PUT',

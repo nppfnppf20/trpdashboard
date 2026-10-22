@@ -3,6 +3,8 @@
   import AddProjectModal from '$lib/components/projects/AddProjectModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import MultiSelectDropdown from '$lib/components/shared/MultiSelectDropdown.svelte';
+  import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
+  import { formatOnPaste } from '$lib/utils/policyFormat.js';
   import RichTextEditor from '$lib/components/planning/RichTextEditor.svelte';
   import SuggestedActionsEditor from '$lib/components/projects/SuggestedActionsEditor.svelte';
   import MeetingActionsList from '$lib/components/projects/MeetingActionsList.svelte';
@@ -16,7 +18,6 @@
     processMultiProjectNote,
     getAllMeetingNotes,
     getMeetingNotes,
-    getMeetingTranscript,
     getMeetingNoteActions,
     updateMeetingSummary,
     saveMeetingReviewActions,
@@ -105,7 +106,6 @@
   let notesError = null;
 
   // Actions / Transcript pop-up — one modal per card button
-  let transcriptData = {}; // { [noteId]: { loading, text, error } } — cached once fetched
   let detailModal = null; // { type: 'actions' | 'transcript', note }
 
   function closeDetailModal() {
@@ -116,20 +116,9 @@
     detailModal = { type: 'actions', note };
   }
 
-  async function openTranscriptModal(note) {
-    const noteId = note.id;
+  // The transcript opens in the shared viewer, which loads and formats the text itself
+  function openTranscriptModal(note) {
     detailModal = { type: 'transcript', note };
-    if (!transcriptData[noteId]) {
-      transcriptData[noteId] = { loading: true, text: null, error: null };
-      transcriptData = { ...transcriptData };
-      try {
-        const data = await getMeetingTranscript(noteId);
-        transcriptData[noteId] = { loading: false, text: data.transcript_text, error: null };
-      } catch (err) {
-        transcriptData[noteId] = { loading: false, text: null, error: err.message };
-      }
-      transcriptData = { ...transcriptData };
-    }
   }
 
   async function loadNotes() {
@@ -772,7 +761,7 @@
           </div>
           <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
         {:else}
-          <textarea class="form-input mn-paste" bind:value={uploadPasteText} placeholder="Paste the {meetingType === 'cpd' ? 'CPD notes' : 'meeting transcript'} here…" rows="3"></textarea>
+          <textarea class="form-input mn-paste" bind:value={uploadPasteText} use:formatOnPaste placeholder="Paste the {meetingType === 'cpd' ? 'CPD notes' : 'meeting transcript'} here…" rows="3"></textarea>
         {/if}
 
         <button class="btn btn-ghost btn-sm mn-extras-toggle" on:click={() => showExtras = !showExtras}>
@@ -783,11 +772,11 @@
           <div class="form-row">
             <div class="form-group">
               <label>{meetingType === 'cpd' ? 'Agenda / Programme' : 'Agenda'}</label>
-              <textarea class="form-input" bind:value={uploadAgenda} rows="3" placeholder="Paste the agenda…"></textarea>
+              <textarea class="form-input" bind:value={uploadAgenda} use:formatOnPaste rows="3" placeholder="Paste the agenda…"></textarea>
             </div>
             <div class="form-group">
               <label>Notes</label>
-              <textarea class="form-input" bind:value={uploadUserNotes} rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
+              <textarea class="form-input" bind:value={uploadUserNotes} use:formatOnPaste rows="3" placeholder="Your own notes, included verbatim in the summary…"></textarea>
             </div>
           </div>
           {#if uploadSummaryType === 'custom'}
@@ -973,7 +962,9 @@
 </div>
 
 <!-- Actions / Transcript pop-up -->
-{#if detailModal}
+{#if detailModal?.type === 'transcript'}
+  <TranscriptViewerModal note={detailModal.note} onClose={closeDetailModal} />
+{:else if detailModal}
   {@const dNote = detailModal.note}
   <div class="modal-backdrop" role="dialog" tabindex="-1"
     on:click|self={closeDetailModal}
@@ -1004,12 +995,6 @@
             emptyText="No actions were saved for this meeting."
             on:changed={refreshStreamCounts}
           />
-        {:else if transcriptData[dNote.id]?.loading}
-          <span class="mn-spinner-blue"></span> Loading transcript…
-        {:else if transcriptData[dNote.id]?.error}
-          <span class="mn-error-sm">{transcriptData[dNote.id].error}</span>
-        {:else if transcriptData[dNote.id]?.text}
-          <pre class="mn-transcript-text">{transcriptData[dNote.id].text}</pre>
         {/if}
       </div>
     </div>
@@ -1493,17 +1478,6 @@
   .mn-detail-modal { max-width: 860px; height: 80vh; }
   .mn-detail-modal--wide { max-width: 1200px; }
   .mn-detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 1.5rem; font-size: 0.8rem; color: var(--color-slate-500); }
-  .mn-transcript-text {
-    font-family: inherit;
-    font-size: 0.8rem;
-    color: var(--color-slate-600);
-    white-space: pre-wrap;
-    line-height: 1.6;
-    margin: 0;
-    background: var(--color-slate-50);
-    border-radius: 4px;
-    padding: 0.75rem;
-  }
   .mn-error-sm { color: var(--color-red-600); font-size: 0.8rem; }
   .mn-editor-actions { padding: 0.75rem 1.5rem; border-top: 1px solid var(--color-slate-200); max-height: 45%; overflow-y: auto; flex-shrink: 0; }
   .mn-editor-actions-title--spaced { margin-top: 1.75rem; padding-top: 1rem; border-top: 1px solid var(--color-slate-200); }

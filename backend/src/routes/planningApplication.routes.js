@@ -38,6 +38,7 @@ import {
   updateDocumentSummary,
   deleteDocumentSummary,
   getDocumentSummaryTranscript,
+  updateDocumentTranscriptAnnotated,
   getMeetingGuide,
   suggestDocumentUpdates,
   getSectionPrompt,
@@ -136,6 +137,7 @@ router.put('/projects/:projectId/document-summaries/by-type', replaceDocumentSum
 router.post('/projects/:projectId/document-summaries', saveDocumentSummary);
 router.get('/meeting-guide', getMeetingGuide);
 router.get('/document-summaries/:summaryId/transcript', getDocumentSummaryTranscript);
+router.put('/document-summaries/:summaryId/transcript-annotated', updateDocumentTranscriptAnnotated);
 router.put('/document-summaries/:summaryId', updateDocumentSummary);
 router.delete('/document-summaries/:summaryId', deleteDocumentSummary);
 

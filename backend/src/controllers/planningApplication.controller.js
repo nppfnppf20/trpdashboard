@@ -1448,10 +1448,44 @@ export async function getDocumentSummaryTranscript(req, res) {
       [summaryId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Document summary not found' });
-    res.json({ transcript_text: rows[0].transcript_text });
+
+    // Saved layout (migration 198), read separately so this still works before it is applied
+    let annotated = null;
+    try {
+      const { rows: ann } = await pool.query(
+        `SELECT transcript_text_annotated FROM planning_applications.document_summaries WHERE id = $1`,
+        [summaryId]
+      );
+      annotated = ann[0]?.transcript_text_annotated ?? null;
+    } catch (annErr) {
+      if (annErr.code !== '42703') throw annErr; // 42703 = column does not exist yet
+    }
+    res.json({ transcript_text: rows[0].transcript_text, transcript_text_annotated: annotated });
   } catch (err) {
     console.error('pa.getDocumentSummaryTranscript error:', err);
     res.status(500).json({ error: 'Failed to fetch transcript' });
+  }
+}
+
+// Saves the formatted (bold / highlight / line breaks) version of a document's
+// text. Scoped on purpose: touches only transcript_text_annotated.
+export async function updateDocumentTranscriptAnnotated(req, res) {
+  const { summaryId } = req.params;
+  const { html } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE planning_applications.document_summaries
+          SET transcript_text_annotated = $2
+        WHERE id = $1
+        RETURNING id`,
+      [summaryId, typeof html === 'string' ? html : null]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Document summary not found' });
+    res.json({ id: rows[0].id });
+  } catch (err) {
+    console.error('pa.updateDocumentTranscriptAnnotated error:', err);
+    const needsMigration = err.code === '42703';
+    res.status(500).json({ error: needsMigration ? 'Saving formatting needs database migration 198 to be applied' : 'Failed to save formatting' });
   }
 }
 
