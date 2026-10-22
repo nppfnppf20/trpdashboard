@@ -18,9 +18,10 @@
   export let show = false;
   export let title = '';
   export let items = [];
-  export let onAdd; // (form) => Promise
-  export let onUpdate; // (id, form) => Promise
-  export let onDelete; // (id) => Promise
+  export let readOnly = false; // view the log only: no add / edit / delete (the handlers below aren't needed)
+  export let onAdd = null; // (form) => Promise
+  export let onUpdate = null; // (id, form) => Promise
+  export let onDelete = null; // (id) => Promise
   export let onGenerate = null; // (fullText) => Promise<string>
   export let onClose = () => {};
 
@@ -249,7 +250,7 @@
                 {/if}
                 <p class="atm-row-summary">{item.summary}</p>
               </div>
-              {#if item.editable}
+              {#if item.editable && !readOnly}
                 <div class="atm-row-actions">
                   <button class="btn btn-icon btn-ghost" title="Edit" on:click={() => startEdit(item)}><i class="las la-pen"></i></button>
                   <button class="btn btn-icon btn-danger-ghost" title="Delete" on:click={() => remove(item.id)} disabled={deletingId === item.id}><i class="las la-trash"></i></button>
@@ -257,11 +258,13 @@
               {/if}
             </div>
           {:else}
-            <p class="atm-empty">No entries yet — add the first one below.</p>
+            <p class="atm-empty">{readOnly ? 'No entries yet.' : 'No entries yet — add the first one below.'}</p>
           {/each}
         </div>
 
-        {#if showForm}
+        {#if readOnly}
+          <!-- view only -->
+        {:else if showForm}
           <div class="atm-form">
             <div class="atm-form-title">{editingId ? 'Edit entry' : 'Add entry'}</div>
             <AdvancementEntryFields

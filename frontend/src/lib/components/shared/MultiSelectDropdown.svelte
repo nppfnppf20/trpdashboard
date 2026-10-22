@@ -5,6 +5,8 @@
   export let selected = [];      // array of selected labels, bind:selected
   export let placeholder = 'Select...';
   export let loading = false;
+  export let compact = false;    // slimmer pill-style trigger and menu, for toolbars rather than forms
+  export let summary = null;     // overrides the trigger text (e.g. "3 of 7 projects")
 
   let open = false;
   let searchText = '';
@@ -15,11 +17,11 @@
     ? options.filter(o => o.label.toLowerCase().includes(searchText.toLowerCase()))
     : options;
 
-  $: label = selected.length === 0
+  $: label = summary ?? (selected.length === 0
     ? placeholder
     : selected.length === 1
       ? selected[0]
-      : `${selected.length} selected`;
+      : `${selected.length} selected`);
 
   function toggle() {
     if (!loading) open = !open;
@@ -51,7 +53,7 @@
   });
 </script>
 
-<div class="msd-wrapper">
+<div class="msd-wrapper" class:msd-compact={compact}>
   <button
     type="button"
     class="msd-trigger"
@@ -259,4 +261,31 @@
     font-size: 0.75rem;
     color: var(--color-slate-500);
   }
+
+  /* ── Compact: slim pill trigger + tidy menu, for toolbars ── */
+  .msd-compact .msd-trigger {
+    padding: 0.3rem 0.5rem 0.3rem 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-color: var(--color-slate-200);
+    border-radius: var(--radius-pill);
+    color: var(--color-slate-700);
+    background: var(--color-slate-50);
+  }
+  .msd-compact .msd-trigger:hover { background: var(--color-slate-100); }
+  .msd-compact .msd-trigger.msd-open { background: var(--color-white); border-color: var(--color-primary-500); }
+  .msd-compact .msd-chevron { width: 14px; height: 14px; margin-left: 0.35rem; }
+  .msd-compact .msd-panel {
+    left: 0;
+    right: auto;
+    min-width: 100%;
+    width: max-content;
+    max-width: 340px;
+    border-color: var(--color-slate-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-dropdown);
+  }
+  .msd-compact .msd-option { padding: 0.4rem 0.75rem; font-size: 0.8125rem; gap: 0.5rem; }
+  .msd-compact .msd-option input[type="checkbox"] { width: 14px; height: 14px; }
+  .msd-compact .msd-footer { padding: 0.4rem 0.75rem; }
 </style>

@@ -62,6 +62,14 @@
     ? allProjects
     : allProjects.filter(p => selectedLabels.includes(p.project_name));
 
+  $: selectionSummary = selectedLabels.length === 0
+    ? 'No projects selected'
+    : selectedLabels.length === allProjects.length
+      ? `All ${allProjects.length} projects`
+      : selectedLabels.length === 1
+        ? selectedLabels[0]
+        : `${selectedLabels.length} of ${allProjects.length} projects`;
+
   function initials(name) {
     if (!name) return '?';
     return name.split(' ').filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('');
@@ -99,20 +107,21 @@
     </div>
 
     <div class="pw-scope-bar">
-      <div class="tab-navigation pw-scope-toggle">
-        <button type="button" class="tab-button" class:active={scope === 'all'} on:click={() => scope = 'all'}>
-          All my projects ({allProjects.length})
+      <div class="pw-scope-pills" role="group" aria-label="Which projects to show">
+        <button type="button" class="pw-pill" class:active={scope === 'all'} aria-pressed={scope === 'all'} on:click={() => scope = 'all'}>
+          <i class="las la-layer-group"></i> All projects
+          <span class="pw-pill-count">{allProjects.length}</span>
         </button>
-        <button type="button" class="tab-button" class:active={scope === 'select'} on:click={() => scope = 'select'}>
-          Select projects
+        <button type="button" class="pw-pill" class:active={scope === 'select'} aria-pressed={scope === 'select'} on:click={() => scope = 'select'}>
+          <i class="las la-filter"></i> Select projects
         </button>
       </div>
       {#if scope === 'select'}
         <div class="pw-scope-select">
-          <MultiSelectDropdown options={projectOptions} bind:selected={selectedLabels} placeholder="Select projects..." />
+          <MultiSelectDropdown compact options={projectOptions} bind:selected={selectedLabels} summary={selectionSummary} placeholder="Choose projects…" />
         </div>
       {/if}
-      <button type="button" class="btn btn-secondary btn-sm pw-trackers-btn" on:click={() => (trackersOpen = true)} disabled={visibleProjects.length === 0}>
+      <button type="button" class="pw-pill pw-trackers-btn" on:click={() => (trackersOpen = true)} disabled={visibleProjects.length === 0}>
         <i class="las la-clipboard-list"></i> Trackers &amp; Surveyor
       </button>
     </div>
@@ -198,37 +207,35 @@
   .pw-scope-bar {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.625rem 1.5rem;
+    gap: 0.75rem;
+    padding: 0.5rem 1.5rem;
     background: var(--color-white);
     border-bottom: 1px solid var(--color-slate-200);
     flex-wrap: wrap;
   }
 
-  .pw-scope-toggle {
-    width: auto;
-    border-bottom: none;
-    background: var(--color-slate-100);
-    border-radius: var(--radius-md);
-    padding: 0.2rem;
-  }
+  .pw-scope-pills { display: flex; gap: 6px; }
 
-  .pw-scope-toggle .tab-button {
-    flex: none;
-    padding: 0.4rem 0.75rem;
-    border-radius: var(--radius-sm, 4px);
-    border-bottom: none;
-    font-size: 0.8rem;
+  /* Same pill look as the pills inside the widgets */
+  .pw-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border: none; border-radius: var(--radius-pill); cursor: pointer;
+    background: var(--color-slate-100); color: var(--color-slate-600);
+    font-family: inherit; font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
   }
+  .pw-pill:hover:not(:disabled) { background: var(--color-slate-200); }
+  .pw-pill.active { background: var(--color-slate-900); color: var(--color-white); }
+  .pw-pill i { font-size: 0.9375rem; }
+  .pw-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+  .pw-pill-count {
+    min-width: 1.15rem; padding: 0 0.35rem; border-radius: var(--radius-pill);
+    background: var(--color-slate-200); color: var(--color-slate-700);
+    font-size: 0.6875rem; line-height: 1.15rem; text-align: center;
+  }
+  .pw-pill.active .pw-pill-count { background: var(--color-slate-700); color: var(--color-white); }
 
-  .pw-scope-toggle .tab-button.active {
-    background: var(--color-white);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .pw-scope-select {
-    min-width: 260px;
-  }
+  .pw-scope-select { min-width: 200px; }
 
   .pw-trackers-btn { margin-left: auto; }
 

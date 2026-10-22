@@ -262,12 +262,6 @@
     </div>
     {#if tab === 'actions'}
       <div class="kd-head-actions">
-        {#if canFilterMine}
-          <div class="kd-scope" role="group" aria-label="Which actions to show">
-            <button type="button" class="kd-scope-btn" class:active={onlyMine} aria-pressed={onlyMine} on:click={() => (onlyMine = true)}>{mineLabel}</button>
-            <button type="button" class="kd-scope-btn" class:active={!onlyMine} aria-pressed={!onlyMine} on:click={() => (onlyMine = false)}>All</button>
-          </div>
-        {/if}
         <button class="widget-icon-btn" on:click={() => (showAddAction = true)} title="Add an action manually" aria-label="Add action">
           <i class="las la-plus"></i>
         </button>
@@ -283,6 +277,16 @@
   </div>
   {#if tab === 'actions'}
     <div class="widget-body kd-body">
+      {#if canFilterMine}
+        <div class="kd-scope" role="group" aria-label="Which actions to show">
+          <button type="button" class="kd-pill" class:active={onlyMine} aria-pressed={onlyMine} on:click={() => (onlyMine = true)}>
+            <i class="las la-user"></i> {mineLabel}
+          </button>
+          <button type="button" class="kd-pill" class:active={!onlyMine} aria-pressed={!onlyMine} on:click={() => (onlyMine = false)}>
+            <i class="las la-users"></i> All actions
+          </button>
+        </div>
+      {/if}
       <MeetingActionsList
         load={loadActions}
         loadKey={actionsLoadKey}
@@ -349,15 +353,17 @@
 />
 
 <style>
-  /* My actions | All — small segmented toggle in the header */
-  .kd-scope { display: flex; gap: 2px; padding: 2px; background: var(--color-slate-100); border-radius: var(--radius-pill); }
-  .kd-scope-btn {
-    padding: 2px 9px; border: none; border-radius: var(--radius-pill); cursor: pointer;
-    background: none; font-family: inherit; font-size: 0.6875rem; font-weight: 600; color: var(--color-slate-500);
-    white-space: nowrap;
+  /* My actions | All actions — pills above the list, same look as the tracker pills */
+  .kd-scope { display: flex; gap: 6px; flex-shrink: 0; }
+  .kd-pill {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border: none; border-radius: var(--radius-pill); cursor: pointer;
+    background: var(--color-slate-100); color: var(--color-slate-600);
+    font-family: inherit; font-size: 0.6875rem; font-weight: 600; white-space: nowrap;
   }
-  .kd-scope-btn:hover { color: var(--color-slate-700); }
-  .kd-scope-btn.active { background: var(--color-white); color: var(--color-primary-700); box-shadow: var(--shadow-sm); }
+  .kd-pill:hover { background: var(--color-slate-200); }
+  .kd-pill.active { background: var(--color-slate-900); color: var(--color-white); }
+  .kd-pill i { font-size: 0.8125rem; }
 
   .kd-tabs { display: flex; gap: 0.35rem; }
   .kd-head-actions { display: flex; align-items: center; gap: 0.5rem; }

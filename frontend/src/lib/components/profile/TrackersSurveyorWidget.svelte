@@ -5,22 +5,23 @@
   // until chosen). Deliberately a standalone widget rather than puppeting
   // TrackersWidget/SurveyorWidget from outside — those auto-select content
   // on load and carry their own write flows, neither of which fits here. No
-  // add-advancement / upload — clicking a row jumps into that project's own
-  // full tracker, where the normal read-write tools live.
+  // add-advancement / upload — clicking a row opens its advancement log
+  // (read-only) in a popup; editing happens in the project's own tracker.
+  // Only trackers that actually have data for the chosen project are offered.
   import { getConsultationData } from '$lib/api/consultation.js';
   import { getConditionsData } from '$lib/api/conditions.js';
   import { getProgressData } from '$lib/api/progressTracker.js';
   import { getQuotes } from '$lib/api/quotes.js';
   import { getSentRequestsForProject } from '$lib/api/quoteRequests.js';
-  import { openProjectModal } from '$lib/stores/projectViewModal.js';
+  import AdvancementTimelineModal from '$lib/components/projects/overview/AdvancementTimelineModal.svelte';
 
   export let projects = [];
 
   const TYPE_OPTIONS = [
-    { value: 'consultation', label: 'Consultation', tab: 'consultation_tracker' },
-    { value: 'conditions', label: 'Conditions', tab: 'conditions_tracker' },
-    { value: 'progress', label: 'Project', tab: 'progress_tracker' },
-    { value: 'surveyor', label: 'Surveyor', tab: null },
+    { value: 'consultation', label: 'Consultation' },
+    { value: 'conditions', label: 'Conditions' },
+    { value: 'progress', label: 'Project' },
+    { value: 'surveyor', label: 'Surveyor' },
   ];
 
   let selectedProjectId = ''; // blank until chosen
@@ -50,12 +51,48 @@
     selectedType = ''; // switching projects always starts blank again
   }
 
+  // ── Which trackers have data? Loaded all together when a project is picked
+  // (cached, so choosing a tracker afterwards is instant) and only those with
+  // something in them are offered as pills. ───────────────────────────────────
+  let available = null;      // { consultation: bool, ... } for the selected project, null until known
+  let availLoading = false;
+  let availKey = null;
+  $: {
+    const k = selectedProject ? String(selectedProject.id) : null;
+    if (k !== availKey) {
+      availKey = k;
+      available = null;
+      if (selectedProject) loadAvailability(selectedProject);
+    }
+  }
+  $: visibleTypes = available ? TYPE_OPTIONS.filter(o => available[o.value]) : [];
+
+  async function loadAvailability(project) {
+    availLoading = true;
+    error = null;
+    try {
+      const [consultation, conditions, progress, surveyor] = await Promise.all([
+        fetchTracker('consultation', project).then(items => items.length > 0),
+        fetchTracker('conditions', project).then(items => items.length > 0),
+        fetchTracker('progress', project).then(items => items.length > 0),
+        // A surveyor lookup failing shouldn't hide the trackers — just treat as nothing to show.
+        fetchSurveyor(project).then(s => s.quotesSent + s.quotesReceived + s.quotesInstructed > 0).catch(() => false),
+      ]);
+      // The user may have switched project while this was loading.
+      if (selectedProject?.id === project.id) available = { consultation, conditions, progress, surveyor };
+    } catch (err) {
+      if (selectedProject?.id === project.id) error = err.message;
+    } finally {
+      if (selectedProject?.id === project.id) availLoading = false;
+    }
+  }
+
   async function load() {
     loading = true;
     error = null;
     try {
-      if (selectedType === 'surveyor') await loadSurveyor(selectedProject);
-      else await loadTracker(selectedType, selectedProject);
+      if (selectedType === 'surveyor') stats = await fetchSurveyor(selectedProject);
+      else rows = buildRows(selectedType, await fetchTracker(selectedType, selectedProject));
     } catch (err) {
       error = err.message;
     } finally {
@@ -63,7 +100,7 @@
     }
   }
 
-  async function loadTracker(type, project) {
+  async function fetchTracker(type, project) {
     const key = `${type}:${project.id}`;
     if (!cache.has(key)) {
       let items;
@@ -72,10 +109,10 @@
       else items = (await getProgressData(project.id)).issues || [];
       cache.set(key, items.map(item => ({ ...item, _projectId: project.id })));
     }
-    rows = buildRows(type, cache.get(key));
+    return cache.get(key);
   }
 
-  async function loadSurveyor(project) {
+  async function fetchSurveyor(project) {
     const key = `surveyor:${project.id}`;
     if (!cache.has(key)) {
       const [quotes, sentRequests] = await Promise.all([
@@ -94,7 +131,7 @@
         worksOutstanding: instructed.filter(q => q.work_status !== 'completed').length,
       });
     }
-    stats = cache.get(key);
+    return cache.get(key);
   }
 
   // ── Row shaping — mirrors TrackersWidget.svelte's helpers exactly, kept
@@ -156,6 +193,10 @@
           statusClass: r.status === 'Closed Out' ? 'badge-neutral' : 'badge-info',
           latest: adv[0] ? { date: adv[0].advancement_date, summary: adv[0].summary } : null,
           count: adv.length,
+          timeline: adv.map(a => ({
+            id: a.id, date: a.advancement_date, summary: a.summary, fullText: a.full_text,
+            sourceType: a.source_type, editable: false, sourceLabel: null,
+          })),
         };
       });
     }
@@ -169,6 +210,10 @@
           statusLabel: toTitleCase(c.status || 'Not Started'), statusClass: conditionStatusBadgeClass(c.status),
           latest: timeline[0] ? { date: timeline[0].advancement_date, summary: timeline[0].summary } : null,
           count: timeline.length,
+          timeline: timeline.map(a => ({
+            id: a.id, date: a.advancement_date, summary: a.summary, fullText: a.full_text,
+            sourceType: a.source_type, editable: false, sourceLabel: null,
+          })),
         };
       });
     }
@@ -181,6 +226,10 @@
         statusLabel: iss.status === 'Complete' ? 'Resolved' : toTitleCase(iss.status || 'In Progress'), statusClass: iss.status === 'Complete' ? 'badge-success' : 'badge-info',
         latest: acts[0] ? { date: acts[0].action_date, summary: acts[0].summary } : null,
         count: acts.length,
+        timeline: acts.map(a => ({
+          id: a.id, date: a.action_date, summary: a.summary, fullText: a.full_text,
+          sourceType: a.source_type, meetingNoteTitle: a.meeting_note_title, editable: false, sourceLabel: a.stage_name || null,
+        })),
       };
     });
   }
@@ -190,10 +239,8 @@
     return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
-  function jumpToProject(row) {
-    const opt = TYPE_OPTIONS.find(o => o.value === selectedType);
-    openProjectModal(row.projectId, opt?.tab ?? 'details', 'details');
-  }
+  // The row whose advancement log is open (read-only popup), or null.
+  let logRow = null;
 
   $: currentLabel = TYPE_OPTIONS.find(o => o.value === selectedType)?.label ?? '';
 </script>
@@ -217,8 +264,15 @@
         <p>Choose a project above to view its trackers and Surveyor Management.</p>
       </div>
     {:else}
+      {#if availLoading || !available}
+        <div class="ts-state">
+          {#if error}{error}{:else}<div class="mini-spinner"></div> Checking trackers…{/if}
+        </div>
+      {:else if !visibleTypes.length}
+        <div class="ts-state">No tracker or surveyor data yet for {selectedProject.project_name}.</div>
+      {:else}
       <div class="ts-pills">
-        {#each TYPE_OPTIONS as opt (opt.value)}
+        {#each visibleTypes as opt (opt.value)}
           <button class="tab-pill" class:active={selectedType === opt.value} on:click={() => selectedType = opt.value}>
             {opt.label}
           </button>
@@ -254,7 +308,7 @@
               {#if row.badgeLabel}<span class="badge {row.badgeClass}">{row.badgeLabel}</span>{/if}
             </div>
             {#if row.latest}
-              <button class="progress-cell" on:click={() => jumpToProject(row)} title="Open in project">
+              <button class="progress-cell" on:click={() => (logRow = row)} title="View the full log">
                 <span class="progress-cell-date">{formatDate(row.latest.date)} &middot; {row.count} update{row.count !== 1 ? 's' : ''}</span>
                 <span class="progress-cell-summary">{row.latest.summary}</span>
               </button>
@@ -265,9 +319,18 @@
           </div>
         {/each}
       {/if}
+      {/if}
     {/if}
   </div>
 </div>
+
+<AdvancementTimelineModal
+  show={!!logRow}
+  title={logRow ? `${logRow.name} — log` : ''}
+  items={logRow?.timeline ?? []}
+  readOnly
+  onClose={() => (logRow = null)}
+/>
 
 <style>
   .ts-widget { grid-row: span 2; }
