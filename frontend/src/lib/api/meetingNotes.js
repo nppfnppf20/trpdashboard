@@ -27,9 +27,11 @@ export async function processMeetingNote(projectId, { file, text, fileName, user
   return res.json(); // { transcript, summary, actions }
 }
 
-export async function saveVerbatimMeetingNote(projectId, { file, text, fileName, title }) {
+export async function saveVerbatimMeetingNote(projectId, { file, text, fileName, title, meetingDate }) {
   const formData = new FormData();
   formData.append('title', title);
+  // The date of the note or document (YYYY-MM-DD); left out means the server uses today
+  if (meetingDate) formData.append('meeting_date', meetingDate);
 
   if (file) {
     formData.append('file', file);

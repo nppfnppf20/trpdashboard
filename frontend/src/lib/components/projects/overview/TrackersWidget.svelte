@@ -293,7 +293,7 @@
       name: iss.title,
       badgeLabel: toTitleCase(iss.discipline),
       badgeClass: 'badge-neutral',
-      statusLabel: toTitleCase(iss.status || 'In Progress'),
+      statusLabel: iss.status === 'Complete' ? 'Resolved' : toTitleCase(iss.status || 'In Progress'),
       statusClass: iss.status === 'Complete' ? 'badge-success' : 'badge-info',
       latest: acts[0] ? { date: acts[0].action_date, summary: acts[0].summary } : null,
       count: acts.length,
@@ -379,7 +379,7 @@
     const iss = issues.find(x => x.id === row.id);
     return sortByDateDesc(mainIssueActions(iss || {}), 'action_date').map(a => ({
       id: a.id, date: a.action_date, summary: a.summary, fullText: a.full_text,
-      sourceType: a.source_type, editable: true, sourceLabel: a.stage_name || null,
+      sourceType: a.source_type, meetingNoteTitle: a.meeting_note_title, editable: true, sourceLabel: a.stage_name || null,
     }));
   }
 

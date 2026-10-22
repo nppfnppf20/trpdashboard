@@ -34,6 +34,7 @@
   let pasteText = initialText || '';
   let userNotes = '';
   let agenda = '';
+  let meetingDate = ''; // used by Save Verbatim; blank = today
   let summaryType = 'brief';
   let provider = '';
   let customPrompt = '';
@@ -212,6 +213,7 @@
         file: inputTab === 'upload' ? uploadFile : null,
         text: inputTab === 'paste' ? pasteText : null,
         title: title.trim(),
+        meetingDate: meetingDate || null,
       });
 
       reviewTranscript = {
@@ -424,6 +426,12 @@
       </div>
 
       <div class="mnp-footer">
+        {#if !multiProject}
+          <label class="mnp-date-field" title="The date of this note or document, used by Save Verbatim. Leave blank for today.">
+            <span>Date</span>
+            <input type="date" class="form-input" bind:value={meetingDate} aria-label="Date of this note or document, for Save Verbatim" />
+          </label>
+        {/if}
         <button class="btn btn-secondary btn-sm" on:click={handleClose} disabled={processing}>Cancel</button>
         {#if !multiProject}
           <button class="btn btn-secondary mnp-process-btn" on:click={saveVerbatim} disabled={processing} title="Save the text as-is, no AI summary">
@@ -577,8 +585,12 @@
   .mnp-date-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
   .mnp-review-section-title { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-slate-800); }
 
+  .mnp-date-field { display: flex; align-items: center; gap: 0.4rem; margin-right: auto; font-size: 0.8rem; color: var(--color-slate-600); }
+  .mnp-date-field input { width: auto; }
+
   .mnp-footer {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 0.6rem;
     padding: 0.85rem 1.5rem;

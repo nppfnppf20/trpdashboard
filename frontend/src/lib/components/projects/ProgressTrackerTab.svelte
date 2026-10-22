@@ -45,6 +45,8 @@
 
   const STATUS_OPTIONS = ['In Progress', 'Complete'];
   const SUB_STATUS_OPTIONS = ['In Progress', 'Complete'];
+  // The stored value stays 'Complete'; the UI calls it Resolved
+  const statusText = s => (s === 'Complete' ? 'Resolved' : s);
 
   // ── Sorting (click column headers) ────────────────────────────────────────
   let sortKey = 'discipline';   // 'discipline' | 'title'
@@ -1356,7 +1358,7 @@
                     value={sub.status || 'In Progress'}
                     on:change={e => setSubStatus(iss.id, sub, e.target.value)}
                   >
-                    {#each SUB_STATUS_OPTIONS as s}<option value={s}>{s}</option>{/each}
+                    {#each SUB_STATUS_OPTIONS as s}<option value={s}>{statusText(s)}</option>{/each}
                   </select>
                 {:else}
                   <span class="pt-cell-muted">—</span>
@@ -1419,7 +1421,7 @@
                   value={editing ? editForm.status : (iss.status || 'In Progress')}
                   on:change={e => editing ? (editForm.status = e.target.value) : updateStatus(iss, e.target.value)}
                 >
-                  {#each STATUS_OPTIONS as s}<option value={s}>{s}</option>{/each}
+                  {#each STATUS_OPTIONS as s}<option value={s}>{statusText(s)}</option>{/each}
                 </select>
               </td>
 

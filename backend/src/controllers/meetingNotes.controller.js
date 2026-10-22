@@ -21,6 +21,13 @@ export async function saveVerbatimMeetingNote(req, res) {
     const { title } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
 
+    // Optional: the date of the note or document itself (YYYY-MM-DD), for items
+    // uploaded after the fact. Blank means today.
+    const meetingDate = req.body.meeting_date?.trim() || null;
+    if (meetingDate && (!/^\d{4}-\d{2}-\d{2}$/.test(meetingDate) || Number.isNaN(Date.parse(`${meetingDate}T00:00:00Z`)))) {
+      return res.status(400).json({ error: 'The date must be a valid date (YYYY-MM-DD)' });
+    }
+
     let text;
     let fileName;
     if (req.file) {
@@ -39,17 +46,17 @@ export async function saveVerbatimMeetingNote(req, res) {
     try {
       await client.query('BEGIN');
 
-      // meeting_date defaults to today — there's no AI to extract a real
-      // date from the transcript here, and leaving it NULL sorts the note
-      // to the bottom everywhere it's ordered by meeting_date (the main
-      // Meeting Notes page's "latest note" card and its notes list both
-      // sort NULLS LAST, so an undated note looks like it vanished even
-      // though it was just saved). Editable afterward like any other note.
+      // meeting_date is the date the caller gave, else today — there's no AI to
+      // extract a real date from the transcript here, and leaving it NULL sorts
+      // the note to the bottom everywhere it's ordered by meeting_date (the main
+      // Meeting Notes page's "latest note" card and its notes list both sort
+      // NULLS LAST, so an undated note looks like it vanished even though it was
+      // just saved). Editable afterward like any other note.
       const { rows: [transcript] } = await client.query(
         `INSERT INTO planning_applications.meeting_transcripts
            (project_id, title, meeting_date, file_name, transcript_text)
-         VALUES ($1, $2, CURRENT_DATE, $3, $4) RETURNING *`,
-        [projectId, title.trim(), fileName, text]
+         VALUES ($1, $2, COALESCE($5::date, CURRENT_DATE), $3, $4) RETURNING *`,
+        [projectId, title.trim(), fileName, text, meetingDate]
       );
 
       const { rows: [summary] } = await client.query(

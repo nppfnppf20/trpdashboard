@@ -178,7 +178,7 @@
         id: iss.id, projectId: iss._projectId,
         name: iss.title,
         badgeLabel: toTitleCase(iss.discipline), badgeClass: 'badge-neutral',
-        statusLabel: toTitleCase(iss.status || 'In Progress'), statusClass: iss.status === 'Complete' ? 'badge-success' : 'badge-info',
+        statusLabel: iss.status === 'Complete' ? 'Resolved' : toTitleCase(iss.status || 'In Progress'), statusClass: iss.status === 'Complete' ? 'badge-success' : 'badge-info',
         latest: acts[0] ? { date: acts[0].action_date, summary: acts[0].summary } : null,
         count: acts.length,
       };

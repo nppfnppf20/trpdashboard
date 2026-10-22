@@ -201,6 +201,7 @@
   let uploadPasteText = '';
   let uploadUserNotes = '';
   let uploadAgenda = '';
+  let uploadMeetingDate = ''; // used by Save Verbatim; blank = today
   let uploadProcessing = false;
   let uploadError = null;
   let uploadDragOver = false;
@@ -339,6 +340,7 @@
     uploadPasteText = '';
     uploadUserNotes = '';
     uploadAgenda = '';
+    uploadMeetingDate = '';
     uploadError = null;
     uploadInputTab = 'upload';
     uploadSummaryType = 'brief';
@@ -483,6 +485,7 @@
         file: uploadInputTab === 'upload' ? uploadFile : null,
         text: uploadInputTab === 'paste' ? uploadPasteText : null,
         title: title.trim(),
+        meetingDate: uploadMeetingDate || null,
       });
 
       const newNote = {
@@ -751,6 +754,10 @@
 
           <div class="mn-form-footer">
             {#if !isMultiProject}
+              <label class="mn-date-field" title="The date of this note or document, used by Save Verbatim. Leave blank for today.">
+                <span>Date</span>
+                <input type="date" class="form-input" bind:value={uploadMeetingDate} aria-label="Date of this note or document, for Save Verbatim" />
+              </label>
               <button class="btn btn-secondary mn-process-btn" on:click={saveVerbatim} disabled={uploadProcessing} title="Save the text as-is, no AI summary">
                 {#if uploadProcessing}
                   <span class="mn-spinner-blue"></span> Saving…
@@ -1346,7 +1353,9 @@
   .form-group label { font-size: 0.8rem; font-weight: 500; color: var(--color-slate-700); }
   .required { color: var(--color-red-500); }
 
-  .mn-form-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+  .mn-form-footer { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+  .mn-date-field { display: flex; align-items: center; gap: 0.4rem; margin-right: auto; font-size: 0.8rem; color: var(--color-slate-600); }
+  .mn-date-field input { width: auto; }
 
   /* Summary type toggle */
   .mn-type-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }

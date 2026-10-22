@@ -27,6 +27,7 @@ Tone and voice — this matters:
 
 Content rules:
 - Cover only what is NEW in the source material relative to the previous actions. Do not repeat history that is already logged.
+- Record only what the source material says happened: what was said, reported, decided, agreed or done. Do NOT add recommendations, advice, next steps or instructions (e.g. "proceed with...", "should...", "needs to...", "accordingly"), and do not infer actions the source does not state. A next step may appear only if the source explicitly records it as agreed or scheduled, in the source's own terms. This overrides the instruction to say where things now stand: if the source does not state the status, leave it out.
 - If the user has provided their own notes or a partial summary for an issue, treat that as authoritative — it takes precedence over your own reading of the source material. Refine it for clarity only; do not contradict it.
 - Plain text only — no markdown, no bullets, no headings.
 
@@ -64,6 +65,7 @@ Tone and voice — this matters:
 
 Content rules:
 - Cover only what is NEW in the source material relative to the previous actions. Do not repeat history that is already logged.
+- Record only what the source material says happened: what was said, reported, decided, agreed or done. Do NOT add recommendations, advice, next steps or instructions (e.g. "proceed with...", "should...", "needs to...", "accordingly"), and do not infer actions the source does not state. A next step may appear only if the source explicitly records it as agreed or scheduled, in the source's own terms. This overrides the instruction to say where things now stand: if the source does not state the status, leave it out.
 - If the user has provided their own notes or a partial summary, treat that as authoritative — it takes precedence over your own reading of the source material. Refine it for clarity only; do not contradict it.
 - Plain text only — no markdown, no bullets, no headings.
 
@@ -222,6 +224,7 @@ Tone and voice — this matters:
 - End with where things now stand only if it's genuinely useful, kept blunt: "Awaiting officer response", "Agreed in principle".
 
 Content rules:
+- Record only what the source material says happened: what was said, reported, decided, agreed or done. Do NOT add recommendations, advice, next steps or instructions (e.g. "proceed with...", "should...", "needs to...", "accordingly"), and do not infer actions the source does not state. A next step may appear only if the source explicitly records it as agreed or scheduled, in the source's own terms. This overrides the instruction to say where things now stand: if the source does not state the status, leave it out.
 - Use the issue's title and discipline to understand what's outstanding, so the note is specific.
 - Plain text only — no markdown, no bullets, no headings.
 
@@ -275,6 +278,7 @@ Deciding where a topic belongs — this is the part that matters most:
 
 Tone and voice:
 - Write in the team's own voice, first person plural, e.g. "Agreed massing tweak with conservation officer at design review", "LPA raised concern on roofline". Plain text only, one or two brisk sentences, 35 words maximum per action.
+- Record only what the source material says happened: what was said, reported, decided, agreed or done. Do NOT add recommendations, advice, next steps or instructions (e.g. "proceed with...", "should...", "needs to...", "accordingly"), and do not infer actions the source does not state. A next step may appear only if the source explicitly records it as agreed or scheduled, in the source's own terms. This overrides the instruction to say where things now stand: if the source does not state the status, leave it out.
 - This is an internal tracker log entry, not meeting minutes — do not restate the whole discussion, just what moved on.
 
 Date suggestion — optional, on any proposal:

@@ -277,5 +277,7 @@
   .rich:focus { border-color: var(--color-slate-200); background: var(--color-slate-50); }
   .rich :global(p) { margin: 0 0 var(--space-2); }
   .rich :global(p:last-child) { margin-bottom: 0; }
+  /* Bullet lines hang: the text lines up under itself, not under the bullet */
+  .rich :global(p.bullet) { padding-left: 1.25em; text-indent: -1.25em; }
   .rich :global(b), .rich :global(strong) { font-weight: 700; }
 </style>

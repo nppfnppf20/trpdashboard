@@ -25,7 +25,7 @@ import { pool } from '../src/db.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const formatterPath = path.resolve(here, '../../frontend/src/lib/utils/policyFormat.js');
-const { formatPastedPolicyText, LIST_MARKER } = await import(pathToFileURL(formatterPath).href);
+const { formatPastedPolicyText, normaliseBullets, LIST_MARKER } = await import(pathToFileURL(formatterPath).href);
 
 const apply = process.argv.includes('--apply');
 const projectArg = process.argv.find(a => a.startsWith('--project='));
@@ -72,8 +72,11 @@ for (const target of TARGETS) {
       res.fields++;
       const after = formatPastedPolicyText(before);
 
-      if (squash(before) !== squash(after)) { res.skippedWords++; console.log(`!! words would differ in ${target.short}#${r.id}.${col}, skipping`); continue; }
-      if (markerLines(before) !== markerLines(after)) { res.skippedMarkers++; console.log(`!! list items would merge in ${target.short}#${r.id}.${col}, skipping`); continue; }
+      // Symbol-font bullets (private-use characters that show as boxes) become a normal
+      // bullet, which is the one intended non-whitespace change, so compare against that.
+      const expected = normaliseBullets(before);
+      if (squash(expected) !== squash(after)) { res.skippedWords++; console.log(`!! words would differ in ${target.short}#${r.id}.${col}, skipping`); continue; }
+      if (markerLines(expected) !== markerLines(after)) { res.skippedMarkers++; console.log(`!! list items would merge in ${target.short}#${r.id}.${col}, skipping`); continue; }
       if (after === before) { res.unchanged++; continue; }
 
       res.changed++;

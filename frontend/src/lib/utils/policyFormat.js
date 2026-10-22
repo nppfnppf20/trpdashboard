@@ -25,6 +25,9 @@ const CONTINUES = /^[a-z0-9(,;.)\]'"’”]/;
 // "5.1 Title", "1.3.2 Title"
 const NUMBERED_HEADING = /^\d{1,3}(?:\.\d{1,3})+\.?\s/;
 
+// A line that starts with a bullet glyph
+const BULLET_LINE = /^[•▪●◦‣]\s/;
+
 const isAllCaps = line => line.length >= 4 && /[A-Z]/.test(line) && line === line.toUpperCase();
 
 // A transcript speaker label with its timestamp: "Speaker 1 0:21", "Robert Shaw 0:35",
@@ -99,7 +102,25 @@ function escapeHtml(text) {
 }
 
 /**
- * Tidies pasted policy wording. Only whitespace changes: no words, letters or
+ * Replaces symbol-font bullets with a normal "•". Word and PDF documents often
+ * use a bullet from Symbol or Wingdings, which sits in the Unicode private-use
+ * area and shows as an empty box anywhere that font isn't loaded. A bullet that
+ * follows other text on its line (a table-style "Label  ⇥ ▯ ⇥ text") starts a new
+ * line, so it reads as a list item.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function normaliseBullets(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/(\S)[ \t]*[-][ \t]*/g, '$1\n• ')
+    .replace(/[-][ \t]*/g, '• ');
+}
+
+/**
+ * Tidies pasted policy wording. Only whitespace changes (apart from symbol-font
+ * bullets becoming a normal "•", see normaliseBullets): no words, letters or
  * punctuation are added, removed or reordered.
  *   - invisible characters (non-breaking / zero-width spaces, soft hyphens) become
  *     ordinary spaces or are dropped, tabs and repeated spaces collapse
@@ -116,8 +137,7 @@ function escapeHtml(text) {
 export function formatPastedPolicyText(text) {
   if (!text) return '';
 
-  let t = String(text)
-    .replace(/\r\n?/g, '\n')
+  let t = normaliseBullets(String(text).replace(/\r\n?/g, '\n'))
     .replace(/[­​-‍﻿]/g, '')
     .replace(/[   ]/g, ' ')
     .replace(/[ \t]+/g, ' ');
@@ -257,13 +277,17 @@ function headingFlags(lines) {
  */
 export function autoFormatPolicyText(text) {
   if (!text?.trim()) return '';
-  const raw = text.trim();
+  const raw = normaliseBullets(text.trim());
   const lines = (/\r\n|\n/.test(raw) ? raw.split(/\r\n|\n/) : splitInlineMarkers(raw).split('\n'))
     .map(l => l.trim())
     .filter(Boolean);
   const flags = headingFlags(lines);
+  // Bullet lines get a hanging indent (see FormattedTextEditor) so the text lines up under the bullet
   return lines
-    .map((l, i) => (flags[i] ? `<p><b>${escapeHtml(l)}</b></p>` : `<p>${escapeHtml(l)}</p>`))
+    .map((l, i) => {
+      if (flags[i]) return `<p><b>${escapeHtml(l)}</b></p>`;
+      return BULLET_LINE.test(l) ? `<p class="bullet">${escapeHtml(l)}</p>` : `<p>${escapeHtml(l)}</p>`;
+    })
     .join('');
 }
 

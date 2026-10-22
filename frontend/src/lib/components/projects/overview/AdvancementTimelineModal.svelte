@@ -12,6 +12,7 @@
   // render read-only with their sourceLabel as a small tag.
 
   import AdvancementEntryFields from '../AdvancementEntryFields.svelte';
+  import AdvancementSourceBadge from '../AdvancementSourceBadge.svelte';
   import AddKeyDateModal from '$lib/components/admin-console/AddKeyDateModal.svelte';
 
   export let show = false;
@@ -243,6 +244,9 @@
                 {#if !item.editable && item.sourceLabel}
                   <span class="atm-row-tag">{item.sourceLabel}</span>
                 {/if}
+                {#if item.sourceType === 'meeting' || item.sourceType === 'email'}
+                  <span class="atm-row-source"><AdvancementSourceBadge sourceType={item.sourceType} meetingNoteTitle={item.meetingNoteTitle} /></span>
+                {/if}
                 <p class="atm-row-summary">{item.summary}</p>
               </div>
               {#if item.editable}
@@ -370,6 +374,7 @@
   .atm-row:last-child { border-bottom: none; }
   .atm-row.editing { background: var(--color-primary-50); }
   .atm-row-main { flex: 1; min-width: 0; }
+  .atm-row-source { display: inline-flex; vertical-align: middle; margin-left: 0.4rem; }
   .atm-row-date { font-size: 0.7rem; font-weight: 700; color: var(--color-slate-400); }
   .atm-row-tag { margin-left: 0.4rem; font-size: 0.64rem; font-weight: 700; color: var(--color-slate-600); background: var(--color-slate-100); border-radius: 999px; padding: 1px 7px; }
   .atm-row-summary { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--color-slate-800); line-height: 1.45; }

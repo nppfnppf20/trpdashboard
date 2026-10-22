@@ -4,6 +4,20 @@ import { pool } from './db.js';
  * Projects API endpoints
  */
 
+// The profile page finds a person's projects by *_user_id, not by the free-text
+// name. If the client didn't send an id (stale frontend, typed name, other
+// route) fall back to an exact, unambiguous display_name match — same rule as
+// migration 166. No match / more than one match leaves it null.
+async function resolveRoleUserId(name, userId) {
+  if (userId) return userId;
+  if (!name || !name.trim()) return null;
+  const { rows } = await pool.query(
+    'SELECT id FROM public.user_profiles WHERE display_name = $1 LIMIT 2',
+    [name.trim()]
+  );
+  return rows.length === 1 ? rows[0].id : null;
+}
+
 // CREATE new project
 async function createProject(req, res) {
   const {
@@ -53,6 +67,12 @@ async function createProject(req, res) {
     // Convert LPA array to JSONB
     const lpaJson = local_planning_authority ? JSON.stringify(local_planning_authority) : null;
 
+    const [leadUserId, managerUserId, directorUserId] = await Promise.all([
+      resolveRoleUserId(project_lead, project_lead_user_id),
+      resolveRoleUserId(project_manager, project_manager_user_id),
+      resolveRoleUserId(project_director, project_director_user_id)
+    ]);
+
     // development_type (singular, legacy) is kept in sync with the first
     // selected development_types entry — see migration 146 for why.
     const primaryDevType = development_types?.length ? development_types[0] : null;
@@ -87,9 +107,9 @@ async function createProject(req, res) {
         designations_on_site || null,
         relevant_nearby_designations || null,
         status || null,
-        project_lead_user_id || null,
-        project_manager_user_id || null,
-        project_director_user_id || null
+        leadUserId,
+        managerUserId,
+        directorUserId
       ]
     );
 
@@ -229,6 +249,12 @@ async function updateProject(req, res) {
       ? (development_types.length ? development_types[0] : null)
       : undefined;
 
+    const [leadUserId, managerUserId, directorUserId] = await Promise.all([
+      resolveRoleUserId(project_lead, project_lead_user_id),
+      resolveRoleUserId(project_manager, project_manager_user_id),
+      resolveRoleUserId(project_director, project_director_user_id)
+    ]);
+
     const result = await pool.query(
       `UPDATE projects
        SET project_id = COALESCE($1, project_id),
@@ -299,9 +325,9 @@ async function updateProject(req, res) {
         about_applicant || null,
         id,
         project_type || null,
-        project_lead_user_id || null,
-        project_manager_user_id || null,
-        project_director_user_id || null
+        leadUserId,
+        managerUserId,
+        directorUserId
       ]
     );
 
