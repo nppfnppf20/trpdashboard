@@ -7,7 +7,6 @@
   import { getPolicies, createPolicy, updatePolicy, deletePolicy } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments, deletePolicyDocument } from '$lib/api/policyDocuments.js';
   import { exportPolicyPdf } from '$lib/services/policyPdfExport.js';
-  import ActionMenu from '$lib/components/shared/ActionMenu.svelte';
   import PolicyTools from '$lib/components/projects/PolicyTools.svelte';
   import PolicyCard from '$lib/components/projects/PolicyCard.svelte';
   import PlanEditModal from '$lib/components/projects/PlanEditModal.svelte';
@@ -102,13 +101,8 @@
   }
 
   // ── Add menu ──
-  const ADD_ITEMS = [
-    { key: 'nppf', label: 'Policies from the NPPF library', icon: 'la-flag', description: 'Tick several; the wording is filled in for you' },
-    { key: 'document', label: 'Policies from a document', icon: 'la-file-import', description: 'Find the policies a planning document cites' },
-    { key: 'manual', label: 'A policy manually', icon: 'la-pen', description: 'Type in one policy' },
-    { key: 'plan', label: 'A plan or guidance document', icon: 'la-book', description: 'Add to the documents the policies belong to' }
-  ];
-
+  // Adding a policy by hand happens from the plus on a plan card (or on the
+  // National / Not-linked groups). The other routes are in the Tools menu.
   let showNppfPicker = false;
   let showExtract = false;
 
@@ -116,7 +110,6 @@
     const key = e.detail;
     if (key === 'nppf') showNppfPicker = true;
     else if (key === 'document') showExtract = true;
-    else if (key === 'manual') openAdd();
     else if (key === 'plan') openAddPlan();
   }
 
@@ -179,12 +172,15 @@
 
   let form = emptyForm();
 
-  function openAdd(doc = null) {
+  // doc: the plan card whose plus was pressed; presetType: for groups that have no plan card
+  function openAdd(doc = null, presetType = null) {
     editingId = null;
     form = emptyForm();
     if (doc) {
       form.plan_id = doc.id;
       form.policy_type = typeForPlan(doc);
+    } else if (presetType) {
+      form.policy_type = presetType;
     }
     formError = null;
     showForm = true;
@@ -415,8 +411,7 @@
     </div>
   {:else}
     <div class="tab-header">
-      <ActionMenu label="Add" icon="la-plus" primary items={ADD_ITEMS} on:select={onAdd} />
-      <PolicyTools {projectId} {projectDevTypes} on:imported={refresh} />
+      <PolicyTools {projectId} {projectDevTypes} on:imported={refresh} on:add={onAdd} />
       <button class="btn btn-secondary" on:click={exportPolicy} disabled={!policies.length}>
         <i class="las la-file-pdf"></i> Export to PDF
       </button>
@@ -438,12 +433,15 @@
     {#if !planDocs.length && !policies.length}
       <div class="empty-state">
         <i class="las la-balance-scale"></i>
-        <p>Nothing here yet. Use <strong>Add</strong> to bring in policies from the NPPF library or a planning document, or add a plan or policy by hand.</p>
+        <p>Nothing here yet. Use <strong>Tools</strong> to add a plan or guidance document, or to bring in policies from the NPPF library or a planning document.</p>
       </div>
     {/if}
 
     {#if nationalPolicies.length}
-      <div class="group-label">National policy <span class="badge badge-sm badge-neutral">{nationalPolicies.length}</span></div>
+      <div class="group-label">
+        National policy <span class="badge badge-sm badge-neutral">{nationalPolicies.length}</span>
+        <button class="btn btn-primary btn-icon group-add" on:click={() => openAdd(null, 'national')} title="Add a national policy"><i class="las la-plus"></i></button>
+      </div>
       <div class="policy-list">
         {#each nationalPolicies as policy (policy.id)}
           <PolicyCard {policy} selected={selectedIds.has(policy.id)} selecting={selectedIds.size > 0}
@@ -465,7 +463,7 @@
             {#if planMeta(doc)}<span class="plan-meta">{planMeta(doc)}</span>{/if}
             <span class="badge badge-sm badge-info">{planPolicies.length} polic{planPolicies.length === 1 ? 'y' : 'ies'}</span>
             <div class="plan-actions">
-              <button class="btn btn-ghost btn-icon" on:click={() => openAdd(doc)} title="Add a policy to this plan"><i class="las la-plus"></i></button>
+              <button class="btn btn-primary btn-icon" on:click={() => openAdd(doc)} title="Add a policy to this plan"><i class="las la-plus"></i></button>
               <button class="btn btn-ghost btn-icon" on:click={() => openEditPlan(doc)} title="Edit this document"><i class="las la-pen"></i></button>
               <button class="btn btn-danger-ghost btn-icon" on:click={() => removePlan(doc, planPolicies.length)} title="Delete this document"><i class="las la-trash"></i></button>
             </div>
@@ -497,7 +495,10 @@
     {/each}
 
     {#if unlinkedPolicies.length}
-      <div class="group-label">Not linked to a plan <span class="badge badge-sm badge-neutral">{unlinkedPolicies.length}</span></div>
+      <div class="group-label">
+        Not linked to a plan <span class="badge badge-sm badge-neutral">{unlinkedPolicies.length}</span>
+        <button class="btn btn-primary btn-icon group-add" on:click={() => openAdd(null, 'local')} title="Add a policy"><i class="las la-plus"></i></button>
+      </div>
       <div class="policy-list">
         {#each unlinkedPolicies as policy (policy.id)}
           <PolicyCard {policy} showType selected={selectedIds.has(policy.id)} selecting={selectedIds.size > 0}
@@ -791,7 +792,10 @@
   .plan-toggle i { color: var(--color-slate-400); }
   .plan-name { font-size: var(--font-size-sm); font-weight: 600; text-align: left; }
   .plan-meta { font-size: var(--font-size-xs); color: var(--color-slate-500); }
-  .plan-actions { display: flex; gap: var(--space-1); margin-left: auto; }
+  .plan-actions { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
+
+  /* The plus beside a group heading: a compact version of the blue add button */
+  .group-add { padding: 0.25rem; min-width: 1.75rem; }
 
   .plan-about { padding: var(--space-2) var(--space-4); font-size: var(--font-size-xs); border-bottom: 1px solid var(--color-slate-100); }
   .plan-about summary { cursor: pointer; color: var(--color-primary-600); font-weight: 500; user-select: none; }

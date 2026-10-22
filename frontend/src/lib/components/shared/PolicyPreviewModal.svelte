@@ -31,6 +31,7 @@
   let saving = false;
   let error = null;
   let highlightColour = '';
+  let highlightRgb = ''; // the same colour as the browser reports it, for comparing
   let notice = '';
   let noticeTimer;
   let saveTimer;
@@ -42,7 +43,16 @@
   onMount(() => {
     // Token-driven so the highlight follows the design system rather than a literal colour.
     highlightColour = getComputedStyle(document.documentElement).getPropertyValue('--color-amber-200').trim();
+    // Browsers hand colours back as "rgb(r, g, b)", so read ours back the same way to compare.
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = highlightColour;
+    document.body.appendChild(probe);
+    highlightRgb = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+
     if (richTextEl) {
+      // Make highlight / colour commands write inline CSS rather than legacy <font> tags.
+      document.execCommand('styleWithCSS', false, true);
       // Enter should split a <p>, not add a <div>
       document.execCommand('defaultParagraphSeparator', false, 'p');
       // The baseline is what is on screen now, so an older saved version is respected as-is.
@@ -146,11 +156,23 @@
     commitFormatting();
   }
 
+  // Is the start of the selection already inside our highlight? Walks up from
+  // the selection to the text box looking for our highlight colour. (Asking the
+  // browser via queryCommandValue doesn't work: it reports the text box's own
+  // background while it has focus, so everything looks "already highlighted".)
+  function selectionIsHighlighted() {
+    let el = window.getSelection()?.anchorNode;
+    if (el && el.nodeType === Node.TEXT_NODE) el = el.parentElement;
+    while (el && el !== richTextEl) {
+      if (getComputedStyle(el).backgroundColor === highlightRgb) return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
+
   function toggleHighlight() {
     if (!hasSelection()) return;
-    const current = document.queryCommandValue('hiliteColor');
-    const isHighlighted = current && current !== 'transparent' && current !== 'rgba(0, 0, 0, 0)';
-    document.execCommand('hiliteColor', false, isHighlighted ? 'transparent' : highlightColour);
+    document.execCommand('hiliteColor', false, selectionIsHighlighted() ? 'transparent' : highlightColour);
     commitFormatting();
   }
 
@@ -222,26 +244,32 @@
       <button class="dialog-close" on:click={close} aria-label="Close">&times;</button>
     </div>
 
+    <!-- The toolbar sits outside the scrolling area, so it is always in view and
+         nothing can scroll past it. mousedown is prevented on the buttons so
+         pressing one doesn't shift focus off the text and collapse the selection
+         before the command runs. -->
+    {#if policy.policy_text}
+      <div class="toolbar-bar">
+        <p class="section-label">Policy Text</p>
+        <div class="toolbar">
+          {#if saving}<span class="mini-spinner"></span>{/if}
+          <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={() => format('bold')} title="Bold (Ctrl+B)"><b>B</b></button>
+          <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={() => format('italic')} title="Italic (Ctrl+I)"><i>I</i></button>
+          <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={() => format('underline')} title="Underline (Ctrl+U)"><u>U</u></button>
+          <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={toggleHighlight} title="Highlight"><i class="las la-highlighter"></i></button>
+          <button type="button" class="btn btn-ghost btn-sm tool" on:click={resetFormatting} disabled={!annotatedHtml} title="Remove all formatting"><i class="las la-undo"></i></button>
+        </div>
+      </div>
+    {/if}
+
     <div class="dialog-body">
-      {#if policy.policy_text}
+      {#if !policy.policy_text}
         <div class="section">
-          <div class="label-row">
-            <p class="section-label">Policy Text</p>
-            <!-- mousedown is prevented so pressing a button doesn't shift focus
-                 off the text and collapse the selection before the command runs -->
-            <div class="toolbar">
-              {#if saving}<span class="mini-spinner"></span>{/if}
-              <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={() => format('bold')} title="Bold (Ctrl+B)"><b>B</b></button>
-              <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={() => format('italic')} title="Italic (Ctrl+I)"><i>I</i></button>
-              <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={() => format('underline')} title="Underline (Ctrl+U)"><u>U</u></button>
-              <button type="button" class="btn btn-ghost btn-sm tool" on:mousedown|preventDefault on:click={toggleHighlight} title="Highlight"><i class="las la-highlighter"></i></button>
-              <button type="button" class="btn btn-ghost btn-sm tool" on:click={resetFormatting} disabled={!annotatedHtml} title="Remove all formatting"><i class="las la-undo"></i></button>
-            </div>
-          </div>
-          <p class="hint">
-            Select text and use the toolbar to mark it up. You can also tidy the layout: Enter starts a new line,
-            Backspace joins a line to the one above, and spaces can be added or removed. The words themselves can't be changed.
-          </p>
+          <p class="section-label">Policy Text</p>
+          <p class="plain none">None recorded</p>
+        </div>
+      {:else}
+        <div class="section">
           <div
             class="rich"
             contenteditable="true"
@@ -262,23 +290,24 @@
         </div>
       {/if}
 
-      {#if policy.relevant_supporting_text}
-        <div class="section">
-          <p class="section-label">{isPlan ? 'Relevance to Project' : 'Supporting Text'}</p>
+      <!-- Every section always shows, so it is clear what is (and isn't) recorded -->
+      <div class="section">
+        <p class="section-label">{isPlan ? 'Relevance to Project' : 'Supporting Text'}</p>
+        {#if policy.relevant_supporting_text}
           <p class="plain support">{policy.relevant_supporting_text}</p>
-        </div>
-      {/if}
+        {:else}
+          <p class="plain none">None recorded</p>
+        {/if}
+      </div>
 
-      {#if policy.notes}
-        <div class="section">
-          <p class="section-label">{isPlan ? 'Summary' : 'Notes'}</p>
+      <div class="section">
+        <p class="section-label">{isPlan ? 'Summary' : 'Notes'}</p>
+        {#if policy.notes}
           <p class="plain support">{policy.notes}</p>
-        </div>
-      {/if}
-
-      {#if !policy.policy_text && !policy.relevant_supporting_text && !policy.notes}
-        <p class="dialog-hint">No text recorded for this {isPlan ? 'plan' : 'policy'}.</p>
-      {/if}
+        {:else}
+          <p class="plain none">None recorded</p>
+        {/if}
+      </div>
     </div>
   </div>
 </div>
@@ -305,8 +334,17 @@
     text-transform: uppercase;
     color: var(--color-slate-400);
   }
-  .label-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-  .hint { margin: 0; font-size: var(--font-size-xs); color: var(--color-slate-400); }
+  /* Label and formatting buttons, between the title and the scrolling text */
+  .toolbar-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-6);
+    background: var(--color-white);
+    border-bottom: 1px solid var(--color-slate-200);
+    flex-shrink: 0;
+  }
 
   .toolbar { display: flex; align-items: center; gap: var(--space-1); }
   .tool { min-width: 1.75rem; padding: 0.25rem 0.4rem; }
@@ -329,6 +367,7 @@
 
   .plain { margin: 0; font-size: var(--font-size-sm); line-height: 1.65; white-space: pre-wrap; }
   .support { color: var(--color-slate-500); font-style: italic; }
+  .none { color: var(--color-slate-400); }
 
   .mini-spinner {
     display: inline-block;

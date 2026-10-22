@@ -38,20 +38,6 @@
 
   <button class="policy-name" on:click={() => dispatch('preview')} title="View and mark up">{policy.policy_name}</button>
 
-  {#if policy.policy_text}
-    <details class="policy-detail">
-      <summary>Relevant policy text</summary>
-      <p class="detail-body">{policy.policy_text}</p>
-    </details>
-  {/if}
-
-  {#if policy.relevant_supporting_text}
-    <details class="policy-detail">
-      <summary>Relevant supporting text</summary>
-      <p class="detail-body">{policy.relevant_supporting_text}</p>
-    </details>
-  {/if}
-
   {#if policy.notes}
     <div class="policy-notes"><i class="las la-comment-alt"></i> {policy.notes}</div>
   {/if}
@@ -119,19 +105,6 @@
     cursor: pointer;
   }
   .policy-name:hover { color: var(--color-primary-600); text-decoration: underline; text-underline-offset: 2px; }
-
-  .policy-detail { font-size: var(--font-size-xs); }
-  .policy-detail summary { cursor: pointer; color: var(--color-primary-600); font-weight: 500; user-select: none; }
-  .detail-body {
-    margin: var(--space-2) 0 0;
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-slate-50);
-    border-left: 3px solid var(--color-slate-200);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    color: var(--color-slate-700);
-    line-height: 1.6;
-    white-space: pre-wrap;
-  }
 
   .policy-notes { display: flex; gap: var(--space-2); align-items: flex-start; font-size: var(--font-size-xs); color: var(--color-slate-500); }
   .policy-notes i { color: var(--color-primary-600); margin-top: 1px; flex-shrink: 0; }

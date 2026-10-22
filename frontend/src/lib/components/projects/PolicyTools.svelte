@@ -16,7 +16,12 @@
 
   const dispatch = createEventDispatcher();
 
+  // The three "add" entries live here for now and are handled by the parent
+  // (reported through the `add` event); the rest open a dialog in this component.
   const MENU_ITEMS = [
+    { key: 'add:nppf', label: 'Add policies from the NPPF library', icon: 'la-flag', description: 'Tick several; the wording is filled in for you' },
+    { key: 'add:document', label: 'Add policies from a document', icon: 'la-file-import', description: 'Find the policies a planning document cites' },
+    { key: 'add:plan', label: 'Add a plan or guidance document', icon: 'la-book', description: 'Add to the documents the policies belong to' },
     { key: 'templates', label: 'National Policy Templates', icon: 'la-layer-group', description: 'Ready-made NPPF / NPPG snippets for this development type' },
     { key: 'precedents', label: 'Used on Similar Projects', icon: 'la-history', description: 'National policies recorded on projects like this one' },
     { key: 'nppf', label: 'NPPF Inconsistency Check', icon: 'la-exchange-alt', description: 'Compare local policies against the NPPF' }
@@ -26,7 +31,12 @@
   let activeTool = null;
 
   function onSelect(e) {
-    activeTool = e.detail;
+    const key = e.detail;
+    if (key.startsWith('add:')) {
+      dispatch('add', key.slice(4));
+      return;
+    }
+    activeTool = key;
     if (activeTool === 'templates') loadTemplates();
     if (activeTool === 'precedents') loadPrecedents();
   }
