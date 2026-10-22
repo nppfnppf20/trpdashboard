@@ -1,6 +1,4 @@
 <script>
-  import { tick } from 'svelte';
-  import { popoverStyle } from '$lib/utils/popoverPosition.js';
   import ProgrammeTab from '$lib/components/projects/ProgrammeTab.svelte';
   import ActionsModal from './ActionsModal.svelte';
   import AddMeetingActionModal from './AddMeetingActionModal.svelte';
@@ -43,57 +41,17 @@
   // Two tabs: outstanding meeting Actions (default) and Key Dates.
   let tab = 'actions';
 
-  // ── Actions filter: Mine/All, then which projects. Applied client-side to the
-  // loaded rows (MeetingActionsList `rowFilter`), so ticking never refetches.
-  // Projects are stored as the *unticked* ids so the default is every project. ──
+  // ── Mine / All actions (profile page only). Which *projects* are shown is the
+  // page-level selector's job — `projects` is already narrowed by it. Applied
+  // client-side to the loaded rows (MeetingActionsList `rowFilter`). ──
   let onlyMine = !!userId; // profile page starts on the person's own actions; the project overview has no userId, so no filter
-  let hiddenActionProjectIds = new Set();
-  let filterOpen = false;
-  let filterBtn;
-  let filterEl;
-  let filterStyle = '';
-
-  let actionProjectKey = null;
-  $: {
-    const k = projectList.map(p => p.id).sort((a, b) => a - b).join(',');
-    if (k !== actionProjectKey) {
-      actionProjectKey = k;
-      hiddenActionProjectIds = new Set(); // a different set of projects starts with everything ticked
-    }
-  }
-
   $: canFilterMine = !!userId;
-  $: canFilterProjects = merged && projectList.length > 1;
-  $: showActionsFilter = canFilterMine || canFilterProjects;
-  $: tickedProjects = projectList.length - projectList.filter(p => hiddenActionProjectIds.has(p.id)).length;
-  $: filterActive = onlyMine || hiddenActionProjectIds.size > 0;
 
   function isMine(a) {
     if (a.assigned_user_id) return String(a.assigned_user_id) === String(userId);
     return !!userName && a.owner?.trim().toLowerCase() === userName.trim().toLowerCase();
   }
-  $: actionRowFilter = filterActive
-    ? (a) => (!onlyMine || isMine(a)) && !hiddenActionProjectIds.has(a.project_id)
-    : null;
-
-  async function toggleFilter() {
-    filterOpen = !filterOpen;
-    if (filterOpen) {
-      filterStyle = 'visibility:hidden;'; // hidden until measured, so it can't flash off-screen
-      await tick();
-      filterStyle = popoverStyle(filterBtn, filterEl, 250);
-    }
-  }
-
-  function toggleActionProject(id) {
-    const next = new Set(hiddenActionProjectIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    hiddenActionProjectIds = next;
-  }
-
-  function setAllActionProjects(ticked) {
-    hiddenActionProjectIds = ticked ? new Set() : new Set(projectList.map(p => p.id));
-  }
+  $: actionRowFilter = canFilterMine && onlyMine ? isMine : null;
 
   $: actionsLoadKey = projectList.map(p => p.id).sort((a, b) => a - b).join(',') + ':' + $actionsVersion;
   async function loadActions() {
@@ -304,18 +262,11 @@
     </div>
     {#if tab === 'actions'}
       <div class="kd-head-actions">
-        {#if showActionsFilter}
-          <button
-            class="widget-icon-btn"
-            class:kd-filter-active={filterOpen || filterActive}
-            bind:this={filterBtn}
-            on:click|stopPropagation={toggleFilter}
-            title="Filter actions"
-            aria-label="Filter actions"
-          >
-            <i class="las la-filter"></i>
-            {#if filterActive}{onlyMine ? mineLabel : ''}{onlyMine && hiddenActionProjectIds.size ? ' · ' : ''}{hiddenActionProjectIds.size ? `${tickedProjects}/${projectList.length}` : ''}{/if}
-          </button>
+        {#if canFilterMine}
+          <div class="kd-scope" role="group" aria-label="Which actions to show">
+            <button type="button" class="kd-scope-btn" class:active={onlyMine} aria-pressed={onlyMine} on:click={() => (onlyMine = true)}>{mineLabel}</button>
+            <button type="button" class="kd-scope-btn" class:active={!onlyMine} aria-pressed={!onlyMine} on:click={() => (onlyMine = false)}>All</button>
+          </div>
         {/if}
         <button class="widget-icon-btn" on:click={() => (showAddAction = true)} title="Add an action manually" aria-label="Add action">
           <i class="las la-plus"></i>
@@ -341,7 +292,7 @@
         compact
         showNotes={false}
         rowFilter={actionRowFilter}
-        emptyText={filterActive ? 'No open actions match the filter.' : 'No open actions.'}
+        emptyText={actionRowFilter ? 'No open actions assigned. Switch to All to see everyone’s.' : 'No open actions.'}
       />
     </div>
   {:else}
@@ -362,39 +313,6 @@
   </div>
   {/if}
 </div>
-
-{#if filterOpen && tab === 'actions'}
-  <div class="kd-filter-popover" style={filterStyle} bind:this={filterEl} on:click|stopPropagation>
-    {#if canFilterMine}
-      <div class="kd-filter-heading">Show</div>
-      <label class="kd-filter-option">
-        <input type="radio" name="kd-actions-scope" checked={onlyMine} on:change={() => (onlyMine = true)} />
-        <span>{mineLabel}</span>
-      </label>
-      <label class="kd-filter-option">
-        <input type="radio" name="kd-actions-scope" checked={!onlyMine} on:change={() => (onlyMine = false)} />
-        <span>All actions</span>
-      </label>
-    {/if}
-    {#if canFilterProjects}
-      <div class="kd-filter-heading kd-filter-heading-row" class:kd-filter-divider={canFilterMine}>
-        <span>Projects</span>
-        <span class="kd-filter-links">
-          <button type="button" on:click={() => setAllActionProjects(true)}>All</button>
-          <button type="button" on:click={() => setAllActionProjects(false)}>None</button>
-        </span>
-      </div>
-      <div class="kd-filter-list">
-        {#each projectList as p (p.id)}
-          <label class="kd-filter-option">
-            <input type="checkbox" checked={!hiddenActionProjectIds.has(p.id)} on:change={() => toggleActionProject(p.id)} />
-            <span>{p.project_name}</span>
-          </label>
-        {/each}
-      </div>
-    {/if}
-  </div>
-{/if}
 
 {#if showAddAction}
   <AddMeetingActionModal projects={projectList} onClose={() => (showAddAction = false)} />
@@ -430,36 +348,16 @@
   on:close={() => { showEditDateModal = false; selectedDate = null; }}
 />
 
-<svelte:window on:click={() => (filterOpen = false)} />
-
 <style>
-  .kd-filter-active { color: var(--color-primary-700); background: var(--color-primary-50); }
-
-  /* Fixed, not absolute: the widget card clips overflow. */
-  .kd-filter-popover {
-    position: fixed; z-index: 1000; width: 250px; padding: 4px 0;
-    background: var(--color-white); border: 1px solid var(--color-slate-200);
-    border-radius: var(--radius-md); box-shadow: var(--shadow-dropdown);
+  /* My actions | All — small segmented toggle in the header */
+  .kd-scope { display: flex; gap: 2px; padding: 2px; background: var(--color-slate-100); border-radius: var(--radius-pill); }
+  .kd-scope-btn {
+    padding: 2px 9px; border: none; border-radius: var(--radius-pill); cursor: pointer;
+    background: none; font-family: inherit; font-size: 0.6875rem; font-weight: 600; color: var(--color-slate-500);
+    white-space: nowrap;
   }
-  .kd-filter-heading {
-    padding: 6px 10px 2px; font-size: 0.625rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-slate-400);
-  }
-  .kd-filter-heading-row { display: flex; align-items: center; justify-content: space-between; }
-  .kd-filter-divider { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--color-slate-100); }
-  .kd-filter-links { display: flex; gap: 8px; text-transform: none; letter-spacing: 0; }
-  .kd-filter-links button {
-    background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
-    font-size: 0.6875rem; font-weight: 600; color: var(--color-primary-600);
-  }
-  .kd-filter-links button:hover { text-decoration: underline; }
-  .kd-filter-list { max-height: 220px; overflow-y: auto; }
-  .kd-filter-option {
-    display: flex; align-items: center; gap: 8px; padding: 5px 10px;
-    font-size: 0.75rem; color: var(--color-slate-700); cursor: pointer;
-  }
-  .kd-filter-option:hover { background: var(--color-slate-50); }
-  .kd-filter-option input { width: 13px; height: 13px; accent-color: var(--color-primary-500); cursor: pointer; flex-shrink: 0; }
+  .kd-scope-btn:hover { color: var(--color-slate-700); }
+  .kd-scope-btn.active { background: var(--color-white); color: var(--color-primary-700); box-shadow: var(--shadow-sm); }
 
   .kd-tabs { display: flex; gap: 0.35rem; }
   .kd-head-actions { display: flex; align-items: center; gap: 0.5rem; }

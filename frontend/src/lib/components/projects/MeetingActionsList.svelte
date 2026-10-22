@@ -29,6 +29,7 @@
   // Optional predicate on a raw action row (e.g. "assigned to me", "in these
   // projects"). Applied client-side to the already-loaded rows, so changing it
   // never refetches. A grouped row shows if any of the people on it match.
+  /** @type {((a: any) => boolean) | null} */
   export let rowFilter = null;
 
   const dispatch = createEventDispatcher();
