@@ -9,7 +9,7 @@
   import { tick, onMount } from 'svelte';
   import { getCrossProjectSources, sendCrossProjectChat } from '$lib/api/crossProjectChat.js';
   import { getEmailTones } from '$lib/api/emailTones.js';
-  import { renderReply, buildMultiProjectSourceLabels, copyReplyToClipboard } from '$lib/utils/chatMarkdown.js';
+  import { renderReply, extractCitations, buildMultiProjectSourceLabels, copyReplyToClipboard } from '$lib/utils/chatMarkdown.js';
 
   export let projects = []; // [{ id, project_name, ... }]
 
@@ -308,7 +308,19 @@
       {#each messages as m, idx}
         <div class="cpc-bubble" class:cpc-bubble-user={m.role === 'user'} class:cpc-bubble-assistant={m.role === 'assistant'}>
           {#if m.role === 'assistant'}
-            {@html renderReply(m.content, sourceLabels)}
+            {@html renderReply(m.content, sourceLabels, { inlineCitations: false })}
+            {#each [extractCitations(m.content, sourceLabels)] as cites}
+              {#if cites.length}
+                <details class="cpc-cites">
+                  <summary>Sources ({cites.length})</summary>
+                  <ul>
+                    {#each cites as c}
+                      <li><span class="cite-chip">{c.key}</span> {c.label ?? ''}</li>
+                    {/each}
+                  </ul>
+                </details>
+              {/if}
+            {/each}
             <button class="cpc-copy-btn" on:click={() => copyReply(idx, m.content)} title="Copy response (citations excluded)">
               <i class="las {copiedIdx === idx ? 'la-check' : 'la-copy'}"></i> {copiedIdx === idx ? 'Copied' : 'Copy'}
             </button>
@@ -432,6 +444,12 @@
   .cpc-bubble-assistant { align-self: flex-start; background: var(--color-slate-100); color: var(--color-slate-700); border-radius: 11px 11px 11px 2px; }
   .cpc-thinking { display: flex; align-items: center; gap: 6px; }
 
+  .cpc-cites { margin-top: 6px; font-size: 0.6875rem; color: var(--color-slate-500); }
+  .cpc-cites summary { cursor: pointer; font-weight: 600; width: fit-content; }
+  .cpc-cites summary:hover { color: var(--color-slate-700); }
+  .cpc-cites ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+
+  .cpc-bubble-assistant .cite-chip,
   .cpc-bubble-assistant :global(.cite-chip) {
     display: inline-block;
     background: var(--color-violet-100);

@@ -12,7 +12,7 @@ export function escapeHtml(str) {
 }
 
 export function buildSourceLabels(groups) {
-  const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', IT: 'Project Tracker', A: 'Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
+  const map = { P: 'Project Details', K: 'Key Issues', C: 'Consultation', COND: 'Conditions', IT: 'Project Tracker', A: 'Actions', ACT: 'Meeting Actions', H: 'Planning History', POL: 'Relevant Policies', PD: 'Policy Documents', PC: 'Public Comments', S: 'Surveyor Management' };
   for (const d of groups.find(g => g.key === 'documents')?.items ?? []) map[`D${d.id}`] = d.label;
   for (const m of groups.find(g => g.key === 'meetings')?.items ?? []) map[`M${m.id}`] = m.label;
   return map;
@@ -35,7 +35,7 @@ export function buildMultiProjectSourceLabels(projects) {
 
 // A citation token is a source abbreviation (D12, COND, P, ...), optionally
 // prefixed with "<projectId>:" for cross-project chat's qualified IDs.
-const CITATION_TOKEN = '(?:\\d+:)?(?:D\\d+|M\\d+|COND|IT|POL|PD|PC|P|C|K|A|H|S)';
+const CITATION_TOKEN = '(?:\\d+:)?(?:D\\d+|M\\d+|COND|ACT|IT|POL|PD|PC|P|C|K|A|H|S)';
 
 // Same citation markers renderReply() turns into chips, removed outright —
 // for copying a reply as plain text without the [D12]/[COND]/etc. clutter.
@@ -89,8 +89,26 @@ export async function copyReplyToClipboard(content) {
   }
 }
 
-export function renderReply(text, sourceLabels = {}) {
-  const escaped = escapeHtml(text);
+// Unique citations in a reply, in first-seen order, for showing as a list under
+// the message instead of inline chips. Returns [{ key, label }] — `key` is the
+// marker as written (e.g. "66:ACT" or "D12 §4.2"), `label` the resolved source
+// name, or null when the ID isn't in sourceLabels.
+export function extractCitations(text, sourceLabels = {}) {
+  const seen = new Set();
+  const out = [];
+  const re = new RegExp(`\\[(${CITATION_TOKEN}(?:\\s*[§·][^\\]]*)?)\\]`, 'g');
+  for (const [, inner] of text.matchAll(re)) {
+    if (seen.has(inner)) continue;
+    seen.add(inner);
+    out.push({ key: inner, label: sourceLabels[inner.split(/[\s§·]/)[0]] ?? null });
+  }
+  return out;
+}
+
+// `inlineCitations: false` drops the [ID] markers from the rendered text —
+// pair with extractCitations() to list them separately.
+export function renderReply(text, sourceLabels = {}, { inlineCitations = true } = {}) {
+  const escaped = escapeHtml(inlineCitations ? text : stripCitations(text));
   return escaped
     .replace(new RegExp(`\\[(${CITATION_TOKEN}(?:\\s*[§·][^\\]]*)?)\\]`, 'g'), (match, inner) => {
       const id = inner.split(/[\s§·]/)[0];

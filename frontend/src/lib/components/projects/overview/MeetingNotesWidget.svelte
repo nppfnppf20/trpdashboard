@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { getMeetingNotes, deleteMeetingNote } from '$lib/api/meetingNotes.js';
   import { exportHtmlToWord } from '$lib/services/planningDeliverablesExport.js';
@@ -51,8 +52,41 @@
     const key = projectList.map(p => p.id).sort((a, b) => a - b).join(',');
     if (key !== loadedKey) {
       loadedKey = key;
+      hiddenProjectIds = new Set(); // a different set of projects starts with everything ticked
       if (cache.size === 0) load(); else scheduleLoad();
     }
+  }
+
+  // Project filter (merged/profile mode only). Stored as the *unticked* ids so
+  // the default is "all projects" and newly-added projects are ticked. Notes are
+  // already loaded for every project, so filtering is client-side and instant.
+  let hiddenProjectIds = new Set();
+  let filterOpen = false;
+  let filterBtn;
+  let filterStyle = '';
+  $: showFilter = merged && projectList.length > 1;
+  $: visibleNotes = hiddenProjectIds.size
+    ? notes.filter(n => !hiddenProjectIds.has(n._project?.id))
+    : notes;
+  $: tickedCount = projectList.length - projectList.filter(p => hiddenProjectIds.has(p.id)).length;
+
+  async function toggleFilter() {
+    filterOpen = !filterOpen;
+    if (filterOpen) {
+      await tick();
+      const rect = filterBtn.getBoundingClientRect();
+      filterStyle = `top:${rect.bottom + 6}px; left:${Math.max(8, rect.right - 240)}px;`;
+    }
+  }
+
+  function toggleProject(id) {
+    const next = new Set(hiddenProjectIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    hiddenProjectIds = next;
+  }
+
+  function setAllProjects(ticked) {
+    hiddenProjectIds = ticked ? new Set() : new Set(projectList.map(p => p.id));
   }
 
   async function load() {
@@ -204,9 +238,24 @@
       Meeting notes and docs
       <i class="las la-angle-right widget-title-chev"></i>
     </button>
-    <button class="widget-icon-btn" on:click={openAll} title={merged ? 'Open Meeting Notes' : 'Open all meeting notes'} aria-label="Open all meeting notes">
-      <i class="las la-expand-arrows-alt"></i>
-    </button>
+    <div class="mnw-head-actions">
+      {#if showFilter}
+        <button
+          class="widget-icon-btn mnw-filter-btn"
+          class:mnw-filter-active={filterOpen || tickedCount < projectList.length}
+          bind:this={filterBtn}
+          on:click|stopPropagation={toggleFilter}
+          title="Filter by project"
+          aria-label="Filter by project"
+        >
+          <i class="las la-filter"></i>
+          {#if tickedCount < projectList.length}{tickedCount}/{projectList.length}{/if}
+        </button>
+      {/if}
+      <button class="widget-icon-btn" on:click={openAll} title={merged ? 'Open Meeting Notes' : 'Open all meeting notes'} aria-label="Open all meeting notes">
+        <i class="las la-expand-arrows-alt"></i>
+      </button>
+    </div>
   </div>
   <div class="widget-body mnw-body">
     {#if !merged}
@@ -271,15 +320,21 @@
     {:else if error}
       <div class="mnw-state mnw-state-error">{error}</div>
     {:else}
-      {#each notes as n}
+      {#if showFilter && !visibleNotes.length}
+        <div class="mnw-state">{tickedCount === 0 ? 'No projects ticked.' : 'No notes for the ticked projects.'}</div>
+      {/if}
+      {#each visibleNotes as n}
         <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
         <div class="mnw-note" role="button" tabindex="0" on:click={() => viewNotes(n)} on:keydown={(e) => e.key === 'Enter' && viewNotes(n)}>
           <div class="mnw-note-main">
-            <div class="mnw-note-title">
-              {n.title}
-              {#if merged}<span class="badge badge-neutral mnw-project-tag">{n._project?.project_name}</span>{/if}
+            <div class="mnw-note-title" title={n.title}>{n.title}</div>
+            <div class="mnw-note-meta">
+              {#if merged && n._project?.project_name}
+                <span class="mnw-note-project" title={n._project.project_name}>{n._project.project_name}</span>
+                <span class="mnw-note-sep" aria-hidden="true">·</span>
+              {/if}
+              <span class="mnw-note-date">{formatDate(n.meeting_date || n.created_at)}</span>
             </div>
-            <div class="mnw-note-date">{formatDate(n.meeting_date || n.created_at)}</div>
           </div>
           <div class="mnw-note-btns">
             <button class="mnw-note-btn" title="View transcript" aria-label="View transcript" on:click|stopPropagation={() => viewTranscript(n)}><i class="las la-file-alt"></i></button>
@@ -291,6 +346,23 @@
     {/if}
   </div>
 </div>
+
+{#if filterOpen}
+  <div class="mnw-filter-popover" style={filterStyle} on:click|stopPropagation>
+    <div class="mnw-filter-actions">
+      <button type="button" on:click={() => setAllProjects(true)}>Select all</button>
+      <button type="button" on:click={() => setAllProjects(false)}>Clear</button>
+    </div>
+    <div class="mnw-filter-list">
+      {#each projectList as p (p.id)}
+        <label class="mnw-filter-option">
+          <input type="checkbox" checked={!hiddenProjectIds.has(p.id)} on:change={() => toggleProject(p.id)} />
+          <span>{p.project_name}</span>
+        </label>
+      {/each}
+    </div>
+  </div>
+{/if}
 
 {#if editingNote}
   <NoteEditorModal note={editingNote} project={editingNote._project || project} onClose={() => editingNote = null} onUpdated={handleNoteUpdated} />
@@ -311,11 +383,38 @@
   />
 {/if}
 
+<svelte:window on:click={() => filterOpen = false} />
+
 <style>
+  .mnw-head-actions { display: flex; align-items: center; gap: 2px; }
+  .mnw-filter-active { color: var(--color-primary-700); background: var(--color-primary-50); }
+
+  /* Fixed, not absolute: the widget card clips overflow. */
+  .mnw-filter-popover {
+    position: fixed; z-index: 1000; width: 240px;
+    background: var(--color-white); border: 1px solid var(--color-slate-200);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-dropdown);
+  }
+  .mnw-filter-actions {
+    display: flex; justify-content: space-between; padding: 6px 10px;
+    border-bottom: 1px solid var(--color-slate-100);
+  }
+  .mnw-filter-actions button {
+    background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+    font-size: 0.6875rem; font-weight: 600; color: var(--color-primary-600);
+  }
+  .mnw-filter-actions button:hover { text-decoration: underline; }
+  .mnw-filter-list { max-height: 240px; overflow-y: auto; padding: 4px 0; }
+  .mnw-filter-option {
+    display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+    font-size: 0.75rem; color: var(--color-slate-700); cursor: pointer;
+  }
+  .mnw-filter-option:hover { background: var(--color-slate-50); }
+  .mnw-filter-option input[type="checkbox"] { width: 13px; height: 13px; accent-color: var(--color-primary-500); cursor: pointer; flex-shrink: 0; }
+
   .mnw-body { display: flex; flex-direction: column; gap: 8px; }
   /* The list scrolls inside the fixed-height card, so rows must not shrink to fit. */
   .mnw-body > :global(*) { flex-shrink: 0; }
-  .mnw-project-tag { margin-left: 6px; }
 
   .mnw-input-tabs { display: flex; gap: 5px; }
   .mnw-tab {
@@ -370,8 +469,10 @@
   .mnw-note + .mnw-note { border-top: 1px solid var(--color-slate-100); }
   .mnw-note:hover, .mnw-note:focus-visible { background: var(--color-slate-50); }
   .mnw-note-main { min-width: 0; }
-  .mnw-note-title { font-size: 12px; font-weight: 600; color: var(--color-slate-900); }
-  .mnw-note-date { font-size: 10px; color: var(--color-slate-400); }
+  .mnw-note-title { font-size: 12px; font-weight: 600; color: var(--color-slate-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mnw-note-meta { display: flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 10px; color: var(--color-slate-400); }
+  .mnw-note-project { font-weight: 600; color: var(--color-primary-600); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .mnw-note-date, .mnw-note-sep { flex-shrink: 0; }
 
   .mnw-note-btns { display: flex; gap: 2px; flex-shrink: 0; }
   .mnw-note-btn {
