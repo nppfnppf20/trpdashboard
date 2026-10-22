@@ -339,6 +339,7 @@
         showMeeting
         groupByAction
         compact
+        showNotes={false}
         rowFilter={actionRowFilter}
         emptyText={filterActive ? 'No open actions match the filter.' : 'No open actions.'}
       />

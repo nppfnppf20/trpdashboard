@@ -24,6 +24,8 @@
   // Give the owner(s) their own column beside the action instead of a line of
   // small text under it, so who it belongs to is obvious at a glance.
   export let ownerColumn = false;
+  // The action's free-text notes line under it. Always still editable via Edit.
+  export let showNotes = true;
   // Optional predicate on a raw action row (e.g. "assigned to me", "in these
   // projects"). Applied client-side to the already-loaded rows, so changing it
   // never refetches. A grouped row shows if any of the people on it match.
@@ -105,8 +107,21 @@
 
   function startUpdate(a) {
     fieldsId = null;
+    resolvingId = null;
     editingId = a.id;
     draft = '';
+  }
+
+  // Resolve opens an optional "what happened?" note before closing the action.
+  // The note is saved as the 'completed' update and shows as "Resolved. <note>".
+  let resolvingId = null;
+  let resolveDraft = '';
+
+  function startResolve(a) {
+    fieldsId = null;
+    editingId = null;
+    resolvingId = a.id;
+    resolveDraft = '';
   }
 
   // Edit the action's own fields (text, owner, due date, notes) — works on
@@ -116,6 +131,7 @@
 
   function startFieldsEdit(a) {
     editingId = null;
+    resolvingId = null;
     fieldsId = a.id;
     fieldsGroup = isGroup(a);
     fields = {
@@ -189,7 +205,9 @@
         await addMeetingActionUpdate(m.id, { update_type, update_text });
       }
       editingId = null;
+      resolvingId = null;
       draft = '';
+      resolveDraft = '';
       await reload();
       dispatch('changed');
     } catch (err) {
@@ -253,7 +271,7 @@
             {#if a.due_date}<span class:mal-overdue={isOverdue(a)}>Due {formatDate(a.due_date)}</span>{/if}
             {#if showMeeting && a.meeting_title}<span>from {a.meeting_title}</span>{/if}
           </div>
-          {#if a.notes}<div class="mal-notes">{a.notes}</div>{/if}
+          {#if showNotes && a.notes}<div class="mal-notes">{a.notes}</div>{/if}
           {/if}
           {#each a.updates || [] as u}
             <div class="mal-update">
@@ -276,6 +294,20 @@
               <button class="btn btn-ghost btn-sm" on:click={() => (editingId = null)}>Cancel</button>
             </div>
           {/if}
+
+          {#if resolvingId === a.id}
+            <div class="mal-edit">
+              <input
+                class="form-input"
+                type="text"
+                placeholder="What happened? (optional)"
+                bind:value={resolveDraft}
+                on:keydown={(e) => e.key === 'Enter' && submit(a, 'completed', resolveDraft.trim() || null)}
+              />
+              <button class="btn btn-primary btn-sm" disabled={busyId === a.id} on:click={() => submit(a, 'completed', resolveDraft.trim() || null)}>Resolve</button>
+              <button class="btn btn-ghost btn-sm" on:click={() => (resolvingId = null)}>Cancel</button>
+            </div>
+          {/if}
         </div>
 
         {#if ownerColumn && fieldsId !== a.id}
@@ -291,13 +323,13 @@
           </div>
         {/if}
 
-        {#if editingId !== a.id && fieldsId !== a.id}
+        {#if editingId !== a.id && fieldsId !== a.id && resolvingId !== a.id}
           <div class="mal-buttons">
             {#if a.status !== 'complete'}
               <button class="btn btn-secondary btn-sm" title="Update" aria-label="Update" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
                 <i class="las la-comment"></i><span class="mal-btn-label"> Update</span>
               </button>
-              <button class="btn btn-secondary btn-sm" title="Resolve" aria-label="Resolve" disabled={busyId === a.id} on:click={() => submit(a, 'completed')}>
+              <button class="btn btn-secondary btn-sm" title="Resolve" aria-label="Resolve" disabled={busyId === a.id} on:click={() => startResolve(a)}>
                 <i class="las la-check"></i><span class="mal-btn-label"> Resolve</span>
               </button>
             {/if}
