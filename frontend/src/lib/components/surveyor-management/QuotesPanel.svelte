@@ -255,22 +255,13 @@
   function handleStatusChange(quoteId, newStatus) {
     const quote = quotes.find(q => q.id === quoteId);
     
-    // If changing to "instructed", show confirmation modal
+    // Status changes save straight away - emails are drafted separately via the Draft email button
     if (newStatus === 'instructed' && quote) {
-      selectedQuote = quote;
-      pendingStatusChange = { quoteId, newStatus };
-      showInstructedModal = true;
-      return; // Don't dispatch yet, wait for confirmation
+      dispatch('statusChange', { quoteId, newStatus });
+      maybePromptLinking(quote);
+      return;
     }
-    
-    // If changing to "will not be instructed", show not instructed modal
-    if (newStatus === 'will not be instructed' && quote) {
-      selectedQuote = quote;
-      pendingStatusChange = { quoteId, newStatus };
-      showNotInstructedModal = true;
-      return; // Don't dispatch yet, wait for confirmation
-    }
-    
+
     // If changing to "partially instructed", show line items selection modal
     if (newStatus === 'partially instructed' && quote) {
       selectedQuote = quote;
@@ -283,49 +274,14 @@
     dispatch('statusChange', { quoteId, newStatus });
   }
 
-  function handleInstructedConfirm() {
-    if (pendingStatusChange) {
-      dispatch('statusChange', pendingStatusChange);
-      pendingStatusChange = null;
-    }
-    maybePromptLinking(selectedQuote);
+  function openDraftEmail(quote) {
+    selectedQuote = quote;
+    if (quote.instruction_status === 'instructed') showInstructedModal = true;
+    else showNotInstructedModal = true;
+  }
+
+  function closeDraftEmail() {
     showInstructedModal = false;
-    selectedQuote = null;
-  }
-
-  function handleInstructedClose() {
-    // Reset the dropdown to previous value
-    if (pendingStatusChange && selectedQuote) {
-      const index = quotes.findIndex(q => q.id === selectedQuote.id);
-      if (index !== -1) {
-        // Force reactivity by creating new array
-        quotes = quotes;
-      }
-    }
-    pendingStatusChange = null;
-    showInstructedModal = false;
-    selectedQuote = null;
-  }
-
-  function handleNotInstructedConfirm() {
-    if (pendingStatusChange) {
-      dispatch('statusChange', pendingStatusChange);
-      pendingStatusChange = null;
-    }
-    showNotInstructedModal = false;
-    selectedQuote = null;
-  }
-
-  function handleNotInstructedClose() {
-    // Reset the dropdown to previous value
-    if (pendingStatusChange && selectedQuote) {
-      const index = quotes.findIndex(q => q.id === selectedQuote.id);
-      if (index !== -1) {
-        // Force reactivity by creating new array
-        quotes = quotes;
-      }
-    }
-    pendingStatusChange = null;
     showNotInstructedModal = false;
     selectedQuote = null;
   }
@@ -625,6 +581,15 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
                 {/if}
               </td>
               <td class="actions-cell">
+                {#if quote.instruction_status === 'instructed' || quote.instruction_status === 'will not be instructed'}
+                  <button
+                    class="action-btn"
+                    on:click={() => openDraftEmail(quote)}
+                    title="Draft email"
+                  >
+                    <i class="las la-envelope"></i>
+                  </button>
+                {/if}
                 <button
                   class="action-btn"
                   on:click={() => openLinkConditions(quote)}
@@ -735,20 +700,19 @@ ${sortedQuotes.length ? `<table style="border-collapse:collapse;width:100%;">
   on:close={handleEditQuoteClose}
 />
 
-<!-- Instructed Confirmation Modal -->
+<!-- Draft email modals (instructed / not instructed) -->
 <InstructedModal
   show={showInstructedModal}
   quote={selectedQuote}
-  on:confirm={handleInstructedConfirm}
-  on:close={handleInstructedClose}
+  draftOnly
+  on:close={closeDraftEmail}
 />
 
-<!-- Not Instructed Modal -->
 <NotInstructedModal
   show={showNotInstructedModal}
   quote={selectedQuote}
-  on:confirm={handleNotInstructedConfirm}
-  on:close={handleNotInstructedClose}
+  draftOnly
+  on:close={closeDraftEmail}
 />
 
 <!-- Partially Instructed Modal -->

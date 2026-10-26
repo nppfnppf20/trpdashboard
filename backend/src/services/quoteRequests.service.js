@@ -208,7 +208,7 @@ export async function getSentRequestById(id) {
 
 /**
  * Create a sent request with recipients (uses transaction for atomicity)
- * @param {Object} data - { projectId, templateId, emailContent, recipients: [{surveyorId, contactId}], notes }
+ * @param {Object} data - { projectId, templateId, emailContent, recipients: [{surveyorId, contactId}], notes } (emailContent may be null: a briefing saved as sent without a stored email)
  * @returns {Promise<Object>} Created sent request with ID
  */
 export async function createSentRequest(data) {
@@ -224,13 +224,13 @@ export async function createSentRequest(data) {
       INSERT INTO admin_console.sent_quote_requests
         (project_id, template_id, email_content, notes, sent_date)
       VALUES ($1, $2, $3, $4, NOW())
-      RETURNING id, project_id, template_id, sent_date, email_content, notes
+      RETURNING id
     `;
 
     const requestResult = await client.query(insertRequestQuery, [
       projectId,
       templateId,
-      emailContent,
+      emailContent || null,
       notes || null
     ]);
 
@@ -350,11 +350,16 @@ export async function mergeTemplate(templateId, projectId, surveyorIds) {
     DATE: new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
   };
 
-  // Replace placeholders; when dropBlankLines is set, a blank value removes the
-  // whole <li> containing its token instead of leaving a dangling "Label:" line
+  // Left out of the email body entirely: their template lines (Client / Sector / Project Type)
+  // are removed even though the project has values for them
+  const OMIT_FROM_EMAIL_BODY = ['CLIENT_NAME', 'SECTOR', 'PROJECT_TYPE'];
+
+  // Replace placeholders; when dropBlankLines is set (the email body), a blank or omitted value
+  // removes the whole <li> containing its token instead of leaving a dangling "Label:" line
   function replacePlaceholders(text, { dropBlankLines = false } = {}) {
     let out = text;
-    for (const [token, value] of Object.entries(placeholderValues)) {
+    for (const [token, rawValue] of Object.entries(placeholderValues)) {
+      const value = dropBlankLines && OMIT_FROM_EMAIL_BODY.includes(token) ? '' : rawValue;
       if (dropBlankLines && !value) {
         // (?:(?!<\/li>)[\s\S])*? = any content that doesn't cross an </li>,
         // so only the single list item holding the token is removed
@@ -370,7 +375,10 @@ export async function mergeTemplate(templateId, projectId, surveyorIds) {
 
   // Merge template content and subject line
   // The templates label the [PROJECT_CODE] line "Project Code:"; in emails it's called the TRP code
-  const mergedContent = replacePlaceholders(template.template_content, { dropBlankLines: true })
+  // No quote deadline in the email: "Please provide your quote by [DATE], including:" becomes "Please provide your quote, including:"
+  const withoutDeadline = template.template_content
+    .replace(/\s+by\s+(?:<strong>)?\[DATE\](?:<\/strong>)?/gi, '');
+  const mergedContent = replacePlaceholders(withoutDeadline, { dropBlankLines: true })
     .replace(/Project Code:/g, 'TRP Code:');
   const mergedSubject = replacePlaceholders(template.subject_line);
 

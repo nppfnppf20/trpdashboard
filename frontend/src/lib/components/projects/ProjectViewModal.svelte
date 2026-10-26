@@ -23,7 +23,7 @@
   import ProjectCompletenessTab from '$lib/components/projects/ProjectCompletenessTab.svelte';
   import ProjectChatTab from '$lib/components/projects/ProjectChatTab.svelte';
   import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
-  import { openProjectModal } from '$lib/stores/projectViewModal.js';
+  import { openProjectModal, mainViewReturnTab } from '$lib/stores/projectViewModal.js';
 
   export let isOpen = false;
   export let onClose = () => {};
@@ -511,7 +511,7 @@
         {#if activeTab === 'details' && projectData}
           <PlanningStageStrip projectId={projectData.id} />
         {/if}
-        {#if activeTab !== 'details'}
+        {#if activeTab !== 'details' && $mainViewReturnTab}
           <button class="modal-close-btn" on:click={handleClose} title="Back to Overview" aria-label="Back to Overview">&times;</button>
         {/if}
       </div>

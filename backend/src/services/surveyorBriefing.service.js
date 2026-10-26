@@ -5,7 +5,7 @@
  *   suggestEmailEdits             — suggests scope section edits for a specific discipline
  */
 
-import { callClaude, parseJSON, noEmDash, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
+import { client, callClaude, parseJSON, noEmDash, MODEL_SONNET, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 const DISCIPLINE_SYSTEM = `You are a planning consultant reviewing a project briefing note.
 Your task is to identify which specialist surveyor disciplines are required based on the project description, site characteristics, and constraints mentioned, a project-specific briefing note, and a standing practice guide for this type of development, where one is provided.
@@ -132,9 +132,10 @@ const cleanDashes = (html) => noEmDash(html).replace(/\s*–\s*/g, ' to ');
  * @param {string} templateContent - Scope of work section HTML (extracted client-side), used to avoid repeating it
  * @param {string} guidance - Optional free-text instruction from the user
  * @param {{label: string, sample_text: string, guidance_notes?: string}|null} tone - The sender's email tone (example emails + notes)
+ * @param {{onDelta?: (text: string) => void, signal?: AbortSignal}} [stream] - If onDelta is given, the raw JSON response is streamed through it as it is written
  * @returns {Promise<{intro: string|null, hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
  */
-export async function suggestEmailEdits(briefingText, discipline, templateContent, guidance = '', tone = null) {
+export async function suggestEmailEdits(briefingText, discipline, templateContent, guidance = '', tone = null, { onDelta, signal } = {}) {
   const guidanceBlock = guidance?.trim()
     ? `\n\nUser instruction (from the person sending this email):\n"""\n${guidance.trim()}\n"""\n`
     : '';
@@ -159,7 +160,21 @@ Respond with JSON only:
 - hasChanges / suggestedContent: whether there is a Project Information section, and its HTML (or null).
 - reasoning: one or two sentences on what you included and why.`;
 
-  const raw = await callClaude(EMAIL_EDIT_SYSTEM + toneBlock(tone) + ANTI_AI_SLOP_BLOCK, user, MODEL_SONNET);
+  const system = EMAIL_EDIT_SYSTEM + toneBlock(tone) + ANTI_AI_SLOP_BLOCK;
+  let raw;
+  if (onDelta) {
+    const llmStream = client.messages.stream({
+      model: MODEL_SONNET,
+      max_tokens: 4096,
+      system,
+      messages: [{ role: 'user', content: user }]
+    });
+    signal?.addEventListener('abort', () => llmStream.abort(), { once: true });
+    llmStream.on('text', onDelta);
+    raw = (await llmStream.finalMessage()).content[0].text;
+  } else {
+    raw = await callClaude(system, user, MODEL_SONNET);
+  }
   const parsed = parseJSON(raw);
   if (!parsed) return { intro: null, hasChanges: false, reasoning: 'Could not parse LLM response', suggestedContent: null };
   parsed.intro = typeof parsed.intro === 'string' && parsed.intro.trim() ? cleanDashes(parsed.intro) : null;

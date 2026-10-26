@@ -5,6 +5,8 @@
 
   export let show = false;
   export let quote = null;
+  // Draft-only: just the email (copy/close) — no status change on confirm
+  export let draftOnly = false;
 
   const dispatch = createEventDispatcher();
 
@@ -154,16 +156,18 @@
 
       <div class="modal-footer">
         <button class="btn btn-secondary" on:click={handleClose}>
-          Cancel
+          {draftOnly ? 'Close' : 'Cancel'}
         </button>
         <button class="btn btn-secondary" on:click={handleCopyToClipboard}>
           <i class="las la-copy"></i>
           Copy to Clipboard
         </button>
-        <button class="btn btn-primary" on:click={handleConfirm}>
-          <i class="las la-check"></i>
-          Confirm & Send Instruction
-        </button>
+        {#if !draftOnly}
+          <button class="btn btn-primary" on:click={handleConfirm}>
+            <i class="las la-check"></i>
+            Confirm & Send Instruction
+          </button>
+        {/if}
       </div>
     </div>
   </div>

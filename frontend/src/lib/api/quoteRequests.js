@@ -70,7 +70,7 @@ export async function getSentRequestById(requestId) {
 /**
  * Save a sent quote request with recipients
  * @param {string} projectId - Project UUID
- * @param {Object} data - { templateId, emailContent, recipients: [{surveyorId, contactId}], notes }
+ * @param {Object} data - { templateId, emailContent, recipients: [{surveyorId, contactId}], notes } (emailContent is optional)
  * @returns {Promise<Object>} Created sent request object
  */
 export async function saveSentRequest(projectId, data) {
@@ -164,20 +164,48 @@ export async function analyseDisciplines(projectId, { sources = [], developmentT
 /**
  * Draft the opening paragraph and "Project Information" section of a fee quote request email from the selected source(s).
  * @param {string} projectId - Project UUID
- * @param {Object} params - { sources, discipline, templateContent, guidance }
+ * @param {Object} params - { sources, discipline, templateContent, guidance, onDelta } - onDelta(text) streams the raw JSON as it is written
  * @returns {Promise<{intro: string|null, hasChanges: boolean, reasoning: string, suggestedContent: string|null}>}
  */
-export async function suggestEmailEditsForDiscipline(projectId, { sources = [], discipline, templateContent, guidance = '' }) {
+export async function suggestEmailEditsForDiscipline(projectId, { sources = [], discipline, templateContent, guidance = '', onDelta = null }) {
   const response = await authFetch(`${API_BASE}/projects/${projectId}/suggest-email-edits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sources, discipline, template_content: templateContent, guidance })
+    body: JSON.stringify({ sources, discipline, template_content: templateContent, guidance, stream: !!onDelta })
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.details || error.error || 'Failed to suggest email edits');
   }
-  return response.json();
+  if (!onDelta) return response.json();
+
+  if (!response.body) throw new Error('The draft could not be streamed. Please try again.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+
+  const handle = (frame) => {
+    const line = frame.split('\n').find(l => l.startsWith('data:'));
+    if (!line) return;
+    const event = JSON.parse(line.slice(5));
+    if (event.type === 'delta') onDelta(event.text);
+    else if (event.type === 'done') result = event.result;
+    else if (event.type === 'error') throw new Error(event.message || 'Failed to suggest email edits');
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() ?? ''; // the last piece may be an incomplete frame
+    frames.forEach(handle);
+  }
+  if (buffer.trim()) handle(buffer);
+
+  if (!result) throw new Error('The draft was interrupted. Please try again.');
+  return result;
 }
 
 /**

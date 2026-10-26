@@ -1,7 +1,7 @@
 <script>
   import SurveyorBriefingPanel from '$lib/components/surveyor-briefings/SurveyorBriefingPanel.svelte';
   import SurveyorPanels from '$lib/components/surveyor-management/SurveyorPanels.svelte';
-  import { mainViewInitialTab } from '$lib/stores/projectViewModal.js';
+  import { mainViewInitialTab, mainViewReturnTab } from '$lib/stores/projectViewModal.js';
 
   export let project;
   export let initialTab = null;
@@ -32,7 +32,10 @@
         <h1>{project.project_name}</h1>
         {#if project.project_id}<span class="project-ref">{project.project_id}</span>{/if}
       </div>
-      <button class="close-btn" on:click={onClose} title="Close" aria-label="Close">&times;</button>
+      <!-- Only a drill-down from another tab has somewhere to go back to; a sidebar visit is the page in its own right -->
+      {#if $mainViewReturnTab}
+        <button class="close-btn" on:click={onClose} title="Back" aria-label="Back">&times;</button>
+      {/if}
     </div>
 
     <!-- Tabs navigation -->

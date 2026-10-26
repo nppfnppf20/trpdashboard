@@ -10,10 +10,14 @@
   export let projectId;
   export let preSelectedTemplate = null;
   export let preSelectedSurveyors = []; // [{ surveyorId, surveyorOrganisation, discipline, contactId, contactName, contactEmail }]
+  export let preSelectedDiscipline = null;
   export let sources = [];
   export let precomputedCheck = null; // { status: 'loading'|'ready'|'error', apiResult, error? }
   export let stepCurrent = 0;
   export let stepTotal = 0;
+  export let initialHtml = null;    // email already edited elsewhere in this batch: used in place of the merged template
+  export let applyTargetCount = 0;  // how many other emails in the batch "Apply to the rest" would overwrite
+  let showApplyAsk = false;         // the "apply to the rest?" question shown when saving
 
   const dispatch = createEventDispatcher();
 
@@ -46,10 +50,10 @@
   let briefingApplied = false; // prevent double-apply of precomputedCheck
 
   // True while the LLM-drafted intro/Project Information is still being generated
-  $: drafting = precomputedCheck?.status === 'loading';
+  $: drafting = !initialHtml && precomputedCheck?.status === 'loading';
 
   // Apply precomputedCheck once merge is done and result is ready
-  $: if (precomputedCheck?.status === 'ready' && mergeDone && !briefingApplied) {
+  $: if (!initialHtml && precomputedCheck?.status === 'ready' && mergeDone && !briefingApplied) {
     briefingApplied = true;
     const html = richTextEditor?.getHTML();
     if (html) applyPrecomputedCheck(html);
@@ -85,6 +89,9 @@
     if (preSelectedTemplate) {
       selectedTemplateId = preSelectedTemplate.id;
     }
+    if (preSelectedDiscipline && disciplines.includes(preSelectedDiscipline) && !preSelectedTemplate) {
+      selectedDiscipline = preSelectedDiscipline;
+    }
     if (preSelectedSurveyors?.length > 0) {
       selectedSurveyors = [...preSelectedSurveyors];
       // Setting selectedSurveyors triggers the reactive merge statement above — don't call it again here
@@ -106,8 +113,10 @@
     try {
       const merged = await mergeTemplate(selectedTemplateId, projectId, selectedSurveyorIds);
       currentSubject = merged.subjectLine;
-      if (richTextEditor) richTextEditor.setHTML(merged.content);
+      if (richTextEditor) richTextEditor.setHTML(initialHtml ?? merged.content);
       mergeDone = true;
+      // An edited copy from the batch already has the drafted sections in it
+      if (initialHtml) briefingApplied = true;
       // If check already resolved, apply immediately; reactive block handles the other case
       if (precomputedCheck?.status === 'ready' && !briefingApplied) {
         briefingApplied = true;
@@ -284,9 +293,29 @@
     window.location.href = `mailto:${encodeURIComponent(to.trim())}?subject=${encodeURIComponent(currentSubject || '')}&body=${encodeURIComponent(plainText.replace(/\n/g, '\r\n'))}`;
   }
 
-  async function handleSaveAsSent() {
+  // With other emails of this discipline still to do in the batch, ask whether this one should be copied to them first
+  function handleSaveAsSent() {
     if (!richTextEditor || !projectId) return;
     if (selectedSurveyors.length === 0) { alert('Please select at least one surveyor'); return; }
+    if (applyTargetCount > 0) {
+      showApplyAsk = true;
+      return;
+    }
+    saveAsSent();
+  }
+
+  function saveAndApply() {
+    dispatch('applytorest', { html: richTextEditor.getHTML() });
+    showApplyAsk = false;
+    saveAsSent();
+  }
+
+  function saveOnly() {
+    showApplyAsk = false;
+    saveAsSent();
+  }
+
+  async function saveAsSent() {
     saving = true;
     error = null;
     try {
@@ -342,6 +371,7 @@
 
   function handlePrev() { dispatch('prev'); }
   function handleNext() { dispatch('next'); }
+
 </script>
 
 {#if show}
@@ -438,7 +468,7 @@
 
         <div class="form-group">
           <label>Email Content:</label>
-          {#if precomputedCheck}
+          {#if precomputedCheck && !initialHtml}
             {#if precomputedCheck.status === 'error'}
               <div class="check-status check-error">
                 <i class="las la-exclamation-triangle"></i>
@@ -467,6 +497,13 @@
               <div class="spinner"></div>
               <p>Drafting the email from your notes…</p>
             </div>
+            <!-- Live preview of what is being written; the finished draft is applied to the template below -->
+            {#if precomputedCheck?.partial?.intro || precomputedCheck?.partial?.projectInfo}
+              <div class="draft-preview">
+                {#if precomputedCheck.partial.intro}{@html sanitizeHtml(precomputedCheck.partial.intro)}{/if}
+                {#if precomputedCheck.partial.projectInfo}{@html sanitizeHtml(precomputedCheck.partial.projectInfo)}{/if}
+              </div>
+            {/if}
           {:else if merging}
             <div class="merging-indicator">
               <div class="spinner"></div>
@@ -479,6 +516,7 @@
               bind:this={richTextEditor}
               placeholder="Select a template and surveyors to generate content, or write your own message..."
             />
+
           </div>
         </div>
       </div>
@@ -496,16 +534,17 @@
       {/if}
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" on:click={handleClose}>Cancel</button>
-        <button class="btn btn-secondary" on:click={handleCopyToClipboard}
+        <button class="btn btn-secondary btn-sm" on:click={handleClose}>Cancel</button>
+        <span class="footer-spacer"></span>
+        <button class="btn btn-primary btn-sm" on:click={handleCopyToClipboard}
           disabled={saving || sending || drafting || !richTextEditor || !hasSurveyorSelected}>
           <i class="las la-copy"></i> Copy to Clipboard
         </button>
-        <button class="btn btn-secondary" on:click={handleOpenInEmail}
+        <button class="btn btn-primary btn-sm" on:click={handleOpenInEmail}
           disabled={saving || sending || drafting || !richTextEditor || !hasSurveyorSelected}>
           <i class="las la-envelope"></i> Open in Email
         </button>
-        <button class="btn btn-secondary" on:click={handleSaveAsSent}
+        <button class="btn btn-primary btn-sm" on:click={handleSaveAsSent}
           disabled={saving || sending || drafting || !richTextEditor || !hasSurveyorSelected}>
           {#if saving}
             <div class="btn-spinner"></div> Saving...
@@ -513,17 +552,34 @@
             <i class="las la-save"></i> Save as Sent
           {/if}
         </button>
-        <!-- Sending is switched off for now; handleSendEmail is left in place to re-enable -->
-        <button class="btn btn-send-all" disabled title="Coming soon - send the email directly from here">
-          <i class="las la-paper-plane"></i> Send Email
-          <span class="soon-badge">Coming soon</span>
+        <!-- Coming soon, kept at the end: Send is switched off (handleSendEmail is left in place to re-enable) -->
+        <button class="btn btn-sm btn-soon" disabled title="Coming soon - send the email directly from here">
+          <i class="las la-paper-plane"></i> Send
+          <span class="soon-badge">Soon</span>
         </button>
         {#if stepTotal > 1}
-          <button class="btn btn-send-all" disabled title="Coming soon - send every drafted email in one go">
+          <button class="btn btn-sm btn-soon" disabled title="Coming soon - send every drafted email in one go">
             <i class="las la-paper-plane"></i> Send All
-            <span class="soon-badge">Coming soon</span>
+            <span class="soon-badge">Soon</span>
           </button>
         {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showApplyAsk}
+  <div class="ask-overlay" on:click|self={() => showApplyAsk = false} role="presentation">
+    <div class="ask-dialog" role="dialog" aria-modal="true">
+      <h3>Apply to the other {selectedDiscipline || ''} emails?</h3>
+      <p>
+        {applyTargetCount} more {selectedDiscipline || ''} email{applyTargetCount !== 1 ? 's are' : ' is'} still to do.
+        Copy this one to {applyTargetCount !== 1 ? 'them' : 'it'}, with each recipient's name swapped in?
+      </p>
+      <div class="ask-actions">
+        <button class="btn btn-secondary btn-sm" on:click={() => showApplyAsk = false}>Cancel</button>
+        <button class="btn btn-secondary btn-sm" on:click={saveOnly}>Save this one only</button>
+        <button class="btn btn-primary btn-sm" on:click={saveAndApply}>Save and apply to {applyTargetCount}</button>
       </div>
     </div>
   </div>
@@ -539,8 +595,7 @@
 <style>
   .modal-overlay {
     position: fixed;
-    top: 0; left: 0;
-    width: 100vw; height: 100vh;
+    inset: 0;
     background: var(--overlay-bg);
     display: flex;
     align-items: center;
@@ -703,6 +758,57 @@
     display: none;
   }
 
+  .ask-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--overlay-bg);
+  }
+
+  .ask-dialog {
+    width: 90%;
+    max-width: 440px;
+    padding: 1.25rem 1.5rem;
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+  }
+
+  .ask-dialog h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: var(--color-slate-800);
+  }
+
+  .ask-dialog p {
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+    color: var(--color-slate-600);
+  }
+
+  .ask-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .draft-preview {
+    margin-top: 0.75rem;
+    padding: 1rem;
+    max-height: 320px;
+    overflow-y: auto;
+    background: white;
+    border: 1px dashed var(--color-slate-200);
+    border-radius: 6px;
+    color: var(--color-slate-800);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
 
   .merging-indicator {
     display: flex;
@@ -743,31 +849,38 @@
 
   .modal-footer {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
-    gap: 0.75rem;
-    padding: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
     border-top: 1px solid var(--color-slate-200);
   }
 
-  .btn-send {
-    background: var(--color-emerald-600);
-    color: white;
+  .footer-spacer {
+    flex: 1;
   }
-  .btn-send:hover:not(:disabled) { background: var(--color-emerald-800); }
 
-  .btn-send-all {
-    background: var(--color-emerald-600);
-    color: white;
-    opacity: 0.5;
+  .btn-sm {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8125rem;
+    gap: 0.3rem;
+    width: auto;
+    min-width: 0;
+  }
+
+  .btn-soon {
+    background: var(--color-slate-100);
+    color: var(--color-slate-500);
+    border: 1px solid var(--color-slate-200);
     cursor: not-allowed;
-    position: relative;
   }
 
   .soon-badge {
-    padding: 0.1rem 0.4rem;
-    background: rgba(255, 255, 255, 0.25);
+    padding: 0 0.4rem;
+    background: var(--color-slate-200);
     border-radius: 999px;
-    font-size: 0.6875rem;
+    font-size: 0.625rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;

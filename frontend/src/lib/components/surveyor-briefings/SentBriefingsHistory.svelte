@@ -147,7 +147,8 @@
                 <button
                   class="action-btn view-btn"
                   on:click={() => copyToClipboard(request.email_content)}
-                  title="Copy email content to clipboard"
+                  disabled={!request.email_content}
+                  title={request.email_content ? 'Copy email content to clipboard' : 'No email stored'}
                 >
                   <i class="las la-copy"></i>
                 </button>

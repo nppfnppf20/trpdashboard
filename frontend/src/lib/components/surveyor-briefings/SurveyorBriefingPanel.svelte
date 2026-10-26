@@ -1,5 +1,11 @@
 <script>
-  import { getTemplates, getSentRequestsForProject } from '$lib/api/quoteRequests.js';
+  import { getTemplates, getSentRequestsForProject, saveSentRequest, mergeTemplate, suggestEmailEditsForDiscipline } from '$lib/api/quoteRequests.js';
+  import PlanSurveyorsModal from './PlanSurveyorsModal.svelte';
+  import ReviewSelectionsModal from './ReviewSelectionsModal.svelte';
+  import DraftSourcesModal from './DraftSourcesModal.svelte';
+  import { partialJsonString } from '$lib/utils/partialJson.js';
+  import { adaptEmailForRecipient } from '$lib/utils/adaptEmailForRecipient.js';
+  import NewRequestChoiceModal from './NewRequestChoiceModal.svelte';
   import BriefingEditor from './BriefingEditor.svelte';
   import SentBriefingsHistory from './SentBriefingsHistory.svelte';
   import EditEmailTemplate from './EditEmailTemplate.svelte';
@@ -16,6 +22,17 @@
   let showTemplateEditor = false;
   let showEditWarning = false;
   let templateToEdit = null;
+  let showChoice = false;     // "select only" vs "draft email" first step of New Quote Request
+  let showPlanModal = false;
+  let showReview = false;
+  let reviewItems = [];        // [{ key, surveyorId, contactId, ..., state: 'pending'|'sent' }]
+  let reviewBusy = false;
+  let editorQueue = [];        // review items being drafted one after another in the editor
+  let editorIndex = 0;
+  let pendingDraftItems = null; // items waiting on the "which notes?" popup
+  let draftSources = [];        // [{ type, id, full }] confirmed in the popup
+  let draftChecks = {};         // discipline -> { status: 'loading'|'ready'|'error', apiResult, error? }
+  let draftOverrides = {};      // review item key -> edited email HTML copied over by "Apply to the rest"
 
   // Draft from briefing note (Flow 2) — lives in the shared flow component
   let draftFlow; // bind:this
@@ -64,6 +81,164 @@
     showEditor = true;
   }
 
+  // Chosen surveyors go to a review window - nothing is saved until each is drafted or saved as sent
+  function handleReview(event) {
+    reviewItems = event.detail.items.map(i => ({ ...i, state: 'pending' }));
+    showPlanModal = false;
+    showReview = true;
+  }
+
+  function markSent(keys) {
+    reviewItems = reviewItems.map(i => keys.includes(i.key) ? { ...i, state: 'sent' } : i);
+  }
+
+  // Record a briefing as sent with no email stored (the email went out some other way)
+  async function saveItemsAsSent(items) {
+    reviewBusy = true;
+    try {
+      await Promise.all(items.map(i =>
+        saveSentRequest(selectedProject.unique_id, {
+          recipients: [{ surveyorId: i.surveyorId, contactId: i.contactId }]
+        })
+      ));
+      markSent(items.map(i => i.key));
+    } catch (err) {
+      alert('Failed to save: ' + err.message);
+    } finally {
+      reviewBusy = false;
+      await loadSentRequests();
+    }
+  }
+
+  const pendingReviewItems = () => reviewItems.filter(i => i.state === 'pending');
+
+  // The template to open the editor with for a surveyor's discipline: exact match, then a loose one
+  // ("Landscape" vs "Landscape and Visual"), then the general (no-discipline) template
+  function templateFor(discipline) {
+    const d = (discipline || '').trim().toLowerCase();
+    if (d) {
+      const exact = templates.find(t => (t.discipline || '').toLowerCase() === d);
+      if (exact) return exact;
+      const loose = templates.find(t => {
+        const td = (t.discipline || '').toLowerCase();
+        return td && (td.includes(d) || d.includes(td));
+      });
+      if (loose) return loose;
+    }
+    return templates.find(t => !t.discipline) || null;
+  }
+
+  function startDrafting(items) {
+    editorQueue = items;
+    editorIndex = 0;
+    draftOverrides = {};
+  }
+
+  // Emails still to do after the current one that share its discipline - what "Apply to the rest" overwrites
+  $: applyTargets = editorQueue.length
+    ? editorQueue.filter((item, i) =>
+        i !== editorIndex
+        && item.discipline === editorQueue[editorIndex]?.discipline
+        && reviewItems.find(r => r.key === item.key)?.state === 'pending')
+    : [];
+
+  // Copy the email being edited to the other same-discipline emails, swapping in each one's organisation and contact name
+  function handleApplyToRest(event) {
+    const current = editorQueue[editorIndex];
+    const next = { ...draftOverrides };
+    for (const item of applyTargets) {
+      next[item.key] = adaptEmailForRecipient(event.detail.html, current, item);
+    }
+    draftOverrides = next;
+  }
+
+  // Every Draft click asks which notes (if any) to draft from first
+  function askSources(items) {
+    pendingDraftItems = items;
+  }
+
+  function draftTemplateOnly() {
+    const items = pendingDraftItems;
+    pendingDraftItems = null;
+    draftSources = [];
+    draftChecks = {};
+    startDrafting(items);
+  }
+
+  function draftWithNotes(event) {
+    const items = pendingDraftItems;
+    pendingDraftItems = null;
+    draftSources = event.detail.sources;
+    startDrafting(items);
+    runDraftChecks(items, event.detail.sources, event.detail.guidance);
+  }
+
+  // Pulls the "Scope of Work" section out of the merged template so the LLM doesn't repeat it
+  function extractScopeFromHtml(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const children = Array.from(doc.body.childNodes);
+    const scopeIdx = children.findIndex(n => n.nodeName === 'H3' && n.textContent.trim().toLowerCase() === 'scope of work');
+    if (scopeIdx === -1) return null;
+    const endIdx = children.findIndex(n => n.nodeName === 'H3' && n.textContent.trim().toLowerCase() === 'key requirements');
+    const end = endIdx === -1 ? children.length : endIdx;
+    return children.slice(scopeIdx, end).map(n => n.nodeType === 3 ? n.textContent : n.outerHTML).join('');
+  }
+
+  // One LLM draft per discipline (shared by every surveyor in it), run in the background while the editor opens
+  async function runDraftChecks(items, sources, guidance) {
+    const disciplines = [...new Set(items.map(i => i.discipline))];
+    draftChecks = Object.fromEntries(disciplines.map(d => [d, { status: 'loading' }]));
+    await Promise.all(disciplines.map(async (discipline) => {
+      try {
+        const template = templateFor(discipline);
+        if (!template) {
+          draftChecks = { ...draftChecks, [discipline]: { status: 'ready', apiResult: null } };
+          return;
+        }
+        const surveyorIds = items.filter(i => i.discipline === discipline).map(i => i.surveyorId);
+        const merged = await mergeTemplate(template.id, selectedProject.unique_id, surveyorIds);
+        const scopeContent = extractScopeFromHtml(merged.content) ?? '(This template has no separate scope of work section.)';
+        // Stream the draft: the editor shows the intro and Project Information as they are written
+        let raw = '';
+        const apiResult = await suggestEmailEditsForDiscipline(selectedProject.unique_id, {
+          sources,
+          discipline,
+          templateContent: scopeContent,
+          guidance,
+          onDelta: (text) => {
+            raw += text;
+            draftChecks = {
+              ...draftChecks,
+              [discipline]: {
+                status: 'loading',
+                partial: {
+                  intro: partialJsonString(raw, 'intro'),
+                  projectInfo: partialJsonString(raw, 'suggestedContent')
+                }
+              }
+            };
+          }
+        });
+        draftChecks = { ...draftChecks, [discipline]: { status: 'ready', apiResult } };
+      } catch (err) {
+        draftChecks = { ...draftChecks, [discipline]: { status: 'error', error: err.message } };
+      }
+    }));
+  }
+
+  function handleEditorSaved() {
+    markSent([editorQueue[editorIndex].key]);
+    loadSentRequests();
+    if (editorIndex + 1 < editorQueue.length) editorIndex += 1;
+    else editorQueue = [];
+  }
+
+  function closeReview() {
+    showReview = false;
+    reviewItems = [];
+    loadSentRequests();
+  }
+
   function openTemplateForEditing(template) {
     templateToEdit = template;
     showEditWarning = true;
@@ -105,11 +280,13 @@
   <div class="panel-header">
     <h2>Surveyor Quote Requests</h2>
     <div class="header-actions">
+      <!-- Hidden for now (may return): AI-suggested disciplines/surveyors from a briefing note. The flow component below is still mounted.
       <button class="btn-draft-main" on:click={openDraftSetup} disabled={!selectedProject?.unique_id}>
         <i class="las la-magic"></i>
         Draft from Briefing Note
       </button>
-      <button class="btn btn-primary" on:click={openNewRequest}>
+      -->
+      <button class="btn btn-primary" on:click={() => showChoice = true}>
         <i class="las la-plus"></i>
         New Quote Request
       </button>
@@ -169,6 +346,66 @@
     on:saved={handleSaved}
     on:close={handleClose}
   />
+{/if}
+
+<NewRequestChoiceModal
+  show={showChoice}
+  on:select={() => { showChoice = false; showPlanModal = true; }}
+  on:draft={() => { showChoice = false; openNewRequest(); }}
+  on:close={() => showChoice = false}
+/>
+
+<!-- Pick disciplines, then surveyors for each, then review -->
+<PlanSurveyorsModal
+  show={showPlanModal}
+  preselected={reviewItems}
+  on:review={handleReview}
+  on:close={() => showPlanModal = false}
+/>
+
+<ReviewSelectionsModal
+  show={showReview}
+  items={reviewItems}
+  busy={reviewBusy}
+  on:draft={(e) => askSources([e.detail.item])}
+  on:save={(e) => saveItemsAsSent([e.detail.item])}
+  on:draftall={() => askSources(pendingReviewItems())}
+  on:saveall={() => saveItemsAsSent(pendingReviewItems())}
+  on:back={() => { showReview = false; showPlanModal = true; }}
+  on:close={closeReview}
+/>
+
+<DraftSourcesModal
+  show={!!pendingDraftItems}
+  projectUniqueId={selectedProject?.unique_id}
+  draftCount={pendingDraftItems?.length ?? 1}
+  on:go={draftWithNotes}
+  on:skip={draftTemplateOnly}
+  on:close={() => pendingDraftItems = null}
+/>
+
+<!-- Editor for the review window's drafts; rendered after it so it sits on top. Keyed so each draft starts fresh -->
+{#if editorQueue.length}
+  {#key editorIndex}
+    <BriefingEditor
+      show={true}
+      projectId={selectedProject?.unique_id}
+      preSelectedSurveyors={[editorQueue[editorIndex]]}
+      preSelectedTemplate={templateFor(editorQueue[editorIndex].discipline)}
+      preSelectedDiscipline={editorQueue[editorIndex].discipline}
+      sources={draftSources}
+      precomputedCheck={draftChecks[editorQueue[editorIndex].discipline]}
+      stepCurrent={editorIndex + 1}
+      stepTotal={editorQueue.length}
+      initialHtml={draftOverrides[editorQueue[editorIndex].key] ?? null}
+      applyTargetCount={applyTargets.length}
+      on:applytorest={handleApplyToRest}
+      on:saved={handleEditorSaved}
+      on:close={() => editorQueue = []}
+      on:prev={() => editorIndex = Math.max(0, editorIndex - 1)}
+      on:next={() => editorIndex = Math.min(editorQueue.length - 1, editorIndex + 1)}
+    />
+  {/key}
 {/if}
 
 <DraftFromBriefingFlow

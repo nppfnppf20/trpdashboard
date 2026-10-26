@@ -103,10 +103,7 @@ export async function createSentRequest(req, res) {
     const { projectId } = req.params;
     const { templateId, emailContent, recipients, notes } = req.body;
 
-    // Validation
-    if (!emailContent) {
-      return res.status(400).json({ error: 'Email content is required' });
-    }
+    // The email is optional: a briefing can be saved as sent without one
 
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'At least one recipient is required' });
@@ -115,7 +112,7 @@ export async function createSentRequest(req, res) {
     const data = {
       projectId,
       templateId: templateId || null,
-      emailContent,
+      emailContent: emailContent || null,
       recipients,
       notes: notes || null
     };
@@ -477,7 +474,40 @@ export async function suggestEmailEditsForDiscipline(req, res) {
       console.error('getDefaultToneForUser failed, drafting without a tone:', err);
       return null;
     });
-    const result = await suggestEmailEdits(briefingText, discipline, template_content, typeof guidance === 'string' ? guidance : '', tone);
+    const guidanceText = typeof guidance === 'string' ? guidance : '';
+
+    // stream: true -> server-sent events: {type:'delta', text} (the raw JSON as it is written), then
+    // {type:'done', result} with the final parsed result, same shape as the non-streamed response
+    if (req.body.stream === true) {
+      res.status(200).set({
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no'
+      });
+      res.flushHeaders();
+      const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+
+      // Stop paying for tokens nobody will read if the browser goes away mid-draft
+      const abort = new AbortController();
+      res.on('close', () => abort.abort());
+
+      try {
+        const result = await suggestEmailEdits(briefingText, discipline, template_content, guidanceText, tone, {
+          onDelta: (text) => send({ type: 'delta', text }),
+          signal: abort.signal
+        });
+        send({ type: 'done', result });
+      } catch (err) {
+        if (!abort.signal.aborted) {
+          console.error('suggestEmailEditsForDiscipline (stream) error:', err);
+          send({ type: 'error', message: 'Failed to suggest email edits' });
+        }
+      }
+      return res.end();
+    }
+
+    const result = await suggestEmailEdits(briefingText, discipline, template_content, guidanceText, tone);
     res.json(result);
   } catch (err) {
     console.error('suggestEmailEditsForDiscipline error:', err);
