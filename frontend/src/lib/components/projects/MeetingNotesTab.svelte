@@ -7,7 +7,6 @@
   import SuggestedActionsEditor from '$lib/components/projects/SuggestedActionsEditor.svelte';
   import ActionUpdatesEditor from '$lib/components/projects/ActionUpdatesEditor.svelte';
   import { buildReviewBlocksHtml, syncReviewIntoSummary, toEditableActions, toEditableUpdates } from '$lib/utils/meetingActions.js';
-  import MeetingGuideModal from '$lib/components/meeting-guide/MeetingGuideModal.svelte';
   import AddActionModal from '$lib/components/projects/AddActionModal.svelte';
   import NoteEditorModal from '$lib/components/projects/NoteEditorModal.svelte';
   import TranscriptViewerModal from '$lib/components/projects/TranscriptViewerModal.svelte';
@@ -91,7 +90,6 @@
   }
 
   // Briefing sub-tab state
-  let showMeetingGuide = false;
   let briefings = [];
   let briefingsLoaded = false;
   let briefingsLoading = false;
@@ -181,7 +179,6 @@
   let error = null;
 
   // UI toggles
-  let showAllNotes = false;
   let viewingTranscriptNote = null; // note object currently shown in the transcript viewer modal
 
   // Inline edit — note metadata
@@ -262,15 +259,6 @@
       loading = false;
     }
   }
-
-  // Most recently *added* note, not the one with the latest meeting_date —
-  // notes is ordered by meeting_date server-side (for browsing history
-  // chronologically), so a note with a future meeting_date (an upcoming
-  // committee date, say) would otherwise always outrank one just saved
-  // today, making this card show something other than what was just added.
-  $: latestNote = notes.length
-    ? [...notes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
-    : null;
 
   // Collapsed-state summary for the Options disclosure in the Add Note card
   $: summaryTypeLabel = uploadSummaryType === 'brief' ? 'Brief' : uploadSummaryType === 'detailed' ? 'Detailed' : 'Custom';
@@ -611,13 +599,6 @@
   }
 </script>
 
-<MeetingGuideModal
-  show={showMeetingGuide}
-  project={project}
-  issueTracks={[]}
-  onClose={() => showMeetingGuide = false}
-/>
-
 <AddActionModal
   bind:show={showDraftIssuesModal}
   {projectId}
@@ -646,13 +627,116 @@
     <div class="mn-error">{error}</div>
   {:else}
 
-    <!-- ── Top row ────────────────────────────────────────────────────── -->
-    <div class="mn-top-row">
+    <!-- ── All Notes ──────────────────────────────────────────────────── -->
+    <div class="card mn-section">
+      <div class="mn-section-head mn-section-head--split">
+        <h3>All Notes ({combinedItems.length})</h3>
+        <button class="btn btn-primary btn-sm" on:click={openUploadPanel}>
+          <i class="las la-plus"></i> Add Meeting Notes
+        </button>
+      </div>
+      {#if briefingsError}<div class="mn-error mn-table-mt">{briefingsError}</div>{/if}
+      {#if combinedItems.length === 0}
+        <p class="mn-empty mn-table-mt">No notes yet. Click "Add Meeting Notes" to get started.</p>
+      {:else}
+        <div class="mn-notes-list mn-table-mt">
+          {#each combinedItems as item (item.itemType + '-' + item.id)}
+            <div class="mn-note-card">
+              {#if item.itemType === 'meeting' && editingNoteId === item.id}
+                <div class="mn-note-edit-form">
+                  <div class="form-row-3">
+                    <div class="form-group form-group-wide">
+                      <label>Title</label>
+                      <input type="text" class="form-input" bind:value={noteEditForm.title} placeholder="Meeting title" />
+                    </div>
+                    <div class="form-group">
+                      <label>Date</label>
+                      <input type="date" class="form-input" bind:value={noteEditForm.meeting_date} />
+                    </div>
+                    <div class="form-group">
+                      <label>Attendees</label>
+                      <input type="text" class="form-input" bind:value={noteEditForm.attendees_text} placeholder="e.g. Josh, Sarah, Client" />
+                    </div>
+                  </div>
+                  <div class="mn-form-footer">
+                    <button class="btn btn-secondary btn-sm" on:click={() => editingNoteId = null}>Cancel</button>
+                    <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(item.id)}>Save</button>
+                  </div>
+                </div>
+              {:else}
+                <div class="mn-note-info">
+                  <div class="mn-note-meta">
+                    <span class="mn-type-badge mn-type-badge--{item.itemType}">{item.itemType === 'meeting' ? 'Meeting' : 'Briefing'}</span>
+                    <span class="mn-note-title">{item.title}</span>
+                    {#if item.itemType === 'meeting' && item.meeting_date}
+                      <span class="mn-cell-muted">{formatDate(item.meeting_date)}</span>
+                    {:else if item.itemType === 'briefing' && item.created_at}
+                      <span class="mn-cell-muted">{formatDate(item.created_at)}</span>
+                    {/if}
+                    {#if item.itemType === 'meeting' && item.attendees_text}
+                      <span class="mn-cell-dim">{item.attendees_text}</span>
+                    {/if}
+                  </div>
+                </div>
+                <div class="mn-note-actions">
+                  {#if item.itemType === 'meeting'}
+                    <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(item)}>
+                      <i class="las la-eye"></i> View Notes
+                    </button>
+                    <button class="btn btn-secondary btn-sm" on:click={() => openTranscript(item)}>
+                      <i class="las la-file-alt"></i> Transcript
+                    </button>
+                    <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(item)}>
+                      <i class="las la-download"></i> Download
+                    </button>
+                    <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(item)} title="Edit details">
+                      <i class="las la-pen"></i>
+                    </button>
+                    <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(item.id)} title="Delete meeting note">
+                      <i class="las la-trash"></i>
+                    </button>
+                  {:else}
+                    <button class="btn btn-secondary btn-sm" on:click={() => viewingBriefing = item}>
+                      <i class="las la-eye"></i> View
+                    </button>
+                    <button class="btn btn-secondary btn-sm" on:click={() => openBriefingEditor(item)}>
+                      <i class="las la-pen"></i> Edit
+                    </button>
+                    {#if item.has_transcript || item.transcript_text}
+                      <button class="btn btn-secondary btn-sm" on:click={() => openBriefingTranscript(item)}>
+                        <i class="las la-file-alt"></i> Transcript
+                      </button>
+                    {/if}
+                    <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(item.id)} title="Delete">
+                      <i class="las la-trash"></i>
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
 
-      <!-- Upload card -->
-      <div class="card mn-upload-card">
-        <h3 class="mn-card-title">Summarise Meeting</h3>
+  {/if}
 
+</div>
+
+<!-- ── Add meeting notes modal ──────────────────────────────────────────── -->
+{#if showUploadPanel}
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:click|self={closeUploadPanel} on:keydown={(e) => e.key === 'Escape' && closeUploadPanel()}>
+    <div class="mn-modal mn-add-modal">
+      <div class="modal-header">
+        <div>
+          <h2 class="mn-modal-title">Summarise Meeting</h2>
+          <p class="mn-modal-meta">Upload or paste a transcript to process</p>
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={closeUploadPanel} title="Close" disabled={uploadProcessing}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
         <div class="mn-upload-form">
 
           <div class="mn-input-tabs">
@@ -777,150 +861,9 @@
 
         </div>
       </div>
-
-      <!-- Latest meeting card -->
-      <div class="card mn-latest-card">
-        {#if latestNote}
-          <div class="mn-latest-card-inner">
-            <div class="mn-latest-card-top">
-              <span class="mn-card-label">Latest Meeting</span>
-              <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(latestNote)} title="Edit details">
-                <i class="las la-pen"></i>
-              </button>
-            </div>
-            <div class="mn-latest-title">{latestNote.title}</div>
-            <div class="mn-latest-meta-row">
-              {#if latestNote.meeting_date}<span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>{/if}
-              {#if latestNote.attendees_text}<span class="mn-cell-dim">{latestNote.attendees_text}</span>{/if}
-            </div>
-            <div class="mn-latest-card-btns">
-              <button class="btn btn-primary btn-sm" on:click={() => openNoteEditor(latestNote)}>
-                <i class="las la-eye"></i> View Notes
-              </button>
-              <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(latestNote)}>
-                <i class="las la-download"></i> Download
-              </button>
-            </div>
-          </div>
-        {:else}
-          <div class="mn-latest-empty">
-            <i class="las la-calendar-times"></i>
-            <p>No meetings yet.<br>Upload a transcript to get started.</p>
-          </div>
-        {/if}
-      </div>
-
     </div>
-
-      <!-- Meeting Guide card -->
-      <div class="card mn-guide-card">
-        <div class="mn-guide-card-left">
-          <div class="mn-guide-icon"><i class="las la-clipboard-list"></i></div>
-          <div>
-            <div class="mn-guide-title">Meeting Guide</div>
-            <div class="mn-guide-desc">Structured agenda and talking points for your project kick off meeting.</div>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" on:click={() => showMeetingGuide = true}>
-          <i class="las la-clipboard-list"></i> Open Meeting Guide
-        </button>
-      </div>
-
-    <!-- ── All Notes ──────────────────────────────────────────────────── -->
-    <div class="card mn-section mn-section-muted">
-      <button class="mn-concertina-btn" on:click={() => showAllNotes = !showAllNotes}>
-        <i class="las la-{showAllNotes ? 'angle-up' : 'angle-down'}"></i>
-        All Notes ({combinedItems.length})
-      </button>
-      {#if showAllNotes}
-        {#if briefingsError}<div class="mn-error mn-table-mt">{briefingsError}</div>{/if}
-        {#if combinedItems.length === 0}
-          <p class="mn-empty mn-table-mt">No notes yet. Use "Summarise Meeting" above to get started.</p>
-        {:else}
-          <div class="mn-notes-list mn-table-mt">
-            {#each combinedItems as item (item.itemType + '-' + item.id)}
-              <div class="mn-note-card">
-                {#if item.itemType === 'meeting' && editingNoteId === item.id}
-                  <div class="mn-note-edit-form">
-                    <div class="form-row-3">
-                      <div class="form-group form-group-wide">
-                        <label>Title</label>
-                        <input type="text" class="form-input" bind:value={noteEditForm.title} placeholder="Meeting title" />
-                      </div>
-                      <div class="form-group">
-                        <label>Date</label>
-                        <input type="date" class="form-input" bind:value={noteEditForm.meeting_date} />
-                      </div>
-                      <div class="form-group">
-                        <label>Attendees</label>
-                        <input type="text" class="form-input" bind:value={noteEditForm.attendees_text} placeholder="e.g. Josh, Sarah, Client" />
-                      </div>
-                    </div>
-                    <div class="mn-form-footer">
-                      <button class="btn btn-secondary btn-sm" on:click={() => editingNoteId = null}>Cancel</button>
-                      <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(item.id)}>Save</button>
-                    </div>
-                  </div>
-                {:else}
-                  <div class="mn-note-info">
-                    <div class="mn-note-meta">
-                      <span class="mn-type-badge mn-type-badge--{item.itemType}">{item.itemType === 'meeting' ? 'Meeting' : 'Briefing'}</span>
-                      <span class="mn-note-title">{item.title}</span>
-                      {#if item.itemType === 'meeting' && item.meeting_date}
-                        <span class="mn-cell-muted">{formatDate(item.meeting_date)}</span>
-                      {:else if item.itemType === 'briefing' && item.created_at}
-                        <span class="mn-cell-muted">{formatDate(item.created_at)}</span>
-                      {/if}
-                      {#if item.itemType === 'meeting' && item.attendees_text}
-                        <span class="mn-cell-dim">{item.attendees_text}</span>
-                      {/if}
-                    </div>
-                  </div>
-                  <div class="mn-note-actions">
-                    {#if item.itemType === 'meeting'}
-                      <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(item)}>
-                        <i class="las la-eye"></i> View Notes
-                      </button>
-                      <button class="btn btn-secondary btn-sm" on:click={() => openTranscript(item)}>
-                        <i class="las la-file-alt"></i> Transcript
-                      </button>
-                      <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(item)}>
-                        <i class="las la-download"></i> Download
-                      </button>
-                      <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(item)} title="Edit details">
-                        <i class="las la-pen"></i>
-                      </button>
-                      <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(item.id)} title="Delete meeting note">
-                        <i class="las la-trash"></i>
-                      </button>
-                    {:else}
-                      <button class="btn btn-secondary btn-sm" on:click={() => viewingBriefing = item}>
-                        <i class="las la-eye"></i> View
-                      </button>
-                      <button class="btn btn-secondary btn-sm" on:click={() => openBriefingEditor(item)}>
-                        <i class="las la-pen"></i> Edit
-                      </button>
-                      {#if item.has_transcript || item.transcript_text}
-                        <button class="btn btn-secondary btn-sm" on:click={() => openBriefingTranscript(item)}>
-                          <i class="las la-file-alt"></i> Transcript
-                        </button>
-                      {/if}
-                      <button class="btn btn-icon btn-danger-ghost" on:click={() => deleteBriefing(item.id)} title="Delete">
-                        <i class="las la-trash"></i>
-                      </button>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      {/if}
-    </div>
-
-  {/if}
-
-</div>
+  </div>
+{/if}
 
 <!-- ── Post-process Review Modal ──────────────────────────────────────────── -->
 {#if reviewOpen}
@@ -1198,47 +1141,6 @@
   .mn-type-badge--meeting { background: var(--color-primary-50); color: var(--color-primary-500); }
   .mn-type-badge--briefing { background: var(--color-red-50); color: var(--color-red-500); }
 
-  .mn-guide-card {
-    padding: 1rem 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-  .mn-guide-card-left { display: flex; align-items: center; gap: 0.875rem; }
-  .mn-guide-icon {
-    width: 2.5rem; height: 2.5rem;
-    background: var(--color-primary-50);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem;
-    color: var(--color-primary-500);
-    flex-shrink: 0;
-  }
-  .mn-guide-title { font-size: 0.9rem; font-weight: 600; color: var(--color-slate-800); }
-  .mn-guide-desc { font-size: 0.8rem; color: var(--color-slate-500); margin-top: 0.1rem; }
-
-  /* ── Top row ────────────────────────────────────────────────────────────── */
-  .mn-top-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    align-items: stretch;
-  }
-
-  /* Upload card */
-  .mn-upload-card {
-    padding: 0.85rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-  }
-  .mn-card-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-slate-800);
-    margin: 0;
-  }
   .mn-process-btn { width: 100%; }
 
   /* ── Multi-project ──────────────────────────────────────────────────────── */
@@ -1246,68 +1148,10 @@
   .mn-checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--color-primary-500); cursor: pointer; }
   .mn-multi-project-note { font-size: 0.8125rem; color: var(--color-slate-600); margin: 0; }
 
-  /* Latest meeting card */
-  .mn-latest-card {
-    padding: 0.85rem 1rem;
-    display: flex;
-    flex-direction: column;
-  }
-  .mn-latest-card-inner {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    height: 100%;
-  }
-  .mn-latest-card-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .mn-card-label {
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-slate-400);
-  }
-  .mn-latest-title {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-slate-800);
-    line-height: 1.3;
-  }
-  .mn-latest-meta-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.2rem 0.6rem;
-    font-size: 0.8rem;
-  }
-  .mn-latest-card-btns {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-top: auto;
-    padding-top: 0.35rem;
-  }
-  .mn-latest-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    height: 100%;
-    min-height: 80px;
-    color: var(--color-slate-400);
-    text-align: center;
-  }
-  .mn-latest-empty i { font-size: 1.5rem; }
-  .mn-latest-empty p { font-size: 0.8rem; margin: 0; line-height: 1.4; }
-
   /* ── Sections ──────────────────────────────────────────────────────────── */
   .mn-section {
     padding: 1rem 1.25rem;
   }
-  .mn-section-muted { background: var(--color-slate-50); }
 
   .mn-section-head {
     display: flex;
@@ -1315,21 +1159,8 @@
     gap: 0.6rem;
     flex-wrap: wrap;
   }
+  .mn-section-head--split { justify-content: space-between; }
   .mn-section-head h3 { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); margin: 0; }
-
-  .mn-concertina-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-slate-600);
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0;
-  }
-  .mn-concertina-btn:hover { color: var(--color-slate-800); }
 
   .mn-table-mt { margin-top: 0.75rem; }
 
@@ -1591,6 +1422,7 @@
     flex-direction: column;
     overflow: hidden;
   }
+  .mn-modal.mn-add-modal { max-width: 760px; }
   .modal-header {
     display: flex;
     align-items: flex-start;

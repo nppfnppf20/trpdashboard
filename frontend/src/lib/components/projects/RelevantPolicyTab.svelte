@@ -130,8 +130,20 @@
     showNppfPicker = false;
     showExtract = false;
     showPaste = false;
+    // Picked from a document's own card: the policies join that document
+    const targetPlanId = nppfTargetPlan?.id ?? '';
+    nppfTargetPlan = null;
     try { await refresh(); } catch (err) { console.error('Refresh before review failed:', err); }
-    openReview(e.detail.rows, e.detail.warning);
+    const rows = targetPlanId ? e.detail.rows.map(r => ({ ...r, plan_id: targetPlanId })) : e.detail.rows;
+    openReview(rows, e.detail.warning);
+  }
+
+  // Opens the NPPF library from a document's card, so more can be added to it
+  // instead of creating a second NPPF document.
+  let nppfTargetPlan = null;
+  function openNppfForPlan(doc) {
+    nppfTargetPlan = doc;
+    showNppfPicker = true;
   }
 
   // ── Plans ──
@@ -503,6 +515,11 @@
             {#if planMeta(doc)}<span class="plan-meta">{planMeta(doc)}</span>{/if}
             <span class="badge badge-sm badge-info">{planPolicies.length} polic{planPolicies.length === 1 ? 'y' : 'ies'}</span>
             <div class="plan-actions">
+              {#if doc.section === 'other'}
+                <button class="btn btn-secondary btn-sm" on:click={() => openNppfForPlan(doc)} title="Add more policies from the NPPF library to this document">
+                  <i class="las la-book"></i> Add from NPPF
+                </button>
+              {/if}
               <button class="btn-circle-add" on:click={() => openAdd(doc)} title="Add a policy to this plan" aria-label="Add a policy to this plan"><i class="las la-plus"></i></button>
               <button class="btn btn-ghost btn-icon" on:click={() => openEditPlan(doc)} title="Edit this document"><i class="las la-pen"></i></button>
               <button class="btn btn-danger-ghost btn-icon" on:click={() => removePlan(doc, planPolicies.length)} title="Delete this document"><i class="las la-trash"></i></button>
@@ -555,7 +572,7 @@
 {/if}
 
 {#if showNppfPicker}
-  <NppfPickerModal existingPolicies={policies} on:close={() => showNppfPicker = false} on:review={onReview} />
+  <NppfPickerModal existingPolicies={policies} on:close={() => { showNppfPicker = false; nppfTargetPlan = null; }} on:review={onReview} />
 {/if}
 
 {#if showPaste}

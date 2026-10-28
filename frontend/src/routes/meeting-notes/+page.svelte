@@ -644,7 +644,7 @@
   <div class="card stream-container">
     <div class="stream-header">
       <h2 class="stream-title">All Meeting Notes</h2>
-      <button class="btn btn-primary" on:click={openAddModal}>
+      <button class="btn btn-primary btn-sm" on:click={openAddModal}>
         <i class="las la-plus"></i> Add Meeting Notes
       </button>
     </div>
@@ -705,13 +705,13 @@
                 <span class="badge badge-success">{note.complete_count} done</span>
               {/if}
               <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)} title="View or edit title, details and summary">
-                <i class="las la-edit"></i> View / Edit
+                <i class="las la-edit"></i> <span class="stream-btn-label">View / Edit</span>
               </button>
               <button class="btn btn-secondary btn-sm" on:click={() => openActionsModal(note)} title="Actions from this meeting">
-                <i class="las la-tasks"></i> Actions
+                <i class="las la-tasks"></i> <span class="stream-btn-label">Actions</span>
               </button>
               <button class="btn btn-secondary btn-sm" on:click={() => openTranscriptModal(note)} title="Full transcript">
-                <i class="las la-file-alt"></i> Transcript
+                <i class="las la-file-alt"></i> <span class="stream-btn-label">Transcript</span>
               </button>
               <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
                 <i class="las la-download"></i>
@@ -899,7 +899,7 @@
 
         {#if uploadError}<div class="mn-error">{uploadError}</div>{/if}
 
-        <button class="btn btn-primary mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
+        <button class="btn btn-primary btn-sm mn-process-btn" on:click={submitUpload} disabled={uploadProcessing}>
           {#if uploadProcessing}
             <span class="mn-spinner"></span> Processing…
           {:else}
@@ -1147,13 +1147,13 @@
   /* ── Page ──────────────────────────────────────────────────────────────────── */
   .mn-page {
     background: var(--color-slate-50);
-    padding: 1.5rem 2rem;
+    padding: 1.25rem 1.5rem;
   }
 
   .page-header { margin-bottom: 1.25rem; }
 
   .page-title {
-    font-size: 1.375rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: var(--color-slate-900);
     margin: 0 0 0.25rem;
@@ -1182,7 +1182,7 @@
      tab's Add Note selector: closed control shows just the name, the
      open list shows a description to help pick. Nothing else in the
      workspace is interactive until this is set. ─────────────────────── */
-  .mn-note-type-dropdown { position: relative; width: 360px; z-index: 5; flex-shrink: 0; }
+  .mn-note-type-dropdown { position: relative; width: min(22rem, 100%); z-index: 5; flex-shrink: 0; }
   .mn-note-type-select {
     width: 100%;
     padding: 0.6rem 0.75rem;
@@ -1571,11 +1571,16 @@
     margin-top: 0.1rem;
   }
 
+  /* Narrower windows: the per-note buttons drop their text and show icons only,
+     so the five buttons plus badges stop crowding the card. */
+  @media (max-width: 1500px) {
+    .stream-btn-label { display: none; }
+    .stream-card-right { gap: 0.3rem; }
+  }
+
   /* ── Responsive ────────────────────────────────────────────────────────────── */
   @media (max-width: 768px) {
     .mn-page { padding: 1rem; }
-    .page-title { font-size: 2rem; }
-    .page-title i { font-size: 2rem; }
     .mn-top-row { grid-template-columns: 1fr; }
     .stream-card { flex-direction: column; align-items: flex-start; }
     .stream-card-right { flex-wrap: wrap; }
