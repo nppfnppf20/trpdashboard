@@ -76,6 +76,20 @@ export async function extractPoliciesFromDocument(projectId, { file, text } = {}
   return res.json();
 }
 
+// texts: one pasted block per policy. Returns { results: [{ ok, policy?, error?, source_text }] }
+export async function sortPastedPolicies(projectId, texts) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/policies/sort-pasted`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texts })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to sort pasted policies');
+  }
+  return res.json();
+}
+
 export async function getNationalPolicyPrecedents(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/national-policy-precedents`);
   if (!res.ok) throw new Error('Failed to fetch national policy precedents');

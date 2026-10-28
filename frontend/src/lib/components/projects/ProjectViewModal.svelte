@@ -40,6 +40,9 @@
   // Left panel of the Policy & History page: the policy list, or the Policy Assessment
   // (the issue list the Stage 1 Review and Planning Statement are drafted from)
   let policyPanelTab = 'policy';
+  // Full-screen is only a CSS class on the same panel (nothing remounts), so closing it
+  // returns to exactly where you were.
+  let policyPanelFullscreen = false;
   const trackerLabels = {
     consultation_tracker: 'Consultation Tracker',
     conditions_tracker: 'Conditions Tracker',
@@ -1089,10 +1092,14 @@
             <ProjectStagesBoard project={projectData} />
           {:else if activeTab === 'policy_and_history'}
             <div class="policy-history-split">
-              <div class="split-card">
+              <div class="split-card" class:split-card--fullscreen={policyPanelFullscreen}>
                 <div class="split-card-label split-card-tabs" role="tablist">
                   <button role="tab" class="split-tab" class:active={policyPanelTab === 'policy'} aria-selected={policyPanelTab === 'policy'} on:click={() => policyPanelTab = 'policy'}>Policy</button>
                   <button role="tab" class="split-tab" class:active={policyPanelTab === 'assessment'} aria-selected={policyPanelTab === 'assessment'} on:click={() => policyPanelTab = 'assessment'}>Policy Assessment</button>
+                  <button class="btn btn-ghost btn-icon split-fs-btn" on:click={() => policyPanelFullscreen = !policyPanelFullscreen}
+                    title={policyPanelFullscreen ? 'Close full screen' : 'Open full screen'} aria-label={policyPanelFullscreen ? 'Close full screen' : 'Open full screen'}>
+                    <i class="las {policyPanelFullscreen ? 'la-compress-arrows-alt' : 'la-expand-arrows-alt'}"></i>
+                  </button>
                 </div>
                 <div class="split-card-body split-card-body--scroll">
                   <!-- The Policy tab stays mounted (just hidden) so its collapsed plans and
@@ -1929,6 +1936,26 @@
   }
   .split-tab:hover { color: var(--color-slate-800); }
   .split-tab.active { color: var(--color-primary-700); border-bottom-color: var(--color-primary-600); }
+
+  .split-fs-btn { margin-left: auto; }
+  .split-card--fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    border-radius: 0;
+    border: none;
+    background: var(--color-slate-50);
+  }
+
+  /* Full screen: widen the children (Policy Assessment is capped at 800px) and centre them */
+  .split-card--fullscreen .assessment-pane,
+  .split-card--fullscreen .policy-pane {
+    max-width: 1400px;
+    width: 100%;
+    margin-inline: auto;
+  }
+  .split-card--fullscreen .assessment-pane { background: transparent; }
+  .split-card--fullscreen .assessment-pane :global(.drafting-issues-tab) { max-width: none; }
 
   .pane-hidden { display: none; }
   /* Policy Assessment sits on a light ground so its white issue cards stand out (as in the popup) */

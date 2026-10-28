@@ -3,8 +3,10 @@
   // or other material consideration). Which section it sits in is just a field.
   import { createEventDispatcher } from 'svelte';
   import { createPolicyDocument, updatePolicyDocument } from '$lib/api/policyDocuments.js';
+  import NppfPickerModal from '$lib/components/projects/NppfPickerModal.svelte';
 
   export let projectId;
+  export let existingPolicies = []; // so the NPPF picker can mark ones already added
   export let plan = null; // existing row to edit, or null to add
   export let defaultSection = 'adopted';
 
@@ -33,24 +35,50 @@
   $: rich = form.section === 'supplementary' || form.section === 'other';
   $: dated = form.section === 'adopted' || rich;
 
+  // Adding a new "Other Material Considerations" entry can start from the NPPF
+  // library: the ticked policies are staged for review, linked to this entry.
+  let showNppfPicker = false;
+  $: canPickNppf = !plan && form.section === 'other';
+
+  function buildPayload() {
+    return {
+      section: form.section,
+      plan_name: form.plan_name.trim(),
+      plan_type: isPlanSection ? form.plan_type : null,
+      year_adopted: dated && form.year_adopted ? parseInt(form.year_adopted) : null,
+      month_adopted: dated && form.month_adopted ? parseInt(form.month_adopted) : null,
+      summary: rich ? (form.summary.trim() || null) : null,
+      relevance: rich ? (form.relevance.trim() || null) : null
+    };
+  }
+
   async function save() {
     if (!form.plan_name.trim()) { formError = 'Name is required'; return; }
     saving = true;
     formError = null;
     try {
-      const payload = {
-        section: form.section,
-        plan_name: form.plan_name.trim(),
-        plan_type: isPlanSection ? form.plan_type : null,
-        year_adopted: dated && form.year_adopted ? parseInt(form.year_adopted) : null,
-        month_adopted: dated && form.month_adopted ? parseInt(form.month_adopted) : null,
-        summary: rich ? (form.summary.trim() || null) : null,
-        relevance: rich ? (form.relevance.trim() || null) : null
-      };
+      const payload = buildPayload();
       const saved = plan
         ? await updatePolicyDocument(plan.id, payload)
         : await createPolicyDocument(projectId, payload);
       dispatch('saved', saved);
+    } catch (err) {
+      formError = err.message;
+      saving = false;
+    }
+  }
+
+  // Saves this entry (named "National Planning Policy Framework (NPPF)" if left
+  // blank), then hands the chosen policies on for review attached to it.
+  async function onNppfChosen(e) {
+    showNppfPicker = false;
+    saving = true;
+    formError = null;
+    try {
+      if (!form.plan_name.trim()) form.plan_name = 'National Planning Policy Framework (NPPF)';
+      const saved = await createPolicyDocument(projectId, buildPayload());
+      const rows = e.detail.rows.map(r => ({ ...r, plan_id: saved.id }));
+      dispatch('saved', { ...saved, stagedRows: rows });
     } catch (err) {
       formError = err.message;
       saving = false;
@@ -66,6 +94,12 @@
     </div>
 
     <div class="dialog-body">
+      {#if canPickNppf}
+        <button class="btn btn-secondary" type="button" on:click={() => showNppfPicker = true} disabled={saving}>
+          <i class="las la-book"></i> Add NPPF policies from the library
+        </button>
+      {/if}
+
       <div class="form-item">
         <label class="form-label" for="pe-section">Where it sits</label>
         <select id="pe-section" class="form-input" bind:value={form.section}>
@@ -125,3 +159,7 @@
     </div>
   </div>
 </div>
+
+{#if showNppfPicker}
+  <NppfPickerModal {existingPolicies} on:close={() => showNppfPicker = false} on:review={onNppfChosen} />
+{/if}

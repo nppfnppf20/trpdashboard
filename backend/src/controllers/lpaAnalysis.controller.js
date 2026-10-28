@@ -8,6 +8,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
+import { sortPastedPolicies as sortPastedPoliciesService } from '../services/pastedPolicies.service.js';
 import { analyseLpaDocument, synthesiseLpaAnalysis, extractPoliciesFromDocument } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +233,24 @@ export async function extractPolicies(req, res) {
   } catch (err) {
     console.error('extractPolicies error:', err);
     res.status(err.status || 500).json({ error: err.message || 'Failed to extract policies from document' });
+  }
+}
+
+// Takes the text the user pasted for each policy (one block per policy) and
+// returns them sorted into the policy form's fields, each with a verbatim
+// check against what was pasted. Nothing is saved here.
+export async function sortPastedPolicies(req, res) {
+  try {
+    const texts = Array.isArray(req.body.texts)
+      ? req.body.texts.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim())
+      : [];
+    if (!texts.length) return res.status(400).json({ error: 'Paste the text of at least one policy' });
+    if (texts.length > 30) return res.status(400).json({ error: 'Please sort 30 policies or fewer at a time' });
+    const results = await sortPastedPoliciesService(texts);
+    res.json({ results });
+  } catch (err) {
+    console.error('sortPastedPolicies error:', err);
+    res.status(500).json({ error: err.message || 'Failed to sort pasted policies' });
   }
 }
 

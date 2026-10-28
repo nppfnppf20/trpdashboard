@@ -325,21 +325,25 @@
         {/if}
 
         {#if editingId !== a.id && fieldsId !== a.id && resolvingId !== a.id}
-          <div class="mal-buttons">
+          <div class="mal-buttons" class:mal-buttons--divided={ownerColumn}>
             {#if a.status !== 'complete'}
-              <button class="btn btn-secondary btn-sm" title="Update" aria-label="Update" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
-                <i class="las la-comment"></i><span class="mal-btn-label"> Update</span>
-              </button>
-              <button class="btn btn-secondary btn-sm" title="Resolve" aria-label="Resolve" disabled={busyId === a.id} on:click={() => startResolve(a)}>
-                <i class="las la-check"></i><span class="mal-btn-label"> Resolve</span>
-              </button>
+              <div class="mal-btn-group">
+                <button class="btn btn-secondary btn-sm" title="Update" aria-label="Update" disabled={busyId === a.id} on:click={() => startUpdate(a)}>
+                  <i class="las la-comment"></i><span class="mal-btn-label"> Update</span>
+                </button>
+                <button class="btn btn-secondary btn-sm" title="Resolve" aria-label="Resolve" disabled={busyId === a.id} on:click={() => startResolve(a)}>
+                  <i class="las la-check"></i><span class="mal-btn-label"> Resolve</span>
+                </button>
+              </div>
             {/if}
-            <button class="btn btn-icon btn-ghost" title="Edit action" aria-label="Edit action" disabled={busyId === a.id} on:click={() => startFieldsEdit(a)}>
-              <i class="las la-pen"></i>
-            </button>
-            <button class="btn btn-icon btn-ghost" title="Delete action" aria-label="Delete action" disabled={busyId === a.id} on:click={() => removeAction(a)}>
-              <i class="las la-trash"></i>
-            </button>
+            <div class="mal-btn-group">
+              <button class="btn btn-icon btn-ghost" title="Edit action" aria-label="Edit action" disabled={busyId === a.id} on:click={() => startFieldsEdit(a)}>
+                <i class="las la-pen"></i>
+              </button>
+              <button class="btn btn-icon btn-ghost" title="Delete action" aria-label="Delete action" disabled={busyId === a.id} on:click={() => removeAction(a)}>
+                <i class="las la-trash"></i>
+              </button>
+            </div>
           </div>
         {/if}
       </div>
@@ -382,4 +386,9 @@
   .mal-owner-done { text-decoration: line-through; color: var(--color-slate-400); }
   .mal-warn { margin: 0; font-size: 0.75rem; color: var(--color-amber-800); }
   .mal-buttons { display: flex; gap: 0.35rem; flex-shrink: 0; }
+  .mal-btn-group { display: flex; align-items: flex-start; gap: 0.35rem; }
+  .mal-btn-group + .mal-btn-group { padding-left: 0.5rem; border-left: 1px solid var(--color-slate-200); }
+  .mal--compact .mal-btn-group { gap: 0.15rem; }
+  .mal--compact .mal-btn-group + .mal-btn-group { padding-left: 0.15rem; border-left: none; }
+  .mal-buttons--divided { align-self: stretch; align-items: stretch; padding-left: 0.75rem; border-left: 1px solid var(--color-slate-200); }
 </style>

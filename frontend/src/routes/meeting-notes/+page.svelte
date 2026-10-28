@@ -49,8 +49,15 @@
   }
 
   function handleWindowKeydown(e) {
-    if (e.key === 'Escape' && noteTypeMenuOpen) noteTypeMenuOpen = false;
+    if (e.key !== 'Escape') return;
+    if (noteTypeMenuOpen) noteTypeMenuOpen = false;
+    else if (showAddModal) closeAddModal();
   }
+
+  // Add-note form lives in a modal, opened from the saved-notes header
+  let showAddModal = false;
+  function openAddModal() { showAddModal = true; }
+  function closeAddModal() { if (!uploadProcessing) showAddModal = false; }
 
   // ── Project selection ───────────────────────────────────────────────────────
   let allProjects = [];
@@ -190,6 +197,7 @@
     uploadSummaryType = 'brief';
     showExtras = false;
     uploadProcessing = false;
+    showAddModal = false;
   }
 
   function handleDrop(e) {
@@ -631,8 +639,110 @@
     </div>
   </div>
 
-  <!-- Workspace -->
-  <div class="card workspace-container">
+
+  <!-- Stream -->
+  <div class="card stream-container">
+    <div class="stream-header">
+      <h2 class="stream-title">All Meeting Notes</h2>
+      <button class="btn btn-primary" on:click={openAddModal}>
+        <i class="las la-plus"></i> Add Meeting Notes
+      </button>
+    </div>
+
+    <div class="stream-tabs">
+      {#each [['all', 'All'], ['internal', 'Internal Team'], ['general', 'General'], ['cpd', 'CPD'], ['project', 'Project'], ['multi_project', 'Multi-Project']] as [key, label]}
+        <button
+          class="stream-tab"
+          class:stream-tab--active={streamTab === key}
+          on:click={() => streamTab = key}
+        >
+          {label}
+          {#if key !== 'all'}
+            <span class="stream-tab-count">
+              {streamNotes.filter(n => n.meeting_type === key).length}
+            </span>
+          {:else}
+            <span class="stream-tab-count">{streamNotes.length}</span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+
+    {#if streamLoading}
+      <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading…</div>
+    {:else if streamError}
+      <div class="mn-error">{streamError}</div>
+    {:else if filteredStream.length === 0}
+      <div class="stream-empty">
+        <i class="las la-inbox"></i>
+        <p>No {streamTab === 'all' ? '' : TYPE_LABELS[streamTab] + ' '}notes yet.</p>
+      </div>
+    {:else}
+      <div class="stream-list">
+        {#each filteredStream as note (note.id)}
+          <div class="stream-card">
+            <div class="stream-card-main">
+            <div class="stream-card-left">
+              <div class="stream-card-top">
+                <span class="badge {TYPE_COLORS[note.meeting_type] ?? 'badge-neutral'}">
+                  {TYPE_LABELS[note.meeting_type] ?? note.meeting_type}
+                </span>
+                {#if note.project_name}
+                  <span class="stream-project-name">{note.project_name}</span>
+                {/if}
+              </div>
+              <div class="stream-card-title">{note.title}</div>
+              <div class="stream-card-meta">
+                {#if note.meeting_date}<span>{formatDate(note.meeting_date)}</span>{/if}
+                {#if note.attendees_text}<span class="mn-cell-dim">{note.attendees_text}</span>{/if}
+              </div>
+            </div>
+            <div class="stream-card-right">
+              {#if Number(note.pending_count) > 0}
+                <span class="badge badge-warning">{note.pending_count} open</span>
+              {/if}
+              {#if Number(note.complete_count) > 0}
+                <span class="badge badge-success">{note.complete_count} done</span>
+              {/if}
+              <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)} title="View or edit title, details and summary">
+                <i class="las la-edit"></i> View / Edit
+              </button>
+              <button class="btn btn-secondary btn-sm" on:click={() => openActionsModal(note)} title="Actions from this meeting">
+                <i class="las la-tasks"></i> Actions
+              </button>
+              <button class="btn btn-secondary btn-sm" on:click={() => openTranscriptModal(note)} title="Full transcript">
+                <i class="las la-file-alt"></i> Transcript
+              </button>
+              <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
+                <i class="las la-download"></i>
+              </button>
+              <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete note">
+                <i class="las la-trash"></i>
+              </button>
+            </div>
+            </div><!-- end stream-card-main -->
+
+          </div><!-- end stream-card -->
+        {/each}
+      </div>
+    {/if}
+  </div>
+</div>
+
+<!-- Add meeting note modal -->
+{#if showAddModal}
+  <div class="modal-backdrop" role="dialog" tabindex="-1" on:click|self={closeAddModal}>
+    <div class="mn-modal mn-add-modal">
+      <div class="modal-header">
+        <div>
+          <h2 class="mn-modal-title">Add Meeting Notes</h2>
+          <p class="mn-modal-meta">Choose a note type, then upload or paste the notes to process</p>
+        </div>
+        <button class="btn btn-icon btn-ghost close-btn" on:click={closeAddModal} title="Close" disabled={uploadProcessing}>
+          <i class="las la-times"></i>
+        </button>
+      </div>
+      <div class="mn-add-body">
     <div class="workspace-tabs">
       <div class="mn-tabs-row">
         <div class="mn-note-type-dropdown" bind:this={noteTypeDropdownEl}>
@@ -805,161 +915,13 @@
         {/if}
       </div>
 
-      <!-- Latest note card -->
-      <div class="mn-latest-card">
-        {#if notesLoading}
-          <div class="mn-loading"><span class="mn-spinner-blue"></span></div>
-        {:else if notesError}
-          <div class="mn-error">{notesError}</div>
-        {:else if latestNote && editingNoteId === latestNote.id}
-          <div class="mn-note-edit-form">
-            <div class="form-group">
-              <label>Title</label>
-              <input type="text" class="form-input" bind:value={noteEditForm.title} />
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Date</label>
-                <input type="date" class="form-input" bind:value={noteEditForm.meeting_date} />
-              </div>
-              <div class="form-group">
-                <label>Attendees</label>
-                <input type="text" class="form-input" bind:value={noteEditForm.attendees_text} />
-              </div>
-            </div>
-            <div class="mn-form-footer">
-              <button class="btn btn-secondary btn-sm" on:click={() => editingNoteId = null}>Cancel</button>
-              <button class="btn btn-primary btn-sm" on:click={() => saveNoteEdit(latestNote.id)}>Save</button>
-            </div>
-          </div>
-        {:else if latestNote}
-          <div class="mn-latest-card-inner">
-            <div class="mn-latest-card-top">
-              <span class="mn-card-label">Latest {meetingType === 'cpd' ? 'CPD' : 'Meeting'}</span>
-              <button class="btn btn-icon btn-ghost" on:click={() => startEditNote(latestNote)} title="Edit details">
-                <i class="las la-pen"></i>
-              </button>
-            </div>
-            <div class="mn-latest-title">{latestNote.title}</div>
-            <div class="mn-latest-meta-row">
-              {#if latestNote.meeting_date}<span class="mn-cell-muted">{formatDate(latestNote.meeting_date)}</span>{/if}
-              {#if latestNote.attendees_text}<span class="mn-cell-dim">{latestNote.attendees_text}</span>{/if}
-            </div>
-            <div class="mn-latest-badges">
-              {#if Number(latestNote.pending_count) > 0}
-                <span class="badge badge-warning">{latestNote.pending_count} open action{latestNote.pending_count > 1 ? 's' : ''}</span>
-              {/if}
-              {#if Number(latestNote.complete_count) > 0}
-                <span class="badge badge-success">{latestNote.complete_count} completed</span>
-              {/if}
-            </div>
-            <div class="mn-latest-card-btns">
-              <button class="btn btn-primary btn-sm" on:click={() => openNoteEditor(latestNote)}>
-                <i class="las la-eye"></i> View Notes
-              </button>
-              <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(latestNote)}>
-                <i class="las la-download"></i> Download
-              </button>
-            </div>
-          </div>
-        {:else}
-          <div class="mn-latest-empty">
-            <i class="las la-calendar-times"></i>
-            <p>No {meetingType === 'cpd' ? 'CPD records' : 'meetings'} yet.<br>Upload or paste above to get started.</p>
-          </div>
-        {/if}
-      </div>
-
     </div>
     </div>
     </div><!-- end workspace-body -->
-  </div><!-- end workspace-container -->
-
-  <!-- Stream -->
-  <div class="card stream-container">
-    <div class="stream-header">
-      <h2 class="stream-title">All Meeting Notes</h2>
-    </div>
-
-    <div class="stream-tabs">
-      {#each [['all', 'All'], ['internal', 'Internal Team'], ['general', 'General'], ['cpd', 'CPD'], ['project', 'Project'], ['multi_project', 'Multi-Project']] as [key, label]}
-        <button
-          class="stream-tab"
-          class:stream-tab--active={streamTab === key}
-          on:click={() => streamTab = key}
-        >
-          {label}
-          {#if key !== 'all'}
-            <span class="stream-tab-count">
-              {streamNotes.filter(n => n.meeting_type === key).length}
-            </span>
-          {:else}
-            <span class="stream-tab-count">{streamNotes.length}</span>
-          {/if}
-        </button>
-      {/each}
-    </div>
-
-    {#if streamLoading}
-      <div class="mn-loading"><span class="mn-spinner-blue"></span> Loading…</div>
-    {:else if streamError}
-      <div class="mn-error">{streamError}</div>
-    {:else if filteredStream.length === 0}
-      <div class="stream-empty">
-        <i class="las la-inbox"></i>
-        <p>No {streamTab === 'all' ? '' : TYPE_LABELS[streamTab] + ' '}notes yet.</p>
       </div>
-    {:else}
-      <div class="stream-list">
-        {#each filteredStream as note (note.id)}
-          <div class="stream-card">
-            <div class="stream-card-main">
-            <div class="stream-card-left">
-              <div class="stream-card-top">
-                <span class="badge {TYPE_COLORS[note.meeting_type] ?? 'badge-neutral'}">
-                  {TYPE_LABELS[note.meeting_type] ?? note.meeting_type}
-                </span>
-                {#if note.project_name}
-                  <span class="stream-project-name">{note.project_name}</span>
-                {/if}
-              </div>
-              <div class="stream-card-title">{note.title}</div>
-              <div class="stream-card-meta">
-                {#if note.meeting_date}<span>{formatDate(note.meeting_date)}</span>{/if}
-                {#if note.attendees_text}<span class="mn-cell-dim">{note.attendees_text}</span>{/if}
-              </div>
-            </div>
-            <div class="stream-card-right">
-              {#if Number(note.pending_count) > 0}
-                <span class="badge badge-warning">{note.pending_count} open</span>
-              {/if}
-              {#if Number(note.complete_count) > 0}
-                <span class="badge badge-success">{note.complete_count} done</span>
-              {/if}
-              <button class="btn btn-secondary btn-sm" on:click={() => openNoteEditor(note)} title="View or edit title, details and summary">
-                <i class="las la-edit"></i> View / Edit
-              </button>
-              <button class="btn btn-secondary btn-sm" on:click={() => openActionsModal(note)} title="Actions from this meeting">
-                <i class="las la-tasks"></i> Actions
-              </button>
-              <button class="btn btn-secondary btn-sm" on:click={() => openTranscriptModal(note)} title="Full transcript">
-                <i class="las la-file-alt"></i> Transcript
-              </button>
-              <button class="btn btn-secondary btn-sm" on:click={() => downloadNote(note)}>
-                <i class="las la-download"></i>
-              </button>
-              <button class="btn btn-icon btn-danger-ghost" on:click={() => removeNote(note.id)} title="Delete note">
-                <i class="las la-trash"></i>
-              </button>
-            </div>
-            </div><!-- end stream-card-main -->
-
-          </div><!-- end stream-card -->
-        {/each}
-      </div>
-    {/if}
+    </div>
   </div>
-</div>
+{/if}
 
 <!-- Actions / Transcript pop-up -->
 {#if detailModal?.type === 'transcript'}
@@ -1205,11 +1167,6 @@
   .page-description { font-size: 0.8125rem; color: var(--color-slate-500); margin: 0; max-width: 560px; line-height: 1.5; }
 
   /* ── Workspace (tabbed card) ───────────────────────────────────────────────── */
-  .workspace-container {
-    margin: 0 0 2rem;
-    overflow: hidden;
-  }
-
   .workspace-tabs {
     position: relative;
     z-index: 30;
@@ -1330,13 +1287,12 @@
   /* ── Top row (internal/cpd) ────────────────────────────────────────────────── */
   .mn-top-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 1rem;
-    align-items: stretch;
-    margin-bottom: 1rem;
+    margin-bottom: 0;
   }
 
-  .mn-upload-card, .mn-latest-card {
+  .mn-upload-card {
     background: var(--color-slate-50);
     border: 1px solid var(--color-slate-200);
     border-radius: 8px;
@@ -1349,18 +1305,7 @@
   .mn-card-title { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); margin: 0; }
   .mn-process-btn { width: 100%; }
 
-  .mn-latest-card-inner { display: flex; flex-direction: column; gap: 0.4rem; height: 100%; }
-  .mn-latest-card-top { display: flex; align-items: center; justify-content: space-between; }
-  .mn-card-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-slate-400); }
-  .mn-latest-title { font-size: 0.9375rem; font-weight: 600; color: var(--color-slate-800); line-height: 1.3; }
-  .mn-latest-meta-row { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; font-size: 0.8rem; }
-  .mn-latest-badges { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  .mn-latest-card-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: auto; padding-top: 0.35rem; }
-  .mn-latest-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; height: 100%; min-height: 80px; color: var(--color-slate-400); text-align: center; }
-  .mn-latest-empty i { font-size: 1.5rem; }
-  .mn-latest-empty p { font-size: 0.8rem; margin: 0; line-height: 1.4; }
 
-  .mn-note-edit-form { display: flex; flex-direction: column; gap: 0.6rem; }
 
   /* ── Stream ────────────────────────────────────────────────────────────────── */
   .stream-container {
@@ -1369,7 +1314,7 @@
     padding: 1.5rem;
   }
 
-  .stream-header { margin-bottom: 1rem; }
+  .stream-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
   .stream-title { font-size: 1.125rem; font-weight: 700; color: var(--color-slate-800); margin: 0; }
 
   .stream-tabs {
@@ -1476,7 +1421,7 @@
 
   /* ── Transcript ────────────────────────────────────────────────────────────── */
   .mn-detail-modal { max-width: 860px; height: 80vh; }
-  .mn-detail-modal--wide { max-width: 1200px; }
+  .mn-modal.mn-detail-modal--wide { max-width: 1260px; width: 100%; }
   .mn-detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 1.5rem; font-size: 0.8rem; color: var(--color-slate-500); }
   .mn-error-sm { color: var(--color-red-600); font-size: 0.8rem; }
   .mn-editor-actions { padding: 0.75rem 1.5rem; border-top: 1px solid var(--color-slate-200); max-height: 45%; overflow-y: auto; flex-shrink: 0; }
@@ -1513,6 +1458,9 @@
     display: flex; flex-direction: column; overflow: hidden;
   }
   .mn-editor-modal { max-width: 860px; height: 88vh; }
+  .mn-add-modal { max-width: 760px; height: 88vh; }
+  .mn-add-body { flex: 1; min-height: 0; overflow-y: auto; }
+  .mn-add-modal .workspace-tabs { border-radius: 0; }
 
   .modal-header {
     display: flex; align-items: flex-start; justify-content: space-between;

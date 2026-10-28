@@ -9,11 +9,15 @@
   import FormattedTextEditor from '$lib/components/shared/FormattedTextEditor.svelte';
   import FormatToolbar from '$lib/components/shared/FormatToolbar.svelte';
   import { updatePolicyAnnotatedText } from '$lib/api/lpaAnalysis.js';
+  import { autoFormatPolicyText } from '$lib/utils/policyFormat.js';
 
   // A policy row, or a plan shaped like one (see _kind): { id, policy_reference,
   // policy_name, policy_type, is_key_policy, policy_text, policy_text_annotated,
   // relevant_supporting_text, notes, _kind?: 'plan' }
   export let policy;
+  // Read-only view for a policy that isn't a project policy row (e.g. the NPPF
+  // library): same layout, but no formatting toolbar and nothing is saved.
+  export let readonly = false;
 
   const dispatch = createEventDispatcher();
 
@@ -43,7 +47,7 @@
 
     <!-- The toolbar sits outside the scrolling area, so it is always in view and
          nothing can scroll past it. -->
-    {#if policy.policy_text}
+    {#if policy.policy_text && !readonly}
       <div class="toolbar-bar">
         <p class="section-label">Policy Text</p>
         <FormatToolbar {editor} {saving} {canReset} />
@@ -55,6 +59,11 @@
         <div class="section">
           <p class="section-label">Policy Text</p>
           <p class="plain none">None recorded</p>
+        </div>
+      {:else if readonly}
+        <div class="section">
+          <p class="section-label">Policy Text</p>
+          <div class="static-text">{@html autoFormatPolicyText(policy.policy_text)}</div>
         </div>
       {:else}
         <div class="section">
@@ -126,6 +135,12 @@
     border-bottom: 1px solid var(--color-slate-200);
     flex-shrink: 0;
   }
+
+  /* Matches the editable layout used for project policies */
+  .static-text { font-size: var(--font-size-sm); line-height: 1.65; color: var(--color-slate-700); }
+  .static-text :global(p) { margin: 0 0 var(--space-2); }
+  .static-text :global(p:last-child) { margin-bottom: 0; }
+  .static-text :global(p.bullet) { padding-left: 1.25em; text-indent: -1.25em; }
 
   .plain { margin: 0; font-size: var(--font-size-sm); line-height: 1.65; white-space: pre-wrap; }
   .support { color: var(--color-slate-500); font-style: italic; }

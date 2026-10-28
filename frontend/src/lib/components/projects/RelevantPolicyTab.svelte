@@ -10,6 +10,7 @@
   import PolicyTools from '$lib/components/projects/PolicyTools.svelte';
   import PolicyCard from '$lib/components/projects/PolicyCard.svelte';
   import PlanEditModal from '$lib/components/projects/PlanEditModal.svelte';
+  import PastePoliciesModal from '$lib/components/projects/PastePoliciesModal.svelte';
   import ExtractFromDocumentModal from '$lib/components/projects/ExtractFromDocumentModal.svelte';
   import NppfPickerModal from '$lib/components/projects/NppfPickerModal.svelte';
   import PolicyPreviewModal from '$lib/components/shared/PolicyPreviewModal.svelte';
@@ -105,6 +106,17 @@
   // National / Not-linked groups). The other routes are in the Tools menu.
   let showNppfPicker = false;
   let showExtract = false;
+  // Paste-and-sort: opened from the Add Policy dialog, carrying over its plan/type
+  let showPaste = false;
+  let pastePlanId = '';
+  let pasteType = 'national';
+
+  function openPaste() {
+    pastePlanId = form.plan_id;
+    pasteType = form.policy_type;
+    cancel();
+    showPaste = true;
+  }
 
   function onAdd(e) {
     const key = e.detail;
@@ -117,6 +129,7 @@
   async function onReview(e) {
     showNppfPicker = false;
     showExtract = false;
+    showPaste = false;
     try { await refresh(); } catch (err) { console.error('Refresh before review failed:', err); }
     openReview(e.detail.rows, e.detail.warning);
   }
@@ -139,10 +152,13 @@
     showPlanModal = true;
   }
 
-  async function onPlanSaved() {
+  // When the new document came with NPPF policies, they go to the review table
+  // already linked to it.
+  async function onPlanSaved(e) {
     showPlanModal = false;
     editingPlan = null;
     await refresh();
+    if (e.detail?.stagedRows?.length) openReview(e.detail.stagedRows);
   }
 
   async function removePlan(doc, count) {
@@ -332,9 +348,24 @@
     };
   }
 
+  let bulkTitle = 'Review Policies';
+
   function openReview(rows, warning = null) {
+    bulkTitle = 'Review Policies';
     bulkRows = rows;
     bulkError = warning || null;
+    showBulkModal = true;
+  }
+
+  // From the single Add Policy dialog: swap to five blank rows that inherit
+  // the plan/type already chosen there. Blank rows are skipped on save.
+  function openAddMultiple() {
+    const plan_id = form.plan_id;
+    const policy_type = form.policy_type;
+    cancel();
+    bulkTitle = 'Add Multiple Policies';
+    bulkRows = Array.from({ length: 5 }, () => ({ ...emptyRow(), plan_id, policy_type }));
+    bulkError = null;
     showBulkModal = true;
   }
 
@@ -344,8 +375,14 @@
     bulkError = null;
   }
 
-  function addBulkRow() {
-    bulkRows = [...bulkRows, emptyRow()];
+  function addBulkRows(n = 5) {
+    const last = bulkRows[bulkRows.length - 1];
+    const extra = Array.from({ length: n }, () => ({
+      ...emptyRow(),
+      plan_id: last?.plan_id ?? '',
+      policy_type: last?.policy_type ?? 'national'
+    }));
+    bulkRows = [...bulkRows, ...extra];
   }
 
   function removeBulkRow(i) {
@@ -521,12 +558,16 @@
   <NppfPickerModal existingPolicies={policies} on:close={() => showNppfPicker = false} on:review={onReview} />
 {/if}
 
+{#if showPaste}
+  <PastePoliciesModal {projectId} planId={pastePlanId} policyType={pasteType} on:close={() => showPaste = false} on:review={onReview} />
+{/if}
+
 {#if showExtract}
   <ExtractFromDocumentModal {projectId} on:close={() => showExtract = false} on:review={onReview} />
 {/if}
 
 {#if showPlanModal}
-  <PlanEditModal {projectId} plan={editingPlan} defaultSection={newPlanSection} on:close={() => { showPlanModal = false; editingPlan = null; }} on:saved={onPlanSaved} />
+  <PlanEditModal {projectId} existingPolicies={policies} plan={editingPlan} defaultSection={newPlanSection} on:close={() => { showPlanModal = false; editingPlan = null; }} on:saved={onPlanSaved} />
 {/if}
 
 {#if showForm}
@@ -592,6 +633,18 @@
         </label>
 
         {#if formError}<div class="alert alert-error">{formError}</div>{/if}
+
+        {#if !editingId}
+          <div class="add-alt-row">
+            <button class="btn btn-secondary btn-sm review-add" on:click={openAddMultiple} disabled={saving}>
+              <i class="las la-plus-circle"></i> Add multiple
+            </button>
+            <button class="btn btn-secondary btn-sm review-add" on:click={openPaste} disabled={saving}
+              title="Paste the text of one or more policies and let the AI sort it into the fields">
+              <i class="las la-magic"></i> Paste &amp; auto-fill
+            </button>
+          </div>
+        {/if}
       </div>
 
       <div class="dialog-footer">
@@ -612,7 +665,7 @@
   <div class="dialog-backdrop" on:click|self={closeBulkModal} role="presentation">
     <div class="dialog dialog-lg">
       <div class="dialog-header">
-        <h3 class="dialog-title">Review Policies</h3>
+        <h3 class="dialog-title">{bulkTitle}</h3>
         <button class="dialog-close" on:click={closeBulkModal} aria-label="Close">&times;</button>
       </div>
 
@@ -623,6 +676,18 @@
             <div class="review-fields">
               {#if row.saveError}
                 <div class="alert alert-error"><i class="las la-exclamation-triangle"></i> {row.saveError}</div>
+              {/if}
+              {#if row.verbatim_issues?.length}
+                <div class="alert alert-warning">
+                  <i class="las la-exclamation-triangle"></i>
+                  Doesn't match what you pasted word for word: {row.verbatim_issues.map(v => `${v.field} (${Math.round(v.score * 100)}% matched)`).join(', ')}.
+                  <details>
+                    <summary>Show what you pasted</summary>
+                    <pre class="pasted-source">{row.pasted_source}</pre>
+                  </details>
+                </div>
+              {:else if row.pasted_source}
+                <div class="verbatim-ok"><i class="las la-check-circle"></i> Matches what you pasted word for word</div>
               {/if}
               <div class="form-cols">
                 <div class="form-item">
@@ -682,8 +747,8 @@
           </div>
         {/each}
 
-        <button class="btn btn-secondary btn-sm review-add" on:click={addBulkRow}>
-          <i class="las la-plus-circle"></i> Add Row
+        <button class="btn btn-secondary btn-sm review-add" on:click={() => addBulkRows(5)}>
+          <i class="las la-plus-circle"></i> Add 5 more
         </button>
 
         {#if bulkError}<div class="alert alert-error">{bulkError}</div>{/if}
@@ -703,6 +768,20 @@
 {/if}
 
 <style>
+  .add-alt-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .pasted-source {
+    margin: var(--space-2) 0 0;
+    max-height: 12rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: var(--font-size-xs);
+    background: var(--color-slate-50);
+    border: 1px solid var(--color-slate-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+  }
+  .verbatim-ok { display: flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-xs); color: var(--color-emerald-800); }
   .policy-tab {
     display: flex;
     flex-direction: column;

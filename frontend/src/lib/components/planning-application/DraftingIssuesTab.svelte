@@ -4,7 +4,7 @@
     deleteDraftingIssue, draftIssuesFromBriefing, draftIssuesFromTracker,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
     getDraftingIssuePlanRelevance, toggleDraftingIssuePlan,
-    summarizeSpecialistReport,
+    summarizeSpecialistReport, reorderDraftingIssues,
   } from '$lib/api/draftingIssues.js';
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
@@ -26,6 +26,51 @@
   let loading = true;
   let newLabel = '';
   let newDiscipline = '';
+
+  // ── Drag to reorder ─────────────────────────────────────────────────────────
+  // A card is only draggable while its handle is held, so selecting text and
+  // dropping report files into the textareas keep working.
+  let dragReadyId = null;  // card made draggable by pressing its handle
+  let dragId = null;       // card currently being dragged
+  let dragOverId = null;   // card it's hovering over
+
+  function onCardDragStart(e, issue) {
+    dragId = issue.id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(issue.id));
+  }
+
+  function onCardDragOver(e, issue) {
+    if (dragId === null) return;
+    e.preventDefault();
+    dragOverId = issue.id;
+  }
+
+  function endCardDrag() {
+    dragReadyId = null;
+    dragId = null;
+    dragOverId = null;
+  }
+
+  async function onCardDrop(e, target) {
+    if (dragId === null) return;
+    e.preventDefault();
+    const from = issues.findIndex(i => i.id === dragId);
+    const to = issues.findIndex(i => i.id === target.id);
+    endCardDrag();
+    if (from < 0 || to < 0 || from === to) return;
+    const previous = issues;
+    const next = [...issues];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    issues = next;
+    try {
+      await reorderDraftingIssues(project.id, next.map(i => i.id));
+    } catch (err) {
+      issues = previous;
+      alert(err.message);
+    }
+  }
 
   const draftPromptState = actionPromptState('draft_issues_from_briefing');
   const trackerPromptState = actionPromptState('draft_issues_from_tracker');
@@ -332,8 +377,21 @@
       <div class="di-list">
         {#each issues as issue (issue.id)}
           {@const reportPanel = reportPanels[issue.id] ?? defaultReportPanel}
-          <div class="di-card">
+          <div class="di-card"
+            class:di-card-dragging={dragId === issue.id}
+            class:di-card-dropover={dragOverId === issue.id && dragId !== issue.id}
+            draggable={dragReadyId === issue.id}
+            on:dragstart={e => onCardDragStart(e, issue)}
+            on:dragover={e => onCardDragOver(e, issue)}
+            on:drop={e => onCardDrop(e, issue)}
+            on:dragend={endCardDrag}
+          >
             <div class="di-card-top">
+              <span class="di-drag-handle" title="Drag to reorder" role="presentation"
+                on:mousedown={() => dragReadyId = issue.id}
+                on:mouseup={() => { if (dragId === null) dragReadyId = null; }}>
+                <i class="las la-grip-vertical"></i>
+              </span>
               <input
                 class="di-label-input"
                 value={issue.label}
@@ -794,6 +852,12 @@
   .di-card {
     border: 1.5px solid var(--color-slate-200); border-radius: 8px; padding: 0.875rem 1rem; background: white;
   }
+
+  .di-card-dragging { opacity: 0.5; }
+  .di-card-dropover { border-color: var(--color-primary-500); box-shadow: 0 0 0 2px var(--color-primary-200); }
+  .di-drag-handle { cursor: grab; color: var(--color-slate-400); display: flex; align-items: center; padding: 0.25rem 0.125rem; }
+  .di-drag-handle:hover { color: var(--color-slate-700); }
+  .di-drag-handle:active { cursor: grabbing; }
 
   .di-card-top { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 

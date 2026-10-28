@@ -12,6 +12,7 @@ import {
   updatePolicyAnnotatedText,
   deletePolicy,
   extractPolicies,
+  sortPastedPolicies,
   listNationalPolicyPrecedents,
   listLpaDocuments,
   uploadLpaDocument,
@@ -32,6 +33,7 @@ router.put('/policies/:policyId', updatePolicy);
 router.put('/policies/:policyId/annotated-text', updatePolicyAnnotatedText);
 router.delete('/policies/:policyId', deletePolicy);
 router.post('/projects/:projectId/policies/extract', upload.single('file'), extractPolicies);
+router.post('/projects/:projectId/policies/sort-pasted', sortPastedPolicies);
 router.get('/projects/:projectId/national-policy-precedents', listNationalPolicyPrecedents);
 
 // LPA decision documents
