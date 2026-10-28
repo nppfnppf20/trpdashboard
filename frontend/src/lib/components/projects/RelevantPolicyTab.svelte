@@ -174,9 +174,17 @@
   }
 
   async function removePlan(doc, count) {
-    const note = count ? ` Its ${count} polic${count === 1 ? 'y' : 'ies'} will be kept, but no longer linked to a plan.` : '';
-    if (!confirm(`Delete "${doc.plan_name}"?${note}`)) return;
+    if (!confirm(`Delete "${doc.plan_name}"?`)) return;
+    // Policies aren't removed with their document (they'd just drop into the
+    // unlinked / National group), so ask rather than leave orphans behind.
+    const alsoPolicies = count > 0 && confirm(
+      `Also delete its ${count} polic${count === 1 ? 'y' : 'ies'}?\n\nOK: delete ${count === 1 ? 'it' : 'them'} too.\nCancel: keep ${count === 1 ? 'it' : 'them'}, no longer linked to a plan.`
+    );
     try {
+      if (alsoPolicies) {
+        const ids = policies.filter(p => p.plan_id === doc.id).map(p => p.id);
+        await Promise.all(ids.map(id => deletePolicy(id)));
+      }
       await deletePolicyDocument(doc.id);
       await refresh();
     } catch (err) {
@@ -806,6 +814,8 @@
     height: 100%;
     overflow-y: auto;
     padding: var(--space-5);
+    /* A tinted ground, so the white cards stand out from it */
+    background: var(--color-slate-100);
   }
 
   .loading-state, .error-state, .empty-state {
@@ -856,25 +866,39 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin-top: var(--space-1);
-    font-size: 0.6875rem;
+    margin-top: var(--space-3);
+    padding-bottom: var(--space-1);
+    border-bottom: 2px solid var(--color-slate-300);
+    font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: var(--color-slate-500);
+    color: var(--color-slate-700);
   }
 
   .policy-list { display: flex; flex-direction: column; gap: var(--space-3); }
 
-  .plan-card { padding: 0; overflow: hidden; }
+  /* Everything under a heading is indented from it, so the headings read as the outer level */
+  .policy-tab > .policy-list,
+  .policy-tab > .plan-card { margin-left: var(--space-6); }
+
+  /* Each plan is a framed card: coloured header band, then its policies on a
+     tinted tray so the individual policy cards read as sitting inside it. */
+  .plan-card {
+    padding: 0;
+    overflow: hidden;
+    border-color: var(--color-slate-300);
+    box-shadow: var(--shadow-sm);
+  }
   .plan-head {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
-    background: var(--color-slate-50);
-    border-bottom: 1px solid var(--color-slate-200);
+    background: var(--color-primary-50);
+    border-bottom: 1px solid var(--color-primary-200);
+    border-left: 4px solid var(--color-primary-500);
   }
   .plan-toggle {
     display: flex;
@@ -896,8 +920,8 @@
   .plan-about { padding: var(--space-2) var(--space-4); font-size: var(--font-size-xs); border-bottom: 1px solid var(--color-slate-100); }
   .plan-about summary { cursor: pointer; color: var(--color-primary-600); font-weight: 500; user-select: none; }
   .plan-about p { margin: var(--space-2) 0 0; color: var(--color-slate-700); line-height: 1.5; white-space: pre-wrap; }
-  .plan-policies { padding: var(--space-3) var(--space-4) var(--space-4); }
-  .plan-empty { padding: var(--space-3) var(--space-4); font-size: var(--font-size-xs); color: var(--color-slate-400); }
+  .plan-policies { padding: var(--space-3) var(--space-4) var(--space-4); background: var(--color-slate-50); }
+  .plan-empty { padding: var(--space-3) var(--space-4); font-size: var(--font-size-xs); color: var(--color-slate-500); background: var(--color-slate-50); }
 
   .form-hint { font-size: var(--font-size-xs); color: var(--color-slate-400); }
 
