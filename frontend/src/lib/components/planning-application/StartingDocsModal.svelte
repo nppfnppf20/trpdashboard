@@ -211,8 +211,12 @@
     }
   });
 
+  let saveError = '';
+
   async function toggleNote(type, id) {
     const key = `${type}:${id}`;
+    const prevIds = selectedNoteIds;
+    const prevPrimary = primaryNoteKey;
     const next = new Set(selectedNoteIds);
     if (next.has(key)) {
       next.delete(key);
@@ -221,18 +225,25 @@
       next.add(key);
     }
     selectedNoteIds = next;
-    await saveNoteSelection();
+    if (!(await saveNoteSelection())) {
+      // Save failed: undo the tick so the box never shows a selection that wasn't stored.
+      selectedNoteIds = prevIds;
+      primaryNoteKey = prevPrimary;
+    }
   }
 
   // One ticked note can be flagged "primary" — it fills {{PROJECT_BRIEF}}.
   async function setPrimaryNote(type, id) {
     const key = `${type}:${id}`;
+    const prevPrimary = primaryNoteKey;
     primaryNoteKey = primaryNoteKey === key ? null : key;
-    await saveNoteSelection();
+    if (!(await saveNoteSelection())) primaryNoteKey = prevPrimary;
   }
 
+  // Returns true if the selection was stored, false if the save failed.
   async function saveNoteSelection() {
     briefingNotesSaving = true;
+    saveError = '';
     try {
       const payload = JSON.stringify([...selectedNoteIds].map(k => {
         const [t, i] = k.split(':');
@@ -245,8 +256,11 @@
       } else {
         await upsertStartingDocText(project.id, rawTypeId, 'briefing_notes', payload);
       }
+      return true;
     } catch (err) {
       console.error('Failed to save briefing note selection:', err);
+      saveError = "Your selection couldn't be saved, so it won't be used when generating. Please try again, and let me know if it keeps happening.";
+      return false;
     } finally {
       briefingNotesSaving = false;
     }
@@ -419,6 +433,10 @@
           Paste or upload source documents for this draft type. They are injected into the generation prompt via the variables shown below.
           Documents without a matching variable in the prompt are appended automatically.
         </p>
+
+        {#if saveError}
+          <p class="sd-save-error" role="alert"><i class="las la-exclamation-triangle"></i> {saveError}</p>
+        {/if}
 
         <!-- Briefing notes multi-select -->
         <div class="sd-briefing-section">
@@ -788,6 +806,16 @@
     font-size: 0.875rem;
     padding: 2rem 0;
     justify-content: center;
+  }
+
+  .sd-save-error {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--color-badge-danger-fg);
+    background: var(--color-badge-danger-bg);
+    border-radius: var(--radius-md);
   }
 
   .sd-intro {
