@@ -14,6 +14,10 @@ import {
   getDraftingIssuePlanRelevance,
   toggleDraftingIssuePlan,
   summarizeSpecialistReport,
+  getNotesLogSummary,
+  listNotesLog,
+  consolidateNotesLog,
+  applyConsolidatedNotes,
 } from '../controllers/draftingIssues.controller.js';
 
 const router = express.Router();
@@ -26,6 +30,12 @@ router.post('/projects/:projectId/draft-from-briefing', draftIssuesFromBriefing)
 router.post('/projects/:projectId/draft-from-tracker', draftIssuesFromTracker);
 router.get('/projects/:projectId/policy-relevance', getDraftingIssuePolicyRelevance);
 router.get('/projects/:projectId/plan-relevance', getDraftingIssuePlanRelevance);
+
+router.get('/projects/:projectId/notes-log-summary', getNotesLogSummary);
+
+router.get('/:id/notes-log', listNotesLog);
+router.post('/:id/notes-log/consolidate', consolidateNotesLog);
+router.post('/:id/notes-log/apply', applyConsolidatedNotes);
 
 router.put('/:id', updateDraftingIssue);
 router.put('/:id/issue-type', setDraftingIssueType);

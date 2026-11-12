@@ -1558,7 +1558,12 @@ export async function generateStage1Review(req, res) {
             issue.policy_other && `Other: ${issue.policy_other}`,
           ].filter(Boolean);
           if (policyTiers.length) lines.push(`Policy notes — ${policyTiers.join('; ')}`);
-          if (issue.argument_for) lines.push(`Supporting case: ${issue.argument_for}`);
+          if (issue.argument_for) {
+            // Notes from successive meetings are stacked under "[date · meeting]" headers.
+            const noteHeaders = (issue.argument_for.match(/^\[.+\]\s*$/gm) ?? []).length;
+            const dated = noteHeaders >= 2 || (noteHeaders === 1 && !/^\s*\[.+\]\s*(\n|$)/.test(issue.argument_for));
+            lines.push(`Supporting case${dated ? ' (dated sections from successive meetings, oldest first; where a later section changes or contradicts an earlier one, follow the later)' : ''}: ${issue.argument_for}`);
+          }
           if (issue.argument_against) lines.push(`Opposing case / risk: ${issue.argument_against}`);
           if (issue.summary) lines.push(`Summary: ${issue.summary}`);
           if (issue.specialist_report) lines.push(`Specialist report evidence: ${issue.specialist_report}`);

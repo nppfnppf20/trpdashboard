@@ -492,6 +492,11 @@ function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans
   if (issue) {
     if (includeArgumentNotes && issue.argument_for?.trim()) {
       lines.push(`### Argument Notes`);
+      // Notes from successive meetings are stacked under "[date · meeting]" headers.
+      const noteHeaders = (issue.argument_for.match(/^\[.+\]\s*$/gm) ?? []).length;
+      if (noteHeaders >= 2 || (noteHeaders === 1 && !/^\s*\[.+\]\s*(\n|$)/.test(issue.argument_for))) {
+        lines.push(`(These notes are in dated sections from successive meetings, oldest first. Where a later section changes, withdraws or contradicts a point in an earlier one, follow the later section and disregard the superseded point.)`);
+      }
       lines.push(issue.argument_for.trim());
     }
     for (const f of TIER_NOTE_FIELDS) {

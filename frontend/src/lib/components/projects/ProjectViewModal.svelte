@@ -40,7 +40,8 @@
   // Left panel of the Policy & History page: the policy list, or the Policy Assessment
   // (the issue list the Stage 1 Review and Planning Statement are drafted from)
   let policyPanelTab = 'policy';
-  // Full-screen is only a CSS class on the same panel (nothing remounts), so closing it
+  // "Full screen" pops the same panel up as a centred, width-capped dialog over the page. It is
+  // only a CSS class on the same panel (nothing remounts), so closing it (button or Escape)
   // returns to exactly where you were.
   let policyPanelFullscreen = false;
   const trackerLabels = {
@@ -496,6 +497,8 @@
     openProjectModal(projectId, 'details');
   }
 </script>
+
+<svelte:window on:keydown={(e) => { if (e.key === 'Escape' && policyPanelFullscreen) policyPanelFullscreen = false; }} />
 
 {#if isOpen}
   <div class="modal-backdrop">
@@ -1092,7 +1095,7 @@
             <ProjectStagesBoard project={projectData} />
           {:else if activeTab === 'policy_and_history'}
             <div class="policy-history-split">
-              <div class="split-card" class:split-card--fullscreen={policyPanelFullscreen}>
+              <div class="split-card split-card--main" class:split-card--fullscreen={policyPanelFullscreen}>
                 <div class="split-card-label split-card-tabs" role="tablist">
                   <button role="tab" class="split-tab" class:active={policyPanelTab === 'policy'} aria-selected={policyPanelTab === 'policy'} on:click={() => policyPanelTab = 'policy'}>Policy</button>
                   <button role="tab" class="split-tab" class:active={policyPanelTab === 'assessment'} aria-selected={policyPanelTab === 'assessment'} on:click={() => policyPanelTab = 'assessment'}>Policy Assessment</button>
@@ -1938,22 +1941,27 @@
   .split-tab.active { color: var(--color-primary-700); border-bottom-color: var(--color-primary-600); }
 
   .split-fs-btn { margin-left: auto; }
+
+  /* The Policy / Policy Assessment panel is the larger of the two cards before it is opened up */
+  .split-card--main { flex: 1.5; }
+
+  /* "Full screen": a centred dialog over the page, width-capped so it is never edge to edge.
+     The huge spread shadow is the dimmed backdrop. */
   .split-card--fullscreen {
     position: fixed;
-    inset: 0;
+    top: 5vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1100px, calc(100vw - 3rem));
+    height: 90vh;
+    flex: none;
     z-index: 1000;
-    border-radius: 0;
-    border: none;
     background: var(--color-slate-50);
+    box-shadow: 0 0 0 100vmax var(--overlay-bg), var(--shadow-modal);
   }
 
-  /* Full screen: widen the children (Policy Assessment is capped at 800px) and centre them */
-  .split-card--fullscreen .assessment-pane,
-  .split-card--fullscreen .policy-pane {
-    max-width: 1400px;
-    width: 100%;
-    margin-inline: auto;
-  }
+  /* Policy Assessment is capped at 800px in its own styles; let it use the dialog's width */
+  .assessment-pane :global(.drafting-issues-tab) { max-width: 1000px; }
   .split-card--fullscreen .assessment-pane { background: transparent; }
   .split-card--fullscreen .assessment-pane :global(.drafting-issues-tab) { max-width: none; }
 

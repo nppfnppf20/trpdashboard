@@ -83,11 +83,11 @@ export async function toggleDraftingIssuePlan(draftingIssueId, planId) {
   return res.json();
 }
 
-export async function draftIssuesFromBriefing(projectId, sources, { allowNewIssues = true, issueScope = {} } = {}) {
+export async function draftIssuesFromBriefing(projectId, sources, { allowNewIssues = true, issueScope = {}, pastedText = '' } = {}) {
   const res = await authFetch(`${BASE}/projects/${projectId}/draft-from-briefing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sources, allowNewIssues, issueScope })
+    body: JSON.stringify({ sources, allowNewIssues, issueScope, pastedText })
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
@@ -128,6 +128,49 @@ export async function summarizeSpecialistReport(draftingIssueId, { file, text, f
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
     throw new Error(e.error || 'Failed to summarise specialist report');
+  }
+  return res.json();
+}
+
+// ── Notes log (history of drafted notes per issue; see migration 202) ─────────
+
+// { [issueId]: { total, pending } } — pending = entries not yet consolidated
+export async function getNotesLogSummary(projectId) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/notes-log-summary`);
+  if (!res.ok) throw new Error('Failed to fetch notes log summary');
+  return res.json();
+}
+
+export async function getNotesLog(issueId) {
+  const res = await authFetch(`${BASE}/${issueId}/notes-log`);
+  if (!res.ok) throw new Error('Failed to fetch notes log');
+  return res.json();
+}
+
+// Returns { notes, changes } — a proposal only, nothing is saved
+export async function consolidateNotesLog(issueId) {
+  const res = await authFetch(`${BASE}/${issueId}/notes-log/consolidate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to consolidate notes');
+  }
+  return res.json();
+}
+
+// Saves the reviewed notes as the issue's current notes; returns the updated issue
+export async function applyConsolidatedNotes(issueId, notes) {
+  const res = await authFetch(`${BASE}/${issueId}/notes-log/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to save consolidated notes');
   }
   return res.json();
 }

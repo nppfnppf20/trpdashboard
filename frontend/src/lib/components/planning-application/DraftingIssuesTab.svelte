@@ -9,6 +9,8 @@
   import { getPolicies } from '$lib/api/lpaAnalysis.js';
   import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
   import DraftingIssuePolicyNotes from './DraftingIssuePolicyNotes.svelte';
+  import DraftingIssueNotesLog from './DraftingIssueNotesLog.svelte';
+  import { toggleBullets, continueBulletOnEnter } from '$lib/utils/bulletList.js';
   import NoteSourcePicker from '$lib/components/shared/NoteSourcePicker.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import {
@@ -80,7 +82,27 @@
   let draftSource = 'notes'; // 'notes' | 'tracker'
   let draftSources = [];   // bind:selectedSources from NoteSourcePicker
   let draftOverBudget = false;
+  let draftPastedText = '';
   let drafting = false;
+
+  // Points the source mentions that no drafted note captured (second-pass check).
+  // For review only; nothing is written to the notes.
+  let missedPoints = [];
+  let missedCopied = false;
+
+  function showMissedPoints(points) {
+    missedPoints = Array.isArray(points) ? points : [];
+    missedCopied = false;
+  }
+
+  async function copyMissedPoints() {
+    try {
+      await navigator.clipboard.writeText(missedPoints.map(p => `• ${p}`).join('\n'));
+      missedCopied = true;
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
+  }
   let notePicker;
 
   // Per-issue permission for this run: which fields the LLM is allowed to
@@ -93,6 +115,7 @@
   function openDraftModal() {
     notePicker?.reset();
     draftSources = [];
+    draftPastedText = '';
     allowNewIssues = true;
     issueScope = Object.fromEntries(issues.map(i => [i.id, { argumentNotes: true, specialistReport: true, policyLinks: true }]));
     trackerAllowNewIssues = true;
@@ -115,11 +138,13 @@
   async function handleDraftContinue() {
     drafting = true;
     try {
-      await draftIssuesFromBriefing(project.id, draftSources, { allowNewIssues, issueScope });
+      const result = await draftIssuesFromBriefing(project.id, draftSources, { allowNewIssues, issueScope, pastedText: draftPastedText });
+      showMissedPoints(result?.missed);
       closeDraftModal();
       await load();
     } catch (err) {
       console.error('Failed to draft issues from briefing:', err);
+      alert(err.message || 'Failed to draft issues from briefing');
     } finally {
       drafting = false;
     }
@@ -158,7 +183,8 @@
   async function handleTrackerDraftContinue() {
     draftingTracker = true;
     try {
-      await draftIssuesFromTracker(project.id, { allowNewIssues: trackerAllowNewIssues, issueScope: trackerIssueScope });
+      const result = await draftIssuesFromTracker(project.id, { allowNewIssues: trackerAllowNewIssues, issueScope: trackerIssueScope });
+      showMissedPoints(result?.missed);
       closeDraftModal();
       await load();
     } catch (err) {
@@ -362,6 +388,22 @@
     </div>
   </div>
 
+  {#if missedPoints.length}
+    <div class="di-missed">
+      <div class="di-missed-head">
+        <span class="di-missed-title"><i class="las la-search"></i> Possibly missed ({missedPoints.length})</span>
+        <span class="di-missed-actions">
+          <button class="btn btn-secondary btn-sm" type="button" on:click={copyMissedPoints}>{missedCopied ? 'Copied' : 'Copy'}</button>
+          <button class="btn btn-secondary btn-sm" type="button" on:click={() => missedPoints = []}>Dismiss</button>
+        </span>
+      </div>
+      <p class="di-missed-hint">The source mentions these, but none of the drafted notes captured them. Nothing has been added to your notes. Add any you want, then dismiss.</p>
+      <ul class="di-missed-list">
+        {#each missedPoints as point}<li>{point}</li>{/each}
+      </ul>
+    </div>
+  {/if}
+
   {#if loading}
     <div class="di-loading"><div class="mini-spinner"></div> Loading...</div>
   {:else}
@@ -415,14 +457,30 @@
                 onNoteChange={(tierKey, value) => handleFieldBlur(issue, tierKey, value)}
               />
 
-              <label class="di-field-label">Notes</label>
+              <div class="di-field-label-row">
+                <label class="di-field-label" for="di-notes-{issue.id}">Notes</label>
+                <!-- mousedown is cancelled so the click does not blur (and save) the textarea before the edit -->
+                <button class="di-report-toggle" type="button"
+                  title="Add or remove bullet points on the selected lines (or the current line)"
+                  on:mousedown|preventDefault
+                  on:click={() => toggleBullets(document.getElementById(`di-notes-${issue.id}`))}>
+                  <i class="las la-list-ul"></i> Bullets
+                </button>
+              </div>
               <textarea
-                class="di-textarea"
+                id="di-notes-{issue.id}"
+                class="di-textarea di-textarea-notes"
+                on:keydown={continueBulletOnEnter}
                 value={issue.argument_for ?? ''}
                 placeholder="Outline the argument structure for this issue: how the proposals comply with policy, key evidence to cite..."
                 on:blur={e => handleFieldBlur(issue, 'argument_for', e.target.value)}
                 use:autoresize={issue.argument_for}
               ></textarea>
+
+              <DraftingIssueNotesLog
+                {issue}
+                onApplied={(updated) => { issues = issues.map(i => i.id === issue.id ? { ...i, ...updated } : i); }}
+              />
 
               <div class="di-field-label-row">
                 <label class="di-field-label">Specialist report</label>
@@ -558,8 +616,18 @@
           projectUniqueId={project?.unique_id}
           bind:selectedSources={draftSources}
           bind:overBudget={draftOverBudget}
-          hint="Tick any briefing notes and meeting notes to draft policy assessments from."
+          hint="Tick any briefing notes and meeting notes to draft policy assessments from. Tick 'full transcript' on a note to draft from everything that was said; otherwise only its summary is used."
         />
+
+        <div class="di-scope">
+          <p class="di-scope-title">Or paste text to draft from (optional, used alongside any ticked notes)</p>
+          <textarea
+            class="form-input"
+            rows="6"
+            bind:value={draftPastedText}
+            placeholder="Paste meeting notes, an email thread, a transcript..."
+          ></textarea>
+        </div>
 
         <div class="di-scope">
           <p class="di-scope-title">Which fields can this update?</p>
@@ -725,7 +793,7 @@
 {#if draftSource === 'notes'}
       <div class="di-modal-footer">
         <button class="btn btn-secondary" on:click={closeDraftModal} disabled={drafting}>Cancel</button>
-        <button class="btn btn-primary" on:click={handleDraftContinue} disabled={draftSources.length === 0 || drafting}>
+        <button class="btn btn-primary" on:click={handleDraftContinue} disabled={(draftSources.length === 0 && !draftPastedText.trim()) || drafting}>
           {#if drafting}<div class="mini-spinner"></div> Drafting...{:else}Continue{/if}
         </button>
       </div>
@@ -884,6 +952,19 @@
     resize: none; overflow: hidden;
   }
   .di-textarea:focus { outline: none; border-color: var(--color-violet-300); }
+  /* Bulleted notes: a tighter line height within a bullet (wrapped lines); the
+     bigger gap between bullets comes from the blank line the text has between them. */
+  .di-textarea-notes { line-height: 1.5; padding: 0.7rem 0.8rem; }
+
+  .di-missed {
+    margin: 0 0 1rem; padding: 0.75rem 1rem; border: 1px solid var(--color-badge-warning-fg);
+    background: var(--color-badge-warning-bg); border-radius: var(--radius-md);
+  }
+  .di-missed-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .di-missed-title { font-weight: 600; font-size: 0.85rem; color: var(--color-slate-700); }
+  .di-missed-actions { display: flex; gap: 0.4rem; }
+  .di-missed-hint { margin: 0.3rem 0 0.4rem; font-size: var(--font-size-xs); color: var(--color-slate-700); }
+  .di-missed-list { margin: 0; padding-left: 1.2rem; font-size: 0.8rem; color: var(--color-slate-700); line-height: 1.7; }
   .di-textarea-drag { border-color: var(--color-violet-600); background: var(--color-purple-50); }
 
   .di-field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.4rem; }

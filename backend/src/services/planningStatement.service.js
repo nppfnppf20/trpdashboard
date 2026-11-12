@@ -667,6 +667,94 @@ export async function draftKeyIssueSummariesFromBriefing({ briefingSummary, issu
 // Draft from Briefing Note — Drafting Issues tab (Planning Statement v3)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Format for every issue's "argument_for" notes. Appended to the system prompt
+// of the drafting and consolidating calls (after any custom prompt), so it holds
+// however the prompt has been edited. The notes are read at a glance in
+// meetings, so they are bullets, but each bullet still carries the full detail.
+export const NOTES_BULLET_FORMAT_BLOCK = `
+
+NOTES FORMAT (applies to every "argument_for" value, and to the merged "notes" value when consolidating, overriding any instruction above about prose):
+- Write the notes as plain-text bullet points, never as paragraphs of prose. Start each bullet with "• ". Leave one blank line between one top-level bullet and the next (a double line break, \\n\\n, inside the JSON string). A sub-bullet goes on the line directly under its bullet, with no blank line.
+- Completeness comes first. The notes must capture EVERYTHING the material says about the issue: every policy point raised, position taken, reason given, figure, name, date, piece of evidence, mitigation, concern, qualification and open question. Before finishing, account for every sentence of the material that touches the issue and make sure its content is in a bullet. Never leave something out to keep the notes short.
+- A bullet can be as long as the point needs: one line, or several sentences. A point with its reasoning, a figure with its source, or a position with its qualification belongs together in one bullet. Do not shorten or fragment a point to make it fit on one line.
+- Start a new bullet only where the material makes a genuinely separate point. Use a sub-bullet (on the next line, indented by two spaces and starting with "◦ ") only for a distinct supporting item, not to break up a single point.
+- Write what was said as it was said: keep the specifics (names, numbers, dates, policy references, conditions) rather than generalising them. No bold, other headings or other markdown, no numbering, no em dashes.
+- Keep the discussion bullets and the follow-ups separate. Anything about this issue that is still outstanding goes in its own section at the END of the same string: an action someone has to take, a point needing clarification, something to check or confirm, a question to put to someone, information still awaited. Start that section with a line containing exactly "Outstanding actions / to check:" (after a blank line), then one bullet per item, in the same bullet style, naming who is to do it where the material says. Do not repeat these items in the discussion bullets above. Include an item ONLY if the material explicitly states it as an action, a clarification needed, something to check or a question to ask. Never deduce or infer one: do not add an item because you think something is missing, would be sensible to check, or is implied. If nothing is explicitly outstanding for the issue, leave the section out entirely, header included.`;
+
+// Draft-from-document limits. Source text well beyond a long meeting transcript
+// fits; the output limit is high enough for detailed notes across many issues.
+const DRAFT_SOURCE_CHAR_LIMIT = 200000;
+const DRAFT_MAX_OUTPUT_TOKENS = 32000;
+
+// Notes layout: one blank line between top-level bullets (that is what gives the
+// bigger gap between bullets in the editor), sub-bullets directly under their
+// bullet. Applied to the model's output whatever spacing it used. A bullet right
+// after a line ending in ":" (the "Outstanding actions / to check:" header) is
+// left directly under it.
+export function spaceBullets(text) {
+  return text.replace(/(?<!:)[ \t]*\n+(?=• )/g, '\n\n');
+}
+
+// Parses the model's JSON answer. A cut-off or unreadable answer throws, so the
+// caller reports a failure instead of quietly saving nothing.
+function parseDraftedIssueResults(responseText, { keepSpecialistReport, label }) {
+  const cleaned = responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    console.error(`[${label}] Failed to parse JSON (cut off or malformed):`, cleaned.slice(0, 300), '...', cleaned.slice(-200));
+    throw new Error('The AI response was cut off or could not be read, so nothing was saved. Try again with fewer sources.');
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map(r => ({
+    ...r,
+    argument_for: r.argument_for ? spaceBullets(noEmDash(r.argument_for)) : r.argument_for,
+    ...(keepSpecialistReport ? { specialist_report: r.specialist_report ? noEmDash(r.specialist_report) : r.specialist_report } : {}),
+  }));
+}
+
+// Second pass after drafting: lists anything the source explicitly says that no
+// drafted note captured (including points not tied to any issue). Shown to the
+// user for review, never written to the notes automatically. Never throws, so a
+// failed check cannot fail the draft run that already succeeded.
+export async function findMissedPoints({ sourceText, results, issues = [], provider = null }) {
+  try {
+    const labelById = new Map(issues.map(i => [i.id, i.label]));
+    const drafted = results
+      .filter(r => r.argument_for?.trim())
+      .map(r => `### ${r.new_issue ? (r.suggested_label || 'New issue') : (labelById.get(r.drafting_issue_id) || `Issue ${r.drafting_issue_id}`)}\n${r.argument_for.trim()}`)
+      .join('\n\n') || '(no notes were drafted)';
+
+    const systemPrompt = `You check that drafted notes did not miss anything. You are given a source (meeting transcript, notes or tracker log) and the notes that were drafted from it.
+
+List every point the source explicitly states that is not captured anywhere in the drafted notes: a policy point, position, reason, figure, name, date, piece of evidence, mitigation, concern, decision, or an outstanding action, clarification or thing to check. Include points that do not belong to any of the drafted issues.
+
+Rules:
+- Only list what the source explicitly says. Never infer, suggest or add anything that is not in the source.
+- A point is captured if its substance is in the drafted notes, even if worded differently. Do not list it then.
+- Skip small talk, scheduling, and anything with no bearing on the planning work.
+- Write each missed point as one self-contained line that keeps the specifics (who, what, numbers, dates). No em dashes.
+
+Respond ONLY with valid JSON, no markdown fence: { "missed": ["point", "point"] }. Use an empty list if nothing was missed.`;
+
+    const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+    const text = await callLLM({
+      provider: resolvedProvider,
+      model: MODEL_SONNET,
+      maxTokens: 8000,
+      stream: true,
+      system: systemPrompt,
+      prompt: `Source:\n<source>\n${sourceText.trim().slice(0, DRAFT_SOURCE_CHAR_LIMIT)}\n</source>\n\nDrafted notes:\n<drafted_notes>\n${drafted}\n</drafted_notes>`,
+    });
+    const parsed = JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+    return Array.isArray(parsed.missed) ? parsed.missed.filter(m => typeof m === 'string' && m.trim()).map(m => noEmDash(m.trim())) : [];
+  } catch (err) {
+    console.error('[findMissedPoints] check failed, skipping:', err.message);
+    return [];
+  }
+}
+
 export const DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT = `You are a specialist planning consultant drafting the working argument notes for a Planning Statement, based on a project briefing meeting.
 
 In this meeting, the team discusses the project issue by issue — for each issue, what the relevant policy says, and what the project's argument will be in response to that policy. Sometimes the team also discusses a specialist report commissioned for that issue. Your job is to read the briefing note(s) below and do four things:
@@ -686,8 +774,8 @@ This is for drafting working notes, not a polished argument — do not try to cr
 
 Respond ONLY with valid JSON — no markdown, no explanation. Omit "specialist_report" entirely for an issue if no specialist report was discussed for it:
 [
-  { "drafting_issue_id": 42, "argument_for": "Our position is...", "specialist_report": "Ecology report prepared by Acme Ecology in March 2025, finding...", "matched_policy_ids": [3] },
-  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_policy_ids": [] }
+  { "drafting_issue_id": 42, "argument_for": "• Policy X is met because...\\n  ◦ supporting detail\\n• Concern: ...", "specialist_report": "Ecology report prepared by Acme Ecology in March 2025, finding...", "matched_policy_ids": [3] },
+  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "• Position: ...\\n• Evidence: ...", "matched_policy_ids": [] }
 ]
 
 Only include an issue if the briefing note actually discusses it.`;
@@ -718,30 +806,70 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
   const subSectorText = subSectors?.length ? subSectors.join(', ') : '(not recorded on the project)';
 
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT;
-  const userMessage = `Briefing note(s):\n<briefing>\n${briefingText.trim().slice(0, 60000)}\n</briefing>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}`;
+  const userMessage = `Briefing note(s):\n<briefing>\n${briefingText.trim().slice(0, DRAFT_SOURCE_CHAR_LIMIT)}\n</briefing>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}`;
+
+  const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
+  // Detailed notes across many issues are long; the output limit is high and the
+  // call streams (required for large Anthropic requests) so nothing is cut short.
+  const responseText = await callLLM({
+    provider: resolvedProvider,
+    model: MODEL_SONNET,
+    maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
+    stream: true,
+    system: systemPrompt + NOTES_BULLET_FORMAT_BLOCK + ANTI_AI_SLOP_BLOCK,
+    prompt: userMessage,
+  });
+
+  return parseDraftedIssueResults(responseText, { keepSpecialistReport: true, label: 'draftIssuesFromBriefingNote' });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consolidate an issue's notes (Drafting Issues tab). Each meeting appends a
+// dated section to the Notes field; this merges them so that later sections
+// supersede earlier ones. Returns a proposal only: the caller shows it to the
+// user, who reviews it before it replaces the notes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CONSOLIDATE_ISSUE_NOTES_PROMPT = `You are a specialist planning consultant maintaining the working argument notes for one issue in a Planning Statement.
+
+The issue has been discussed over several meetings. You are given the issue's notes, which are made up of dated sections, one per meeting, each headed by a line in square brackets such as "[12 Nov 2026 · Kick-off meeting]". The sections are in the order they were added, oldest first, and may include the consultant's own hand edits. Merge them into a single, up-to-date set of working notes for the issue. Do not output the bracketed header lines.
+
+Rules:
+- Later sections supersede earlier ones. Where a later section changes, withdraws or contradicts an earlier point (a decision reversed, a position dropped, a figure revised, an approach replaced), keep only the later position and leave the superseded one out entirely. Do not write "previously" or "it was originally said". Use the dates in the headers to judge which is later where they are given.
+- Keep everything that has not been superseded, including points from earlier sections that later ones did not revisit.
+- Keep the consultant's hand edits unless a later section clearly contradicts them.
+- These are working notes, not polished argument. Be thorough and specific and do not compress away detail: keep the policy points, the position taken, the evidence or approach, and any sensitivities or concerns.
+- Use only what is in the material provided. Do not invent facts, figures or policy positions.
+- Keep the notes as plain-text bullet points (format below), keeping the detail of every point that has not been superseded. No markdown and no em dashes.
+- Each section may have its own "Outstanding actions / to check:" list. Merge them into ONE such section at the end. Carry forward every item that is still open. Drop an item once a later section shows it was done, answered or resolved, and record the outcome as an ordinary discussion bullet instead. Never add an item that is not explicitly stated as outstanding in the notes, and never deduce or infer one. If nothing remains open, leave the section out.
+
+Respond ONLY with valid JSON, no markdown fence:
+{ "notes": "the merged working notes", "changes": "A short plain list, one sentence per point, of what was dropped or changed because a later meeting superseded it. Empty string if nothing was superseded." }`;
+
+export async function consolidateIssueNotes({ issueLabel, discipline, currentNotes = '', provider = null }) {
+  const userMessage = `Issue: ${issueLabel}${discipline ? ` (${discipline})` : ''}\n\nNotes (dated sections, oldest first):\n<notes>\n${currentNotes.trim().slice(0, 60000)}\n</notes>`;
 
   const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
   const responseText = await callLLM({
     provider: resolvedProvider,
     model: MODEL_SONNET,
-    maxTokens: 8000,
-    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
+    maxTokens: 16000,
+    stream: true,
+    system: CONSOLIDATE_ISSUE_NOTES_PROMPT + NOTES_BULLET_FORMAT_BLOCK + ANTI_AI_SLOP_BLOCK,
     prompt: userMessage,
   });
 
-  const raw = responseText.trim();
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const cleaned = responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
     const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(r => ({
-      ...r,
-      argument_for: r.argument_for ? noEmDash(r.argument_for) : r.argument_for,
-      specialist_report: r.specialist_report ? noEmDash(r.specialist_report) : r.specialist_report,
-    }));
+    if (typeof parsed.notes !== 'string' || !parsed.notes.trim()) throw new Error('missing notes');
+    return {
+      notes: spaceBullets(noEmDash(parsed.notes.trim())),
+      changes: typeof parsed.changes === 'string' ? noEmDash(parsed.changes.trim()) : '',
+    };
   } catch {
-    console.error('[draftIssuesFromBriefingNote] Failed to parse JSON:', cleaned.slice(0, 300));
-    return [];
+    console.error('[consolidateIssueNotes] Failed to parse JSON:', cleaned.slice(0, 300));
+    throw new Error('The AI response could not be read. Try again.');
   }
 }
 
@@ -773,8 +901,8 @@ This tool does not draft specialist report summaries — the tracker log is not 
 
 Respond ONLY with valid JSON — no markdown, no explanation:
 [
-  { "drafting_issue_id": 42, "argument_for": "Our position is...", "matched_policy_ids": [3] },
-  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "Our position is...", "matched_policy_ids": [] }
+  { "drafting_issue_id": 42, "argument_for": "• Policy X is met because...\\n  ◦ supporting detail\\n• Concern: ...", "matched_policy_ids": [3] },
+  { "new_issue": true, "suggested_label": "Bat surveys", "suggested_discipline": "Ecology", "argument_for": "• Position: ...\\n• Evidence: ...", "matched_policy_ids": [] }
 ]
 
 Only include an issue if the tracker log actually discusses it.`;
@@ -805,30 +933,19 @@ export async function draftIssuesFromTrackerLog({ trackerText, issues, policiesB
   const subSectorText = subSectors?.length ? subSectors.join(', ') : '(not recorded on the project)';
 
   const systemPrompt = customPrompt ?? DEFAULT_DRAFT_ISSUES_FROM_TRACKER_PROMPT;
-  const userMessage = `Project Tracker log:\n<tracker_log>\n${trackerText.trim().slice(0, 60000)}\n</tracker_log>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}`;
+  const userMessage = `Project Tracker log:\n<tracker_log>\n${trackerText.trim().slice(0, DRAFT_SOURCE_CHAR_LIMIT)}\n</tracker_log>\n\nProject's recorded sub-sector(s): ${subSectorText}\n\nExisting drafting issues, with their currently linked policies:\n${issueList}\n\nProject's full policy library (for identifying newly-discussed policy links only — not for grounding the argument text):\n${policyLibrary}`;
 
   const resolvedProvider = await resolveProvider('planning_statement_helpers', provider);
   const responseText = await callLLM({
     provider: resolvedProvider,
     model: MODEL_SONNET,
-    maxTokens: 8000,
-    system: systemPrompt + ANTI_AI_SLOP_BLOCK,
+    maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
+    stream: true,
+    system: systemPrompt + NOTES_BULLET_FORMAT_BLOCK + ANTI_AI_SLOP_BLOCK,
     prompt: userMessage,
   });
 
-  const raw = responseText.trim();
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(r => ({
-      ...r,
-      argument_for: r.argument_for ? noEmDash(r.argument_for) : r.argument_for,
-    }));
-  } catch {
-    console.error('[draftIssuesFromTrackerLog] Failed to parse JSON:', cleaned.slice(0, 300));
-    return [];
-  }
+  return parseDraftedIssueResults(responseText, { keepSpecialistReport: false, label: 'draftIssuesFromTrackerLog' });
 }
 
 export async function draftArgumentsFromIssueSummaries({ issues, policiesByTrack, provider = null }) {
