@@ -24,6 +24,7 @@
   import { splitAllParagraphs, mergeParagraphUpdates, markFragmentPending, markChangedWordsPending, clearPendingMarkers } from '$lib/utils/draftParagraphs.js';
   import { applyAiEditResult } from '$lib/utils/documentEdits.js';
   import AiEditBar from '$lib/components/planning-application/AiEditBar.svelte';
+  import CreateDocument from '$lib/components/planning-application/CreateDocument.svelte';
   import { getDraftComments, updateDraftComment, deleteDraftComment } from '$lib/api/draftComments.js';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
   import StartingDocsModal from '$lib/components/planning-application/StartingDocsModal.svelte';
@@ -292,6 +293,8 @@
   // Custom documents saved from the blank document editor's Save button —
   // shown as cards in the document type list, same as letter docs.
   let customDeliverables = [];
+  // Everything saved on the Planning Deliverables list (custom documents and template deliverables), for the Create card's Import.
+  let allDeliverables = [];
 
   async function loadDeliverables() {
     try {
@@ -301,6 +304,7 @@
         cover_letter: all.find(d => d.deliverable_type === 'cover_letter') ?? null,
       };
       customDeliverables = all.filter(d => d.deliverable_type === 'custom_document');
+      allDeliverables = all;
     } catch { /* non-critical */ }
   }
 
@@ -355,6 +359,26 @@
   // holds (null for a fresh, never-saved document) so Save updates that same
   // row instead of creating a new one every time.
   let openCustomDeliverableId = null;
+
+  // The conversational "Create" view (a card in the list, or a saved custom document opened with AI).
+  let createOpen = false;
+  let createInitial = { html: '', name: '', id: null };
+
+  function openCreate() {
+    createInitial = { html: '', name: '', id: null };
+    createOpen = true;
+  }
+
+  async function openCustomInCreate(cd) {
+    try {
+      const { html } = await getDeliverableAsHTML(cd.id);
+      createInitial = { html, name: cd.deliverable_name, id: cd.id };
+      createOpen = true;
+    } catch (err) {
+      console.error('Failed to open custom deliverable:', err);
+      alert('Failed to open document: ' + err.message);
+    }
+  }
 
   function openBlankDoc() {
     $activeDraftTypeId = 'blank';
@@ -1050,7 +1074,17 @@
 
   {:else if activeTab === 'draft'}
     <!-- ── Tab 3: Draft Document ── -->
-    {#if $activeDraftTypeId !== null}
+    {#if createOpen}
+      <CreateDocument
+        {project}
+        initialHtml={createInitial.html}
+        initialName={createInitial.name}
+        deliverableId={createInitial.id}
+        deliverables={allDeliverables}
+        on:saved={loadDeliverables}
+        on:close={() => { createOpen = false; loadDeliverables(); }}
+      />
+    {:else if $activeDraftTypeId !== null}
       <!-- Two-panel editor view -->
       {@const activeType = $draftTypes.find(t => t.id === $activeDraftTypeId)}
       <div class="draft-editor-bar">
@@ -1562,6 +1596,19 @@
             </div>
           </div>
 
+          <!-- ── Create (conversational, from project sources) ── -->
+          <div class="card draft-type-card">
+            <div class="draft-type-main">
+              <div class="draft-type-info">
+                <span class="draft-type-name">Create</span>
+                <span class="draft-type-desc">Write any document by conversation. Pick a type, tick the project sources it can use, then tell the AI what to write and keep chatting to add, cut or change.</span>
+              </div>
+              <div class="draft-type-actions">
+                <button class="draft-open-btn" on:click={openCreate}>Open</button>
+              </div>
+            </div>
+          </div>
+
           <!-- ── Blank Document ── -->
           <div class="card draft-type-card">
             <div class="draft-type-main">
@@ -1586,6 +1633,7 @@
                 </div>
                 <div class="draft-type-actions">
                   <button class="draft-open-btn" on:click={() => openCustomDeliverable(cd)}>Open</button>
+                  <button class="draft-open-btn" title="Continue this document by conversation with the AI" on:click={() => openCustomInCreate(cd)}>Edit with AI</button>
                   <button class="draft-setting-btn" title="Delete this document" on:click={() => handleDeleteCustomDeliverable(cd)}>
                     <i class="las la-trash"></i>
                   </button>

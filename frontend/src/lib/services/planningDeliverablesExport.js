@@ -64,6 +64,12 @@ function getTemplatePath(deliverable) {
   return TEMPLATE_MAP[deliverable.deliverable_type] || DEFAULT_TEMPLATE;
 }
 
+/** Returns { templatePath, styles } for a .docx template path such as '/letter.docx' (used by the Create card's doc types). */
+export function getExportConfigForTemplate(templatePath) {
+  const path = templatePath || '/basicdocument.docx';
+  return { templatePath: path, styles: getStyleMap(path) };
+}
+
 /** Returns { templatePath, styles } for a given draft type slug (used by the workspace export). */
 export function getExportConfigForSlug(slug) {
   const templatePath = SLUG_TEMPLATE_MAP[slug] ?? '/basicdocument.docx';

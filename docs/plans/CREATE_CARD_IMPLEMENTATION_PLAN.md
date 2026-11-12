@@ -12,6 +12,22 @@ The user ticks sources, picks a doc type (which sets the Word export template an
 
 Decisions made: new card (not replacing the Blank doc entry), new standalone doc-types table, no streaming in v1.
 
+
+## Status
+
+- **Phase 1 (edit engine + fix existing flows): built**, untested against a live model.
+- **Phase 2 (doc types + chat endpoint): built**, untested against a live model. Migration `201_create_doc_types.sql` not yet applied.
+  - Table `admin_console.create_doc_types` (name, slug, word_template, example_text, structure_notes, sort_order, is_active), seeded with six types.
+  - Admin CRUD: `/api/admin-console/create-doc-types`, page at `/admin-console/create-doc-types`.
+  - Chat: `POST /api/draft-create/projects/:projectId/chat` (`createChat` in draftCreate.controller.js; prompt + parsing in `services/createChat.service.js`). The model replies in text plus at most one tool call: `write_document` (full HTML) or `edit_document` (exact-match edits for `applyAiEditResult`). Sources reuse Project Chat's `assembleContext`; sources + document + example share the 200k-char budget.
+  - Frontend API: `sendCreateChat` in `lib/api/draftCreate.js`; sources tree comes from the existing `GET /api/project-chat/:projectId/sources`.
+- **Phase 3 (Create card UI): built**, untested in a browser or against a live model.
+  - New "Create" card in the workspace list opens `CreateDocument.svelte` (three panes: `CreateSourcePicker.svelte` source tree + meter that also counts the document and example, the editor, and the chat). Saved custom documents get an "Edit with AI" button that opens them in the same view.
+  - Highlighting text in the editor attaches it to the next message (chip above the input); edits are restricted to that passage.
+  - Replies apply through `applyAiEditResult` as pending highlights with the shared `AiEditBar` (Accept / Discard / Edit Again, Cancel while waiting). If every edit is rejected, one automatic retry tells the AI why.
+  - Save writes to the custom deliverables (same as Blank Document); Export uses the doc type's `word_template` via `getExportConfigForTemplate`.
+- **Phase 4 (persistence + cleanup): not started.**
+
 ---
 
 ## Why the current edit flow must change first (root-cause finding)

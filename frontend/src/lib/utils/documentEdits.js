@@ -334,11 +334,17 @@ export function applyAiEditResult(originalHtml, result, paragraphIds = null) {
     const r = applyEdits(originalHtml, result.edits, { allowedParagraphIds: paragraphIds });
     if (r.error) throw new Error(r.error);
     if (!r.applied) {
-      throw new Error(
+      const err = new Error(
         r.rejected.length
           ? `None of the AI's changes could be applied safely: ${describeRejections(r.rejected)}. Try highlighting a smaller passage or rephrasing.`
           : 'The AI did not suggest any changes.'
       );
+      // Lets a caller (e.g. the Create card) tell the AI what went wrong and retry once.
+      if (r.rejected.length) {
+        err.code = 'EDITS_REJECTED';
+        err.reasons = describeRejections(r.rejected);
+      }
+      throw err;
     }
     if (r.rejected.length) {
       warnings.push(`${r.rejected.length} change${r.rejected.length === 1 ? ' was' : 's were'} skipped: ${describeRejections(r.rejected)}.`);
