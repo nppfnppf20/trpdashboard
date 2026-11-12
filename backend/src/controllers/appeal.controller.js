@@ -1321,8 +1321,10 @@ export async function scopeIncorporation(req, res) {
 
 export async function incorporateTargeted(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, issue_id } = req.body ?? {};
+  const { document_id, document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, issue_id, edit_mode } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
+  // Opt-in: return exact-match edits instead of rewritten paragraphs (see documentEdits.js on the frontend).
+  const editMode = edit_mode === true || edit_mode === 'true' || edit_mode === '1';
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
   if (!document_id && !document_text && !req.file && !user_notes?.trim()) {
@@ -1437,8 +1439,9 @@ export async function incorporateTargeted(req, res) {
       fullDocumentHtml: document_html ?? null,
       projectPolicies,
       provider,
+      editMode,
     });
-    res.json({ updated });
+    res.json(editMode ? { edits: updated } : { updated });
   } catch (err) {
     console.error('incorporateTargeted error:', err);
     res.status(500).json({ error: err.message });

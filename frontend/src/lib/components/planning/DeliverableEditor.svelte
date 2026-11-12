@@ -5,7 +5,9 @@
   import { exportDeliverableToWord } from '$lib/services/planningDeliverablesExport.js';
   import RichTextEditor from './RichTextEditor.svelte';
   import SelectionPopup from '$lib/components/planning-application/SelectionPopup.svelte';
-  import { splitAllParagraphs, mergeParagraphUpdates, markFragmentPending, markChangedWordsPending, clearPendingMarkers } from '$lib/utils/draftParagraphs.js';
+  import { splitAllParagraphs, clearPendingMarkers } from '$lib/utils/draftParagraphs.js';
+  import { applyAiEditResult } from '$lib/utils/documentEdits.js';
+  import AiEditBar from '$lib/components/planning-application/AiEditBar.svelte';
 
   export let deliverable;
   export let project = null;
@@ -35,6 +37,9 @@
   // color) rather than shown in a separate diff view:
   // { paragraphIds, quotedText, top, left, originalHtml, loading, error } | null
   let pendingAiEdit = null;
+  // Bumped on every new request and on cancel, so a response that arrives after
+  // the user cancelled (or started another edit) is ignored.
+  let aiEditSeq = 0;
 
   onMount(async () => {
     await loadContent();
@@ -123,6 +128,7 @@
     // — it would write the pending markers straight into the saved document.
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     pendingAiEdit = { paragraphIds, quotedText, top, left, originalHtml, loading: true, error: null };
+    const seq = ++aiEditSeq;
 
     try {
       const allParagraphs = splitAllParagraphs(originalHtml);
@@ -139,21 +145,18 @@
         paragraphs: targeted,
         userNotes: notesForApi,
         docType: docType ?? null,
+        editMode: true,
       });
-      const oldHtmlById = Object.fromEntries(allParagraphs.map(p => [p.id, p.html]));
-      const taggedUpdates = (result.updated ?? []).map(p => {
-        const oldHtml = oldHtmlById[p.id];
-        // A brand-new inserted paragraph has no prior version to diff against
-        // — mark the whole thing pending instead of a word-level diff.
-        const html = oldHtml ? markChangedWordsPending(oldHtml, p.html) : markFragmentPending(p.html);
-        return { id: p.id, html };
-      });
-      const mergedHtml = mergeParagraphUpdates(allParagraphs, taggedUpdates);
+      if (seq !== aiEditSeq) return;
+      // Exact-match edits applied in place — see documentEdits.js. Anything the
+      // AI doesn't quote (including whole tables) is left exactly as it was.
+      const { html: mergedHtml, warnings } = applyAiEditResult(originalHtml, result, paragraphIds);
       currentHTML = mergedHtml;
       editor?.setHTML(mergedHtml);
       hasUnsavedChanges = true;
-      pendingAiEdit = { ...pendingAiEdit, loading: false };
+      pendingAiEdit = { ...pendingAiEdit, loading: false, warning: warnings.join(' ') || null };
     } catch (err) {
+      if (seq !== aiEditSeq) return;
       pendingAiEdit = { ...pendingAiEdit, loading: false, error: err.message };
     }
   }
@@ -179,26 +182,12 @@
 
   function cancelPendingAiEdit() {
     if (!pendingAiEdit) return;
+    aiEditSeq++;
     currentHTML = pendingAiEdit.originalHtml;
     editor?.setHTML(pendingAiEdit.originalHtml);
     pendingAiEdit = null;
     editor?.clearSelectionHighlight();
   }
-
-  const AI_POPOVER_WIDTH = 320;
-  $: aiPopoverLeft = pendingAiEdit
-    ? Math.min(Math.max(pendingAiEdit.left - AI_POPOVER_WIDTH / 2, 16), (typeof window !== 'undefined' ? window.innerWidth : 1200) - AI_POPOVER_WIDTH - 16)
-    : 0;
-  // Guess at the popover's height before it's measured (see bind:clientHeight
-  // on .ai-edit-control) so it doesn't visibly jump on the first frame.
-  let aiPopoverHeight = 110;
-  $: aiPopoverTop = (() => {
-    if (!pendingAiEdit) return 0;
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
-    const margin = 16;
-    if (pendingAiEdit.top + 8 + aiPopoverHeight <= vh - margin) return pendingAiEdit.top + 8;
-    return Math.max((vh - aiPopoverHeight) / 2, margin);
-  })();
 
   async function saveContent(isAutoSave = false) {
     if (autoSaveTimer) {
@@ -439,22 +428,15 @@
   {/if}
 
   {#if pendingAiEdit}
-    <div class="ai-edit-control" bind:clientHeight={aiPopoverHeight} style="top:{aiPopoverTop}px; left:{aiPopoverLeft}px; width:{AI_POPOVER_WIDTH}px;">
-      {#if pendingAiEdit.loading}
-        <div class="ai-edit-status"><div class="mini-spinner"></div> Writing...</div>
-      {:else if pendingAiEdit.error}
-        <p class="ai-edit-error">{pendingAiEdit.error}</p>
-        <div class="ai-edit-actions">
-          <button class="btn btn-secondary" on:click={cancelPendingAiEdit}>Dismiss</button>
-        </div>
-      {:else}
-        <span class="ai-edit-label"><i class="las la-magic"></i> AI-written — not yet reviewed</span>
-        <div class="ai-edit-actions">
-          <button class="btn btn-secondary" on:click={editPendingAiEditAgain}>Edit Again</button>
-          <button class="btn btn-primary" on:click={acceptPendingAiEdit}>Accept</button>
-        </div>
-      {/if}
-    </div>
+    <AiEditBar
+      loading={pendingAiEdit.loading}
+      error={pendingAiEdit.error}
+      warning={pendingAiEdit.warning}
+      on:accept={acceptPendingAiEdit}
+      on:editagain={editPendingAiEditAgain}
+      on:discard={cancelPendingAiEdit}
+      on:cancel={cancelPendingAiEdit}
+    />
   {/if}
 </div>
 
@@ -782,60 +764,5 @@
     }
   }
 
-  /* ── Quick AI edit control (Accept / Edit Again, follows a highlight or
-     the "Edit with AI" header button) ── */
-  .ai-edit-control {
-    position: fixed;
-    max-width: calc(100vw - 2rem);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.6rem 0.7rem;
-    background: white;
-    border: 1px solid var(--color-slate-200);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-dropdown);
-    z-index: 1000;
-  }
-  .ai-edit-status {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.78rem;
-    color: var(--color-slate-600);
-  }
-  .ai-edit-label {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--color-slate-600);
-  }
-  .ai-edit-error {
-    font-size: 0.78rem;
-    color: var(--color-red-500);
-    margin: 0;
-  }
-  .ai-edit-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.4rem;
-  }
-  .ai-edit-actions button {
-    font-size: 0.78rem;
-    padding: 0.35rem 0.7rem;
-  }
-
-  .mini-spinner {
-    width: 0.75rem;
-    height: 0.75rem;
-    border: 1.5px solid var(--color-slate-300);
-    border-top-color: var(--color-slate-400);
-    border-radius: 50%;
-    animation: ai-edit-spin 0.8s linear infinite;
-  }
-
-  @keyframes ai-edit-spin { to { transform: rotate(360deg); } }
 </style>
 

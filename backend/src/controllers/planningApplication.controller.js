@@ -32,6 +32,7 @@ import {
   buildPlanningArgumentSuggestionTemplate,
   scopeDocumentIncorporation,
   incorporatePlanningAssessment,
+  incorporateTargetedParagraphs,
   DEFAULT_DRAFT_KEY_SUMMARIES_PROMPT,
   DEFAULT_DRAFT_ISSUES_FROM_BRIEFING_PROMPT,
   DEFAULT_DRAFT_ISSUES_FROM_TRACKER_PROMPT,
@@ -2535,6 +2536,8 @@ export async function paIncorporateTargeted(req, res) {
     ? req.body.paragraphs
     : JSON.parse(req.body.paragraphs ?? '[]');
   const user_notes = req.body.user_notes ?? null;
+  // Opt-in: return exact-match edits instead of rewritten paragraphs (see documentEdits.js on the frontend).
+  const editMode = req.body.edit_mode === true || req.body.edit_mode === 'true' || req.body.edit_mode === '1';
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
   if (!req.file && !req.body.document_text && !user_notes?.trim()) {
@@ -2585,6 +2588,41 @@ export async function paIncorporateTargeted(req, res) {
         [typeId]
       )
     ]);
+
+    // Free-form highlight edits (an instruction and/or a document, any section
+    // of any planning-application draft) use the general edit prompt, which
+    // sees the whole document and project policies and returns small
+    // exact-match edits. The specialist-report prompt below is only suited to
+    // dropping a report into the Planning Assessment, and answers an ordinary
+    // instruction with prose instead of the JSON it expects.
+    if (editMode) {
+      const { rows: projectPolicies } = await pool.query(
+        `SELECT pp.policy_reference, pp.policy_name, pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy, pd.plan_name
+         FROM public.project_policies pp
+         LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+         WHERE pp.project_id = $1
+         ORDER BY pp.policy_type, pp.policy_reference`,
+        [projectId]
+      );
+      const edits = await incorporateTargetedParagraphs({
+        paragraphs,
+        documentText,
+        filename,
+        issues: issueRows.rows,
+        userNotes: user_notes,
+        projectName: projectRows.rows[0]?.project_name,
+        draftTypeName: typeRows.rows[0]?.name,
+        guidingBrief,
+        projectBrief: briefRows.rows[0]?.summary_html ?? null,
+        exampleDoc: sectionRows.rows[0]?.example_text ? { text: sectionRows.rows[0].example_text } : null,
+        docType: req.body.doc_type ?? null,
+        fullDocumentHtml: req.body.document_html ?? null,
+        projectPolicies,
+        provider: await resolveProvider('planning_statement_helpers', req.body.provider ?? null),
+        editMode: true,
+      });
+      return res.json({ edits });
+    }
 
     const { rows: promptRows } = await pool.query(
       `SELECT prompt_text FROM admin_console.llm_prompts WHERE prompt_key = 'incorporate_assessment'`

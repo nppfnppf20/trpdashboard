@@ -500,10 +500,14 @@ export async function resetActionPrompt(key) {
   return res.json(); // { prompt }
 }
 
-export async function paIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, paragraphs, userNotes }) {
+export async function paIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, documentHtml, paragraphs, userNotes, docType, editMode = false }) {
   const form = new FormData();
   form.append('paragraphs', JSON.stringify(paragraphs));
   if (userNotes) form.append('user_notes', userNotes);
+  // Edit mode returns exact-match edits ({edits}) instead of rewritten paragraphs ({updated}) — see documentEdits.js.
+  if (editMode) form.append('edit_mode', '1');
+  if (docType) form.append('doc_type', docType);
+  if (documentHtml) form.append('document_html', documentHtml);
   if (file) {
     form.append('file', file);
   } else {
@@ -514,6 +518,6 @@ export async function paIncorporateTargeted(projectId, typeId, { file, documentT
     method: 'POST',
     body: form
   });
-  if (!res.ok) throw new Error('Failed to incorporate document');
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to incorporate document'); }
   return res.json();
 }

@@ -4,6 +4,7 @@
  * briefing-driven argument drafting, and prose suggestion flows.
  */
 
+import { SPECIALIST_REPORT_EXAMPLES } from './specialistReportExamples.js';
 import { client, noEmDash, callClaude, callLLM, resolveProvider, TONE_EXAMPLE_BLOCK, MODEL_SONNET, buildFullDocumentBlock, HOUSE_STYLE_BLOCK, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -768,7 +769,7 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
   {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', documentPurpose = null, guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, docType = null, provider = 'anthropic', fullDocumentHtml = null, projectPolicies = [] }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', documentPurpose = null, guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, docType = null, provider = 'anthropic', fullDocumentHtml = null, projectPolicies = [], editMode = false }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
   const contextBlocksSection = contextBlocks ? `${contextBlocks}\n\n---\n\n` : '';
@@ -823,7 +824,32 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
   // is whatever's already in the highlighted text itself.
   const documentBlock = hasDocument
     ? (isSpecialistReport
-        ? `You have been given a specialist technical report as supporting evidence for the highlighted passage below. Use it to substantiate, evidence, or otherwise inform the requested change — not to introduce unrelated content.\n\nLook first to the report's conclusions or executive summary for the relevant findings. This is a starting point, not a restriction — draw on the body of the report where the conclusion doesn't cover something relevant, or where the report has no distinct conclusions section.\n\nOnly use findings, figures and conclusions actually contained in the report. Do not invent, strengthen, or soften a finding — preserve any qualification or uncertainty the report expresses. Where the report conflicts with something already stated in the paragraph, insert [INCONSISTENCY TO BE RESOLVED: identify the conflict briefly] rather than silently changing it.\n\nThis general guidance is secondary to the user's own instructions below — where they conflict, follow the user's instructions.\n\nSPECIALIST REPORT: ${filename}\n${documentText}\n\n---\n\n`
+        ? `You have been given a specialist report as evidence for the highlighted passage below. Your job is to INTERPRET it for a planning statement, not to summarise it: take what the report found and write it up as the planning case, in the way this practice does.
+
+How this practice writes specialist evidence into the Planning Assessment:
+- Write as the planning statement making its case. The proposal is the subject ("the development will not result in…", "the proposal would…"); the report is cited as the evidence for the conclusion, by its formal title or defined abbreviation (e.g. "The Heritage Statement concludes…", "the FRA", "the TAS"), not narrated.
+- Always say who prepared the report and when, e.g. "A glint and glare assessment was prepared on 12 November 2026 by Environmental Health Ltd…", but ONLY using the author and date actually stated in the report (or in the user's instructions). Never invent or guess either. If only one is stated, give that one; if neither is, leave both out and do not add a placeholder for them. If the passage already names the author and date, do not repeat them.
+- Reach a planning judgement in the terms of the relevant policy test (e.g. no harm, less than substantial harm, negligible impact, not severe, safe, passes the Sequential Test, complies) and give the reason for it, drawn from the report. Use the report's own conclusions as the backbone.
+- Use only the findings that carry the planning judgement: specific figures, distances, named receptors or assets, the design response or mitigation, and any condition the report supports. Leave out methodology, general technical background and detail that does not bear on the conclusion.
+- Look first to the report's conclusions or executive summary, but draw on the body of the report where needed.
+- Where the report leaves something open (e.g. work still to be done), say so plainly in one sentence and state what the applicant will do about it. If the response is not known from the material provided, insert [confirm applicant response] rather than inventing a commitment.
+- Do not invent, strengthen or soften a finding. Where the report conflicts with something already stated in the text, insert [INCONSISTENCY TO BE RESOLVED: identify the conflict briefly] rather than silently changing it.
+- Length follows the weight of the issue: a sentence or two for a minor point, several paragraphs for something like heritage, ecology or landscape.
+
+Below are examples of finished sections written this way, to show tone, level of detail and approach. They are NOT templates to match and the facts in them are from another project: use them only as a sense of how this practice interprets a report. What you write depends entirely on the report and the passage you are editing.
+
+${SPECIALIST_REPORT_EXAMPLES}
+
+---
+
+This general guidance is secondary to the user's own instructions below: where they conflict, follow the user's instructions.
+
+SPECIALIST REPORT: ${filename}
+${documentText}
+
+---
+
+`
         : `An uploaded document is provided below. Read it carefully. It may be a project briefing note with strategic direction and revised arguments, a specialist technical report, expert evidence, or other supporting material.\n\nUPLOADED DOCUMENT: ${filename}\n${documentText}\n\n---\n\n`)
     : '';
 
@@ -832,19 +858,37 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
     .join('\n\n');
 
   const taskInstruction = isSpecialistReport
-    ? `Your task: revise the highlighted passage using the specialist report as evidence, following the guidance above. Keep the edit to a short passage integrated into the existing text — not a new subsection or extra paragraphs — unless the user's own instructions ask for more.`
+    ? `Your task: revise the highlighted passage using the specialist report as evidence, interpreting it in the way described above. Integrate the evidence into the existing text where it fits, and size the edit to the issue and the detail in the report, unless the user's own instructions ask for something different.`
     : hasDocument
       ? `Your task: revise the paragraphs above to incorporate the uploaded document. For each paragraph, consider what the uploaded document adds, changes or requires and update it accordingly. Do not leave paragraphs unchanged just because changes are difficult. Where the uploaded document is a briefing note with strategic direction, follow those instructions even if they require significant rewrites. Where it is a technical report, incorporate the relevant conclusions and findings.`
       : `Your task: revise the paragraphs above following the user guidance given above.`;
 
-  const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
+  // Edit mode: rather than asking the model to re-emit whole paragraphs (which
+  // has to retype every row of a table to change one cell, and in practice
+  // shortens or drops content), ask only for small exact-match edits. The
+  // frontend applies them to the live document (see documentEdits.js), so
+  // anything the model doesn't quote can't be lost.
+  const editInstruction = `${taskInstruction}
 
-${purposeBlock}${contextBlocksSection}${userNotesBlock}${documentBlock}${backgroundSection}SELECTED PARAGRAPHS TO REVISE:
-${paraBlock}
+Do NOT rewrite or retype the paragraphs. Return only the minimal edits needed, as a JSON object:
+{"edits": [
+  {"op": "replace", "find": "exact existing text", "replace": "new text"},
+  {"op": "delete", "find": "exact existing text"},
+  {"op": "insert_after", "anchor": "exact existing text", "html": "<p>new paragraph</p>"}
+]}
 
----
+Rules for edits:
+- "find" and "anchor" must be copied verbatim from the selected content as plain text (no HTML tags), taken from inside ONE paragraph, list item or table cell. Never span two paragraphs, list items or cells.
+- Make each "find" long enough to appear only once in the whole document (add a few neighbouring words if needed) but no longer than necessary. If the same short text (e.g. "Yes") appears several times, include enough neighbouring text in the same cell or paragraph to make it unique.
+- "replace" is plain text with no HTML tags. Change only the words that need changing; leave everything else out of "find" and "replace".
+- To add a new paragraph, heading, list item or table row, use "insert_after" with the anchor being existing text just before where it should go, and "html" being the new element (<p>, <h3>, <li>, <ul>, or <tr><td>..</td></tr> for a table row).
+- Never retype, summarise, reorder or restructure a table. Edit the text inside individual cells, or insert a whole new <tr>.
+- Only edit text inside the SELECTED PARAGRAPHS above. Other parts of the document are for reference only.
+- Every edit must be necessary for the task. If nothing needs to change, return {"edits": []}.
 
-${taskInstruction}
+Write in formal planning language, with no em dashes and no paragraph numbers. Return ONLY the JSON object.`;
+
+  const rewriteInstruction = `${taskInstruction}
 
 You may insert new paragraphs using id "INSERT_AFTER_[id]" where ${hasDocument ? 'the uploaded document introduces' : 'your revision introduces'} content with no home in the existing paragraphs.
 
@@ -853,15 +897,31 @@ Write in formal planning language — no em dashes, no paragraph numbers.
 Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you did not change:
 [{"id": "p2", "html": "<p>...</p>"}, {"id": "INSERT_AFTER_p2", "html": "<p>...</p>"}]`;
 
+  const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
+
+${purposeBlock}${contextBlocksSection}${userNotesBlock}${documentBlock}${backgroundSection}SELECTED PARAGRAPHS TO REVISE:
+${paraBlock}
+
+---
+
+${editMode ? editInstruction : rewriteInstruction}`;
+
   const raw = (await callLLM({
     provider,
     model: MODEL_SONNET,
     maxTokens: 16000,
-    system: 'You are a planning consultant. Output only valid JSON arrays. Never wrap your response in markdown code fences.' + HOUSE_STYLE_BLOCK + ANTI_AI_SLOP_BLOCK,
+    system: `You are a planning consultant. Output only valid JSON ${editMode ? 'objects' : 'arrays'}. Never wrap your response in markdown code fences.` + HOUSE_STYLE_BLOCK + ANTI_AI_SLOP_BLOCK,
     prompt,
     stream: true,
   })).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  return JSON.parse(raw);
+
+  if (!editMode) return JSON.parse(raw);
+
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end <= start) throw new Error('The AI response could not be read. Please try again.');
+  const parsed = JSON.parse(raw.slice(start, end + 1));
+  return Array.isArray(parsed.edits) ? parsed.edits : [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

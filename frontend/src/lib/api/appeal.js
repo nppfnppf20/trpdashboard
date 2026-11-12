@@ -139,9 +139,11 @@ export async function appealScopeIncorporation(projectId, typeId, { file, docume
   return res.json();
 }
 
-export async function appealIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, documentHtml, paragraphs, userNotes, docType, issueId }) {
+export async function appealIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, documentHtml, paragraphs, userNotes, docType, issueId, editMode = false }) {
   const form = new FormData();
   form.append('paragraphs', JSON.stringify(paragraphs));
+  // Ask for exact-match edits ({edits}) instead of rewritten paragraphs ({updated}) — see documentEdits.js.
+  if (editMode) form.append('edit_mode', '1');
   if (userNotes) form.append('user_notes', userNotes);
   if (docType) form.append('doc_type', docType);
   if (issueId) form.append('issue_id', issueId);

@@ -596,7 +596,13 @@ ${userNotesBlock}${paraBlock}`;
   });
 
   const raw = noEmDash(responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // The model answered in prose (e.g. asking for something it didn't get) rather than JSON.
+    // Show what it said instead of a bare parse error.
+    throw new Error(`The AI replied with a message instead of edits: "${raw.slice(0, 300)}"`);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

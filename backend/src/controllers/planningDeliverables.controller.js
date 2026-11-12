@@ -487,8 +487,10 @@ export async function updateDeliverableFromHTML(req, res) {
  */
 export async function incorporateDeliverableTargeted(req, res) {
   const { id } = req.params;
-  const { document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type } = req.body ?? {};
+  const { document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, edit_mode } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
+  // Opt-in: return exact-match edits instead of rewritten paragraphs (see documentEdits.js on the frontend).
+  const editMode = edit_mode === true || edit_mode === 'true' || edit_mode === '1';
 
   if (!paragraphs?.length) return res.status(400).json({ error: 'paragraphs required' });
   if (!document_text && !req.file && !user_notes?.trim()) {
@@ -552,8 +554,9 @@ export async function incorporateDeliverableTargeted(req, res) {
       fullDocumentHtml: document_html ?? null,
       projectPolicies,
       provider,
+      editMode,
     });
-    res.json({ updated });
+    res.json(editMode ? { edits: updated } : { updated });
   } catch (error) {
     console.error('Error incorporating into deliverable:', error);
     res.status(500).json({ error: error.message });

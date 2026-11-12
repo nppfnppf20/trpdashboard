@@ -114,8 +114,32 @@ export function clearPendingMarkers(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
   const root = doc.body.firstChild;
-  root.querySelectorAll(`.${PENDING_DELETED_CLASS}`).forEach(el => el.remove());
-  root.querySelectorAll(`.${PENDING_CLASS}`).forEach(el => el.classList.remove(PENDING_CLASS));
+  // A paragraph/list item/heading whose only content was struck-through text
+  // would be left behind empty once that text goes — drop it too (table cells
+  // are kept, since removing one would break the table).
+  const emptiable = new Set();
+  root.querySelectorAll(`.${PENDING_DELETED_CLASS}`).forEach(el => {
+    let parent = el.parentElement;
+    el.remove();
+    // Inline wrappers (bold, links…) emptied by the deletion go too.
+    while (parent && parent !== root && /^(STRONG|EM|B|I|U|A|SPAN|SUB|SUP)$/.test(parent.tagName) && !parent.textContent && !parent.querySelector('img, br')) {
+      const up = parent.parentElement;
+      parent.remove();
+      parent = up;
+    }
+    if (parent && parent !== root && /^(P|LI|H[1-6]|BLOCKQUOTE)$/.test(parent.tagName)) emptiable.add(parent);
+  });
+  emptiable.forEach(el => {
+    if (!el.textContent.trim() && !el.querySelector('img, br, table')) el.remove();
+  });
+  root.querySelectorAll(`.${PENDING_CLASS}`).forEach(el => {
+    el.classList.remove(PENDING_CLASS);
+    if (!el.getAttribute('class')) el.removeAttribute('class');
+    // A bare <span> that only existed to carry the marker (new-style inline
+    // edits) is unwrapped rather than left behind as noise in the saved HTML.
+    if (el.tagName === 'SPAN' && !el.attributes.length) el.replaceWith(...el.childNodes);
+  });
+  root.normalize();
   return root.innerHTML;
 }
 
