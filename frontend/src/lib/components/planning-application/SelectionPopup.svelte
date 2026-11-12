@@ -48,6 +48,11 @@
 
   let notes = '';
   let micRecording = false;
+  // Optional: what's specifically relevant in the attached document, and any points
+  // the user wants made from it. Sent with the document so the AI makes sure they
+  // are incorporated (see documentFocus in incorporateTargetedParagraphs).
+  let focus = '';
+  let focusRecording = false;
   let attachOpen = false;
   let docType = defaultDocType ?? DOC_TYPES[0].value;
   let inputTab = 'upload'; // 'upload' | 'paste'
@@ -104,7 +109,9 @@
         draftTypeId,
         paragraphId: paragraphIds[0],
         quotedText,
-        body: notes.trim(),
+        body: attachOpen && hasAttachment && focus.trim()
+          ? `${notes.trim()}\n\nRelevant in the attached document: ${focus.trim()}`
+          : notes.trim(),
         // Carry any attached document along with the note — otherwise it's
         // silently lost the moment you click Comment instead of Send to AI,
         // and a later batch send has nothing but the note text to work from.
@@ -128,6 +135,7 @@
       documentText: inputTab === 'paste' ? pasteText.trim() : '',
       documentTitle: inputTab === 'paste' ? (pasteTitle.trim() || null) : (uploadFile?.name ?? null),
       docType: attachOpen && hasAttachment ? docType : null,
+      documentFocus: attachOpen && hasAttachment ? focus.trim() : '',
     });
   }
 </script>
@@ -201,6 +209,24 @@
         <input class="attach-paste-title" type="text" placeholder="Document title (optional)" bind:value={pasteTitle} />
         <textarea class="attach-paste-textarea" placeholder="Paste the document text here..." bind:value={pasteText}></textarea>
       {/if}
+
+      <label class="attach-focus-label" for="attach-focus-input">What's relevant in this document? <span>(optional)</span></label>
+      <div class="selection-popup-input" class:recording={focusRecording}>
+        <textarea
+          id="attach-focus-input"
+          class="selection-popup-textarea"
+          placeholder={focusRecording ? '' : "Point the AI to specific sections or findings, or the points you want made from it..."}
+          bind:value={focus}
+        ></textarea>
+        <VoiceDictationButton
+          class="selection-popup-mic"
+          on:transcript={(e) => focus = focus ? `${focus} ${e.detail}` : e.detail}
+          on:statechange={(e) => focusRecording = e.detail === 'recording'}
+        />
+        {#if focusRecording}
+          <span class="selection-popup-recording-hint">Recording, click the mic to finish</span>
+        {/if}
+      </div>
     </div>
   {/if}
 
@@ -315,6 +341,16 @@
   @keyframes selection-input-recording-pulse {
     0%, 100% { background-color: white; }
     50% { background-color: var(--color-red-50); }
+  }
+
+  .attach-focus-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-slate-600);
+  }
+  .attach-focus-label span {
+    font-weight: 400;
+    color: var(--color-slate-400);
   }
 
   .attach-toggle-btn {

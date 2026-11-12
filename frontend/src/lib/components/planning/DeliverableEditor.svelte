@@ -119,7 +119,7 @@
   async function handleSendToAi(e) {
     if (!selectionPopup) return;
     const { paragraphIds, quotedText, top, left, isWholeDocument } = selectionPopup;
-    const { notes, file, documentText, documentTitle, docType } = e.detail;
+    const { notes, file, documentText, documentTitle, docType, documentFocus } = e.detail;
     const originalHtml = currentHTML;
     selectionPopup = null;
     editor?.clearSelectionHighlight();
@@ -145,6 +145,7 @@
         paragraphs: targeted,
         userNotes: notesForApi,
         docType: docType ?? null,
+        documentFocus: documentFocus ?? '',
         editMode: true,
       });
       if (seq !== aiEditSeq) return;

@@ -2620,6 +2620,7 @@ export async function paIncorporateTargeted(req, res) {
         projectPolicies,
         provider: await resolveProvider('planning_statement_helpers', req.body.provider ?? null),
         editMode: true,
+        documentFocus: req.body.document_focus ?? null,
       });
       return res.json({ edits });
     }

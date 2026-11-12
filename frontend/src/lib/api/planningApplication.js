@@ -500,13 +500,14 @@ export async function resetActionPrompt(key) {
   return res.json(); // { prompt }
 }
 
-export async function paIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, documentHtml, paragraphs, userNotes, docType, editMode = false }) {
+export async function paIncorporateTargeted(projectId, typeId, { file, documentText, documentTitle, documentHtml, paragraphs, userNotes, docType, documentFocus, editMode = false }) {
   const form = new FormData();
   form.append('paragraphs', JSON.stringify(paragraphs));
   if (userNotes) form.append('user_notes', userNotes);
   // Edit mode returns exact-match edits ({edits}) instead of rewritten paragraphs ({updated}) — see documentEdits.js.
   if (editMode) form.append('edit_mode', '1');
   if (docType) form.append('doc_type', docType);
+  if (documentFocus) form.append('document_focus', documentFocus);
   if (documentHtml) form.append('document_html', documentHtml);
   if (file) {
     form.append('file', file);

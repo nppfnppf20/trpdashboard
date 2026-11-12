@@ -769,7 +769,7 @@ Return ONLY a valid JSON array — no markdown, no explanation. Include every pa
   {"id": "p7", "html": "<p>Updated paragraph...</p>"}
 ]`;
 
-export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', documentPurpose = null, guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, docType = null, provider = 'anthropic', fullDocumentHtml = null, projectPolicies = [], editMode = false }) {
+export async function incorporateTargetedParagraphs({ paragraphs, documentText, filename, issues, userNotes = null, projectName = '', draftTypeName = '', documentPurpose = null, guidingBrief = null, projectBrief = null, exampleDoc = null, customPrompt = null, docType = null, provider = 'anthropic', fullDocumentHtml = null, projectPolicies = [], editMode = false, documentFocus = null }) {
   const issueContext = buildIssueContext(issues);
   const contextBlocks = buildContextBlocks({ guidingBrief, projectBrief, exampleDoc });
   const contextBlocksSection = contextBlocks ? `${contextBlocks}\n\n---\n\n` : '';
@@ -815,6 +815,14 @@ export async function incorporateTargetedParagraphs({ paragraphs, documentText, 
   const hasDocument = !!documentText?.trim();
   const isSpecialistReport = hasDocument && docType === 'specialist_report';
 
+  // What the user has said is specifically relevant in the attached document
+  // (and any points they want made from it). The prompt is directed at this:
+  // every point must land, though it needn't be the only thing used.
+  const hasFocus = hasDocument && !!documentFocus?.trim();
+  const focusBlock = hasFocus
+    ? `## The user has told you what is relevant in the attached document: HIGH PRIORITY\nThis is what the user wants drawn out of the document, and the points they want made:\n<user-pointers>\n${documentFocus.trim()}\n</user-pointers>\n\nMake sure every one of these is incorporated into your edit, using the document's own findings, wording and figures for each. Treat the user's pointers as the starting point and the priority. They are not necessarily the only relevant content: also use anything else in the document that bears on the passage and the task, but never miss or dilute what the user has pointed to. If the user states a point of their own, include it as they have put it. If they point to something that is not actually in the document, do not invent it: insert [NOT FOUND IN DOCUMENT: briefly say what] in its place.\n\n`
+    : '';
+
   // Specialist reports get their own framing rather than the generic
   // "incorporate this document" treatment: this is evidence for the specific
   // highlighted passage, not general instructions to rewrite from — fidelity
@@ -857,11 +865,14 @@ ${documentText}
     .map(p => `${p.id}:\n${p.html}`)
     .join('\n\n');
 
-  const taskInstruction = isSpecialistReport
+  const focusTaskNote = hasFocus ? ' Start from the areas and points the user has told you are relevant (see above) and make sure each one is incorporated.' : '';
+
+  const taskInstructionBase = isSpecialistReport
     ? `Your task: revise the highlighted passage using the specialist report as evidence, interpreting it in the way described above. Integrate the evidence into the existing text where it fits, and size the edit to the issue and the detail in the report, unless the user's own instructions ask for something different.`
     : hasDocument
       ? `Your task: revise the paragraphs above to incorporate the uploaded document. For each paragraph, consider what the uploaded document adds, changes or requires and update it accordingly. Do not leave paragraphs unchanged just because changes are difficult. Where the uploaded document is a briefing note with strategic direction, follow those instructions even if they require significant rewrites. Where it is a technical report, incorporate the relevant conclusions and findings.`
       : `Your task: revise the paragraphs above following the user guidance given above.`;
+  const taskInstruction = `${taskInstructionBase}${focusTaskNote}`;
 
   // Edit mode: rather than asking the model to re-emit whole paragraphs (which
   // has to retype every row of a table to change one cell, and in practice
@@ -899,7 +910,7 @@ Return ONLY a JSON array of paragraphs you changed or added. Omit paragraphs you
 
   const prompt = `You are a planning consultant revising a ${draftTypeName} for the project "${projectName}".
 
-${purposeBlock}${contextBlocksSection}${userNotesBlock}${documentBlock}${backgroundSection}SELECTED PARAGRAPHS TO REVISE:
+${purposeBlock}${contextBlocksSection}${userNotesBlock}${focusBlock}${documentBlock}${backgroundSection}SELECTED PARAGRAPHS TO REVISE:
 ${paraBlock}
 
 ---

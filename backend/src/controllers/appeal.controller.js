@@ -1321,7 +1321,7 @@ export async function scopeIncorporation(req, res) {
 
 export async function incorporateTargeted(req, res) {
   const { projectId, typeId } = req.params;
-  const { document_id, document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, issue_id, edit_mode } = req.body ?? {};
+  const { document_id, document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, issue_id, edit_mode, document_focus } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
   // Opt-in: return exact-match edits instead of rewritten paragraphs (see documentEdits.js on the frontend).
   const editMode = edit_mode === true || edit_mode === 'true' || edit_mode === '1';
@@ -1440,6 +1440,7 @@ export async function incorporateTargeted(req, res) {
       projectPolicies,
       provider,
       editMode,
+      documentFocus: document_focus ?? null,
     });
     res.json(editMode ? { edits: updated } : { updated });
   } catch (err) {

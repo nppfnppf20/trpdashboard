@@ -743,7 +743,7 @@
   // (handleSendToAi) and the "apply to whole document" box in the Create
   // panel (handleReviseAll). Writes the result straight into the draft,
   // pending-highlighted, for Accept/Edit Again — see pendingAiEdit above.
-  async function sendAiEdit({ paragraphIds, quotedText, top, left, isWholeDocument, notes, file, documentText, documentTitle, docType }) {
+  async function sendAiEdit({ paragraphIds, quotedText, top, left, isWholeDocument, notes, file, documentText, documentTitle, docType, documentFocus }) {
     const originalHtml = draftEditor?.getHTML() ?? $draftEditorHtml;
     pendingAiEdit = { paragraphIds, quotedText, top, left, isWholeDocument, originalHtml, loading: true, error: null };
     const seq = ++aiEditSeq;
@@ -769,6 +769,7 @@
         paragraphs: targeted,
         userNotes: notesForApi,
         docType: docType ?? null,
+        documentFocus: documentFocus ?? '',
         editMode: true,
       };
       const result = $activeDraftTypeId === 'blank'
@@ -789,14 +790,14 @@
   async function handleSendToAi(e) {
     if (!selectionPopup) return;
     const { paragraphIds, quotedText, top, left, isWholeDocument } = selectionPopup;
-    const { notes, file, documentText, documentTitle, docType } = e.detail;
+    const { notes, file, documentText, documentTitle, docType, documentFocus } = e.detail;
     selectionPopup = null;
     // The highlight box was only ever meant to mark the live selection while
     // the compose popup was open — once we're writing the AI's result back
     // into the document (in a different color of its own), it needs to go,
     // or the two visibly overlap and the stale box doesn't track scrolling.
     draftEditor?.clearSelectionHighlight();
-    await sendAiEdit({ paragraphIds, quotedText, top, left, isWholeDocument, notes, file, documentText, documentTitle, docType });
+    await sendAiEdit({ paragraphIds, quotedText, top, left, isWholeDocument, notes, file, documentText, documentTitle, docType, documentFocus });
   }
 
   async function handleReviseAll(e) {

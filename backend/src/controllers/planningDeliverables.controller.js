@@ -487,7 +487,7 @@ export async function updateDeliverableFromHTML(req, res) {
  */
 export async function incorporateDeliverableTargeted(req, res) {
   const { id } = req.params;
-  const { document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, edit_mode } = req.body ?? {};
+  const { document_text, document_title, document_html, user_notes = null, provider: requestedProvider, doc_type, edit_mode, document_focus } = req.body ?? {};
   const paragraphs = JSON.parse(req.body?.paragraphs || '[]');
   // Opt-in: return exact-match edits instead of rewritten paragraphs (see documentEdits.js on the frontend).
   const editMode = edit_mode === true || edit_mode === 'true' || edit_mode === '1';
@@ -555,6 +555,7 @@ export async function incorporateDeliverableTargeted(req, res) {
       projectPolicies,
       provider,
       editMode,
+      documentFocus: document_focus ?? null,
     });
     res.json(editMode ? { edits: updated } : { updated });
   } catch (error) {
