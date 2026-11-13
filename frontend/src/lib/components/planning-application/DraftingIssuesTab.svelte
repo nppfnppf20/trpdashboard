@@ -1,6 +1,6 @@
 <script>
   import {
-    getDraftingIssues, createDraftingIssue, updateDraftingIssue,
+    getDraftingIssues, getMissedForDraft, createDraftingIssue, updateDraftingIssue,
     deleteDraftingIssue, draftIssuesFromBriefing, draftIssuesFromTracker,
     getDraftingIssuePolicyRelevance, toggleDraftingIssuePolicy,
     getDraftingIssuePlanRelevance, toggleDraftingIssuePlan,
@@ -10,6 +10,7 @@
   import { getPolicyDocuments } from '$lib/api/policyDocuments.js';
   import DraftingIssuePolicyNotes from './DraftingIssuePolicyNotes.svelte';
   import DraftingIssueNotesLog from './DraftingIssueNotesLog.svelte';
+  import DraftReviewModal from './DraftReviewModal.svelte';
   import { toggleBullets, continueBulletOnEnter } from '$lib/utils/bulletList.js';
   import NoteSourcePicker from '$lib/components/shared/NoteSourcePicker.svelte';
   import PromptEditModal from '$lib/components/shared/PromptEditModal.svelte';
@@ -24,7 +25,7 @@
   let policyRelevance = {};  // { [draftingIssueId]: [policyId, ...] }
   let planRelevance = {};    // { [draftingIssueId]: [planId, ...] }
   let projectPolicies = [];
-  let projectPlans = [];     // policy_documents with a relevance summary but no policies of their own
+  let projectPlans = [];     // all policy_documents; Supplementary/Other ones with no policies of their own are linkable as a whole
   let loading = true;
   let newLabel = '';
   let newDiscipline = '';
@@ -85,6 +86,44 @@
   let draftPastedText = '';
   let drafting = false;
 
+  // The drafted proposal being reviewed (null when the review modal is closed)
+  let reviewProposal = null;
+
+  // The "possibly missed" check is a slow second AI call, so the review window opens
+  // first and this fills the list in when it finishes. Ignored if that review has
+  // been closed or replaced in the meantime.
+  let missedLoading = false;
+
+  async function checkMissedInBackground(proposal, sources, pastedText) {
+    const drafted = proposal.rows
+      .filter(r => (r.kind === 'update' || r.kind === 'new') && r.notes?.trim())
+      .map(r => ({ label: r.label, notes: r.notes }));
+    if (!drafted.length) return;
+    missedLoading = true;
+    try {
+      const { missed } = await getMissedForDraft(project.id, { sources, pastedText, drafted });
+      if (reviewProposal === proposal) reviewProposal = { ...proposal, missed: missed ?? [] };
+    } catch (err) {
+      console.error('Missed-points check failed:', err);
+    } finally {
+      missedLoading = false;
+    }
+  }
+
+  // A backend that has not been restarted still answers with the old shape
+  // ({ applied }), which has no rows to review.
+  function assertProposal(proposal) {
+    if (!Array.isArray(proposal?.rows)) {
+      throw new Error('The server replied in the old format, so the review step could not open. Restart the backend and try again.');
+    }
+  }
+
+  async function onReviewApplied(e) {
+    reviewProposal = null;
+    showMissedPoints(e.detail?.missed);
+    await load();
+  }
+
   // Points the source mentions that no drafted note captured (second-pass check).
   // For review only; nothing is written to the notes.
   let missedPoints = [];
@@ -138,10 +177,17 @@
   async function handleDraftContinue() {
     drafting = true;
     try {
-      const result = await draftIssuesFromBriefing(project.id, draftSources, { allowNewIssues, issueScope, pastedText: draftPastedText });
-      showMissedPoints(result?.missed);
+      // Nothing is saved yet: the result is a proposal for the review modal.
+      // Snapshot what was sent, for the missed-points check that follows
+      const sentSources = [...draftSources];
+      const sentPasted = draftPastedText;
+      const proposal = await draftIssuesFromBriefing(project.id, sentSources, {
+        allowNewIssues, issueScope, pastedText: sentPasted,
+      });
+      assertProposal(proposal);
       closeDraftModal();
-      await load();
+      reviewProposal = proposal;
+      checkMissedInBackground(proposal, sentSources, sentPasted);
     } catch (err) {
       console.error('Failed to draft issues from briefing:', err);
       alert(err.message || 'Failed to draft issues from briefing');
@@ -183,10 +229,10 @@
   async function handleTrackerDraftContinue() {
     draftingTracker = true;
     try {
-      const result = await draftIssuesFromTracker(project.id, { allowNewIssues: trackerAllowNewIssues, issueScope: trackerIssueScope });
-      showMissedPoints(result?.missed);
+      const proposal = await draftIssuesFromTracker(project.id, { allowNewIssues: trackerAllowNewIssues, issueScope: trackerIssueScope });
+      assertProposal(proposal);
       closeDraftModal();
-      await load();
+      reviewProposal = proposal;
     } catch (err) {
       console.error('Failed to draft issues from tracker:', err);
       alert(err.message || 'Failed to draft issues from tracker');
@@ -585,6 +631,16 @@
   {/if}
 </div>
 
+{#if reviewProposal}
+  <DraftReviewModal
+    projectId={project.id}
+    proposal={reviewProposal}
+    {missedLoading}
+    on:close={() => reviewProposal = null}
+    on:applied={onReviewApplied}
+  />
+{/if}
+
 {#if showDraftModal}
   <div class="di-modal-overlay" on:click|self={closeDraftModal}>
     <div class="di-modal">
@@ -616,7 +672,7 @@
           projectUniqueId={project?.unique_id}
           bind:selectedSources={draftSources}
           bind:overBudget={draftOverBudget}
-          hint="Tick any briefing notes and meeting notes to draft policy assessments from. Tick 'full transcript' on a note to draft from everything that was said; otherwise only its summary is used."
+          hint="Tick any briefing notes and meeting notes to draft policy assessments from. Tick 'full transcript' on a note to draft from everything that was said; otherwise only its summary is used. Drafting can take a couple of minutes: keep this page open until the review window appears."
         />
 
         <div class="di-scope">

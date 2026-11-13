@@ -49,8 +49,15 @@
     }
   }
 
-  // Only plans with an actual relevance summary are worth surfacing here —
-  // one with nothing written yet has nothing to link or preview.
+  // A document is listed to link as a whole when it is Supplementary Guidance /
+  // Other Material Considerations and none of the project's policies belong to it
+  // (when it has its own policies, those are linked individually instead). It is
+  // listed whether or not a "Relevance to project" summary has been written,
+  // which is optional and so cannot decide whether a document can be linked.
+  const isLinkablePlan = (plan, policyList) =>
+    (plan.section === 'supplementary' || plan.section === 'other') &&
+    !policyList.some(p => p.plan_id === plan.id);
+
   function planAsItem(plan) {
     return {
       id: plan.id,
@@ -67,7 +74,7 @@
 
   $: itemsByType = [
     ...policies.map(p => ({ ...p, _kind: 'policy' })),
-    ...plans.filter(p => p.relevance?.trim()).map(planAsItem),
+    ...plans.filter(p => isLinkablePlan(p, policies)).map(planAsItem),
   ].reduce((acc, item) => {
     const t = (item.policy_type ?? '').toLowerCase();
     if (!acc[t]) acc[t] = [];

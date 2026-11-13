@@ -9,6 +9,8 @@ import {
   reorderDraftingIssues,
   draftIssuesFromBriefing,
   draftIssuesFromTracker,
+  applyDraftReview,
+  findMissedForDraft,
   getDraftingIssuePolicyRelevance,
   toggleDraftingIssuePolicy,
   getDraftingIssuePlanRelevance,
@@ -28,6 +30,8 @@ router.post('/projects/:projectId', createDraftingIssue);
 router.put('/projects/:projectId/reorder', reorderDraftingIssues);
 router.post('/projects/:projectId/draft-from-briefing', draftIssuesFromBriefing);
 router.post('/projects/:projectId/draft-from-tracker', draftIssuesFromTracker);
+router.post('/projects/:projectId/draft-apply', applyDraftReview);
+router.post('/projects/:projectId/draft-missed', findMissedForDraft);
 router.get('/projects/:projectId/policy-relevance', getDraftingIssuePolicyRelevance);
 router.get('/projects/:projectId/plan-relevance', getDraftingIssuePlanRelevance);
 

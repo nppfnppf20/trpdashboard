@@ -174,3 +174,33 @@ export async function applyConsolidatedNotes(issueId, notes) {
   }
   return res.json();
 }
+
+// Writes the rows ticked in the review modal after "Draft from document".
+// payload: { title, date ('YYYY-MM-DD'), items: [{ kind: 'new' | 'update' | 'rename' | 'merge' | 'drop', ... }] }
+export async function applyDraftReview(projectId, payload) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to apply the reviewed changes');
+  }
+  return res.json();
+}
+
+// "Possibly missed" check, requested after the review window has opened (it is a
+// slow second AI call). drafted: [{ label, notes }] for the notes being reviewed.
+export async function getMissedForDraft(projectId, { sources = [], pastedText = '', drafted = [] } = {}) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/draft-missed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sources, pastedText, drafted })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || 'Failed to check for missed points');
+  }
+  return res.json();
+}

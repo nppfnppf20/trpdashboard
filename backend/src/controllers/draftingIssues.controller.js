@@ -12,6 +12,16 @@ import { resolveBriefingSourceTexts } from '../services/quoteRequests.service.js
 import { draftIssuesFromBriefingNote, draftIssuesFromTrackerLog, consolidateIssueNotes, findMissedPoints } from '../services/planningStatement.service.js';
 import { summariseSpecialistReportForIssue } from '../services/appeal.service.js';
 import { parseFile } from '../services/parser.service.js';
+import { checkVerbatim } from '../services/verbatimCheck.service.js';
+import { appendFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+// Timing log for the (long) draft-from-document requests: backend/logs/draft-debug.log.
+// Shows how long each stage takes and whether the browser hung up before the reply.
+const DRAFT_DEBUG_LOG = fileURLToPath(new URL('../../logs/draft-debug.log', import.meta.url));
+function draftLog(message) {
+  try { appendFileSync(DRAFT_DEBUG_LOG, `${new Date().toISOString()} ${message}\n`); } catch { /* logging must never break a request */ }
+}
 
 async function loadCustomActionPrompt(key) {
   const { rows } = await pool.query(
@@ -30,7 +40,7 @@ async function fetchIssueDraftingContext(projectId) {
       [projectId]
     ),
     pool.query(
-      `SELECT dipr.drafting_issue_id, pp.policy_reference, pp.policy_name, pp.policy_text, pp.is_key_policy
+      `SELECT dipr.drafting_issue_id, pp.id AS policy_id, pp.policy_reference, pp.policy_name, pp.policy_text, pp.is_key_policy
        FROM admin_console.drafting_issue_policy_relevance dipr
        JOIN public.project_policies pp ON pp.id = dipr.policy_id
        JOIN admin_console.drafting_issues di ON di.id = dipr.drafting_issue_id
@@ -64,130 +74,324 @@ function noteBlock(text, { label, date } = {}) {
   return header ? `[${header}]\n${text}` : text;
 }
 
-// Shared apply step for both drafting sources: creates/updates drafting
-// issues from the LLM's results and additively links any matched policies.
-// Never removes an existing policy link, only adds newly discussed ones.
-//
-// Drafted notes are APPENDED to the issue's notes (argument_for) under a dated
-// header, e.g. "[12 Nov 2026 · Kick-off meeting]", so successive meetings stack
-// in the one Notes field and a later run never overwrites earlier content. The
-// user merges them with Consolidate. A raw copy of each run is also kept in
+// ─────────────────────────────────────────────────────────────────────────────
+// Draft from document: PROPOSE, then APPLY.
+// Drafting itself never writes. It returns a proposal (updates to existing
+// issues, new issues, and any renames / merges / drops the source explicitly
+// states) that the user reviews, edits and ticks in the review modal. Only the
+// ticked rows come back to applyDraftReview, which writes them in one
+// transaction. Drafted notes are APPENDED to an issue's notes (argument_for)
+// under a dated header, e.g. "[12 Nov 2026 · Kick-off meeting]", so successive
+// meetings stack in the one Notes field and are merged later with Consolidate.
+// A raw copy of each drafted set of notes is also kept in
 // admin_console.drafting_issue_note_log as a record.
-// logSource: { label, date } describing where this run's text came from.
-async function applyDraftedIssueResults(projectId, results, { allowNewIssues = true, issueScope = {}, logSource = {} } = {}) {
+// ─────────────────────────────────────────────────────────────────────────────
+
+const toIsoDate = (d) => (d instanceof Date && !isNaN(d) ? d.toLocaleDateString('en-CA') : '');
+
+// 'YYYY-MM-DD' as a local date (null if not in that form)
+function parseLocalDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s ?? '');
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+
+// Turns the model's results into reviewable rows. issueScope (set in the draft
+// modal) still limits which fields of an existing issue may be proposed.
+// Renames / merges / drops are only kept when the model quoted the sentence
+// that says so; the quote is checked against the source text.
+function buildDraftProposal(results, { issues, policiesByIssue, allPolicies, issueScope = {}, allowNewIssues = true, sourceText = '' }) {
   const scopeFor = (id) => issueScope[id] ?? { argumentNotes: true, specialistReport: true, policyLinks: true };
+  const issueById = new Map(issues.map(i => [i.id, i]));
+  const policyById = new Map(allPolicies.map(p => [p.id, p]));
+  const chip = (id) => {
+    const p = policyById.get(Number(id));
+    return p ? { id: p.id, label: `${p.policy_reference ? `${p.policy_reference}: ` : ''}${p.policy_name}` } : null;
+  };
+  const evidenceOf = (r) => {
+    const evidence = typeof r.evidence === 'string' ? r.evidence.trim() : '';
+    return evidence ? { evidence, evidence_verified: checkVerbatim(evidence, sourceText).verified } : null;
+  };
+
+  const rows = [];
+  for (const r of results) {
+    if (r.rename) {
+      const id = Number(r.drafting_issue_id);
+      const issue = issueById.get(id);
+      const newLabel = String(r.new_label ?? '').trim();
+      const ev = evidenceOf(r);
+      if (!issue || !newLabel || newLabel === issue.label || !ev) continue;
+      rows.push({ kind: 'rename', drafting_issue_id: id, label: issue.label, new_label: newLabel, ...ev });
+    } else if (r.merge) {
+      const ids = [...new Set((r.drafting_issue_ids ?? []).map(Number))].filter(id => issueById.has(id));
+      const ev = evidenceOf(r);
+      if (ids.length < 2 || !ev) continue;
+      rows.push({
+        kind: 'merge',
+        issues: ids.map(id => ({ id, label: issueById.get(id).label })),
+        keep_id: ids[0],
+        label: String(r.suggested_label ?? '').trim() || issueById.get(ids[0]).label,
+        ...ev,
+      });
+    } else if (r.drop) {
+      const id = Number(r.drafting_issue_id);
+      const issue = issueById.get(id);
+      const ev = evidenceOf(r);
+      if (!issue || !ev) continue;
+      rows.push({ kind: 'drop', drafting_issue_id: id, label: issue.label, ...ev });
+    } else if (r.new_issue) {
+      if (!allowNewIssues || !r.suggested_label?.trim()) continue;
+      rows.push({
+        kind: 'new',
+        label: r.suggested_label.trim(),
+        discipline: r.suggested_discipline?.trim() || '',
+        notes: r.argument_for?.trim() || '',
+        specialist_report: r.specialist_report?.trim() || '',
+        policies: (r.matched_policy_ids ?? []).map(chip).filter(Boolean),
+      });
+    } else if (r.drafting_issue_id) {
+      const id = Number(r.drafting_issue_id);
+      const issue = issueById.get(id);
+      if (!issue) continue;
+      const scope = scopeFor(id);
+      const linked = new Set((policiesByIssue[id] ?? []).map(p => p.policy_id));
+      const notes = scope.argumentNotes ? (r.argument_for?.trim() || '') : '';
+      const specialist = scope.specialistReport ? (r.specialist_report?.trim() || '') : '';
+      const policies = scope.policyLinks
+        ? (r.matched_policy_ids ?? []).filter(pid => !linked.has(Number(pid))).map(chip).filter(Boolean)
+        : [];
+      if (!notes && !specialist && !policies.length) continue;
+      rows.push({ kind: 'update', drafting_issue_id: id, label: issue.label, notes, specialist_report: specialist, policies });
+    }
+  }
+  return rows.map((row, i) => ({ row_id: i, ...row }));
+}
+
+// "Possibly missed" check, run after the review window has opened. The page sends
+// the same sources / pasted text as the draft plus the notes it was given, and
+// gets back the points the source states that none of those notes captured.
+export async function findMissedForDraft(req, res) {
+  const { projectId } = req.params;
+  const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
+  const pastedText = typeof req.body?.pastedText === 'string' ? req.body.pastedText.trim() : '';
+  const drafted = Array.isArray(req.body?.drafted) ? req.body.drafted : [];
+  try {
+    const { rows: projectRows } = await pool.query(`SELECT unique_id FROM public.projects WHERE id = $1`, [projectId]);
+    if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+    const sourceText = sources.length ? await resolveBriefingSourceTexts(sources, projectRows[0].unique_id) : '';
+    const sourceFull = [sourceText, pastedText ? `## Pasted text\n${pastedText}` : '']
+      .filter(t => t?.trim())
+      .join('\n\n---\n\n');
+    if (!sourceFull.trim()) return res.json({ missed: [] });
+
+    const results = drafted
+      .filter(d => typeof d?.notes === 'string' && d.notes.trim())
+      .map(d => ({ new_issue: true, suggested_label: String(d.label ?? ''), argument_for: d.notes }));
+    const missed = await findMissedPoints({ sourceText: sourceFull, results, issues: [], provider: req.body?.provider ?? null });
+    res.json({ missed });
+  } catch (err) {
+    console.error('draftingIssues.findMissedForDraft error:', err);
+    res.status(500).json({ error: err.message || 'Failed to check for missed points' });
+  }
+}
+
+// One short line per entry the AI returned, so an empty review screen can show
+// what came back (and which issue ids did not match the project's issues).
+function describeReturnedEntries(results, issues) {
+  const known = new Set(issues.map(i => i.id));
+  const idNote = (id) => (known.has(Number(id)) ? `issue ${id}` : `unknown issue id ${id}`);
+  return results.map(r => {
+    if (r.rename) return `rename of ${idNote(r.drafting_issue_id)}`;
+    if (r.merge) return `merge of ${(r.drafting_issue_ids ?? []).map(idNote).join(', ')}`;
+    if (r.drop) return `drop of ${idNote(r.drafting_issue_id)}`;
+    if (r.new_issue) return `new issue "${r.suggested_label ?? ''}"`;
+    return `notes for ${idNote(r.drafting_issue_id)}${r.argument_for?.trim() ? '' : ' (no notes text)'}`;
+  });
+}
+
+// Writes the rows the user ticked in the review modal. Order matters: new
+// issues and updates first (so a merged issue's new notes are carried across),
+// then renames, merges and drops.
+//   { title, date, items: [
+//     { kind: 'new',    label, discipline, notes, specialist_report, policy_ids },
+//     { kind: 'update', drafting_issue_id, notes, specialist_report, policy_ids },
+//     { kind: 'rename', drafting_issue_id, new_label },
+//     { kind: 'merge',  keep_id, merge_ids, label, delete_merged },
+//     { kind: 'drop',   drafting_issue_id } ] }
+// A 'drop' item means "delete this issue" (the modal only sends it when ticked).
+export async function applyDraftReview(req, res) {
+  const { projectId } = req.params;
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!items.length) return res.status(400).json({ error: 'Nothing selected to apply' });
+  const source = { label: String(req.body?.title ?? '').trim(), date: parseLocalDate(req.body?.date) };
+  const text = (v) => String(v ?? '').trim();
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     const { rows: maxRow } = await client.query(
-      `SELECT COALESCE(MAX(sort_order), -1) AS max FROM admin_console.drafting_issues WHERE project_id = $1`,
-      [projectId]
+      `SELECT COALESCE(MAX(sort_order), -1) AS max FROM admin_console.drafting_issues WHERE project_id = $1`, [projectId]
     );
     let nextOrder = maxRow[0].max + 1;
 
+    const issueFor = async (id) => (await client.query(
+      `SELECT * FROM admin_console.drafting_issues WHERE id = $1 AND project_id = $2 FOR UPDATE`, [Number(id), projectId]
+    )).rows[0];
+
+    // Only policies that belong to this project are linked
+    const linkPolicies = async (issueId, ids) => {
+      const pids = (ids ?? []).map(Number).filter(Number.isInteger);
+      if (!pids.length) return;
+      await client.query(
+        `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
+         SELECT $1, pp.id FROM public.project_policies pp WHERE pp.id = ANY($2::int[]) AND pp.project_id = $3
+         ON CONFLICT DO NOTHING`,
+        [issueId, pids, projectId]
+      );
+    };
+
+    const logNote = (issueId, kind, label, date, noteText) => client.query(
+      `INSERT INTO admin_console.drafting_issue_note_log (drafting_issue_id, kind, source_label, source_date, note_text, consolidated_at)
+       VALUES ($1, $2, $3, $4, $5, now())`,
+      [issueId, kind, label || null, date || null, noteText]
+    );
+
+    const ofKind = (k) => items.filter(i => i?.kind === k);
     let applied = 0;
-    for (const r of results) {
-      let draftingIssueId;
-      let linkPolicies = true; // new issues always get their matched policies linked — allowNewIssues already gates whether they're created at all
-      let logText = null; // drafted notes (without the dated header) to keep as a record
 
-      if (r.new_issue) {
-        if (!allowNewIssues) continue;
-        if (!r.suggested_label?.trim()) continue;
-        const { rows: inserted } = await client.query(
-          `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, specialist_report, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-          [projectId, r.suggested_label.trim(), r.suggested_discipline?.trim() || null,
-           r.argument_for?.trim() ? noteBlock(r.argument_for.trim(), logSource) : null, r.specialist_report ?? null, nextOrder++]
-        );
-        draftingIssueId = inserted[0].id;
-        if (r.argument_for?.trim()) logText = r.argument_for.trim();
-      } else {
-        if (!r.drafting_issue_id) continue;
-        const scope = scopeFor(r.drafting_issue_id);
-        if (!scope.argumentNotes && !scope.specialistReport && !scope.policyLinks) continue; // issue excluded from this run entirely
-        linkPolicies = scope.policyLinks;
-
-        // Only the fields the picker allowed for this issue are included in
-        // the SET clause — an unchecked field is left completely alone.
-        // specialist_report, when allowed, only overwrites if the model
-        // actually returned something for it this pass — not every source
-        // touches on specialist report findings for an issue, and we don't
-        // want to blank out an existing entry just because this pass didn't.
-        const setParts = [];
-        const params = [];
-        if (scope.argumentNotes && r.argument_for?.trim()) {
-          logText = r.argument_for.trim();
-          // Appended below whatever is already there, under its own dated header
-          params.push(noteBlock(logText, logSource));
-          setParts.push(`argument_for = CASE WHEN COALESCE(argument_for, '') = '' THEN $${params.length} ELSE argument_for || E'\\n\\n' || $${params.length} END`);
-        }
-        if (scope.specialistReport) {
-          params.push(r.specialist_report ?? null);
-          setParts.push(`specialist_report = CASE WHEN $${params.length}::text IS NOT NULL THEN $${params.length} ELSE specialist_report END`);
-        }
-
-        if (setParts.length) {
-          params.push(r.drafting_issue_id, projectId);
-          const { rows: updated } = await client.query(
-            `UPDATE admin_console.drafting_issues
-             SET ${setParts.join(', ')}
-             WHERE id = $${params.length - 1} AND project_id = $${params.length} RETURNING id`,
-            params
-          );
-          if (!updated.length) continue;
-          draftingIssueId = updated[0].id;
-        } else {
-          // Only policy links were requested for this issue — nothing to
-          // write to the issue row itself, just confirm it's really in this
-          // project before linking policies to it.
-          const { rows: existing } = await client.query(
-            `SELECT id FROM admin_console.drafting_issues WHERE id = $1 AND project_id = $2`,
-            [r.drafting_issue_id, projectId]
-          );
-          if (!existing.length) continue;
-          draftingIssueId = existing[0].id;
-        }
-      }
-
-      if (logText && draftingIssueId) {
-        await client.query(
-          `INSERT INTO admin_console.drafting_issue_note_log
-             (drafting_issue_id, kind, source_label, source_date, note_text, consolidated_at)
-           VALUES ($1, 'draft', $2, $3, $4, now())`,
-          [draftingIssueId, logSource.label ?? null, logSource.date ?? null, logText]
-        );
-      }
-
-      // Additive only — never removes an existing link, only adds newly
-      // discussed ones on top of whatever's already there.
-      if (linkPolicies) {
-        for (const policyId of (r.matched_policy_ids ?? [])) {
-          await client.query(
-            `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
-             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [draftingIssueId, policyId]
-          );
-        }
-      }
+    // ── New issues ──
+    for (const it of ofKind('new')) {
+      const label = text(it.label);
+      if (!label) continue;
+      const notes = text(it.notes);
+      const { rows } = await client.query(
+        `INSERT INTO admin_console.drafting_issues (project_id, label, discipline, argument_for, specialist_report, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [projectId, label, text(it.discipline) || null, notes ? noteBlock(notes, source) : null, text(it.specialist_report) || null, nextOrder++]
+      );
+      if (notes) await logNote(rows[0].id, 'draft', source.label, source.date, notes);
+      await linkPolicies(rows[0].id, it.policy_ids);
       applied++;
     }
 
+    // ── Updates to existing issues ──
+    for (const it of ofKind('update')) {
+      const issue = await issueFor(it.drafting_issue_id);
+      if (!issue) continue;
+      const notes = text(it.notes);
+      const specialist = text(it.specialist_report);
+      const sets = [];
+      const params = [];
+      if (notes) {
+        params.push(noteBlock(notes, source));
+        const n = params.length;
+        sets.push(`argument_for = CASE WHEN COALESCE(argument_for, '') = '' THEN $${n} ELSE argument_for || E'\\n\\n' || $${n} END`);
+      }
+      if (specialist) {
+        params.push(specialist);
+        sets.push(`specialist_report = $${params.length}`);
+      }
+      if (sets.length) {
+        params.push(issue.id);
+        await client.query(`UPDATE admin_console.drafting_issues SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+      }
+      if (notes) await logNote(issue.id, 'draft', source.label, source.date, notes);
+      await linkPolicies(issue.id, it.policy_ids);
+      applied++;
+    }
+
+    // ── Renames ──
+    for (const it of ofKind('rename')) {
+      const label = text(it.new_label);
+      if (!label) continue;
+      const { rowCount } = await client.query(
+        `UPDATE admin_console.drafting_issues SET label = $1 WHERE id = $2 AND project_id = $3`,
+        [label, Number(it.drafting_issue_id), projectId]
+      );
+      if (rowCount) applied++;
+    }
+
+    // ── Merges: everything from the other issue(s) moves into the kept one ──
+    const join = (...parts) => parts.map(p => p?.trim()).filter(Boolean).join('\n\n') || null;
+    const TIER_FIELDS = ['policy_national', 'policy_local', 'policy_neighbourhood', 'policy_supplementary', 'policy_other'];
+    for (const it of ofKind('merge')) {
+      const keep = await issueFor(it.keep_id);
+      if (!keep) continue;
+      const otherIds = [...new Set((it.merge_ids ?? []).map(Number))].filter(id => id !== keep.id);
+      if (!otherIds.length) continue;
+
+      // Keep what the surviving issue's notes said before the merge
+      if (keep.argument_for?.trim()) await logNote(keep.id, 'snapshot', 'Notes before merging issues', null, keep.argument_for.trim());
+
+      let notes = keep.argument_for;
+      let specialist = keep.specialist_report;
+      let summary = keep.summary;
+      const tiers = Object.fromEntries(TIER_FIELDS.map(f => [f, keep[f]]));
+
+      for (const oid of otherIds) {
+        const other = await issueFor(oid);
+        if (!other) continue;
+        notes = join(notes, other.argument_for?.trim() ? `[Merged in from "${other.label}"]\n${other.argument_for.trim()}` : null);
+        specialist = join(specialist, other.specialist_report);
+        summary = join(summary, other.summary);
+        for (const f of TIER_FIELDS) tiers[f] = join(tiers[f], other[f]);
+
+        await client.query(
+          `INSERT INTO admin_console.drafting_issue_policy_relevance (drafting_issue_id, policy_id)
+           SELECT $1, policy_id FROM admin_console.drafting_issue_policy_relevance WHERE drafting_issue_id = $2
+           ON CONFLICT DO NOTHING`, [keep.id, other.id]
+        );
+        await client.query(
+          `INSERT INTO admin_console.drafting_issue_plan_relevance (drafting_issue_id, plan_id)
+           SELECT $1, plan_id FROM admin_console.drafting_issue_plan_relevance WHERE drafting_issue_id = $2
+           ON CONFLICT DO NOTHING`, [keep.id, other.id]
+        );
+
+        if (it.delete_merged) {
+          await client.query(`DELETE FROM admin_console.drafting_issues WHERE id = $1 AND project_id = $2`, [other.id, projectId]);
+        } else {
+          // Left in place but emptied, so the same notes are not read twice
+          if (other.argument_for?.trim()) await logNote(other.id, 'snapshot', 'Notes before merging into another issue', null, other.argument_for.trim());
+          await client.query(`UPDATE admin_console.drafting_issues SET argument_for = NULL, specialist_report = NULL WHERE id = $1`, [other.id]);
+        }
+      }
+
+      await client.query(
+        `UPDATE admin_console.drafting_issues
+         SET label = COALESCE($1, label), argument_for = $2, specialist_report = $3, summary = $4,
+             policy_national = $5, policy_local = $6, policy_neighbourhood = $7, policy_supplementary = $8, policy_other = $9
+         WHERE id = $10`,
+        [text(it.label) || null, notes, specialist, summary, ...TIER_FIELDS.map(f => tiers[f]), keep.id]
+      );
+      applied++;
+    }
+
+    // ── Drops (delete) ──
+    for (const it of ofKind('drop')) {
+      const { rowCount } = await client.query(
+        `DELETE FROM admin_console.drafting_issues WHERE id = $1 AND project_id = $2`, [Number(it.drafting_issue_id), projectId]
+      );
+      if (rowCount) applied++;
+    }
+
     await client.query('COMMIT');
-    return { applied };
+    res.json({ applied });
   } catch (err) {
     await client.query('ROLLBACK');
-    throw err;
+    console.error('draftingIssues.applyDraftReview error:', err);
+    res.status(500).json({ error: 'Failed to apply the reviewed changes' });
   } finally {
     client.release();
   }
 }
 
+
 // Human-readable label + date for a draft run's sources, stored on each notes
 // log entry. Date is the latest meeting date among the ticked meetings.
-async function describeBriefingSources(sources, projectUniqueId, hasPastedText) {
+// pasted: true when the paste box was used. Only suggests the title and date shown
+// in the review modal, where both can be edited before anything is saved.
+async function describeBriefingSources(sources, projectUniqueId, pasted) {
   const labels = [];
   let latest = null;
   for (const src of sources) {
@@ -201,7 +405,10 @@ async function describeBriefingSources(sources, projectUniqueId, hasPastedText) 
       );
       if (!rows[0]) continue;
       labels.push(rows[0].title || 'Untitled meeting');
-      if (rows[0].meeting_date && (!latest || rows[0].meeting_date > latest)) latest = rows[0].meeting_date;
+      if (rows[0].meeting_date) {
+        const d = new Date(rows[0].meeting_date);
+        if (!isNaN(d) && (!latest || d > latest)) latest = d;
+      }
     } else {
       const { rows } = await pool.query(
         `SELECT ds.title FROM planning_applications.document_summaries ds
@@ -212,7 +419,11 @@ async function describeBriefingSources(sources, projectUniqueId, hasPastedText) 
       if (rows[0]) labels.push(rows[0].title || 'Untitled briefing note');
     }
   }
-  if (hasPastedText) labels.push('Pasted text');
+  if (pasted) {
+    labels.push('Pasted text');
+    const today = new Date();
+    if (!latest || today > latest) latest = today;
+  }
   return { label: labels.join('; ') || 'Draft from document', date: latest };
 }
 
@@ -479,6 +690,11 @@ export async function draftIssuesFromBriefing(req, res) {
     return res.status(400).json({ error: 'Select at least one source or paste some text' });
   }
 
+  const t0 = Date.now();
+  const tick = (message) => draftLog(`[briefing] +${Date.now() - t0}ms ${message}`);
+  tick(`request received (${sources.length} sources, ${pastedText.length} pasted chars)`);
+  res.on('close', () => tick(`connection closed (reply fully sent: ${res.writableFinished})`));
+
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT id, unique_id, sub_sectors FROM public.projects WHERE id = $1`, [projectId]
@@ -499,6 +715,7 @@ export async function draftIssuesFromBriefing(req, res) {
       loadCustomActionPrompt('draft_issues_from_briefing'),
     ]);
 
+    tick(`source text ready (${briefingText.length} chars), ${issues.length} issues; asking the AI to draft`);
     const results = await draftIssuesFromBriefingNote({
       briefingText,
       issues,
@@ -508,13 +725,30 @@ export async function draftIssuesFromBriefing(req, res) {
       customPrompt,
       provider: req.body.provider ?? null,
     });
+    tick(`AI draft finished (${results.length} entries)`);
 
-    const logSource = await describeBriefingSources(sources, project.unique_id, !!pastedText);
-    const { applied } = await applyDraftedIssueResults(projectId, results, { allowNewIssues, issueScope, logSource });
+    // Nothing is saved here: the rows go to the review modal, and only the
+    // ticked ones come back through applyDraftReview.
+    const source = await describeBriefingSources(sources, project.unique_id, !!pastedText);
+    const rows = buildDraftProposal(results, { issues, policiesByIssue, allPolicies, issueScope, allowNewIssues, sourceText: briefingText });
     // Second pass: anything the source says that the notes did not capture, for review
-    const missed = await findMissedPoints({ sourceText: briefingText, results, issues, provider: req.body.provider ?? null });
-    res.json({ applied, missed });
+    // The "possibly missed" check is a second, slow AI call, so it is NOT run here:
+    // the review window opens as soon as the notes are drafted and the page asks
+    // for the check separately (findMissedForDraft below).
+    const missed = [];
+    tick(`proposal built (${rows.length} rows); sending the reply`);
+    const returnedSummary = describeReturnedEntries(results, issues);
+    console.log(`[draftFromBriefing] AI returned ${results.length} entries, ${rows.length} usable rows:`, returnedSummary);
+    res.json({
+      rows,
+      returned: results.length,
+      returned_summary: returnedSummary,
+      issues: issues.map(i => ({ id: i.id, label: i.label })),
+      source: { title: source.label, date: toIsoDate(source.date) },
+      missed,
+    });
   } catch (err) {
+    tick(`ERROR: ${err.message}`);
     console.error('draftingIssues.draftFromBriefing error:', err);
     res.status(500).json({ error: err.message || 'Failed to draft issues from briefing' });
   }
@@ -584,11 +818,18 @@ export async function draftIssuesFromTracker(req, res) {
       provider: req.body.provider ?? null,
     });
 
-    const { applied } = await applyDraftedIssueResults(projectId, results, {
-      allowNewIssues, issueScope, logSource: { label: 'Project Tracker', date: null },
-    });
+    const rows = buildDraftProposal(results, { issues, policiesByIssue, allPolicies, issueScope, allowNewIssues, sourceText: trackerText });
     const missed = await findMissedPoints({ sourceText: trackerText, results, issues, provider: req.body.provider ?? null });
-    res.json({ applied, missed });
+    const returnedSummary = describeReturnedEntries(results, issues);
+    console.log(`[draftFromTracker] AI returned ${results.length} entries, ${rows.length} usable rows:`, returnedSummary);
+    res.json({
+      rows,
+      returned: results.length,
+      returned_summary: returnedSummary,
+      issues: issues.map(i => ({ id: i.id, label: i.label })),
+      source: { title: 'Project Tracker', date: toIsoDate(new Date()) },
+      missed,
+    });
   } catch (err) {
     console.error('draftingIssues.draftFromTracker error:', err);
     res.status(500).json({ error: err.message || 'Failed to draft issues from tracker' });

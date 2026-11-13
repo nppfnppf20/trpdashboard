@@ -681,6 +681,18 @@ NOTES FORMAT (applies to every "argument_for" value, and to the merged "notes" v
 - Write what was said as it was said: keep the specifics (names, numbers, dates, policy references, conditions) rather than generalising them. No bold, other headings or other markdown, no numbering, no em dashes.
 - Keep the discussion bullets and the follow-ups separate. Anything about this issue that is still outstanding goes in its own section at the END of the same string: an action someone has to take, a point needing clarification, something to check or confirm, a question to put to someone, information still awaited. Start that section with a line containing exactly "Outstanding actions / to check:" (after a blank line), then one bullet per item, in the same bullet style, naming who is to do it where the material says. Do not repeat these items in the discussion bullets above. Include an item ONLY if the material explicitly states it as an action, a clarification needed, something to check or a question to ask. Never deduce or infer one: do not add an item because you think something is missing, would be sensible to check, or is implied. If nothing is explicitly outstanding for the issue, leave the section out entirely, header included.`;
 
+// Appended to the briefing draft prompt only (not the tracker one). Lets the
+// model flag changes to the issue LIST itself, but only when the meeting says
+// so outright, with the exact sentence quoted so the reviewer can check it.
+export const ISSUE_CHANGES_BLOCK = `
+
+CHANGES TO THE ISSUE LIST (in addition to the entries above):
+Add one of the entries below ONLY when the briefing explicitly says it in words. Never add one because you think it would make sense, and never infer it. Every one of these entries must include "evidence": the exact sentence or sentences from the briefing that say it, copied word for word. Without that evidence the entry will be discarded.
+- The team renames an existing issue ("let's call that X instead", "change that to X"): { "rename": true, "drafting_issue_id": 42, "new_label": "X", "evidence": "..." }
+- The team combines two or more existing issues into one ("combine those two", "fold A into B"): { "merge": true, "drafting_issue_ids": [42, 43], "suggested_label": "Combined label", "evidence": "..." }
+- The team drops an existing issue ("we won't pursue that one", "take that out"): { "drop": true, "drafting_issue_id": 42, "evidence": "..." }
+Use only ids from the list of existing issues. A rename or merge of existing issues is NOT a new issue, so do not output a "new_issue" entry for it. Still output the normal entry (with its notes) for each affected issue under its existing id. If the briefing does not explicitly do any of this, output none of these entries.`;
+
 // Draft-from-document limits. Source text well beyond a long meeting transcript
 // fits; the output limit is high enough for detailed notes across many issues.
 const DRAFT_SOURCE_CHAR_LIMIT = 200000;
@@ -816,7 +828,7 @@ export async function draftIssuesFromBriefingNote({ briefingText, issues, polici
     model: MODEL_SONNET,
     maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
     stream: true,
-    system: systemPrompt + NOTES_BULLET_FORMAT_BLOCK + ANTI_AI_SLOP_BLOCK,
+    system: systemPrompt + NOTES_BULLET_FORMAT_BLOCK + ISSUE_CHANGES_BLOCK + ANTI_AI_SLOP_BLOCK,
     prompt: userMessage,
   });
 
