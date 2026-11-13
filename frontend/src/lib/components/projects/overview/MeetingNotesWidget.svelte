@@ -258,7 +258,7 @@
         </div>
         <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
       {:else}
-        <textarea class="form-input mnw-paste" bind:value={pasteText} use:formatOnPaste placeholder="Paste the meeting transcript here…" rows="3"></textarea>
+        <textarea class="form-input mnw-paste" bind:value={pasteText} use:formatOnPaste placeholder="Paste the text here…" rows="3"></textarea>
         <!-- Hidden while recording/transcribing: the text isn't complete until the recording is stopped and transcribed -->
         {#if recordState !== 'recording' && recordState !== 'transcribing'}
           <button class="btn btn-primary btn-sm mnw-process-btn" on:click={handOffText} disabled={!pasteText.trim()}>
@@ -284,6 +284,10 @@
                 <span class="mnw-note-sep" aria-hidden="true">·</span>
               {/if}
               <span class="mnw-note-date">{formatDate(n.meeting_date || n.created_at)}</span>
+              {#if n.doc_kind === 'document'}
+                <span class="mnw-note-sep" aria-hidden="true">·</span>
+                <span class="mnw-note-kind" title="Saved as-is, no actions">Saved text</span>
+              {/if}
             </div>
           </div>
           <div class="mnw-note-btns">
@@ -377,7 +381,8 @@
   .mnw-note-title { font-size: 12px; font-weight: 600; color: var(--color-slate-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mnw-note-meta { display: flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 10px; color: var(--color-slate-400); }
   .mnw-note-project { font-weight: 600; color: var(--color-primary-600); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .mnw-note-date, .mnw-note-sep { flex-shrink: 0; }
+  .mnw-note-date, .mnw-note-sep, .mnw-note-kind { flex-shrink: 0; }
+  .mnw-note-kind { font-weight: 600; color: var(--color-slate-500); }
 
   .mnw-note-btns { display: flex; gap: 2px; flex-shrink: 0; }
   .mnw-note-btn {

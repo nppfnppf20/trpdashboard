@@ -29,6 +29,12 @@
 
   $: projectId = project?.id;
 
+  // First thing asked: 'actions' = AI summary + actions/key dates (project or
+  // internal meetings); 'save' = stored as-is, no actions (transcripts/docs kept
+  // as a source). null shows the choice screen.
+  let mode = null;
+  let reviewIsDoc = false; // the saved item was "Just save it" — review hides the action sections
+
   let inputTab = initialFile ? 'upload' : 'paste';
   let uploadFile = initialFile;
   let pasteText = initialText || '';
@@ -172,6 +178,7 @@
         meeting_date: transcript.meeting_date,
         attendees_text: transcript.attendees_text,
       };
+      reviewIsDoc = false;
       reviewActions = toEditableActions(suggestedActions);
       reviewActionsDirty = false;
       reviewUpdates = toEditableUpdates(actionUpdates);
@@ -202,8 +209,8 @@
     if (inputTab === 'upload' && !uploadFile) { error = 'Please select a file to upload.'; return; }
     if (inputTab === 'paste' && !pasteText.trim()) { error = 'Please paste the transcript text.'; return; }
 
-    const defaultTitle = inputTab === 'upload' ? uploadFile.name.replace(/\.[^.]+$/, '') : 'Meeting Notes';
-    const title = prompt('Title this meeting note:', defaultTitle);
+    const defaultTitle = inputTab === 'upload' ? uploadFile.name.replace(/\.[^.]+$/, '') : 'Saved text';
+    const title = prompt('Title this item:', defaultTitle);
     if (!title?.trim()) return;
 
     processing = true;
@@ -222,6 +229,7 @@
         meeting_date: result.transcript.meeting_date,
         attendees_text: result.transcript.attendees_text,
       };
+      reviewIsDoc = true;
       reviewActions = [];
       reviewActionsDirty = false;
       reviewUpdates = [];
@@ -319,8 +327,8 @@
             {#if reviewTranscript.attendees_text} &bull; {reviewTranscript.attendees_text}{/if}
           </p>
         {:else}
-          <h2 class="mnp-title">Summarise Meeting</h2>
-          <p class="mnp-meta">Processed here on the Overview page — no need to open the full Meeting Notes page.</p>
+          <h2 class="mnp-title">Add to project</h2>
+          <p class="mnp-meta">{mode ? (mode === 'actions' ? 'Summarise with actions' : 'Just save it') : 'What do you want to do with this?'}</p>
         {/if}
       </div>
       <button class="btn btn-icon btn-ghost mnp-close-btn" on:click={handleClose} disabled={processing || reviewSaving} title="Close" aria-label="Close">
@@ -328,7 +336,29 @@
       </button>
     </div>
 
-    {#if !reviewTranscript}
+    {#if !reviewTranscript && !mode}
+      <!-- ── Step 1: what is this? ── -->
+      <div class="mnp-body">
+        <button class="mnp-choice" on:click={() => mode = 'actions'}>
+          <i class="las la-magic mnp-choice-icon"></i>
+          <span>
+            <span class="mnp-choice-title">Summarise with actions</span>
+            <span class="mnp-choice-sub">For project or internal meetings with actions.</span>
+          </span>
+        </button>
+        <button class="mnp-choice" on:click={() => mode = 'save'}>
+          <i class="las la-save mnp-choice-icon"></i>
+          <span>
+            <span class="mnp-choice-title">Just save it</span>
+            <span class="mnp-choice-sub">Stored as-is, no actions. For transcripts and documents you want to keep as a source.</span>
+          </span>
+        </button>
+      </div>
+      <div class="mnp-footer">
+        <button class="btn btn-secondary btn-sm" on:click={handleClose}>Cancel</button>
+      </div>
+
+    {:else if !reviewTranscript}
       <!-- ── Upload / options form ── -->
       <div class="mnp-body">
         <div class="mnp-input-tabs">
@@ -365,10 +395,10 @@
           </div>
           <input bind:this={fileInput} type="file" accept=".pdf,.docx,.txt" style="display:none" on:change={handleFileChange} />
         {:else}
-          <textarea class="form-input mnp-paste" bind:value={pasteText} placeholder="Paste the meeting transcript here…" rows="4"></textarea>
+          <textarea class="form-input mnp-paste" bind:value={pasteText} placeholder="Paste the text here…" rows="4"></textarea>
         {/if}
 
-        {#if multiProject}
+        {#if multiProject && mode === 'actions'}
           <div class="form-group">
             <label>Also applies to</label>
             <MultiSelectDropdown
@@ -383,12 +413,14 @@
           </label>
         {/if}
 
+        {#if mode === 'actions'}
         <button class="btn btn-ghost btn-sm mnp-extras-toggle" on:click={() => showExtras = !showExtras}>
           <i class="las la-{showExtras ? 'angle-up' : 'angle-right'}"></i>
           {showExtras ? 'Hide' : 'Show'} options
           {#if !showExtras}<span class="mnp-options-summary">· {summaryTypeLabel} summary · {providerLabel}</span>{/if}
         </button>
-        {#if showExtras}
+        {/if}
+        {#if showExtras && mode === 'actions'}
           <div class="mnp-type-row">
             <span class="mnp-type-label">Summary</span>
             <button class="btn btn-sm" class:btn-primary={summaryType === 'brief'} class:btn-secondary={summaryType !== 'brief'} on:click={() => summaryType = 'brief'}>Brief <span class="mnp-type-sub">· 1 page</span></button>
@@ -426,21 +458,23 @@
       </div>
 
       <div class="mnp-footer">
-        {#if !multiProject}
-          <label class="mnp-date-field" title="The date of this note or document, used by Save Verbatim. Leave blank for today.">
+        {#if mode === 'save'}
+          <label class="mnp-date-field" title="The date of this note or document. Leave blank for today.">
             <span>Date</span>
-            <input type="date" class="form-input" bind:value={meetingDate} aria-label="Date of this note or document, for Save Verbatim" />
+            <input type="date" class="form-input" bind:value={meetingDate} aria-label="Date of this note or document" />
           </label>
         {/if}
+        <button class="btn btn-ghost btn-sm" on:click={() => { mode = null; error = null; }} disabled={processing}>Back</button>
         <button class="btn btn-secondary btn-sm" on:click={handleClose} disabled={processing}>Cancel</button>
-        {#if !multiProject}
-          <button class="btn btn-secondary mnp-process-btn" on:click={saveVerbatim} disabled={processing} title="Save the text as-is, no AI summary">
-            {#if processing}<span class="mnp-spinner-dark"></span> Saving…{:else}<i class="las la-save"></i> Save Verbatim{/if}
+        {#if mode === 'save'}
+          <button class="btn btn-primary mnp-process-btn" on:click={saveVerbatim} disabled={processing}>
+            {#if processing}<span class="mnp-spinner"></span> Saving…{:else}<i class="las la-save"></i> Save{/if}
+          </button>
+        {:else}
+          <button class="btn btn-primary mnp-process-btn" on:click={submitUpload} disabled={processing}>
+            {#if processing}<span class="mnp-spinner"></span> Processing…{:else}<i class="las la-magic"></i> Process{/if}
           </button>
         {/if}
-        <button class="btn btn-primary mnp-process-btn" on:click={submitUpload} disabled={processing}>
-          {#if processing}<span class="mnp-spinner"></span> Processing…{:else}<i class="las la-magic"></i> Process{/if}
-        </button>
       </div>
 
     {:else if !reviewSaved}
@@ -481,9 +515,10 @@
             </section>
           {/if}
         <section>
-          <h3 class="mnp-review-section-title">Meeting Notes</h3>
-          <RichTextEditor bind:this={reviewEditor} content={reviewSummaryHtml} placeholder="Meeting summary…" fullHeight={false} />
+          <h3 class="mnp-review-section-title">{reviewIsDoc ? 'Saved text' : 'Meeting Notes'}</h3>
+          <RichTextEditor bind:this={reviewEditor} content={reviewSummaryHtml} placeholder={reviewIsDoc ? 'Saved text…' : 'Meeting summary…'} fullHeight={false} />
         </section>
+        {#if !reviewIsDoc}
         <section>
           <h3 class="mnp-review-section-title">Actions</h3>
           <SuggestedActionsEditor bind:actions={reviewActions} bind:dirty={reviewActionsDirty} bind:missingOwner={reviewMissingOwner} />
@@ -492,6 +527,7 @@
           <h3 class="mnp-review-section-title">Open actions mentioned in this meeting</h3>
           <ActionUpdatesEditor bind:updates={reviewUpdates} bind:dirty={reviewUpdatesDirty} />
         </section>
+        {/if}
         {#if reviewUpdates.length}
           <label class="mnp-review-include">
             <input type="checkbox" bind:checked={reviewIncludeInSummary} />
@@ -584,6 +620,16 @@
   .mnp-save-hint { display: flex; align-items: center; gap: 0.3rem; margin-right: auto; font-size: 0.8rem; color: var(--color-amber-800); }
   .mnp-date-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
   .mnp-review-section-title { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--color-slate-800); }
+
+  .mnp-choice {
+    display: flex; align-items: center; gap: 0.9rem; width: 100%;
+    padding: 0.9rem 1rem; text-align: left; font-family: inherit; cursor: pointer;
+    border: 1px solid var(--color-slate-200); border-radius: var(--radius-md); background: var(--color-white);
+  }
+  .mnp-choice:hover { border-color: var(--color-primary-200); background: var(--color-primary-50); }
+  .mnp-choice-icon { font-size: 1.5rem; color: var(--color-primary-600); flex-shrink: 0; }
+  .mnp-choice-title { display: block; font-size: 0.9rem; font-weight: 600; color: var(--color-slate-800); }
+  .mnp-choice-sub { display: block; font-size: 0.8rem; color: var(--color-slate-500); margin-top: 0.15rem; }
 
   .mnp-date-field { display: flex; align-items: center; gap: 0.4rem; margin-right: auto; font-size: 0.8rem; color: var(--color-slate-600); }
   .mnp-date-field input { width: auto; }

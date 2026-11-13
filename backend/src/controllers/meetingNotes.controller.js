@@ -54,8 +54,8 @@ export async function saveVerbatimMeetingNote(req, res) {
       // just saved). Editable afterward like any other note.
       const { rows: [transcript] } = await client.query(
         `INSERT INTO planning_applications.meeting_transcripts
-           (project_id, title, meeting_date, file_name, transcript_text)
-         VALUES ($1, $2, COALESCE($5::date, CURRENT_DATE), $3, $4) RETURNING *`,
+           (project_id, title, meeting_date, file_name, transcript_text, doc_kind)
+         VALUES ($1, $2, COALESCE($5::date, CURRENT_DATE), $3, $4, 'document') RETURNING *`,
         [projectId, title.trim(), fileName, text, meetingDate]
       );
 
@@ -308,7 +308,7 @@ export async function getMeetingNotes(req, res) {
   try {
     const { rows } = await pool.query(
       `SELECT
-         t.id, t.title, t.meeting_date, t.attendees_text, t.file_name, t.created_at,
+         t.id, t.title, t.meeting_date, t.attendees_text, t.file_name, t.created_at, t.doc_kind,
          s.id AS summary_id, s.summary_html,
          COUNT(a.id) FILTER (WHERE a.status = 'pending')  AS pending_count,
          COUNT(a.id) FILTER (WHERE a.status = 'complete') AS complete_count
@@ -316,7 +316,7 @@ export async function getMeetingNotes(req, res) {
        LEFT JOIN planning_applications.meeting_summaries s ON s.transcript_id = t.id
        LEFT JOIN planning_applications.meeting_actions   a ON a.transcript_id = t.id
        WHERE t.project_id = $1
-       GROUP BY t.id, t.title, t.meeting_date, t.attendees_text, t.file_name, t.created_at,
+       GROUP BY t.id, t.title, t.meeting_date, t.attendees_text, t.file_name, t.created_at, t.doc_kind,
                 s.id, s.summary_html
        ORDER BY t.meeting_date DESC NULLS LAST, t.created_at DESC`,
       [projectId]
