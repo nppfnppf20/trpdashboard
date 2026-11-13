@@ -360,9 +360,23 @@
     }
   }
 
-  // Live title of a sub-issue's new parent (follows edits to the parent's title box).
-  function newParentTitle(p, list) {
-    return list.find(q => q._key === p.parent_key)?.title || p.parent_new_title || 'a new issue';
+  // A new sub-issue's parent is either an existing issue (issue_id) or another
+  // new issue in this batch (parent_key). The dropdown encodes both as one value.
+  function parentSelectValue(p) {
+    if (p.issue_id) return `issue:${p.issue_id}`;
+    if (p.parent_key != null) return `new:${p.parent_key}`;
+    return '';
+  }
+
+  function setSubIssueParent(p, value) {
+    if (value.startsWith('issue:')) {
+      p.issue_id = parseInt(value.slice(6), 10);
+      p.parent_key = null;
+    } else if (value.startsWith('new:')) {
+      p.issue_id = null;
+      p.parent_key = parseInt(value.slice(4), 10);
+    }
+    proposals = proposals;
   }
 
   async function runDraft() {
@@ -401,6 +415,8 @@
   async function commitAccepted() {
     const accepted = proposals.filter(p => p.accepted);
     if (!accepted.length) { draftError = 'Tick at least one proposal to save.'; return; }
+    const noParent = accepted.find(p => p.kind === 'new_sub_issue' && !p.issue_id && p.parent_key == null);
+    if (noParent) { draftError = `Choose a parent issue for sub-issue "${noParent.sub_issue_title}".`; return; }
     const orphan = accepted.find(p => p.kind === 'new_sub_issue' && p.parent_key != null && !proposals.find(q => q._key === p.parent_key)?.accepted);
     if (orphan) { draftError = `Sub-issue "${orphan.sub_issue_title}" belongs to a new issue that isn't ticked. Tick that issue too, or untick this sub-issue.`; return; }
     committing = true;
@@ -607,10 +623,24 @@
                         <input class="proposal-title-input" bind:value={p.title} placeholder="Issue title" />
                         <input class="proposal-discipline-input" bind:value={p.discipline} placeholder="Discipline" />
                       {:else if p.kind === 'new_sub_issue'}
-                        <span class="proposal-badge new-sub-issue-badge">New sub-issue of {p.issue_id ? issueTitleById(p.issue_id, mnIssues) : newParentTitle(p, proposals)}</span>
+                        <span class="proposal-badge new-sub-issue-badge">New sub-issue of</span>
+                        <select class="proposal-issue-select" title="Parent issue" value={parentSelectValue(p)} on:change={(e) => setSubIssueParent(p, e.currentTarget.value)}>
+                          {#if parentSelectValue(p) === ''}<option value="" disabled>Choose parent issue…</option>{/if}
+                          {#each proposals.filter(q => q.kind === 'new_issue') as q (q._key)}
+                            <option value={`new:${q._key}`}>New: {q.title || 'Untitled issue'}</option>
+                          {/each}
+                          {#each mnIssues as iss (iss.id)}
+                            <option value={`issue:${iss.id}`}>{iss.title}</option>
+                          {/each}
+                        </select>
                         <input class="proposal-title-input" bind:value={p.sub_issue_title} placeholder="Sub-issue title" />
                       {:else}
-                        <span class="proposal-badge">{issueTitleById(p.issue_id, mnIssues)}</span>
+                        <select class="proposal-issue-select" title="Issue this update belongs to" value={p.issue_id} on:change={(e) => { p.issue_id = parseInt(e.currentTarget.value, 10); proposals = proposals; }}>
+                          {#each mnIssues as iss (iss.id)}
+                            <option value={iss.id}>{iss.title}</option>
+                          {/each}
+                          {#if !mnIssues.some(iss => iss.id === p.issue_id)}<option value={p.issue_id}>{issueTitleById(p.issue_id, mnIssues)}</option>{/if}
+                        </select>
                       {/if}
                     </label>
                     <textarea class="adv-summary-input proposal-summary" rows="2" bind:value={p.summary}></textarea>
@@ -948,6 +978,11 @@
   .proposal-title-input, .proposal-discipline-input {
     font-size: 0.8rem;
     padding: 0.3rem 0.5rem;
+  }
+  .proposal-issue-select {
+    flex: 1; min-width: 8rem; max-width: 100%; padding: 0.3rem 0.5rem;
+    font-size: 0.8rem; font-family: inherit; color: var(--color-slate-800);
+    border: 1px solid var(--color-slate-200); border-radius: var(--radius-sm); background: var(--color-white);
   }
   .proposal-title-input { flex: 1; min-width: 8rem; }
   .proposal-discipline-input { flex: 0 0 8rem; }
