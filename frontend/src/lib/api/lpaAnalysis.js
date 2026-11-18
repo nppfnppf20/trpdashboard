@@ -90,6 +90,21 @@ export async function sortPastedPolicies(projectId, texts) {
   return res.json();
 }
 
+// One big paste containing many policies; the AI finds the boundaries.
+// Returns { results: [{ ok, policy, source_text }] }, one per policy found.
+export async function sortPastedSheet(projectId, text) {
+  const res = await authFetch(`${BASE}/projects/${projectId}/policies/sort-pasted`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to sort pasted policies');
+  }
+  return res.json();
+}
+
 export async function getNationalPolicyPrecedents(projectId) {
   const res = await authFetch(`${BASE}/projects/${projectId}/national-policy-precedents`);
   if (!res.ok) throw new Error('Failed to fetch national policy precedents');

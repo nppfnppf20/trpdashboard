@@ -8,7 +8,7 @@
 
 import { pool } from '../db.js';
 import { parseFile } from '../services/parser.service.js';
-import { sortPastedPolicies as sortPastedPoliciesService } from '../services/pastedPolicies.service.js';
+import { sortPastedSheet as sortPastedSheetService, sortPastedPolicies as sortPastedPoliciesService } from '../services/pastedPolicies.service.js';
 import { analyseLpaDocument, synthesiseLpaAnalysis, extractPoliciesFromDocument } from '../services/llm.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,6 +241,13 @@ export async function extractPolicies(req, res) {
 // check against what was pasted. Nothing is saved here.
 export async function sortPastedPolicies(req, res) {
   try {
+    // One big sheet: the AI finds the policy boundaries itself
+    if (typeof req.body.text === 'string') {
+      const text = req.body.text.trim();
+      if (!text) return res.status(400).json({ error: 'Paste some policy text first' });
+      const results = await sortPastedSheetService(text);
+      return res.json({ results });
+    }
     const texts = Array.isArray(req.body.texts)
       ? req.body.texts.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim())
       : [];

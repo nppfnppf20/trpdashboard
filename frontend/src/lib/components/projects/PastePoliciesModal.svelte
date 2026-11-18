@@ -1,10 +1,10 @@
 <script>
-  // Paste the text of each policy into its own box; the AI sorts it into
+  // Paste one big block containing many policies; the AI splits it into policies and sorts each into
   // reference / name / type / wording / supporting text and the result goes to
   // the parent's review table, where anything that doesn't match what was
   // pasted word for word is flagged. Nothing is saved here.
   import { createEventDispatcher } from 'svelte';
-  import { sortPastedPolicies } from '$lib/api/lpaAnalysis.js';
+  import { sortPastedSheet } from '$lib/api/lpaAnalysis.js';
   import { formatOnPaste } from '$lib/utils/policyFormat.js';
 
   export let projectId;
@@ -13,11 +13,7 @@
 
   const dispatch = createEventDispatcher();
 
-  const BATCH = 3;
-  let nextKey = 0;
-  const newBox = () => ({ key: nextKey++, text: '', error: null });
-  let boxes = Array.from({ length: BATCH }, newBox);
-  let sorted = []; // rows already sorted by earlier runs of this dialog
+  let text = '';
   let sorting = false;
   let error = null;
 
@@ -27,14 +23,6 @@
     policy_text: 'policy text',
     relevant_supporting_text: 'supporting text'
   };
-
-  function addBoxes() {
-    boxes = [...boxes, ...Array.from({ length: BATCH }, newBox)];
-  }
-
-  function removeBox(key) {
-    boxes = boxes.filter(b => b.key !== key);
-  }
 
   function toRow(result) {
     const p = result.policy;
@@ -56,42 +44,20 @@
     };
   }
 
-  function finish() {
-    const rows = sorted;
-    const flagged = rows.filter(r => r.verbatim_issues.length).length;
-    dispatch('review', {
-      rows,
-      warning: flagged
-        ? `${flagged} of ${rows.length} polic${rows.length === 1 ? 'y has' : 'ies have'} wording that doesn't match what you pasted word for word. Check the flagged rows against the original before saving.`
-        : null
-    });
-  }
-
   async function runSort() {
-    const filled = boxes.filter(b => b.text.trim());
-    if (!filled.length) { error = 'Paste the text of at least one policy'; return; }
+    if (!text.trim()) { error = 'Paste the policy text first'; return; }
     sorting = true;
     error = null;
     try {
-      const { results } = await sortPastedPolicies(projectId, filled.map(b => b.text));
-      const failedKeys = new Set();
-      results.forEach((r, i) => {
-        const box = filled[i];
-        if (r.ok) {
-          sorted = [...sorted, toRow(r)];
-        } else {
-          box.error = r.error;
-          failedKeys.add(box.key);
-        }
+      const { results } = await sortPastedSheet(projectId, text);
+      const rows = results.filter(r => r.ok).map(toRow);
+      const flagged = rows.filter(r => r.verbatim_issues.length).length;
+      dispatch('review', {
+        rows,
+        warning: flagged
+          ? `${flagged} of ${rows.length} polic${rows.length === 1 ? 'y has' : 'ies have'} wording that doesn't match what you pasted word for word. Check the flagged rows against the original before saving.`
+          : null
       });
-      // Boxes that sorted are done; failed ones stay (with their error) so the
-      // text isn't lost, and empty ones are dropped.
-      boxes = boxes.filter(b => failedKeys.has(b.key));
-      if (!failedKeys.size) {
-        finish();
-      } else {
-        error = `${results.length - failedKeys.size} of ${results.length} sorted. The rest couldn't be sorted (see below): fix and retry, or review the ones that worked.`;
-      }
     } catch (err) {
       error = err.message;
     } finally {
@@ -109,50 +75,23 @@
 
     <div class="dialog-body">
       <p class="dialog-hint">
-        Copy and paste the text of <strong>one policy per box</strong>, however it comes (reference, title, wording, supporting text together).
-        The AI sorts it into the right fields without rewording it, then checks each field against what you pasted and flags anything that differs.
+        Paste <strong>everything in one go</strong>: as many policies as you like, with their supporting text, however it comes.
+        The AI works out where each policy starts and ends and sorts each into the right fields without rewording it, then checks every field against what you pasted and flags anything that differs.
         You review and edit everything before anything is saved.
       </p>
 
-      {#each boxes as box, i (box.key)}
-        <div class="paste-box">
-          <div class="paste-box-head">
-            <span class="badge badge-sm badge-info">#{sorted.length + i + 1}</span>
-            {#if boxes.length > 1}
-              <button class="btn btn-danger-ghost btn-icon" on:click={() => removeBox(box.key)} title="Remove this box" aria-label="Remove this box" disabled={sorting}>
-                <i class="las la-times"></i>
-              </button>
-            {/if}
-          </div>
-          <textarea class="form-input" rows="6" bind:value={box.text} use:formatOnPaste disabled={sorting}
-            placeholder="Paste one policy here, e.g. “Policy H1: Housing Mix. Development should provide…”"></textarea>
-          {#if box.error}<div class="alert alert-error">{box.error}</div>{/if}
-        </div>
-      {/each}
-
-      <button class="btn btn-secondary btn-sm" on:click={addBoxes} disabled={sorting}>
-        <i class="las la-plus-circle"></i> Add {BATCH} more
-      </button>
+      <textarea class="form-input" rows="18" bind:value={text} use:formatOnPaste disabled={sorting}
+        placeholder="Paste the policies here, e.g. “Policy H1: Housing Mix. Development should provide… Policy H2: …”"></textarea>
 
       {#if error}<div class="alert alert-error">{error}</div>{/if}
     </div>
 
     <div class="dialog-footer">
-      <span class="dialog-meta">
-        {sorted.length ? `${sorted.length} sorted so far · ` : ''}{boxes.filter(b => b.text.trim()).length} to sort · Nothing is saved until you review
-      </span>
+      <span class="dialog-meta">Nothing is saved until you review</span>
       <div class="dialog-actions">
         <button class="btn btn-secondary" on:click={() => dispatch('close')} disabled={sorting}>Cancel</button>
-        {#if sorted.length}
-          <button class="btn btn-secondary" on:click={finish} disabled={sorting}>Review {sorted.length} sorted</button>
-        {/if}
-        <button class="btn btn-primary" on:click={runSort} disabled={sorting}>{sorting ? 'Sorting…' : 'Sort into fields'}</button>
+        <button class="btn btn-primary" on:click={runSort} disabled={sorting}>{sorting ? 'Sorting…' : 'Split & sort into fields'}</button>
       </div>
     </div>
   </div>
 </div>
-
-<style>
-  .paste-box { display: flex; flex-direction: column; gap: var(--space-2); }
-  .paste-box-head { display: flex; align-items: center; justify-content: space-between; }
-</style>

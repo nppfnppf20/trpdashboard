@@ -81,6 +81,95 @@ async function sortOne(text, provider) {
   };
 }
 
+// ── One big sheet: the AI finds the policy boundaries itself ────────────────
+const MAX_SHEET_CHARS = 60000;
+
+const SHEET_SYSTEM = `You are a specialist planning consultant. The user has copied and pasted a large block of text that contains SEVERAL planning policies (from one or more plans or guidance documents), possibly with headings, page furniture and supporting text between them. Find each separate policy and sort it into the fields below.
+
+VERBATIM RULE, the most important instruction: every field must be copied WORD-FOR-WORD from the pasted text, exactly as given, including punctuation, capitalisation, numbering and clause labels such as (a), (b), (i). Do not paraphrase, summarise, correct, reformat, renumber or invent wording. Do not add anything that is not in the pasted text.
+
+Rules for splitting:
+- A new policy starts at its own reference/heading (e.g. "Policy H1", "DM12", "Paragraph 11"). Do not merge two policies, and do not split one policy's sub-clauses into separate policies.
+- Return policies in the order they appear.
+- Supporting or explanatory text that follows a policy belongs to that policy's relevant_supporting_text.
+- Ignore obvious page furniture (page numbers, running headers/footers) that is not part of any policy.
+
+Fields for each policy:
+- policy_reference: the policy's own reference/number as printed. Empty string if none.
+- policy_name: the policy's title/heading as printed. Empty string if none.
+- policy_type: one of "national", "local", "neighbourhood", "supplementary", "other". NPPF paragraphs are "national"; a Neighbourhood Plan policy is "neighbourhood"; design guides and SPDs are "supplementary". If unsure use "local".
+- policy_text: the operative policy wording, copied in full.
+- relevant_supporting_text: supporting/reasoned justification, explanatory text or footnotes belonging to this policy. Empty string if none.
+
+Never use an em dash in anything you write yourself; the copied fields stay exactly as pasted.
+
+Respond with JSON only, no markdown, no explanation:
+{ "policies": [ { "policy_reference": string, "policy_name": string, "policy_type": string, "policy_text": string, "relevant_supporting_text": string } ] }`;
+
+// Finds where a policy begins in the paste so its row can show just its own
+// slice of the original. Returns -1 if it can't be located.
+function locateStart(p, source) {
+  const lower = source.toLowerCase();
+  for (const field of [p.policy_reference, p.policy_name, p.policy_text]) {
+    const probe = (field || '').trim().slice(0, 60).toLowerCase();
+    if (probe.length < 3) continue;
+    const idx = lower.indexOf(probe);
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+/**
+ * @param {string} text - one big paste containing many policies
+ * @returns {Promise<Array<{ok: true, policy: object, source_text: string}>>} one result per policy found
+ */
+export async function sortPastedSheet(text, provider = null) {
+  if (text.length > MAX_SHEET_CHARS) {
+    throw new Error(`Too long (over ${MAX_SHEET_CHARS.toLocaleString()} characters): paste fewer policies at a time`);
+  }
+  const resolved = await resolveProvider('policy_paste_sort', provider);
+  const raw = await callLLM({ provider: resolved, system: SHEET_SYSTEM, prompt: `Pasted text:\n\n${text}`, maxTokens: 32000, stream: true, jsonMode: true });
+  const parsed = parseJSON(raw);
+  const list = Array.isArray(parsed?.policies) ? parsed.policies : null;
+  if (!list) throw new Error('Unexpected response from the AI');
+
+  const str = v => (typeof v === 'string' ? v.trim() : '');
+  const policies = list
+    .map(p => ({
+      policy_reference: str(p.policy_reference),
+      policy_name: str(p.policy_name),
+      policy_type: TYPES.has(p.policy_type) ? p.policy_type : 'local',
+      policy_text: str(p.policy_text),
+      relevant_supporting_text: str(p.relevant_supporting_text),
+    }))
+    .filter(p => p.policy_text || p.policy_name);
+  if (!policies.length) throw new Error('Could not find any policy wording in that text');
+
+  // Each row's "original" is its own slice of the paste: from where it starts
+  // to where the next located policy starts.
+  const starts = policies.map(p => locateStart(p, text));
+  return policies.map((policy, i) => {
+    let source_text = text;
+    if (starts[i] !== -1) {
+      const next = starts.slice(i + 1).find(s => s > starts[i]);
+      source_text = text.slice(starts[i], next ?? text.length).trim();
+    }
+    return {
+      ok: true,
+      policy: {
+        ...policy,
+        _verbatim: {
+          policy_reference: checkPasted(policy.policy_reference, text),
+          policy_name: checkPasted(policy.policy_name, text),
+          policy_text: checkPasted(policy.policy_text, text),
+          relevant_supporting_text: checkPasted(policy.relevant_supporting_text, text),
+        },
+      },
+      source_text,
+    };
+  });
+}
+
 /**
  * @param {string[]} texts - one pasted block per policy
  * @param {string|null} provider
