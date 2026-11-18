@@ -12,7 +12,8 @@
   /** Sources ticked when the session was last saved (same shape the picker emits); null for a new document. */
   export let initialSources = null;
 
-  const CONTEXT_BUDGET = 200000;
+  // Create's own budget; keep in step with CREATE_CONTEXT_BUDGET in backend createChat.service.js.
+  const CONTEXT_BUDGET = 400000;
   const dispatch = createEventDispatcher();
 
   // Not offered here, same as Project Chat ('documents' is being phased out).

@@ -297,6 +297,11 @@
 
 <div class="rich-text-editor" class:full-height={fullHeight}>
   <div class="toolbar">
+    <!-- Optional caller-supplied controls at the start of the toolbar (renders nothing when unused). -->
+    {#if $$slots['toolbar-start']}
+      <div class="toolbar-group"><slot name="toolbar-start" /></div>
+      <div class="toolbar-divider"></div>
+    {/if}
     <div class="toolbar-group">
       <button
         class="toolbar-btn"

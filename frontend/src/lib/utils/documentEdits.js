@@ -13,6 +13,9 @@
 //   { op: 'delete',       find: 'exact existing text' }
 //   { op: 'insert_after', anchor: 'exact existing text', html: '<p>…</p>' }
 //   { op: 'italic',       find: 'exact existing text' }      same words, made italic
+//   { op: 'restyle',      find: 'exact text in the block', as: 'p' | 'p-bold' | 'h2' | 'h3' | 'h4' }
+//                         same words, the block changed to another kind (e.g. an h3
+//                         turned into a bold paragraph label); paragraphs and headings only
 //   { op: 'blockquote',   find: 'exact quotation text' }     same words, moved onto
 //                         its own indented italic line (ordinary paragraphs only)
 //
@@ -41,7 +44,10 @@ import {
 } from './draftParagraphs.js';
 
 const LEAF_BLOCK_SELECTOR = 'p, li, td, th, h1, h2, h3, h4, h5, h6, blockquote, caption, div';
-const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote']);
+const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote', 'restyle']);
+// restyle targets: the tag the block becomes ('p-bold' = a paragraph that is all bold).
+const RESTYLE_TARGETS = { p: 'P', 'p-bold': 'P', h2: 'H2', h3: 'H3', h4: 'H4' };
+const HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 const STRUCTURE_TAGS =['table', 'tr', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'];
 
 function parseWrapped(html) {
@@ -282,6 +288,29 @@ function applyBlockquote(doc, entry, start, end) {
   return true;
 }
 
+// Changes a paragraph or heading into another kind of block without retyping it:
+// the same child nodes (words, bold, links) move into the new element.
+// Returns false when it would change nothing.
+function applyRestyle(doc, block, to) {
+  const bold = to === 'p-bold';
+  const tag = RESTYLE_TARGETS[to];
+  const alreadyBold = block.children.length === 1 && block.firstElementChild.tagName === 'STRONG'
+    && block.textContent.trim() === block.firstElementChild.textContent.trim();
+  if (block.tagName === tag && (!bold || alreadyBold)) return false;
+  const el = doc.createElement(tag.toLowerCase());
+  el.className = PENDING_CLASS;
+  const kids = [...block.childNodes];
+  if (bold && !alreadyBold) {
+    const strong = doc.createElement('strong');
+    strong.append(...kids);
+    el.append(strong);
+  } else {
+    el.append(...kids);
+  }
+  block.replaceWith(el);
+  return true;
+}
+
 function insertAfterBlock(doc, block, fragmentHtml) {
   const tpl = doc.createElement('template');
   tpl.innerHTML = fragmentHtml;
@@ -327,6 +356,7 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
   const rejected = [];
   const textEdits = [];
   const inserts = [];
+  const restyles = [];
 
   for (const edit of Array.isArray(edits) ? edits : []) {
     const reject = reason => rejected.push({ edit, reason });
@@ -350,6 +380,17 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
     if (op === 'insert_after') {
       if (!String(edit.html ?? '').trim()) { reject('nothing to insert'); continue; }
       inserts.push({ edit, block: match.entry.block });
+      continue;
+    }
+
+    if (op === 'restyle') {
+      const block = match.entry.block;
+      if (!RESTYLE_TARGETS[edit.as]) { reject('restyle needs "as" to be one of p, p-bold, h2, h3, h4'); continue; }
+      if (!/^(P|H[1-6])$/.test(block.tagName) || block.closest('li, td, th, blockquote')) {
+        reject(`"${snippet(rawNeedle)}" is not an ordinary paragraph or heading, so its style cannot be changed`);
+        continue;
+      }
+      restyles.push({ block, to: edit.as, edit });
       continue;
     }
 
@@ -404,11 +445,22 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
     insertsApplied++;
   }
 
+  // Restyles go last: they replace a block element that the edits and inserts above
+  // may still refer to. Counted separately because they legitimately change heading counts.
+  let restylesApplied = 0;
+  const restyled = new Set();
+  for (const r of restyles) {
+    if (!r.block.isConnected || restyled.has(r.block)) continue;
+    restyled.add(r.block);
+    if (applyRestyle(doc, r.block, r.to)) { applied++; restylesApplied++; }
+  }
+
   // Safety net: text edits can never change the document's structure, and an
   // insert can only add to it. Anything else means a bug — refuse the batch
   // rather than hand back a document with missing tables or rows.
   const after = countStructure(root);
   for (const tag of STRUCTURE_TAGS) {
+    if (restylesApplied && HEADING_TAGS.includes(tag)) continue; // a restyle may change heading counts
     const broken = insertsApplied === 0 ? after[tag] !== before[tag] : after[tag] < before[tag];
     if (broken) {
       return {

@@ -16,6 +16,10 @@
 import { noEmDash, HOUSE_STYLE_BLOCK, ANTI_AI_SLOP_BLOCK } from './llm.shared.js';
 
 export const CREATE_CHAT_MAX_TOKENS = 16000;
+// Context budget for the Create card, in characters (~100k tokens, about a tenth of the
+// model's window). Its own figure, deliberately not the 200k Project Chat uses. Keep in step
+// with CONTEXT_BUDGET in frontend CreateSourcePicker.svelte, which draws the meter.
+export const CREATE_CONTEXT_BUDGET = 400000;
 // Same cap other style-example blocks use, so a very long example can't eat the context budget.
 export const EXAMPLE_MAX_CHARS = 12000;
 // Prompts attached from imported material (the prompt that produced the text).
@@ -60,7 +64,8 @@ export const editDocumentTool = {
         items: {
           type: 'object',
           properties: {
-            op: { type: 'string', enum: ['replace', 'delete', 'insert_after', 'italic', 'blockquote'] },
+            op: { type: 'string', enum: ['replace', 'delete', 'insert_after', 'italic', 'blockquote', 'restyle'] },
+            as: { type: 'string', enum: ['p', 'p-bold', 'h2', 'h3', 'h4'], description: 'restyle: what the block becomes. p = ordinary paragraph, p-bold = paragraph that is all bold (a bold label), h2/h3/h4 = heading of that level.' },
             find: { type: 'string', description: 'replace/delete/italic/blockquote: exact existing text, plain text (no HTML), from inside ONE paragraph, list item or table cell. For italic and blockquote it is the quoted words only.' },
             replace: { type: 'string', description: 'replace: the new text, plain text with no HTML tags.' },
             anchor: { type: 'string', description: 'insert_after: exact existing text just before where the new content goes, plain text, inside ONE paragraph, list item or table cell.' },
@@ -87,6 +92,7 @@ const EDIT_RULES = `Rules for edit_document:
 - To add a paragraph, heading, list item or table row use insert_after, with the anchor being existing text just before where it should go.
 - To delete a whole paragraph, "find" its full text exactly.
 - To change formatting without changing the words, NEVER use replace with identical text (it is rejected). Use: op "italic" with "find" = the exact words to make italic (short quotations that stay in their sentence); op "blockquote" with "find" = the exact quotation (more than about 25 words) to move onto its own indented italic line, which splits the paragraph around it. Use "italic" instead of "blockquote" inside lists and table cells. Do this for every quotation in the document, copying each quotation's text exactly as it appears; skip any that are already italic.
+- To change what KIND of block a paragraph or heading is without changing its words (for example an h3 heading that should be a bold paragraph label, an h3 that should be h2, or a paragraph that should become a heading), use op "restyle" with "find" = the block's exact text (the heading text is enough) and "as" = "p", "p-bold", "h2", "h3" or "h4". It keeps the text and its inline formatting. Do this instead of a full rewrite or a replace with identical text. It does not apply to list items or table cells.
 - Never retype, summarise, reorder or restructure a table. Edit the text in individual cells, or insert a whole new <tr>.
 - Several edits in one call are fine. Every edit must be necessary for what the user asked.`;
 
@@ -132,7 +138,7 @@ export function buildCreateSystemPrompt({
     : `\n\n## Sources\nNo project sources are selected. Write only from what the user tells you in this conversation. Do not invent project-specific facts; where one is needed, put [SOURCE REQUIRED: what is missing] in its place. If the user would clearly be better served by ticking sources, say so briefly.`;
 
   const selectionSection = selection?.quoted_text?.trim()
-    ? `\n\n## Highlighted passage\nThe user has highlighted this passage in the document:\n<highlighted>\n${selection.quoted_text.trim()}\n</highlighted>\nTheir message most likely refers to it. Keep your edits within it unless they clearly ask for something wider.`
+    ? `\n\n## Highlighted passage\nThe user has highlighted a passage of the document, and it is repeated at the end of their message in <highlighted_passage> tags. Their request is about that passage: act on it, and do not edit other parts of the document unless they clearly ask for something wider. Never say you cannot see what is highlighted. It is there, and it also appears in the current document.\n<highlighted>\n${selection.quoted_text.trim()}\n</highlighted>`
     : '';
 
   const importsSection = imports.length
@@ -168,7 +174,8 @@ function cleanHtml(raw) {
   return noEmDash(String(raw ?? '').trim().replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
-const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote']);
+const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote', 'restyle']);
+const RESTYLE_AS = new Set(['p', 'p-bold', 'h2', 'h3', 'h4']);
 
 function cleanEdits(raw) {
   let list = raw;
@@ -181,6 +188,7 @@ function cleanEdits(raw) {
     .filter(e => e && VALID_OPS.has(e.op))
     .map(e => {
       if (e.op === 'replace') return { op: 'replace', find: str(e.find), replace: noEmDash(str(e.replace)) };
+      if (e.op === 'restyle') return { op: 'restyle', find: str(e.find), as: RESTYLE_AS.has(e.as) ? e.as : '' };
       if (e.op === 'delete' || e.op === 'italic' || e.op === 'blockquote') return { op: e.op, find: str(e.find) };
       return { op: 'insert_after', anchor: str(e.anchor), html: cleanHtml(e.html) };
     })

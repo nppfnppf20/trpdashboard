@@ -248,6 +248,15 @@
     editor?.clearSelectionHighlight();
   }
 
+  // Manual edit mode (pencil in the editor toolbar). Off: highlighting text points
+  // the next chat message at it. On: highlighting behaves as in any text editor
+  // (select and delete, type over, drag), and nothing is sent to the AI.
+  let editMode = false;
+  function toggleEditMode() {
+    editMode = !editMode;
+    if (editMode) clearSelection();
+  }
+
   function showPending(next, originalHtml, warnings) {
     setDocument(next);
     dirty = true;
@@ -517,12 +526,24 @@
       <RichTextEditor
         bind:this={editor}
         content={initialHtml}
-        enableSelectionPopup={true}
+        enableSelectionPopup={!editMode}
         highlightBracketPlaceholders
         placeholder="Your document will appear here. Tell the AI what to write, or paste or type your own."
         on:change={onEditorChange}
         on:textselected={handleTextSelected}
-      />
+      >
+        <button
+          slot="toolbar-start"
+          type="button"
+          class="cd-pencil"
+          class:cd-pencil--on={editMode}
+          aria-pressed={editMode}
+          on:click={toggleEditMode}
+          title={editMode ? 'Edit mode is on: highlighting text does not go to the AI. Click to turn off.' : 'Edit by hand: turn off highlight-to-AI so you can select, delete and retype as normal'}
+        >
+          <i class="las la-pencil-alt"></i>
+        </button>
+      </RichTextEditor>
     </section>
 
     <section class="cd-chat">
@@ -841,6 +862,30 @@
     cursor: pointer;
   }
   .cd-chip button:hover { color: var(--color-slate-700); }
+
+  /* Edit-by-hand toggle, styled to match the editor's own toolbar buttons. */
+  .cd-pencil {
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-slate-300);
+    background: var(--color-white);
+    color: var(--color-slate-600);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .cd-pencil:hover { background: var(--color-slate-100); }
+  /* On: solid, so it cannot be mistaken for the off state. */
+  .cd-pencil--on {
+    background: var(--color-primary-600);
+    border-color: var(--color-primary-600);
+    color: var(--color-white);
+  }
+  .cd-pencil--on:hover { background: var(--color-primary-700); }
+  .cd-pencil i { font-size: 1.125rem; }
 
   .cd-selection {
     display: flex;

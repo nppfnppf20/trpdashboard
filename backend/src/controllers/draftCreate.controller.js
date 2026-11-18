@@ -8,10 +8,10 @@
 
 import { pool } from '../db.js';
 import { callLLM, resolveProvider, noEmDash, HOUSE_STYLE_BLOCK, ANTI_AI_SLOP_BLOCK, client, MODEL_SONNET } from '../services/llm.shared.js';
-import { assembleContext, CONTEXT_BUDGET, getChatUserContext } from '../services/projectChat.service.js';
+import { assembleContext, getChatUserContext } from '../services/projectChat.service.js';
 import {
   buildCreateSystemPrompt, parseCreateResponse, writeDocumentTool, editDocumentTool,
-  CREATE_CHAT_MAX_TOKENS, EXAMPLE_MAX_CHARS, cleanImports,
+  CREATE_CHAT_MAX_TOKENS, CREATE_CONTEXT_BUDGET, EXAMPLE_MAX_CHARS, cleanImports,
 } from '../services/createChat.service.js';
 
 const BASE_SYSTEM_PROMPT = `You are a specialist UK planning consultant producing a professional document exactly as instructed by the brief below.
@@ -82,6 +82,16 @@ export async function createChat(req, res) {
   }
   while (history[0].role !== 'user') history.shift();
 
+  // The highlighted passage goes in the user's own message, next to what they
+  // ask for. In the system prompt it sat far from the request (after the
+  // document, before the sources, which can be very long) and was easy to
+  // overlook. The stored chat history is not changed; this is request-only.
+  const highlighted = typeof selection?.quoted_text === 'string' ? selection.quoted_text.trim().slice(0, 20000) : '';
+  if (highlighted) {
+    const last = history[history.length - 1];
+    last.content = `${last.content}\n\n---\nThe passage I have highlighted in the document (my request above is about THIS text; make any change inside it, and take every "find" from it):\n<highlighted_passage>\n${highlighted}\n</highlighted_passage>`;
+  }
+
   try {
     const { rows: projectRows } = await pool.query(
       `SELECT project_name, client FROM public.projects WHERE id = $1`,
@@ -109,8 +119,8 @@ export async function createChat(req, res) {
     const contextChars =
       totalChars + documentHtml.length + Math.min(docType?.example_text?.length ?? 0, EXAMPLE_MAX_CHARS)
       + imports.reduce((n, i) => n + i.prompt.length, 0);
-    if (contextChars > CONTEXT_BUDGET) {
-      const pct = Math.round(contextChars / CONTEXT_BUDGET * 100);
+    if (contextChars > CREATE_CONTEXT_BUDGET) {
+      const pct = Math.round(contextChars / CREATE_CONTEXT_BUDGET * 100);
       return res.status(400).json({
         error: `The selected sources, document and example exceed the context budget (~${pct}%). Untick some sources and try again.`,
       });
