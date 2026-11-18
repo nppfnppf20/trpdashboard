@@ -43,7 +43,7 @@ export const writeDocumentTool = {
   input_schema: {
     type: 'object',
     properties: {
-      html: { type: 'string', description: 'The whole document as clean HTML (h2/h3/p/ul/ol/li/table/strong). No markdown, no em dashes.' },
+      html: { type: 'string', description: 'The whole document as clean HTML (h2/h3/p/ul/ol/li/table/strong/em/blockquote). No markdown, no em dashes.' },
     },
     required: ['html'],
   },
@@ -60,8 +60,8 @@ export const editDocumentTool = {
         items: {
           type: 'object',
           properties: {
-            op: { type: 'string', enum: ['replace', 'delete', 'insert_after'] },
-            find: { type: 'string', description: 'replace/delete: exact existing text, plain text (no HTML), from inside ONE paragraph, list item or table cell.' },
+            op: { type: 'string', enum: ['replace', 'delete', 'insert_after', 'italic', 'blockquote'] },
+            find: { type: 'string', description: 'replace/delete/italic/blockquote: exact existing text, plain text (no HTML), from inside ONE paragraph, list item or table cell. For italic and blockquote it is the quoted words only.' },
             replace: { type: 'string', description: 'replace: the new text, plain text with no HTML tags.' },
             anchor: { type: 'string', description: 'insert_after: exact existing text just before where the new content goes, plain text, inside ONE paragraph, list item or table cell.' },
             html: { type: 'string', description: 'insert_after: the new element(s) as HTML: <p>, <h3>, <li>, <ul>, or <tr><td>..</td></tr> for a table row.' },
@@ -77,6 +77,7 @@ export const editDocumentTool = {
 const FORMAT_RULES = `HTML rules (for the whole document and for anything you insert):
 - <h2> for main section headings, <h3> for sub-sections, <p> for paragraphs, <ul>/<ol> with <li> for lists, <table>/<thead>/<tbody>/<tr>/<th>/<td> for tables, <strong> for bold.
 - No markdown characters (**, *, #, ---) and no em dashes.
+- Quotations (policy wording, statute, a quoted decision or report): always italic. A short quotation that fits within a line or so stays in the sentence, in quotation marks, wrapped in <em>. A longer quotation (more than about 25 words, or one that would run past a line) starts on its own line as a block: <blockquote><p><em>"the quoted text"</em></p></blockquote>, with the sentence introducing it ending in a colon in the paragraph before. The editor and Word export indent blockquotes. Quote only wording that appears in the sources, verbatim.
 - Do not add a document title unless the user asks for one.`;
 
 const EDIT_RULES = `Rules for edit_document:
@@ -85,6 +86,7 @@ const EDIT_RULES = `Rules for edit_document:
 - "replace" is plain text with no HTML tags. Change only the words that need changing.
 - To add a paragraph, heading, list item or table row use insert_after, with the anchor being existing text just before where it should go.
 - To delete a whole paragraph, "find" its full text exactly.
+- To change formatting without changing the words, NEVER use replace with identical text (it is rejected). Use: op "italic" with "find" = the exact words to make italic (short quotations that stay in their sentence); op "blockquote" with "find" = the exact quotation (more than about 25 words) to move onto its own indented italic line, which splits the paragraph around it. Use "italic" instead of "blockquote" inside lists and table cells. Do this for every quotation in the document, copying each quotation's text exactly as it appears; skip any that are already italic.
 - Never retype, summarise, reorder or restructure a table. Edit the text in individual cells, or insert a whole new <tr>.
 - Several edits in one call are fine. Every edit must be necessary for what the user asked.`;
 
@@ -166,7 +168,7 @@ function cleanHtml(raw) {
   return noEmDash(String(raw ?? '').trim().replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
-const VALID_OPS = new Set(['replace', 'delete', 'insert_after']);
+const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote']);
 
 function cleanEdits(raw) {
   let list = raw;
@@ -179,7 +181,7 @@ function cleanEdits(raw) {
     .filter(e => e && VALID_OPS.has(e.op))
     .map(e => {
       if (e.op === 'replace') return { op: 'replace', find: str(e.find), replace: noEmDash(str(e.replace)) };
-      if (e.op === 'delete') return { op: 'delete', find: str(e.find) };
+      if (e.op === 'delete' || e.op === 'italic' || e.op === 'blockquote') return { op: e.op, find: str(e.find) };
       return { op: 'insert_after', anchor: str(e.anchor), html: cleanHtml(e.html) };
     })
     .filter(e => (e.op === 'insert_after' ? e.anchor.trim() && e.html : e.find.trim()));

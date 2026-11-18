@@ -241,8 +241,22 @@ export async function createDeliverable(req, res) {
  * used to save the blank document / custom-prompt editor into the project's
  * Planning Deliverables list.
  */
+// The Create card saves its document as verbatim HTML (one 'raw' section) plus the
+// working session beside it (chat, sources, document type), because htmlToContent
+// is lossy: it drops block quotes' wrapper, numbered lists and ordinary tables.
+// Stored in the existing JSONB `content`, so no schema change; contentToHTML
+// ignores the extra key and writes 'raw' sections out as they are.
+const MAX_SESSION_CHARS = 2_000_000;
+function createContent(html, session) {
+  return { sections: [{ id: 'section_0', type: 'raw', content: html }], create_session: session };
+}
+function validSession(session) {
+  return session && typeof session === 'object' && !Array.isArray(session)
+    && JSON.stringify(session).length <= MAX_SESSION_CHARS;
+}
+
 export async function createCustomDeliverable(req, res) {
-  const { projectId, deliverableName, html } = req.body;
+  const { projectId, deliverableName, html, session } = req.body;
 
   if (!projectId || !deliverableName?.trim() || !html?.trim()) {
     return res.status(400).json({ error: 'projectId, deliverableName, and html are required' });
@@ -254,7 +268,10 @@ export async function createCustomDeliverable(req, res) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    const content = htmlToContent(html);
+    if (session !== undefined && !validSession(session)) {
+      return res.status(400).json({ error: 'session is invalid or too large' });
+    }
+    const content = session !== undefined ? createContent(html, session) : htmlToContent(html);
 
     const insertResult = await pool.query(
       `INSERT INTO planning_deliverables.planning_deliverables
@@ -434,7 +451,8 @@ export async function getDeliverableAsHTML(req, res) {
     const content = result.rows[0].content;
     const html = contentToHTML(content);
 
-    res.json({ html });
+    // session: the Create card's saved working state, or null for anything else.
+    res.json({ html, session: content?.create_session ?? null });
   } catch (error) {
     console.error('Error converting deliverable to HTML:', error);
     res.status(500).json({ error: 'Failed to convert deliverable' });
@@ -446,15 +464,30 @@ export async function getDeliverableAsHTML(req, res) {
  */
 export async function updateDeliverableFromHTML(req, res) {
   const { id } = req.params;
-  const { html } = req.body;
+  const { html, session } = req.body;
 
   try {
     if (!html) {
       return res.status(400).json({ error: 'HTML content is required' });
     }
+    if (session !== undefined && !validSession(session)) {
+      return res.status(400).json({ error: 'session is invalid or too large' });
+    }
 
-    // Convert HTML back to structured content
-    const content = htmlToContent(html);
+    let content;
+    if (session !== undefined) {
+      // Saved from the Create card: keep the HTML verbatim, with its session.
+      content = createContent(html, session);
+    } else {
+      // Convert HTML back to structured content. A session saved earlier by the
+      // Create card is kept, so saving from another editor doesn't discard it.
+      content = htmlToContent(html);
+      const existing = await pool.query(
+        `SELECT content FROM planning_deliverables.planning_deliverables WHERE id = $1`, [id]
+      );
+      const keep = existing.rows[0]?.content?.create_session;
+      if (keep) content.create_session = keep;
+    }
 
     const result = await pool.query(
       `UPDATE planning_deliverables.planning_deliverables

@@ -110,16 +110,17 @@ export async function createDeliverable(projectId, templateId, deliverableName =
  * @param {number} projectId - Project ID
  * @param {string} deliverableName - Name for the new deliverable
  * @param {string} html - Document HTML content
+ * @param {Object} [session] - Create card working session; when given, the HTML is stored verbatim with it
  * @returns {Promise<Object>} Created deliverable
  */
-export async function createCustomDeliverable(projectId, deliverableName, html) {
+export async function createCustomDeliverable(projectId, deliverableName, html, session) {
   try {
     const response = await authFetch('/api/planning/deliverables/custom', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ projectId, deliverableName, html })
+      body: JSON.stringify(session === undefined ? { projectId, deliverableName, html } : { projectId, deliverableName, html, session })
     });
 
     if (!response.ok) {
@@ -247,16 +248,17 @@ export async function getDeliverableAsHTML(id) {
  * Update deliverable from HTML (from rich text editor)
  * @param {number} id - Deliverable ID
  * @param {string} html - HTML content
+ * @param {Object} [session] - Create card working session; when given, the HTML is stored verbatim with it
  * @returns {Promise<Object>} Updated deliverable
  */
-export async function updateDeliverableFromHTML(id, html) {
+export async function updateDeliverableFromHTML(id, html, session) {
   try {
     const response = await authFetch(`/api/planning/deliverables/${id}/html`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ html })
+      body: JSON.stringify(session === undefined ? { html } : { html, session })
     });
     
     if (!response.ok) {

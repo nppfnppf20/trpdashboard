@@ -30,6 +30,8 @@
   export let initialHtml = '';
   export let initialName = '';
   export let deliverableId = null;
+  /** The working session saved with that document (chat, ticked sources, document type), or null. */
+  export let initialSession = null;
   /** Everything saved on the project's Planning Deliverables list (custom documents and template deliverables). */
   export let deliverables = [];
 
@@ -52,7 +54,12 @@
   onMount(async () => {
     try {
       docTypes = await listCreateDocTypes({ activeOnly: true });
-      docTypeId = (docTypes.find(d => d.slug === 'general') ?? docTypes[0])?.id ?? null;
+      docTypeId = (
+        docTypes.find(d => d.id === initialSession?.docTypeId)
+        ?? docTypes.find(d => initialSession?.docTypeSlug && d.slug === initialSession.docTypeSlug)
+        ?? docTypes.find(d => d.slug === 'general')
+        ?? docTypes[0]
+      )?.id ?? null;
     } catch (err) {
       // Not fatal: the chat works without a type, it just uses the basic Word template.
       typesError = err.message;
@@ -92,7 +99,7 @@
   let sectionsByType = {};
   let importLoading = false;
   // [{ id, title, prompt }] sent with every message
-  let importedContext = [];
+  let importedContext = Array.isArray(initialSession?.importedContext) ? initialSession.importedContext : [];
 
   $: importGroups = buildImportGroups({ draftTypes: $draftTypes, drafts: $drafts, sectionsByType, deliverables });
 
@@ -188,7 +195,7 @@
   }
 
   // ── Sources ──────────────────────────────────────────────────────────────
-  let sources = { project_details: false, document_ids: [], meeting_ids: [], groups: [] };
+  let sources = initialSession?.sources ?? { project_details: false, document_ids: [], meeting_ids: [], groups: [] };
   let sourcesOverBudget = false;
   let sourcesOpen = true;
 
@@ -197,10 +204,20 @@
     sourcesOverBudget = e.detail.overBudget;
   }
 
+  // The Planning Policy and Planning Assessment parts are written from the
+  // project's policies. A heads-up only, never a block: the user may have
+  // pasted the policies into the chat instead.
+  const POLICY_TYPE_SLUGS = ['planning_statement_policy', 'planning_statement_assessment'];
+  const POLICY_GROUP_KEYS = ['policies', 'drafting_issue_policies'];
+  $: needsPolicies = POLICY_TYPE_SLUGS.includes(docType?.slug);
+  $: policiesTicked = (sources.groups ?? []).some(k => POLICY_GROUP_KEYS.includes(k));
+
   // ── Chat ─────────────────────────────────────────────────────────────────
   // { role: 'user'|'assistant', content, note?, kind?: 'error' }
-  let messages = [];
-  let input = '';
+  let messages = Array.isArray(initialSession?.messages) ? initialSession.messages : [];
+  // Chatting counts as unsaved work too, so closing without saving the session asks first.
+  $: if (messages.length > (initialSession?.messages?.length ?? 0)) dirty = true;
+  let input = initialSession?.input ?? '';
   let sending = false;
   let sendError = null;
   let chatScroll;
@@ -377,7 +394,24 @@
     return heading || `${docType?.name ?? 'Document'} - ${new Date().toLocaleDateString('en-GB')}`;
   }
 
+  // Everything needed to pick this up again where it was left: the chat, what was
+  // ticked, the document type, imported prompts and any message not yet sent.
+  function buildSession() {
+    return {
+      v: 1,
+      savedAt: new Date().toISOString(),
+      docTypeId,
+      docTypeSlug: docType?.slug ?? null,
+      messages: messages.filter(m => m.kind !== 'error'),
+      sources,
+      importedContext,
+      input,
+    };
+  }
+
   async function save() {
+    // Saving settles any change still awaiting Accept, as carrying on with the chat does.
+    if (aiBar && !aiBar.loading) acceptPending();
     const content = editor?.getHTML() ?? html;
     if (!hasContent(content)) {
       alert('Nothing to save yet. Write something first.');
@@ -385,11 +419,12 @@
     }
     saving = true;
     try {
+      const session = buildSession();
       if (deliverableId) {
-        await updateDeliverableFromHTML(deliverableId, content);
+        await updateDeliverableFromHTML(deliverableId, content, session);
       } else {
         const name = docName.trim() || guessName(content);
-        const { deliverable } = await createCustomDeliverable(project.id, name, content);
+        const { deliverable } = await createCustomDeliverable(project.id, name, content, session);
         deliverableId = deliverable.id;
         docName = deliverable.deliverable_name ?? name;
       }
@@ -464,7 +499,7 @@
         <i class="las la-database"></i> Sources
       </button>
       <button class="cd-btn cd-btn--primary" disabled={saving || !!aiBar} on:click={save}>
-        {#if saving}Saving…{:else if justSaved}<i class="las la-check"></i> Saved{:else}<i class="las la-save"></i> Save{/if}
+        {#if saving}Saving…{:else if justSaved}<i class="las la-check"></i> Session saved{:else}<i class="las la-save"></i> Save session{/if}
       </button>
       <button class="cd-btn cd-btn--primary" disabled={exporting || !!aiBar} on:click={exportWord}>
         {#if exporting}Exporting…{:else}<i class="las la-file-word"></i> Export{/if}
@@ -475,7 +510,7 @@
   <div class="cd-body" class:cd-body--no-sources={!sourcesOpen}>
     <!-- Kept mounted when hidden so the ticked sources are not lost -->
     <aside class="cd-sources" class:cd-hidden={!sourcesOpen}>
-      <CreateSourcePicker {project} {extraChars} disabled={sending} on:change={onSourcesChange} />
+      <CreateSourcePicker {project} {extraChars} disabled={sending} initialSources={initialSession?.sources ?? null} on:change={onSourcesChange} />
     </aside>
 
     <section class="cd-editor">
@@ -517,6 +552,12 @@
           </div>
         {/each}
       </div>
+
+      {#if needsPolicies && !policiesTicked}
+        <div class="cd-warn">
+          This part is written from the project's policies. Tick <strong>Relevant Policies</strong> or <strong>Drafting Issues: Linked Policies</strong> in the sources. If you have given the policies in the chat, carry on and it will use those.
+        </div>
+      {/if}
 
       {#if sendError}<div class="cd-error">{sendError}</div>{/if}
 
@@ -750,6 +791,16 @@
   .cd-bubble--info .cd-note { color: var(--color-primary-600); }
   .cd-note { margin-top: 0.3rem !important; font-size: 0.72rem; color: var(--color-slate-500); }
   .cd-bubble--error .cd-note { color: var(--color-red-600); }
+
+  .cd-warn {
+    margin: 0 1rem 0.5rem;
+    padding: 0.5rem 0.7rem;
+    background: var(--color-badge-warning-bg);
+    border: 1px solid var(--color-amber-200);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    color: var(--color-badge-warning-fg);
+  }
 
   .cd-error {
     margin: 0 1rem 0.5rem;

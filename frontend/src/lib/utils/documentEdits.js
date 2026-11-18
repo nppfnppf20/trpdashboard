@@ -12,6 +12,9 @@
 //   { op: 'replace',      find: 'exact existing text', replace: 'new text' }
 //   { op: 'delete',       find: 'exact existing text' }
 //   { op: 'insert_after', anchor: 'exact existing text', html: '<p>…</p>' }
+//   { op: 'italic',       find: 'exact existing text' }      same words, made italic
+//   { op: 'blockquote',   find: 'exact quotation text' }     same words, moved onto
+//                         its own indented italic line (ordinary paragraphs only)
 //
 // Rules enforced here, never trusted to the model:
 //   - find/anchor must match exactly once in the whole document (whitespace
@@ -38,7 +41,8 @@ import {
 } from './draftParagraphs.js';
 
 const LEAF_BLOCK_SELECTOR = 'p, li, td, th, h1, h2, h3, h4, h5, h6, blockquote, caption, div';
-const STRUCTURE_TAGS = ['table', 'tr', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'];
+const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote']);
+const STRUCTURE_TAGS =['table', 'tr', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'];
 
 function parseWrapped(html) {
   const doc = new DOMParser().parseFromString(`<div>${html ?? ''}</div>`, 'text/html');
@@ -189,6 +193,95 @@ function applyTextEdit(doc, entry, start, end, replacement) {
   });
 }
 
+// Maps an offset into a block's joined text back to a (text node, offset) pair.
+function pointAt(entry, offset, preferEnd) {
+  for (let i = 0; i < entry.nodes.length; i++) {
+    const ns = entry.starts[i];
+    const ne = ns + entry.lens[i];
+    if (offset > ns && offset < ne) return { node: entry.nodes[i], offset: offset - ns };
+    if (offset === ns && !preferEnd) return { node: entry.nodes[i], offset: 0 };
+    if (offset === ne && preferEnd) return { node: entry.nodes[i], offset: entry.lens[i] };
+  }
+  const last = entry.nodes[entry.nodes.length - 1];
+  return { node: last, offset: last.data.length };
+}
+
+// Pieces of a block's text nodes covered by [start, end).
+function coveredPieces(entry, start, end) {
+  const pieces = [];
+  entry.nodes.forEach((node, i) => {
+    const ns = entry.starts[i];
+    const ne = ns + entry.lens[i];
+    if (ne <= start || ns >= end) return;
+    pieces.push({ node, ls: Math.max(start - ns, 0), le: Math.min(end - ns, entry.lens[i]) });
+  });
+  return pieces;
+}
+
+const isItalic = node => !!node.parentElement?.closest('em, i');
+
+// Formatting-only edit: wraps the matched text in <em> (marked pending so it can
+// be accepted or discarded like any other change). Returns false if the text was
+// already italic, so nothing changed.
+function applyItalic(doc, entry, start, end) {
+  const pieces = coveredPieces(entry, start, end).filter(p => p.node.data.slice(p.ls, p.le).trim());
+  if (!pieces.length || pieces.every(p => isItalic(p.node))) return false;
+  pieces.forEach(({ node, ls, le }) => {
+    if (isItalic(node)) return;
+    const r = doc.createRange();
+    r.setStart(node, ls);
+    r.setEnd(node, le);
+    const em = doc.createElement('em');
+    em.className = PENDING_CLASS;
+    r.surroundContents(em);
+  });
+  return true;
+}
+
+// Moves the matched quotation onto its own line: the paragraph is split around
+// it into [text before] / <blockquote><p><em>quote</em></p></blockquote> / [text
+// after]. Only for ordinary paragraphs (the caller checks).
+function applyBlockquote(doc, entry, start, end) {
+  const block = entry.block;
+  const from = pointAt(entry, start, false);
+  const to = pointAt(entry, end, true);
+
+  const afterRange = doc.createRange();
+  afterRange.setStart(to.node, to.offset);
+  afterRange.setEnd(block, block.childNodes.length);
+  const midRange = doc.createRange();
+  midRange.setStart(from.node, from.offset);
+  midRange.setEnd(to.node, to.offset);
+
+  // Later content first so the earlier range's boundaries stay valid.
+  const afterFrag = afterRange.extractContents();
+  const midFrag = midRange.extractContents();
+
+  const quoteP = doc.createElement('p');
+  const em = doc.createElement('em');
+  em.append(midFrag);
+  em.querySelectorAll('em, i').forEach(inner => inner.replaceWith(...inner.childNodes));
+  quoteP.append(em);
+  const bq = doc.createElement('blockquote');
+  bq.className = PENDING_CLASS;
+  bq.append(quoteP);
+
+  // Keep any text before the quote in the original paragraph; if there is none,
+  // the quote simply takes its place.
+  if (block.textContent.trim()) block.after(bq); else block.replaceWith(bq);
+
+  if (afterFrag.textContent.trim()) {
+    const rest = block.cloneNode(false);
+    rest.append(afterFrag);
+    const firstText = rest.firstChild;
+    if (firstText?.nodeType === 3) firstText.data = firstText.data.replace(/^\s+/, '');
+    bq.after(rest);
+  }
+  const lastBefore = block.isConnected ? block.lastChild : null;
+  if (lastBefore?.nodeType === 3) lastBefore.data = lastBefore.data.replace(/\s+$/, '');
+  return true;
+}
+
 function insertAfterBlock(doc, block, fragmentHtml) {
   const tpl = doc.createElement('template');
   tpl.innerHTML = fragmentHtml;
@@ -238,7 +331,7 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
   for (const edit of Array.isArray(edits) ? edits : []) {
     const reject = reason => rejected.push({ edit, reason });
     const op = edit?.op;
-    if (op !== 'replace' && op !== 'delete' && op !== 'insert_after') { reject('unknown edit type'); continue; }
+    if (!VALID_OPS.has(op)) { reject('unknown edit type'); continue; }
 
     const rawNeedle = op === 'insert_after' ? edit.anchor : edit.find;
     const needle = normalizeWithMap(plainText(rawNeedle).trim()).out;
@@ -257,6 +350,19 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
     if (op === 'insert_after') {
       if (!String(edit.html ?? '').trim()) { reject('nothing to insert'); continue; }
       inserts.push({ edit, block: match.entry.block });
+      continue;
+    }
+
+    // Formatting edits (same words, different formatting): italic, or a quotation
+    // moved onto its own indented line.
+    if (op === 'italic' || op === 'blockquote') {
+      const block = match.entry.block;
+      if (op === 'blockquote' && (block.tagName !== 'P' || block.closest('li, td, th, blockquote'))) {
+        reject(`"${snippet(rawNeedle)}" is not in an ordinary paragraph, so it cannot be moved onto its own line`);
+        continue;
+      }
+      if (textEdits.some(t => t.entry === match.entry && match.start < t.end && t.start < match.end)) { reject('overlaps another edit'); continue; }
+      textEdits.push({ entry: match.entry, start: match.start, end: match.end, kind: op, edit });
       continue;
     }
 
@@ -279,8 +385,14 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
   for (const list of byBlock.values()) {
     list.sort((a, b) => b.start - a.start);
     for (const t of list) {
-      applyTextEdit(doc, t.entry, t.start, t.end, t.replacement);
-      applied++;
+      if (t.kind === 'italic') {
+        if (applyItalic(doc, t.entry, t.start, t.end)) applied++;
+      } else if (t.kind === 'blockquote') {
+        if (applyBlockquote(doc, t.entry, t.start, t.end)) applied++;
+      } else {
+        applyTextEdit(doc, t.entry, t.start, t.end, t.replacement);
+        applied++;
+      }
     }
   }
 

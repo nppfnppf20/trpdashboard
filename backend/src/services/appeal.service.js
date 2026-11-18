@@ -445,7 +445,7 @@ function planBlockLines(plan) {
   return lines;
 }
 
-function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans = [], { includeArgumentNotes = true } = {}) {
+export function buildIssueSnippetContext(linkedPolicies = [], issue = null, linkedPlans = [], { includeArgumentNotes = true } = {}) {
   const lines = [];
 
   // --- Group 1: National Policy (NPPF only) ---

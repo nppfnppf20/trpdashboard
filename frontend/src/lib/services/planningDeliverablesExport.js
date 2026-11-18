@@ -150,6 +150,21 @@ function elementToOOXML(el, styles = DEF_STYLES) {
       return paragraph(styles.h4, inlineRuns(el));
     case 'p':
       return paragraph(styles.p, inlineRuns(el));
+    case 'blockquote': {
+      // A quotation: its own line(s), indented from both margins, in italics.
+      // Tiptap-style <blockquote><p>…</p></blockquote> gives one Word paragraph
+      // per inner <p>; bare text inside the blockquote is one paragraph.
+      const inner = Array.from(el.children).filter(c => c.tagName.toLowerCase() === 'p');
+      const parts = inner.length ? inner : [el];
+      return parts
+        .map(p => {
+          const runs = inlineRuns(p, { italic: true });
+          return runs.replace(/<[^>]+>/g, '').trim()
+            ? `<w:p><w:pPr><w:pStyle w:val="${styles.p}"/><w:ind w:left="720" w:right="720"/></w:pPr>${runs}</w:p>`
+            : '';
+        })
+        .join('');
+    }
     case 'ul':
       return Array.from(el.querySelectorAll('li')).map(li =>
         paragraph(styles.ul, inlineRuns(li))

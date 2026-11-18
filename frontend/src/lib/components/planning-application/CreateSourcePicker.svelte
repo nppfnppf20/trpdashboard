@@ -9,6 +9,8 @@
   export let project;
   export let extraChars = 0;
   export let disabled = false;
+  /** Sources ticked when the session was last saved (same shape the picker emits); null for a new document. */
+  export let initialSources = null;
 
   const CONTEXT_BUDGET = 200000;
   const dispatch = createEventDispatcher();
@@ -34,6 +36,14 @@
       const data = await getChatSources(project.id);
       groups = data.groups;
       detailsSelected = groups.some(g => g.key === 'project_details');
+      if (initialSources) {
+        // Restore the saved ticks, dropping anything that no longer exists.
+        detailsSelected = detailsSelected && initialSources.project_details !== false;
+        const known = new Set(groups.map(g => g.key));
+        selectedGroups = new Set((initialSources.groups ?? []).filter(k => known.has(k)));
+        const meetingIdsNow = new Set((groups.find(g => g.key === 'meetings')?.items ?? []).map(i => i.id));
+        selectedMeetingIds = new Set((initialSources.meeting_ids ?? []).filter(id => meetingIdsNow.has(id)));
+      }
     } catch (err) {
       console.error('Error loading sources:', err);
       loadError = err.message;

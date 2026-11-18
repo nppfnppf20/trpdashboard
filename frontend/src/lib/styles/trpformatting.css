@@ -100,6 +100,20 @@
   font-style: italic;
 }
 
+/* Quotations: block quotes start on their own line, indented and italic.
+   Mirrored in the Word export (planningDeliverablesExport.js, 'blockquote'). */
+.trp-document-content blockquote {
+  margin: 0.75rem 0 0.75rem 2rem;
+  padding: 0;
+  border: 0;
+  font-style: italic;
+}
+
+.trp-document-content blockquote p {
+  margin: 0.25rem 0;
+  font-style: italic;
+}
+
 .trp-document-content u {
   text-decoration: underline;
 }

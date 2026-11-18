@@ -10,6 +10,7 @@
  */
 
 import { pool } from '../db.js';
+import { buildIssueSnippetContext } from './appeal.service.js';
 
 export const CONTEXT_BUDGET = 200000;
 
@@ -405,6 +406,78 @@ async function serializePolicyDocuments(projectId) {
   return { text: parts.join('\n\n'), count: rows.length };
 }
 
+// ── Drafting Issues (Planning Statement v3's issue list) ─────────────────────
+// Split in two so the Create card can mirror the Planning Assessment's source
+// modes: policy links alone (transcript-only drafting) or with the notes.
+// Both reuse buildIssueSnippetContext, so the model sees the same wording as
+// the Planning Statement card does.
+
+async function fetchDraftingIssues(projectId) {
+  const { rows } = await pool.query(
+    `SELECT id, label, discipline, argument_for, summary, specialist_report,
+            policy_national, policy_local, policy_neighbourhood, policy_supplementary, policy_other
+       FROM admin_console.drafting_issues
+      WHERE project_id = $1
+      ORDER BY sort_order, id`,
+    [projectId]
+  );
+  return rows;
+}
+
+async function serializeDraftingIssuePolicies(projectId) {
+  const issues = await fetchDraftingIssues(projectId);
+  if (!issues.length) return null;
+
+  const [{ rows: policyRows }, { rows: planRows }] = await Promise.all([
+    pool.query(
+      `SELECT pp.id, pp.policy_reference, pp.policy_name, pp.policy_type,
+              pp.policy_text, pp.relevant_supporting_text, pp.is_key_policy,
+              pd.plan_name, dipr.drafting_issue_id AS issue_id
+         FROM public.project_policies pp
+         JOIN admin_console.drafting_issue_policy_relevance dipr ON dipr.policy_id = pp.id
+         LEFT JOIN public.policy_documents pd ON pd.id = pp.plan_id
+        WHERE pp.project_id = $1
+        ORDER BY dipr.drafting_issue_id, pp.policy_type, pp.policy_reference`,
+      [projectId]
+    ),
+    pool.query(
+      `SELECT pd.id, pd.plan_name, pd.section, pd.relevance, dipr.drafting_issue_id AS issue_id
+         FROM public.policy_documents pd
+         JOIN admin_console.drafting_issue_plan_relevance dipr ON dipr.plan_id = pd.id
+        WHERE pd.project_id = $1
+        ORDER BY dipr.drafting_issue_id, pd.section, pd.plan_name`,
+      [projectId]
+    ),
+  ]);
+
+  const blocks = [];
+  for (const issue of issues) {
+    const policies = policyRows.filter(r => r.issue_id === issue.id);
+    const plans = planRows.filter(r => r.issue_id === issue.id);
+    if (!policies.length && !plans.length) continue;
+    // issue = null: policy links only, no notes.
+    const { text } = buildIssueSnippetContext(policies, null, plans);
+    blocks.push(`### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n\n${text}`);
+  }
+  if (!blocks.length) return null;
+  return { text: blocks.join('\n\n---\n\n'), count: blocks.length };
+}
+
+async function serializeDraftingIssueNotes(projectId) {
+  const issues = await fetchDraftingIssues(projectId);
+  if (!issues.length) return null;
+
+  const blocks = [];
+  for (const issue of issues) {
+    // No linked policies passed: notes only.
+    const { text } = buildIssueSnippetContext([], issue, []);
+    if (!text) continue;
+    blocks.push(`### Issue: ${issue.label}${issue.discipline ? ` (${issue.discipline})` : ''}\n\n${text}`);
+  }
+  if (!blocks.length) return null;
+  return { text: blocks.join('\n\n---\n\n'), count: blocks.length };
+}
+
 async function serializePublicComments(projectId) {
   const [{ rows: comments }, { rows: analysis }] = await Promise.all([
     pool.query(
@@ -683,7 +756,9 @@ const TABLE_GROUPS = [
   { key: 'planning_history', sourceId: 'H',    label: 'Planning History',         serialize: serializePlanningHistory },
   { key: 'policies',         sourceId: 'POL',  label: 'Relevant Policies',        serialize: serializePolicies },
   { key: 'policy_documents', sourceId: 'PD',   label: 'Policy Documents',         serialize: serializePolicyDocuments },
-  { key: 'public_comments',  sourceId: 'PC',   label: 'Public Comments',          serialize: serializePublicComments },
+  { key: 'drafting_issue_policies', sourceId: 'DIP', label: 'Drafting Issues: Linked Policies', serialize: serializeDraftingIssuePolicies },
+  { key: 'drafting_issue_notes',    sourceId: 'DIN', label: 'Drafting Issues: Notes',          serialize: serializeDraftingIssueNotes },
+  { key: 'public_comments',  sourceId: 'PC',  label: 'Public Comments',          serialize: serializePublicComments },
   { key: 'surveyor',         sourceId: 'S',    label: 'Surveyor Management',      serialize: serializeSurveyor },
 ];
 

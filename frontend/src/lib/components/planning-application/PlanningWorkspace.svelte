@@ -362,17 +362,17 @@
 
   // The conversational "Create" view (a card in the list, or a saved custom document opened with AI).
   let createOpen = false;
-  let createInitial = { html: '', name: '', id: null };
+  let createInitial = { html: '', name: '', id: null, session: null };
 
   function openCreate() {
-    createInitial = { html: '', name: '', id: null };
+    createInitial = { html: '', name: '', id: null, session: null };
     createOpen = true;
   }
 
   async function openCustomInCreate(cd) {
     try {
-      const { html } = await getDeliverableAsHTML(cd.id);
-      createInitial = { html, name: cd.deliverable_name, id: cd.id };
+      const { html, session } = await getDeliverableAsHTML(cd.id);
+      createInitial = { html, name: cd.deliverable_name, id: cd.id, session: session ?? null };
       createOpen = true;
     } catch (err) {
       console.error('Failed to open custom deliverable:', err);
@@ -1080,6 +1080,7 @@
         initialHtml={createInitial.html}
         initialName={createInitial.name}
         deliverableId={createInitial.id}
+        initialSession={createInitial.session}
         deliverables={allDeliverables}
         on:saved={loadDeliverables}
         on:close={() => { createOpen = false; loadDeliverables(); }}
