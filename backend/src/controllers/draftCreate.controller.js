@@ -72,6 +72,8 @@ export async function generateCustomDraft(req, res) {
 export async function createChat(req, res) {
   const { projectId } = req.params;
   const { messages, sources, doc_type_id, document_html, selection, use_house_style } = req.body ?? {};
+  // 'ask': answer only (no tools, the document cannot change). Anything else is 'edit'.
+  const chatMode = req.body?.mode === 'ask' ? 'ask' : 'edit';
   const imports = cleanImports(req.body?.imports);
 
   const history = (Array.isArray(messages) ? messages : [])
@@ -135,17 +137,58 @@ export async function createChat(req, res) {
       selection: selection ?? null,
       imports,
       useHouseStyle: use_house_style !== false,
+      chatMode,
     });
 
-    const response = await client.messages.create({
+    const callModel = msgs => client.messages.create({
       model: MODEL_SONNET,
       max_tokens: CREATE_CHAT_MAX_TOKENS,
       system,
-      messages: history,
-      tools: [writeDocumentTool, editDocumentTool],
+      messages: msgs,
+      // Ask mode sends no tools at all, so the document cannot be changed.
+      ...(chatMode === 'ask' ? {} : { tools: [writeDocumentTool, editDocumentTool] }),
     });
 
-    const parsed = parseCreateResponse(response);
+    let response = await callModel(history);
+    let parsed = parseCreateResponse(response);
+
+    // Edit mode produced nothing usable: either a tool call whose edits were all invalid, or an
+    // empty reply with no tool call. Left alone the user sees a bare "No changes made", so tell the
+    // model what was wrong and let it try once more.
+    if (chatMode === 'edit' && parsed.mode === 'none' && !parsed.truncated && (parsed.invalid || !parsed.reply)) {
+      console.warn('[draftCreate] edit mode returned no usable change, retrying once:', parsed.invalid ? parsed.reasons : 'empty reply, no tool call');
+      let retryMessages;
+      if (parsed.invalid) {
+        const why = parsed.reasons.join('; ');
+        retryMessages = [
+          ...history,
+          { role: 'assistant', content: response.content },
+          {
+            role: 'user',
+            content: response.content.filter(b => b.type === 'tool_use').map(b => ({
+              type: 'tool_result',
+              tool_use_id: b.id,
+              is_error: true,
+              content: `That could not be applied: ${why}. Call edit_document again with valid edits (insert_after needs "anchor" = existing text just before the new content, and "html"; every other edit needs "find"), or write_document if the document is empty. If you cannot make the change, say why in plain text.`,
+            })),
+          },
+        ];
+      } else {
+        const last = history[history.length - 1];
+        retryMessages = [
+          ...history.slice(0, -1),
+          { role: 'user', content: `${last.content}\n\n(Reply with the change made through edit_document or write_document, or with a short question if you need more information. An empty reply is not allowed.)` },
+        ];
+      }
+      response = await callModel(retryMessages);
+      parsed = parseCreateResponse(response);
+    }
+
+    if (chatMode === 'edit' && parsed.mode === 'none' && !parsed.reply) {
+      parsed.reply = parsed.invalid
+        ? `I could not turn that into a change to the document (${parsed.reasons.join('; ')}). Try saying where it should go, for example which heading it goes under.`
+        : 'I did not make a change. Tell me where it should go, for example which heading it goes under, or switch to Ask if you only want an answer.';
+    }
     if (parsed.truncated) {
       return res.status(422).json({
         error: 'That was too long to write in one go. Ask for it in parts (for example one section at a time).',
@@ -157,6 +200,8 @@ export async function createChat(req, res) {
       mode: parsed.mode,
       html: parsed.html,
       edits: parsed.edits,
+      // Edits the model sent that were unusable (e.g. an insert with no anchor); shown to the user.
+      dropped: parsed.mode === 'edits' ? (parsed.reasons ?? []) : [],
       context_chars: contextChars,
     });
   } catch (err) {

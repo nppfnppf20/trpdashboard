@@ -218,6 +218,8 @@
   // Chatting counts as unsaved work too, so closing without saving the session asks first.
   $: if (messages.length > (initialSession?.messages?.length ?? 0)) dirty = true;
   let input = initialSession?.input ?? '';
+  // 'edit': the AI changes the document. 'ask': it only answers in the chat (no tools).
+  let chatMode = initialSession?.mode === 'ask' ? 'ask' : 'edit';
   let sending = false;
   let sendError = null;
   let chatScroll;
@@ -241,6 +243,17 @@
     if (aiBar?.loading) return;
     selection = { quotedText: e.detail.quotedText, paragraphIds: e.detail.paragraphIds };
     inputEl?.focus();
+  }
+
+  // Starts the conversation again. The document, ticked sources and imports are kept; the AI
+  // simply forgets what was said so far.
+  function clearChat() {
+    if (sending || !messages.length) return;
+    if (!confirm('Clear the chat? The document stays as it is.')) return;
+    messages = [];
+    sendError = null;
+    clearSelection();
+    dirty = true; // so closing without saving the session asks first
   }
 
   function clearSelection() {
@@ -303,10 +316,17 @@
   async function applyResult(result, baseHtml, sel, attempt, mySeq) {
     if (result.mode === 'edits') {
       try {
-        const { html: next, warnings } = applyAiEditResult(baseHtml, { edits: result.edits }, sel?.paragraphIds ?? null);
+        const { html: next, warnings, applied, skipped } = applyAiEditResult(baseHtml, { edits: result.edits }, sel?.paragraphIds ?? null);
         showPending(next, baseHtml, warnings);
-        const n = result.edits.length;
-        pushAssistant(result.reply, `${n} change${n === 1 ? '' : 's'} made. Review the highlighted text, then Accept or Discard.`);
+        const dropped = result.dropped ?? [];
+        const asked = result.edits.length + dropped.length;
+        const allSkipped = [...(skipped ?? []), ...dropped];
+        // Say what really happened. The AI's reply was written before anything was applied.
+        let note = `${applied} change${applied === 1 ? '' : 's'} made. Review the highlighted text, then Accept or Discard.`;
+        if (allSkipped.length) {
+          note = `${applied} of ${asked} change${asked === 1 ? '' : 's'} made. ${allSkipped.length} could not be applied, so the reply above may overstate what was done: ${allSkipped.join('; ')}. Ask again for what is missing, in smaller steps.`;
+        }
+        pushAssistant(result.reply, note, allSkipped.length ? 'warn' : '');
       } catch (err) {
         // One automatic retry: tell the AI exactly what went wrong so it can quote the text properly.
         if (err.code === 'EDITS_REJECTED' && attempt === 0) {
@@ -321,6 +341,7 @@
             documentHtml: baseHtml,
             selection: sel ? { quoted_text: sel.quotedText } : null,
             imports: importedContext.map(c => ({ title: c.title, prompt: c.prompt })),
+            mode: chatMode,
           });
           if (mySeq !== seq) return;
           return applyResult(retry, baseHtml, sel, 1, mySeq);
@@ -338,7 +359,7 @@
       );
     } else {
       aiBar = null;
-      pushAssistant(result.reply || 'No changes made.');
+      pushAssistant(result.reply || 'No changes made. Try saying where it should go, for example which heading it goes under.');
     }
   }
 
@@ -369,6 +390,7 @@
         documentHtml: baseHtml,
         selection: sel ? { quoted_text: sel.quotedText } : null,
         imports: importedContext.map(c => ({ title: c.title, prompt: c.prompt })),
+        mode: chatMode,
       });
       if (mySeq !== seq) return;
       await applyResult(result, baseHtml, sel, 0, mySeq);
@@ -415,6 +437,7 @@
       sources,
       importedContext,
       input,
+      mode: chatMode,
     };
   }
 
@@ -547,6 +570,39 @@
     </section>
 
     <section class="cd-chat">
+      <div class="cd-chat-top">
+        <div class="cd-chat-bar">
+          <div class="cd-seg" role="group" aria-label="What the AI should do with your message">
+            <button
+              type="button"
+              class="cd-seg-btn cd-seg-btn--ask"
+              class:cd-seg-btn--on={chatMode === 'ask'}
+              aria-pressed={chatMode === 'ask'}
+              disabled={sending}
+              on:click={() => chatMode = 'ask'}
+              title="Ask: the AI answers in the chat and never changes the document"
+            ><i class="las la-question-circle"></i> Ask</button>
+            <button
+              type="button"
+              class="cd-seg-btn cd-seg-btn--edit"
+              class:cd-seg-btn--on={chatMode === 'edit'}
+              aria-pressed={chatMode === 'edit'}
+              disabled={sending}
+              on:click={() => chatMode = 'edit'}
+              title="Edit: the AI leans towards making the change you ask for. A clearly worded question still gets an answer in the chat."
+            ><i class="las la-pencil-alt"></i> Edit</button>
+          </div>
+          <button
+            type="button"
+            class="cd-clear"
+            disabled={sending || !messages.length}
+            on:click={clearChat}
+            title="Clear the chat. The document is not changed."
+          ><i class="las la-trash-alt"></i> Clear chat</button>
+        </div>
+        <p class="cd-mode-hint">{chatMode === 'ask' ? 'Answers only. The document will not change.' : 'Leans towards changing the document. A clear question still gets an answer.'}</p>
+      </div>
+
       <div class="cd-messages" bind:this={chatScroll}>
         {#if messages.length === 0}
           <div class="cd-empty">
@@ -565,7 +621,7 @@
             {#if m.role === 'user'}
               <div class="cd-bubble cd-bubble--user">{m.content}</div>
             {:else}
-              <div class="cd-bubble cd-bubble--ai" class:cd-bubble--error={m.kind === 'error'} class:cd-bubble--info={m.kind === 'info'}>
+              <div class="cd-bubble cd-bubble--ai" class:cd-bubble--error={m.kind === 'error'} class:cd-bubble--info={m.kind === 'info'} class:cd-bubble--warn={m.kind === 'warn'}>
                 {#if m.content}<p>{@html renderReply(m.content, {}, { inlineCitations: false })}</p>{/if}
                 {#if m.note}<p class="cd-note">{m.note}</p>{/if}
               </div>
@@ -609,7 +665,7 @@
           on:keydown={handleKeydown}
           rows="3"
           disabled={sending}
-          placeholder={sourcesOverBudget ? 'Untick some sources to make room…' : selection ? 'What should I do with the highlighted text?' : 'Tell the AI what to write or change…'}
+          placeholder={sourcesOverBudget ? 'Untick some sources to make room…' : chatMode === 'ask' ? (selection ? 'What would you like to know about the highlighted text?' : 'Ask a question about the document or the sources…') : selection ? 'What should I do with the highlighted text?' : 'Tell the AI what to write or change…'}
         ></textarea>
         <VoiceDictationButton class="cd-mic-btn" disabled={sending} on:transcript={onTranscript} />
         <button class="cd-send" on:click={send} disabled={sending || sourcesOverBudget || !input.trim()} title={sourcesOverBudget ? 'Untick some sources to make room' : 'Send'} aria-label="Send">
@@ -810,6 +866,9 @@
   .cd-bubble--error { background: var(--color-red-50); color: var(--color-red-600); }
   .cd-bubble--info { background: var(--color-primary-50); color: var(--color-primary-700); }
   .cd-bubble--info .cd-note { color: var(--color-primary-600); }
+  /* Some changes were skipped: the note under the reply says which. */
+  .cd-bubble--warn { background: var(--color-badge-warning-bg); color: var(--color-badge-warning-fg); }
+  .cd-bubble--warn .cd-note { color: var(--color-badge-warning-fg); font-weight: 600; }
   .cd-note { margin-top: 0.3rem !important; font-size: 0.72rem; color: var(--color-slate-500); }
   .cd-bubble--error .cd-note { color: var(--color-red-600); }
 
@@ -901,6 +960,75 @@
   }
   .cd-selection-text { flex: 1; min-width: 0; line-height: 1.4; overflow-wrap: anywhere; }
   .cd-selection-x { background: none; border: none; padding: 0; color: var(--color-primary-600); cursor: pointer; font-size: 0.9rem; }
+
+  /* Top of the chat panel: Ask / Edit switch and Clear chat. */
+  .cd-chat-top {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.65rem 1rem;
+    background: var(--color-slate-50);
+    border-bottom: 1px solid var(--color-slate-200);
+  }
+  .cd-chat-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  /* Segmented switch: a tray with the chosen side raised and filled in its own colour. */
+  .cd-seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--color-slate-200);
+    border-radius: 8px;
+  }
+  .cd-seg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 1.9rem;
+    padding: 0 1rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-slate-600);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  .cd-seg-btn i { font-size: 1.1rem; }
+  .cd-seg-btn:hover:not(:disabled):not(.cd-seg-btn--on) { background: var(--color-slate-100); }
+  .cd-seg-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .cd-seg-btn--on { color: var(--color-white); box-shadow: var(--shadow-sm); }
+  .cd-seg-btn--ask.cd-seg-btn--on { background: var(--color-emerald-600); }
+  .cd-seg-btn--edit.cd-seg-btn--on { background: var(--color-primary-600); }
+
+  .cd-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 2.1rem;
+    padding: 0 0.8rem;
+    background: var(--color-white);
+    border: 1px solid var(--color-slate-300);
+    border-radius: 6px;
+    color: var(--color-slate-600);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .cd-clear i { font-size: 1rem; }
+  .cd-clear:hover:not(:disabled) { background: var(--color-red-50); border-color: var(--color-red-200); color: var(--color-red-600); }
+  .cd-clear:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .cd-mode-hint { margin: 0; font-size: 0.75rem; color: var(--color-slate-500); }
 
   .cd-input-row {
     display: flex;

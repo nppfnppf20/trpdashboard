@@ -90,6 +90,8 @@ const EDIT_RULES = `Rules for edit_document:
 - Make each "find" long enough to appear only once in the whole document (add a few neighbouring words if needed) but no longer than necessary. If the same short text (e.g. "Yes") appears several times, include enough neighbouring text in the same cell or paragraph to make it unique.
 - "replace" is plain text with no HTML tags. Change only the words that need changing.
 - To add a paragraph, heading, list item or table row use insert_after, with the anchor being existing text just before where it should go.
+- To add several things at once (a bullet list, a quotation on its own line, a few paragraphs), make ONE insert_after whose html holds all of it: a <ul> with every <li>, or <blockquote><p><em>"the quote"</em></p></blockquote>. Never put bullets, new lines or tags inside "replace" (it is plain text, so they collapse into one line). The anchor must be a short phrase from the END of ONE existing paragraph, copied from the document as it is NOW; never an anchor that runs across paragraphs, and never text you are adding in this same call. To write a lead-in sentence and a list after it, put BOTH in one insert_after: html = <p>lead-in sentence:</p><ul><li>...</li></ul> (and, if an existing sentence must be removed, use a separate delete or replace for it).
+- If a change cannot be made with these edits, say so in your reply and do not claim it. Describe only what your edits actually do: your reply is written before they are applied, so never say something is done that is not in an edit.
 - To delete a whole paragraph, "find" its full text exactly.
 - To change formatting without changing the words, NEVER use replace with identical text (it is rejected). Use: op "italic" with "find" = the exact words to make italic (short quotations that stay in their sentence); op "blockquote" with "find" = the exact quotation (more than about 25 words) to move onto its own indented italic line, which splits the paragraph around it. Use "italic" instead of "blockquote" inside lists and table cells. Do this for every quotation in the document, copying each quotation's text exactly as it appears; skip any that are already italic.
 - To change what KIND of block a paragraph or heading is without changing its words (for example an h3 heading that should be a bold paragraph label, an h3 that should be h2, or a paragraph that should become a heading), use op "restyle" with "find" = the block's exact text (the heading text is enough) and "as" = "p", "p-bold", "h2", "h3" or "h4". It keeps the text and its inline formatting. Do this instead of a full rewrite or a replace with identical text. It does not apply to list items or table cells.
@@ -110,10 +112,25 @@ function docTypeBlock(docType) {
   return parts.join('\n\n');
 }
 
+// Chat mode, chosen with the Ask / Edit switch in the Create card.
+const EDIT_MODE_RULES = `## How to respond (Edit mode)
+The user has switched to Edit mode, so lean towards making changes: unless they clearly ask otherwise, treat their message as an instruction to change the document. Every turn, reply with 1 to 3 sentences of plain text, plus ONE tool call when you are changing the document:
+- write_document: the complete document. Use it when the document is empty and the user wants it written, or when they explicitly ask for a full rewrite or restructure.
+- edit_document: for every other change to an existing document (add, cut, change, reword, move).
+- Answer in the chat with NO tool call, and leave the document alone, when the user clearly asks a question or asks to be told something (for example "just tell me", "don't change anything", "what do you think of...", "why did you...", "is this..."). Answer it properly in the chat (more than 3 sentences is fine), and do not edit the document unless they also ask for a change. When in doubt between a question and an instruction, ask one short question.
+- Also skip the tool if you need information before you can proceed (ask one short question) or the change truly cannot be made with these tools (say why in one sentence). Otherwise do not just describe what you would change: make the change.
+Never paste the document text or your edits into the reply. The reply only describes what you did.
+Write the reply in plain, short prose. No markdown headings (#), no tables, no code blocks. The only formatting allowed is **double asterisks** around a short label where it genuinely helps, and simple dash lists.`;
+
+const ASK_MODE_RULES = `## How to respond (Ask mode)
+The user has switched to Ask mode: they want an answer, not a change. You have no tools and you must not change the document. Answer their question in the chat, using the sources, the current document and what they have told you. Be direct and as concise as the question allows, but give as much as it needs. Quote the document only where it helps. If they are clearly asking for a change, say they can switch to Edit mode and describe in a line what you would do. Never claim to have changed anything.
+Write in plain prose. No markdown headings (#), no tables, no code blocks. The only formatting allowed is **double asterisks** around a short label where it genuinely helps, and simple dash lists.`;
+
 /**
  * @param {object} p
  * @param {string} p.projectName
  * @param {string|null} [p.clientName]
+ * @param {'edit'|'ask'} [p.chatMode] - 'ask': answer only, never change the document
  * @param {{name:string, example_text?:string, structure_notes?:string}|null} [p.docType]
  * @param {{sourceId:string, label:string, text:string}[]} [p.blocks] - assembled sources
  * @param {string} [p.documentHtml] - the document as it is now ('' when empty)
@@ -130,6 +147,7 @@ export function buildCreateSystemPrompt({
   selection = null,
   imports = [],
   useHouseStyle = true,
+  chatMode = 'edit',
 }) {
   const isEmpty = !documentHtml?.replace(/<[^>]+>/g, '').trim();
 
@@ -151,17 +169,11 @@ export function buildCreateSystemPrompt({
 
   return `You are a senior UK planning consultant co-writing a document with the user for the project "${projectName}"${clientName ? ` (client: ${clientName})` : ''}. Work conversationally: they tell you what to write or change, you do it, and you say briefly what you did.${docTypeBlock(docType)}${documentSection}${importsSection}${selectionSection}${sourcesSection}
 
-## How to respond
-Every turn, reply with 1 to 3 sentences of plain text (what you did, an answer, or a short question), plus AT MOST ONE tool call:
-- write_document: the complete document. Use it when the document is empty and the user wants it written, or when they explicitly ask for a full rewrite or restructure.
-- edit_document: for every other change to an existing document (add, cut, change, reword, move).
-- No tool call if the user is asking a question, brainstorming, or you need information before you can proceed. If a request is ambiguous in a way that matters, ask one short question instead of guessing.
-Never paste the document text or your edits into the reply. The reply only describes what you did.
-Write the reply in plain, short prose. No markdown headings (#), no tables, no code blocks. The only formatting allowed is **double asterisks** around a short label where it genuinely helps, and simple dash lists.
+${chatMode === 'ask' ? ASK_MODE_RULES : `${EDIT_MODE_RULES}
 
 ${FORMAT_RULES}
 
-${EDIT_RULES}
+${EDIT_RULES}`}
 
 ## Facts and sources
 - Use facts only from the sources above and from what the user says in this conversation. Never use outside knowledge for project-specific claims.
@@ -177,22 +189,33 @@ function cleanHtml(raw) {
 const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote', 'restyle']);
 const RESTYLE_AS = new Set(['p', 'p-bold', 'h2', 'h3', 'h4']);
 
-function cleanEdits(raw) {
+// `reasons` (optional array) collects why an edit was dropped, so the caller can tell the model.
+function cleanEdits(raw, reasons = []) {
   let list = raw;
   if (typeof list === 'string') {
-    try { list = JSON.parse(list); } catch { return []; }
+    try { list = JSON.parse(list); } catch { reasons.push('"edits" was not valid JSON'); return []; }
   }
-  if (!Array.isArray(list)) return [];
+  if (!Array.isArray(list)) { reasons.push('"edits" must be a list of edits'); return []; }
   const str = v => (typeof v === 'string' ? v : '');
-  return list
-    .filter(e => e && VALID_OPS.has(e.op))
-    .map(e => {
-      if (e.op === 'replace') return { op: 'replace', find: str(e.find), replace: noEmDash(str(e.replace)) };
-      if (e.op === 'restyle') return { op: 'restyle', find: str(e.find), as: RESTYLE_AS.has(e.as) ? e.as : '' };
-      if (e.op === 'delete' || e.op === 'italic' || e.op === 'blockquote') return { op: e.op, find: str(e.find) };
-      return { op: 'insert_after', anchor: str(e.anchor), html: cleanHtml(e.html) };
-    })
-    .filter(e => (e.op === 'insert_after' ? e.anchor.trim() && e.html : e.find.trim()));
+  const out = [];
+  list.forEach((e, i) => {
+    const n = i + 1;
+    if (!e || !VALID_OPS.has(e.op)) { reasons.push(`edit ${n} has no valid "op"`); return; }
+    if (e.op === 'insert_after') {
+      const edit = { op: 'insert_after', anchor: str(e.anchor), html: cleanHtml(e.html) };
+      if (!edit.anchor.trim()) { reasons.push(`edit ${n} (insert_after) has no "anchor": give existing text just before where the new content goes`); return; }
+      if (!edit.html) { reasons.push(`edit ${n} (insert_after) has no "html"`); return; }
+      out.push(edit);
+      return;
+    }
+    let edit;
+    if (e.op === 'replace') edit = { op: 'replace', find: str(e.find), replace: noEmDash(str(e.replace)) };
+    else if (e.op === 'restyle') edit = { op: 'restyle', find: str(e.find), as: RESTYLE_AS.has(e.as) ? e.as : '' };
+    else edit = { op: e.op, find: str(e.find) };
+    if (!edit.find.trim()) { reasons.push(`edit ${n} (${e.op}) has no "find" text`); return; }
+    out.push(edit);
+  });
+  return out;
 }
 
 /**
@@ -211,13 +234,17 @@ export function parseCreateResponse(response) {
   const edit = content.find(b => b.type === 'tool_use' && b.name === 'edit_document');
   const truncated = response?.stop_reason === 'max_tokens' && !!(write || edit);
 
+  const reasons = [];
   if (write) {
     const html = cleanHtml(write.input?.html);
     if (html) return { reply, mode: 'full', html, edits: null, truncated };
+    reasons.push('write_document had no "html"');
   }
   if (edit) {
-    const edits = cleanEdits(edit.input?.edits);
+    const edits = cleanEdits(edit.input?.edits, reasons);
     if (edits.length) return { reply, mode: 'edits', html: null, edits, truncated };
+    if (!reasons.length) reasons.push('edit_document had no edits');
   }
-  return { reply, mode: 'none', html: null, edits: null, truncated };
+  // invalid: the model called a tool but nothing usable came back (the caller can retry).
+  return { reply, mode: 'none', html: null, edits: null, truncated, invalid: !!(write || edit), reasons };
 }

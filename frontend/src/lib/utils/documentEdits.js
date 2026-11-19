@@ -357,6 +357,10 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
   const textEdits = [];
   const inserts = [];
   const restyles = [];
+  // insert_after edits whose anchor is not in the original document. The AI often anchors a list
+  // on a sentence it is writing in the SAME call (replace the lead-in, then add bullets after it),
+  // so these are resolved against the batch's own replacement text once every edit is read.
+  const deferred = [];
 
   for (const edit of Array.isArray(edits) ? edits : []) {
     const reject = reason => rejected.push({ edit, reason });
@@ -367,7 +371,18 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
     const needle = normalizeWithMap(plainText(rawNeedle).trim()).out;
     if (!needle) { reject('no text given to locate'); continue; }
 
-    const matches = findMatches(index, needle);
+    let matches = findMatches(index, needle);
+    // An insert anchor that runs across paragraphs can never match inside one block. Fall back to
+    // its own paragraphs, last first (the new content goes after the last one), accepting only a
+    // single unambiguous match.
+    if (matches.length === 0 && op === 'insert_after') {
+      const parts = plainText(rawNeedle).split(/\n+/).map(p => normalizeWithMap(p.trim()).out).filter(p => p.length >= 12);
+      for (let i = parts.length - 1; i >= 0 && matches.length === 0; i--) {
+        const m = findMatches(index, parts[i]);
+        if (m.length === 1) matches = m;
+      }
+    }
+    if (matches.length === 0 && op === 'insert_after') { deferred.push({ edit, needle, rawNeedle }); continue; }
     if (matches.length === 0) { reject(`text not found in the document: "${snippet(rawNeedle)}"`); continue; }
     if (matches.length > 1) { reject(`"${snippet(rawNeedle)}" appears ${matches.length} times, so it is not specific enough`); continue; }
     const match = matches[0];
@@ -413,6 +428,17 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
     const overlaps = textEdits.some(t => t.entry === match.entry && match.start < t.end && t.start < match.end);
     if (overlaps) { reject('overlaps another edit'); continue; }
     textEdits.push({ entry: match.entry, start: match.start, end: match.end, replacement, edit });
+  }
+
+  for (const d of deferred) {
+    // The anchor may be the new text of a replace in this batch (or the tail of it): insert after that block.
+    const host = textEdits.find(t => t.replacement && normalizeWithMap(t.replacement).out.includes(d.needle));
+    if (host) {
+      if (!String(d.edit.html ?? '').trim()) { rejected.push({ edit: d.edit, reason: 'nothing to insert' }); continue; }
+      inserts.push({ edit: d.edit, block: host.entry.block });
+    } else {
+      rejected.push({ edit: d.edit, reason: `text not found in the document: "${snippet(d.rawNeedle)}"` });
+    }
   }
 
   let applied = 0;
@@ -513,7 +539,8 @@ export function applyAiEditResult(originalHtml, result, paragraphIds = null) {
     if (r.rejected.length) {
       warnings.push(`${r.rejected.length} change${r.rejected.length === 1 ? ' was' : 's were'} skipped: ${describeRejections(r.rejected)}.`);
     }
-    return { html: r.html, warnings };
+    // applied / skipped let the caller report what really happened, not what was asked for.
+    return { html: r.html, warnings, applied: r.applied, skipped: r.rejected.map(x => x.reason) };
   }
 
   const allParagraphs = splitAllParagraphs(originalHtml);

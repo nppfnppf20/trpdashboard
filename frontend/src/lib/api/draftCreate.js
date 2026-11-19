@@ -29,7 +29,7 @@ export async function generateCustomDraft({ prompt, provider, use_house_style })
  *   mode 'edits' -> apply with applyAiEditResult(html, { edits }, paragraphIds) from $lib/utils/documentEdits.js
  *   mode 'full'  -> html is the complete document
  */
-export async function sendCreateChat(projectId, { messages, sources = {}, docTypeId = null, documentHtml = '', selection = null, imports = [], useHouseStyle = true }) {
+export async function sendCreateChat(projectId, { messages, sources = {}, docTypeId = null, documentHtml = '', selection = null, imports = [], useHouseStyle = true, mode = 'edit' }) {
   const res = await authFetch(`/api/draft-create/projects/${projectId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -41,6 +41,7 @@ export async function sendCreateChat(projectId, { messages, sources = {}, docTyp
       selection,
       imports,
       use_house_style: useHouseStyle,
+      mode,
     }),
   });
   if (!res.ok) {
