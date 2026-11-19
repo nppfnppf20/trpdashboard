@@ -21,7 +21,7 @@ export async function generateCustomDraft({ prompt, provider, use_house_style })
  *   sources?: object,            // same shape as Project Chat's sources
  *   docTypeId?: number|null,
  *   documentHtml?: string,       // the document as it is now
- *   selection?: {quoted_text: string}|null,
+ *   selection?: {quoted_text: string, block_ids?: number[]}|null,
  *   imports?: {title: string, prompt: string}[],  // prompts that produced text imported into the document
  *   useHouseStyle?: boolean,
  * }} opts

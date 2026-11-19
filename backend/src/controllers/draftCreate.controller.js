@@ -89,9 +89,14 @@ export async function createChat(req, res) {
   // document, before the sources, which can be very long) and was easy to
   // overlook. The stored chat history is not changed; this is request-only.
   const highlighted = typeof selection?.quoted_text === 'string' ? selection.quoted_text.trim().slice(0, 20000) : '';
+  // Block numbers (data-b) the highlight covers, so the model edits those blocks and no others.
+  const blockIds = Array.isArray(selection?.block_ids)
+    ? [...new Set(selection.block_ids.map(Number).filter(n => Number.isInteger(n) && n >= 0))].slice(0, 1000)
+    : [];
   if (highlighted) {
     const last = history[history.length - 1];
-    last.content = `${last.content}\n\n---\nThe passage I have highlighted in the document (my request above is about THIS text; make any change inside it, and take every "find" from it):\n<highlighted_passage>\n${highlighted}\n</highlighted_passage>`;
+    const where = blockIds.length ? ` (blocks numbered ${blockIds.join(', ')})` : '';
+    last.content = `${last.content}\n\n---\nThe passage I have highlighted in the document${where}. My request above is about THIS text; change only these blocks, using their numbers:\n<highlighted_passage>\n${highlighted}\n</highlighted_passage>`;
   }
 
   try {
@@ -169,7 +174,7 @@ export async function createChat(req, res) {
               type: 'tool_result',
               tool_use_id: b.id,
               is_error: true,
-              content: `That could not be applied: ${why}. Call edit_document again with valid edits (insert_after needs "anchor" = existing text just before the new content, and "html"; every other edit needs "find"), or write_document if the document is empty. If you cannot make the change, say why in plain text.`,
+              content: `That could not be applied: ${why}. Call edit_document again with valid edits (every edit needs "id" = the data-b number of an existing block; replace needs "html" with the block's full new content, or "as"; insert_after needs "html"), or write_document if the document is empty. If you cannot make the change, say why in plain text.`,
             })),
           },
         ];

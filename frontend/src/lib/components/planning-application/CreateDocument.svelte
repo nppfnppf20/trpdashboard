@@ -14,7 +14,7 @@
   import VoiceDictationButton from '$lib/components/projects/VoiceDictationButton.svelte';
   import { listCreateDocTypes } from '$lib/api/createDocTypes.js';
   import { sendCreateChat } from '$lib/api/draftCreate.js';
-  import { applyAiEditResult } from '$lib/utils/documentEdits.js';
+  import { applyBlockEditResult, annotateBlocks } from '$lib/utils/blockEdits.js';
   import { clearPendingMarkers } from '$lib/utils/draftParagraphs.js';
   import { renderReply } from '$lib/utils/chatMarkdown.js';
   import { createCustomDeliverable, updateDeliverableFromHTML, getDeliverableAsHTML } from '$lib/services/planningDeliverablesApi.js';
@@ -224,7 +224,7 @@
   let sendError = null;
   let chatScroll;
   let inputEl;
-  // A highlight pointing the next message at a passage: { quotedText, paragraphIds }
+  // A highlight pointing the next message at a passage: { quotedText, blockIds }
   let selection = null;
   // The bar at the bottom: while waiting, or while changes await Accept/Discard.
   // { loading, warning, originalHtml } | null
@@ -241,7 +241,7 @@
 
   function handleTextSelected(e) {
     if (aiBar?.loading) return;
-    selection = { quotedText: e.detail.quotedText, paragraphIds: e.detail.paragraphIds };
+    selection = { quotedText: e.detail.quotedText, blockIds: e.detail.blockIds ?? [] };
     inputEl?.focus();
   }
 
@@ -316,7 +316,7 @@
   async function applyResult(result, baseHtml, sel, attempt, mySeq) {
     if (result.mode === 'edits') {
       try {
-        const { html: next, warnings, applied, skipped } = applyAiEditResult(baseHtml, { edits: result.edits }, sel?.paragraphIds ?? null);
+        const { html: next, warnings, applied, skipped } = applyBlockEditResult(baseHtml, result.edits, sel?.blockIds ?? null);
         showPending(next, baseHtml, warnings);
         const dropped = result.dropped ?? [];
         const asked = result.edits.length + dropped.length;
@@ -334,12 +334,12 @@
             messages: [
               ...apiMessages(),
               { role: 'assistant', content: result.reply || 'I will make those changes.' },
-              { role: 'user', content: `Those edits could not be applied to the document (${err.reasons}). Please redo them: copy the text to find exactly as it appears in the current document, and include a few neighbouring words so each one is unique.` },
+              { role: 'user', content: `Those edits could not be applied to the document (${err.reasons}). Please redo them: refer to each block by its data-b number in the current document, and give the full new content of a block for a replace.` },
             ],
             sources,
             docTypeId,
-            documentHtml: baseHtml,
-            selection: sel ? { quoted_text: sel.quotedText } : null,
+            documentHtml: annotateBlocks(baseHtml),
+            selection: sel ? { quoted_text: sel.quotedText, block_ids: sel.blockIds } : null,
             imports: importedContext.map(c => ({ title: c.title, prompt: c.prompt })),
             mode: chatMode,
           });
@@ -387,8 +387,8 @@
         messages: apiMessages(),
         sources,
         docTypeId,
-        documentHtml: baseHtml,
-        selection: sel ? { quoted_text: sel.quotedText } : null,
+        documentHtml: annotateBlocks(baseHtml),
+        selection: sel ? { quoted_text: sel.quotedText, block_ids: sel.blockIds } : null,
         imports: importedContext.map(c => ({ title: c.title, prompt: c.prompt })),
         mode: chatMode,
       });

@@ -3,6 +3,7 @@
   import { onMount, createEventDispatcher } from 'svelte';
   import '$lib/styles/trpformatting.css';
   import { highlightPlaceholders } from '$lib/utils/draftParagraphs.js';
+  import { blockIdsInRange } from '$lib/utils/blockEdits.js';
 
   export let content = '';
   export let placeholder = 'Start typing...';
@@ -107,6 +108,8 @@
 
       const rect = range.getBoundingClientRect();
       const quotedText = sel.toString();
+      // Numbered blocks (paragraphs, list items, cells) the highlight covers, for block-ID edits.
+      const blockIds = blockIdsInRange(editorElement, range);
 
       // This is the one point we trust the range: it's settled (drag is over)
       // and has already passed the topLevelChildIndex checks above. Snapshot
@@ -117,6 +120,7 @@
 
       dispatch('textselected', {
         paragraphIds,
+        blockIds,
         quotedText,
         top: rect.bottom,
         left: rect.left + rect.width / 2,

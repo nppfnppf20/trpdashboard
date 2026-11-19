@@ -100,27 +100,62 @@ function insidePending(node, block) {
   return false;
 }
 
+// Text nodes that belong to this block itself: not inside a nested block (a list item's sub-list,
+// a table cell's inner paragraph) and not inside an unaccepted change.
 function textNodesOf(block) {
   const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
   const nodes = [];
   let n;
   while ((n = walker.nextNode())) {
+    if (n.parentElement?.closest(LEAF_BLOCK_SELECTOR) !== block) continue;
     if (!insidePending(n, block)) nodes.push(n);
   }
   return nodes;
 }
 
+// Every block is indexed by its OWN text. A container such as <li>text<ul>…</ul></li> used to be
+// skipped entirely because it holds another block, so text sitting directly in it could never be
+// found. Containers with no text of their own (just wrappers) are left out.
 function buildIndex(root) {
-  const blocks = [...root.querySelectorAll(LEAF_BLOCK_SELECTOR)].filter(el => !el.querySelector(LEAF_BLOCK_SELECTOR));
+  const blocks = [...root.querySelectorAll(LEAF_BLOCK_SELECTOR)];
   return blocks.map(block => {
     const nodes = textNodesOf(block);
+    if (!nodes.some(n => n.data.trim())) return null;
     const lens = nodes.map(n => n.data.length);
     const starts = [];
     let pos = 0;
     for (const l of lens) { starts.push(pos); pos += l; }
     const text = nodes.map(n => n.data).join('');
     return { block, nodes, lens, starts, ...normalizeWithMap(text) };
-  });
+  }).filter(Boolean);
+}
+
+// Debug aid for "text not found": logs the full text the AI quoted next to the closest text in the
+// document, and where the two stop agreeing (the usual culprit is a dash, quote, line break or a
+// quote that runs across two paragraphs).
+function logNotFound(index, needle, op) {
+  try {
+    const words = [...new Set(needle.split(' ').filter(w => w.length > 3))];
+    let best = null;
+    for (const entry of index) {
+      const hits = words.filter(w => entry.out.includes(w)).length;
+      if (!best || hits > best.hits) best = { entry, hits };
+    }
+    let diverges = '';
+    if (best && best.hits) {
+      const text = best.entry.out;
+      const head = needle.slice(0, 12);
+      const at = text.indexOf(head);
+      if (at === -1) {
+        diverges = `the document block does not even contain the first 12 characters: "${head}"`;
+      } else {
+        let k = 0;
+        while (k < needle.length && text[at + k] === needle[k]) k++;
+        diverges = `matches for ${k} of ${needle.length} characters, then the quote has ${JSON.stringify(needle.slice(k, k + 30))} but the document has ${JSON.stringify(text.slice(at + k, at + k + 30))}`;
+      }
+    }
+    console.warn(`[documentEdits] ${op} not found.\nAI quoted (${needle.length} chars): ${needle}\nClosest block (${best?.hits ?? 0}/${words.length} words): ${best ? best.entry.out.slice(0, 600) : '(none)'}\n${diverges}`);
+  } catch { /* diagnostics must never break an edit */ }
 }
 
 function findMatches(index, needle) {
@@ -383,7 +418,7 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
       }
     }
     if (matches.length === 0 && op === 'insert_after') { deferred.push({ edit, needle, rawNeedle }); continue; }
-    if (matches.length === 0) { reject(`text not found in the document: "${snippet(rawNeedle)}"`); continue; }
+    if (matches.length === 0) { logNotFound(index, needle, op); reject(`text not found in the document: "${snippet(rawNeedle)}"`); continue; }
     if (matches.length > 1) { reject(`"${snippet(rawNeedle)}" appears ${matches.length} times, so it is not specific enough`); continue; }
     const match = matches[0];
 
@@ -437,6 +472,7 @@ export function applyEdits(html, edits, { allowedParagraphIds = null } = {}) {
       if (!String(d.edit.html ?? '').trim()) { rejected.push({ edit: d.edit, reason: 'nothing to insert' }); continue; }
       inserts.push({ edit: d.edit, block: host.entry.block });
     } else {
+      logNotFound(index, d.needle, 'insert_after');
       rejected.push({ edit: d.edit, reason: `text not found in the document: "${snippet(d.rawNeedle)}"` });
     }
   }

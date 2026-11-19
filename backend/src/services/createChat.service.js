@@ -5,10 +5,11 @@
  * sends back a short plain-text reply plus, optionally, ONE tool call:
  *   - write_document: the complete document as HTML (empty document, or an
  *     explicit full rewrite)
- *   - edit_document:  small exact-match edits (replace / delete / insert_after)
- *     which the frontend applies with applyEdits (frontend/src/lib/utils/
- *     documentEdits.js). The model never retypes content it isn't changing, so
- *     tables and other parts of the document can't be lost.
+ *   - edit_document:  block edits (replace / delete / insert_after) addressed by block
+ *     number. The frontend numbers every paragraph, list item and table cell
+ *     (data-b) and applies the edits with applyBlockEdits (frontend/src/lib/utils/
+ *     blockEdits.js). The model never quotes text to locate it and never retypes
+ *     blocks it isn't changing, so tables and the rest of the document can't be lost.
  *
  * Kept free of DB/HTTP so it can be tested on its own.
  */
@@ -55,7 +56,7 @@ export const writeDocumentTool = {
 
 export const editDocumentTool = {
   name: 'edit_document',
-  description: 'Make targeted edits to the existing document: add, cut, change, reword. Return only the minimal edits needed; text you do not quote is left exactly as it is.',
+  description: 'Make targeted edits to the existing document: add, cut, change, reword, restyle. Every paragraph, heading, list item and table cell in the document has a block number (data-b). Refer to blocks only by that number. Blocks you do not mention are left exactly as they are.',
   input_schema: {
     type: 'object',
     properties: {
@@ -64,14 +65,12 @@ export const editDocumentTool = {
         items: {
           type: 'object',
           properties: {
-            op: { type: 'string', enum: ['replace', 'delete', 'insert_after', 'italic', 'blockquote', 'restyle'] },
-            as: { type: 'string', enum: ['p', 'p-bold', 'h2', 'h3', 'h4'], description: 'restyle: what the block becomes. p = ordinary paragraph, p-bold = paragraph that is all bold (a bold label), h2/h3/h4 = heading of that level.' },
-            find: { type: 'string', description: 'replace/delete/italic/blockquote: exact existing text, plain text (no HTML), from inside ONE paragraph, list item or table cell. For italic and blockquote it is the quoted words only.' },
-            replace: { type: 'string', description: 'replace: the new text, plain text with no HTML tags.' },
-            anchor: { type: 'string', description: 'insert_after: exact existing text just before where the new content goes, plain text, inside ONE paragraph, list item or table cell.' },
-            html: { type: 'string', description: 'insert_after: the new element(s) as HTML: <p>, <h3>, <li>, <ul>, or <tr><td>..</td></tr> for a table row.' },
+            op: { type: 'string', enum: ['replace', 'delete', 'insert_after'] },
+            id: { type: 'integer', description: 'The block number (the data-b value) of the block this edit is about.' },
+            html: { type: 'string', description: 'replace: the COMPLETE new content of the block, as inline HTML (text with <strong>, <em>, <a>, <br>), not just the changed words. To turn one paragraph into several blocks (a lead-in plus a list, a quotation on its own line) it may hold block elements (<p>, <ul>, <blockquote>). insert_after: the new block element(s): <p>, <h3>, <ul>, <li> (to add a list item), <tr> (to add a table row), <blockquote>.' },
+            as: { type: 'string', enum: ['p', 'p-bold', 'h2', 'h3', 'h4'], description: 'replace: change what KIND of block it is, keeping its words. p = ordinary paragraph, p-bold = bold label paragraph, h2/h3/h4 = heading. html can be left out when only the style changes.' },
           },
-          required: ['op'],
+          required: ['op', 'id'],
         },
       },
     },
@@ -86,16 +85,16 @@ const FORMAT_RULES = `HTML rules (for the whole document and for anything you in
 - Do not add a document title unless the user asks for one.`;
 
 const EDIT_RULES = `Rules for edit_document:
-- "find" and "anchor" must be copied verbatim from the current document as plain text (no HTML tags), from inside ONE paragraph, list item or table cell. Never span two paragraphs, list items or cells.
-- Make each "find" long enough to appear only once in the whole document (add a few neighbouring words if needed) but no longer than necessary. If the same short text (e.g. "Yes") appears several times, include enough neighbouring text in the same cell or paragraph to make it unique.
-- "replace" is plain text with no HTML tags. Change only the words that need changing.
-- To add a paragraph, heading, list item or table row use insert_after, with the anchor being existing text just before where it should go.
-- To add several things at once (a bullet list, a quotation on its own line, a few paragraphs), make ONE insert_after whose html holds all of it: a <ul> with every <li>, or <blockquote><p><em>"the quote"</em></p></blockquote>. Never put bullets, new lines or tags inside "replace" (it is plain text, so they collapse into one line). The anchor must be a short phrase from the END of ONE existing paragraph, copied from the document as it is NOW; never an anchor that runs across paragraphs, and never text you are adding in this same call. To write a lead-in sentence and a list after it, put BOTH in one insert_after: html = <p>lead-in sentence:</p><ul><li>...</li></ul> (and, if an existing sentence must be removed, use a separate delete or replace for it).
+- In the current document every paragraph, heading, list item and table cell that has text carries a number: data-b="12". Refer to a block ONLY by that number in "id". Never quote text to say where a change goes.
+- replace: "id" plus "html" = the COMPLETE new content of that block, written out in full (not just the changed words). Keep every word you were not asked to change exactly as it is, including its bold, italic and links. "html" is inline: text with <strong>, <em>, <a href>, <br>. No <p> around it. For a list item, "html" is that item's text only. A list item's own sub-list is not part of it and is left alone.
+- To turn one paragraph or heading into several blocks (a lead-in sentence plus a bullet list, a short paragraph plus a quotation on its own line), use replace with "html" holding the block elements (<p>, <ul><li>...</li></ul>, <blockquote><p><em>"..."</em></p></blockquote>). This does not work on a single list item or table cell.
+- To change only what KIND of block it is (an h3 that should be a bold label, a paragraph that should be a heading), use replace with "as" ("p", "p-bold", "h2", "h3", "h4") and no "html".
+- delete: "id" removes that block's text (paragraph, heading, list item, quotation). Never delete a table or a table row.
+- insert_after: "id" of an existing block plus "html" = the new block element(s), placed straight after it. For a new list item use <li>...</li> after another item of that list. For a new table row use <tr><td>...</td></tr> after a block in the row it should follow. A <p> or <h3> placed after a list item goes after the whole list. Several new things in one place (a lead-in and a list; a few paragraphs) go in ONE insert_after whose html holds all of them in order.
+- The user may highlight several paragraphs, bullets or cells. Each block has its own number, so change each one with its own replace in the same call (one replace per bullet, for example). Change only the blocks that need it.
+- Quotations (policy wording, statute, a quoted decision): to italicise a quotation that is already in the document inside quotation marks, use replace on its block with the same words and <em> around the quotation. To put a long quotation on its own indented line, use replace on its block with html holding the text before it as <p>, then <blockquote><p><em>"the quote"</em></p></blockquote>, then any text after it as <p>. Never italicise or quote wording that appears only in the sources: if the document paraphrases a policy rather than quoting it, leave it and say in your reply that it is paraphrased. If the user wants a paraphrase turned into a verbatim quotation, that is a different change, made only when they ask.
+- Never retype, summarise, reorder or restructure a table. Edit individual cells by their numbers, or insert a whole new <tr>.
 - If a change cannot be made with these edits, say so in your reply and do not claim it. Describe only what your edits actually do: your reply is written before they are applied, so never say something is done that is not in an edit.
-- To delete a whole paragraph, "find" its full text exactly.
-- To change formatting without changing the words, NEVER use replace with identical text (it is rejected). Use: op "italic" with "find" = the exact words to make italic (short quotations that stay in their sentence); op "blockquote" with "find" = the exact quotation (more than about 25 words) to move onto its own indented italic line, which splits the paragraph around it. Use "italic" instead of "blockquote" inside lists and table cells. Do this for every quotation in the document, copying each quotation's text exactly as it appears; skip any that are already italic.
-- To change what KIND of block a paragraph or heading is without changing its words (for example an h3 heading that should be a bold paragraph label, an h3 that should be h2, or a paragraph that should become a heading), use op "restyle" with "find" = the block's exact text (the heading text is enough) and "as" = "p", "p-bold", "h2", "h3" or "h4". It keeps the text and its inline formatting. Do this instead of a full rewrite or a replace with identical text. It does not apply to list items or table cells.
-- Never retype, summarise, reorder or restructure a table. Edit the text in individual cells, or insert a whole new <tr>.
 - Several edits in one call are fine. Every edit must be necessary for what the user asked.`;
 
 function docTypeBlock(docType) {
@@ -156,7 +155,7 @@ export function buildCreateSystemPrompt({
     : `\n\n## Sources\nNo project sources are selected. Write only from what the user tells you in this conversation. Do not invent project-specific facts; where one is needed, put [SOURCE REQUIRED: what is missing] in its place. If the user would clearly be better served by ticking sources, say so briefly.`;
 
   const selectionSection = selection?.quoted_text?.trim()
-    ? `\n\n## Highlighted passage\nThe user has highlighted a passage of the document, and it is repeated at the end of their message in <highlighted_passage> tags. Their request is about that passage: act on it, and do not edit other parts of the document unless they clearly ask for something wider. Never say you cannot see what is highlighted. It is there, and it also appears in the current document.\n<highlighted>\n${selection.quoted_text.trim()}\n</highlighted>`
+    ? `\n\n## Highlighted passage\nThe user has highlighted part of the document, and it is repeated at the end of their message in <highlighted_passage> tags together with the numbers of the blocks it covers. Their request is about those blocks: act on them (each with its own edit if several need changing), and do not edit other blocks. Edits to blocks outside the highlight are rejected. Never say you cannot see what is highlighted.\n<highlighted>\n${selection.quoted_text.trim()}\n</highlighted>`
     : '';
 
   const importsSection = imports.length
@@ -186,7 +185,7 @@ function cleanHtml(raw) {
   return noEmDash(String(raw ?? '').trim().replace(/^```(?:html)?\n?/i, '').replace(/\n?```$/i, '').trim());
 }
 
-const VALID_OPS = new Set(['replace', 'delete', 'insert_after', 'italic', 'blockquote', 'restyle']);
+const VALID_OPS = new Set(['replace', 'delete', 'insert_after']);
 const RESTYLE_AS = new Set(['p', 'p-bold', 'h2', 'h3', 'h4']);
 
 // `reasons` (optional array) collects why an edit was dropped, so the caller can tell the model.
@@ -196,24 +195,25 @@ function cleanEdits(raw, reasons = []) {
     try { list = JSON.parse(list); } catch { reasons.push('"edits" was not valid JSON'); return []; }
   }
   if (!Array.isArray(list)) { reasons.push('"edits" must be a list of edits'); return []; }
-  const str = v => (typeof v === 'string' ? v : '');
   const out = [];
   list.forEach((e, i) => {
     const n = i + 1;
-    if (!e || !VALID_OPS.has(e.op)) { reasons.push(`edit ${n} has no valid "op"`); return; }
-    if (e.op === 'insert_after') {
-      const edit = { op: 'insert_after', anchor: str(e.anchor), html: cleanHtml(e.html) };
-      if (!edit.anchor.trim()) { reasons.push(`edit ${n} (insert_after) has no "anchor": give existing text just before where the new content goes`); return; }
-      if (!edit.html) { reasons.push(`edit ${n} (insert_after) has no "html"`); return; }
-      out.push(edit);
+    if (!e || !VALID_OPS.has(e.op)) { reasons.push(`edit ${n} has no valid "op" (use replace, delete or insert_after)`); return; }
+    const id = Number(String(e.id ?? '').replace(/^b/i, ''));
+    if (e.id === undefined || e.id === null || e.id === '' || !Number.isInteger(id) || id < 0) {
+      reasons.push(`edit ${n} (${e.op}) has no block number in "id": use the data-b number of the block`);
       return;
     }
-    let edit;
-    if (e.op === 'replace') edit = { op: 'replace', find: str(e.find), replace: noEmDash(str(e.replace)) };
-    else if (e.op === 'restyle') edit = { op: 'restyle', find: str(e.find), as: RESTYLE_AS.has(e.as) ? e.as : '' };
-    else edit = { op: e.op, find: str(e.find) };
-    if (!edit.find.trim()) { reasons.push(`edit ${n} (${e.op}) has no "find" text`); return; }
-    out.push(edit);
+    if (e.op === 'delete') { out.push({ op: 'delete', id }); return; }
+    const html = cleanHtml(e.html);
+    if (e.op === 'insert_after') {
+      if (!html) { reasons.push(`edit ${n} (insert_after) has no "html"`); return; }
+      out.push({ op: 'insert_after', id, html });
+      return;
+    }
+    const as = RESTYLE_AS.has(e.as) ? e.as : '';
+    if (!html && !as) { reasons.push(`edit ${n} (replace) needs "html" (the full new content of the block) or "as"`); return; }
+    out.push({ op: 'replace', id, ...(html ? { html } : {}), ...(as ? { as } : {}) });
   });
   return out;
 }
